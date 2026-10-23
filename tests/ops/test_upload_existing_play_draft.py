@@ -68,7 +68,8 @@ def test_library_upload_preserves_other_draft_and_active_release(existing, empty
     original = copy.deepcopy(call.track)
     result = module.upload(b'synthetic-not-a-real-bundle', call)
     assert result['status'] == 'BUNDLE_LIBRARY_SAVED'
-    assert result['internal_track_unchanged'] and not result['assigned_to_track']
+    assert result['internal_track_unchanged'] and not result['assigned_by_this_operation']
+    assert result['existing_internal_statuses'] == []
     assert call.track == original
     assert sum('uploadType=media' in url for url, _ in call.calls) == int(not existing)
     commits = [url for url, _ in call.calls if ':commit' in url]
@@ -96,6 +97,16 @@ def test_review_in_progress_refusal_has_no_fallback_commit():
     commits = [url for url, _ in call.calls if ':commit' in url]
     assert len(commits) == 1
     assert 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in commits[0]
+
+
+def test_already_assigned_candidate_reports_existing_status_without_writes():
+    call = FakePlay(existing=True)
+    call.track['releases'][0]['versionCodes'] = [module.VERSION]
+    result = module.upload(b'synthetic', call)
+    assert result['commit_state'] == 'ALREADY_SAVED'
+    assert result['existing_internal_statuses'] == ['completed']
+    assert not result['assigned_by_this_operation']
+    assert not any(':commit' in url or 'uploadType=media' in url for url, _ in call.calls)
 
 
 @pytest.mark.parametrize('failure', ['lost_before', 'lost_after', 'postchange'])

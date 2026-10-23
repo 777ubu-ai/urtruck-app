@@ -120,7 +120,9 @@ def upload(data, call):
     return {'status': 'BUNDLE_LIBRARY_SAVED', 'package': PACKAGE, 'versionCode': VERSION,
             'source_sha': SOURCE, 'sha256': SHA256, 'edit_id': edit,
             'commit_state': commit_state,
-            'internal_track_unchanged': True, 'assigned_to_track': False,
+            'internal_track_unchanged': True, 'assigned_by_this_operation': False,
+            'existing_internal_statuses': [release.get('status') for release in track.get('releases', [])
+                if VERSION in [str(code) for code in release.get('versionCodes', [])]],
             'review_submitted': False, 'published': False}
 
 
