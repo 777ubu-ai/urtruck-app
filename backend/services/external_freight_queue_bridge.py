@@ -19,7 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261022-free-location-bulk-v2'
+PARSER_REVISION = '20261023-vehicle-supply-v3'
 
 
 def validate_qa_target(api_url):
@@ -193,7 +193,8 @@ class IncomingQueueBridge(PublishedQueueBridge):
                     if record["status"]=="review":
                         review+=1
                         classification=classify_message(record["original_text"])
-                        reason="ambiguous_kind" if classification.get("kind") is None else "unresolved_direction"
+                        reason=(classification.get('reason','ambiguous_kind')
+                                if classification.get("kind") is None else "unresolved_direction")
                     if record["status"]=="active":
                         with self.adapter._connect() as state:
                             state.execute("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,row["source_date"]))

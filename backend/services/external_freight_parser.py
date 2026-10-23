@@ -25,13 +25,66 @@ _NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договор
 _DATE = re.compile(r"(?<!\d)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)")
 _BODY = (
     ("tent", re.compile(r"(?i)\b(?:тент|тентов(?:ый|ая|ое)|tent)\b")),
-    ("ref", re.compile(r"(?i)\b(?:реф|рефрижератор|reefer)\b")),
+    ("ref", re.compile(r"(?i)\b(?:р[еэ]ф|рефрижератор|reefer|ref)\b")),
     ("izoterm", re.compile(r"(?i)\b(?:изотерм|изотермич(?:еский|ка)|isotherm)\b")),
     ("board", re.compile(r"(?i)\b(?:борт|платформа|board)\b")),
     ("tipper", re.compile(r"(?i)\b(?:самосвал|tipper)\b")),
     ("lowboy", re.compile(r"(?i)\b(?:низкорамник|трал|lowboy)\b")),
 )
 _CURRENCY = {"USD": "USD", "US$": "USD", "$": "USD", "EUR": "EUR", "€": "EUR", "RUB": "RUB", "₽": "RUB", "KZT": "KZT", "тг": "KZT", "CNY": "CNY", "JPY": "JPY"}
+
+# Только проверенные написания из источников. Значения служат для проверки
+# совпадения bilingual-блоков; отображаем исходное написание, страну не выводим.
+_VEHICLE_PLACES = {
+    'хоргос': 'khorgos', 'khorgos': 'khorgos', 'алматы': 'almaty',
+    'москва': 'moscow', 'астана': 'astana', 'алашанькоу': 'alashankou',
+    'toshkent': 'tashkent', 'ташкент': 'tashkent', 'nukus': 'nukus', 'нукус': 'nukus',
+    'qashqadaryo': 'qashqadaryo', 'кашкадарё': 'qashqadaryo',
+    'қашқадарё': 'qashqadaryo', 'кашкадарья': 'qashqadaryo',
+    'andijon': 'andijan', 'андижон': 'andijan', 'андижан': 'andijan',
+    'qarshi koson': 'qarshi-koson', 'qarshi': 'qarshi', 'карши': 'qarshi',
+    'buxoro': 'bukhara', 'бухоро': 'bukhara', 'бухара': 'bukhara',
+    'uluĝchat': 'ulugchat', 'ulugchat': 'ulugchat', 'улучат': 'ulugchat',
+}
+_VEHICLE_PLACE_PATTERN = '|'.join(re.escape(p) for p in sorted(_VEHICLE_PLACES, key=len, reverse=True))
+_UZ_ORIGIN = re.compile(r'(?i)\b(' + _VEHICLE_PLACE_PATTERN + r')(?:dan|дан)\b')
+_UZ_DESTINATION = re.compile(r'(?i)\b(' + _VEHICLE_PLACE_PATTERN + r')(?:ga|га)\b')
+_VEHICLE_COUNT = re.compile(
+    r'(?i)(?:\b(?:fura|m[ao]shina)\s+bor\s+(\d{1,4})\s*ta\b|'
+    r'\b(\d{1,4})\s*ta\s+(?:katta\s+)?(?:isuzu(?:ga)?|fura|m[ao]shina)\b|'
+    r'\bесть\s+(\d{1,4})\s+машин\w*)')
+
+
+def _vehicle_locations(text):
+    origins, destinations = {}, {}
+
+    def add(target, value):
+        cleaned = _place(value)
+        key = _VEHICLE_PLACES.get((cleaned or '').casefold())
+        if key:
+            target.setdefault(key, cleaned)
+
+    for match in _UZ_ORIGIN.finditer(text):
+        add(origins, match.group(1))
+    for match in _UZ_DESTINATION.finditer(text):
+        add(destinations, match.group(1))
+    for line in text.splitlines():
+        cleaned = _place(line.strip('*_'))
+        if cleaned and cleaned.casefold() in _VEHICLE_PLACES:
+            add(origins, cleaned)
+        direction = re.search(r'(?i)\bнаправление\s*[:：]?\s+(.+)$', line)
+        if direction:
+            add(destinations, direction.group(1))
+        # Без пробелов дефис может быть частью города: нужны два известных конца.
+        for match in re.finditer(r'[-–—]', line):
+            left, right = _place(line[:match.start()]), _place(line[match.end():])
+            if ((left or '').casefold() in _VEHICLE_PLACES
+                    and (right or '').casefold() in _VEHICLE_PLACES):
+                add(origins, left)
+                add(destinations, right)
+    if len(origins) > 1 or len(destinations) > 1:
+        return None, None
+    return next(iter(origins.values()), None), next(iter(destinations.values()), None)
 
 
 def _place(value):
@@ -133,6 +186,8 @@ def map_selected_message(raw: dict) -> dict:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
     origin = _place(route.group(1)) if route else raw.get("origin")
     destination = _place(route.group(2)) if route else raw.get("destination")
+    if not route and kind == 'vehicle' and not origin and not destination:
+        origin, destination = _vehicle_locations(text)
     if not origin and not destination:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
@@ -154,6 +209,8 @@ def map_selected_message(raw: dict) -> dict:
     if not isinstance(phones, list):
         phones = []
     phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
+    if not phones:
+        phones = block_contacts(text)
     # Never attach a shared contact bundle to multiple separately typed blocks.
     if classification.get("status") == "split" or len(routes) > 1:
         status = "review"
@@ -173,7 +230,7 @@ def map_selected_message(raw: dict) -> dict:
         "body_types": bodies,
         "weight": _weight_tonnes(text),
         "volume": float(_first(_VOLUME, text).replace(",", ".").replace(" ", "")) if _first(_VOLUME, text) else None,
-        "vehicle_count": int(_first(_COUNT, text)) if _first(_COUNT, text) else None,
+        "vehicle_count": _vehicle_count(text, kind),
         "loading_date": _loading_date(text),
         "ready_text": _first(_READY, text),
         "amount": amount,
@@ -188,13 +245,34 @@ def map_selected_message(raw: dict) -> dict:
 _PHONE_BLOCK = re.compile(r"(?<!\d)(?:\+?\d[\d \t().-]{7,24}\d)(?!\d)")
 
 
+def _vehicle_count(text, kind):
+    if kind == 'vehicle':
+        match = _VEHICLE_COUNT.search(text)
+        return int(next(value for value in match.groups() if value)) if match else None
+    return int(_first(_COUNT, text)) if _first(_COUNT, text) else None
+
+
 def block_contacts(text):
     """Только явно написанные в блоке номера, без угадывания страны."""
     result = []
+    # Числа цены/веса/объёма не становятся телефоном даже рядом со словом «телефон».
+    numeric_fields = [match.span() for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
+                      for match in pattern.finditer(text)]
     for match in _PHONE_BLOCK.finditer(text):
         raw = match.group().strip()
         digits = re.sub(r"\D", "", raw)
-        if 10 <= len(digits) <= 15 and raw not in result:
+        start = text.rfind('\n', 0, match.start()) + 1
+        end = text.find('\n', match.end())
+        line = text[start:end if end >= 0 else len(text)]
+        prefix = text[start:match.start()]
+        if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
+                or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
+                             r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
+            continue
+        phone_context = re.search(r'(?i)(?:📞|☎|\bтел(?:ефон)?\.?|\btel)\s*[:=—–-]?\s*$', prefix)
+        local_phone = (len(digits) == 9 and raw.replace(' ', '').replace('\t', '').isdigit()
+                       and (line.strip() == raw or phone_context))
+        if (10 <= len(digits) <= 15 or local_phone) and raw not in result:
             result.append(raw)
     return result[:20]
 
