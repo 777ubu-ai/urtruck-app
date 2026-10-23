@@ -145,7 +145,7 @@ def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_
     (root / 'auth.py').write_text('PROTECTED = True\n')
     old_main = (root / 'main.py').read_bytes()
     pm2 = tmp_path / 'bin/pm2'
-    env = {'DB_PATH': str(primary), 'pm_id': '3', 'pm_exec_path': '/synthetic/python', '_pid': '1'}
+    env = {'DB_PATH': str(primary), 'pm_id': '3', 'pm_exec_path': '/synthetic/python', '_pid': '1', 'PM2_HOME': '/synthetic/pm2-home'}
     monkeypatch.setattr(module, 'ROOT', root)
     monkeypatch.setattr(module, 'RUNTIME', runtime)
     monkeypatch.setattr(module, 'BACKUP_ROOT', backups)
@@ -158,6 +158,8 @@ def test_install_and_rollback_preserve_core_data_and_configuration(fixture, tmp_
 
     def run(args, **kwargs):
         calls.append(args)
+        if args[0] == str(pm2):
+            assert kwargs['env']['PM2_HOME'] == '/synthetic/pm2-home'
         if args[0] in {str(pm2), 'sudo'}:
             return None
         return actual_run(args, **kwargs)
@@ -288,3 +290,31 @@ def test_production_caller_uses_valid_github_reusable_refs():
         assert target.startswith('777ubu-ai/urtruck-app/.github/workflows/')
         assert (root / '.github/workflows' / target.rsplit('/', 1)[1]).is_file()
     assert doc['jobs']['guard']['steps'][1]['with']['ref'] == 'refs/heads/main'
+
+
+def test_pm2_cli_can_live_outside_daemon_node_directory(tmp_path, monkeypatch):
+    target = tmp_path / 'lib/node_modules/pm2/bin/pm2'
+    target.parent.mkdir(parents=True)
+    target.write_text('#!/usr/bin/env node\n')
+    target.chmod(0o755)
+    entry = tmp_path / 'bin/pm2'
+    entry.parent.mkdir()
+    entry.symlink_to(target)
+    monkeypatch.setattr(module, 'PM2_ENTRY', entry)
+    monkeypatch.setattr(module, 'PM2_TARGET', target)
+    assert module.verified_pm2_entry() == entry
+    monkeypatch.setattr(module, 'PM2_TARGET', tmp_path / 'another-pm2')
+    with pytest.raises(ValueError, match='pm2_identity_unavailable'):
+        module.verified_pm2_entry()
+
+
+def test_pm2_cli_missing_or_not_executable_is_rejected(tmp_path, monkeypatch):
+    path = tmp_path / 'pm2'
+    monkeypatch.setattr(module, 'PM2_ENTRY', path)
+    monkeypatch.setattr(module, 'PM2_TARGET', path)
+    with pytest.raises(ValueError, match='pm2_identity_unavailable'):
+        module.verified_pm2_entry()
+    path.write_text('not executable')
+    path.chmod(0o600)
+    with pytest.raises(ValueError, match='pm2_identity_unavailable'):
+        module.verified_pm2_entry()
