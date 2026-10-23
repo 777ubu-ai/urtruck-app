@@ -39,12 +39,12 @@ def test_only_draft_saved_and_existing_active_release_preserved(existing):
     assert track['releases'][1]['status'] == 'draft'
     assert track['releases'][1]['versionCodes'] == [module.VERSION]
     assert sum('uploadType=media' in url for url, _, _ in calls) == int(not existing)
-    assert calls[-1][0].endswith(':commit?changesNotSentForReview=true')
+    assert calls[-1][0].endswith(':commit?changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW')
     assert not any('/tracks/production' in url for url, _, _ in calls)
     assert not result['review_submitted'] and not result['published']
 
 
-@pytest.mark.parametrize('failure', ['other_draft', 'active', 'hash', 'upload', 'readback', 'validate'])
+@pytest.mark.parametrize('failure', ['other_draft', 'empty_draft', 'active', 'hash', 'upload', 'readback', 'validate'])
 def test_error_never_commits_or_replaces_other_draft(failure):
     calls = []
     def call(url, method='GET', payload=None):
@@ -57,6 +57,8 @@ def test_error_never_commits_or_replaces_other_draft(failure):
             releases = []
             if failure == 'other_draft':
                 releases = [{'status': 'draft', 'versionCodes': ['123']}]
+            elif failure == 'empty_draft':
+                releases = [{'status': 'draft'}]
             elif failure == 'active':
                 releases = [{'status': 'completed', 'versionCodes': [module.VERSION]}]
             return {'track': 'internal', 'releases': releases}
@@ -70,8 +72,28 @@ def test_error_never_commits_or_replaces_other_draft(failure):
     with pytest.raises(ValueError):
         module.upload(b'synthetic', call)
     assert not any(':commit' in url for url, _ in calls)
-    if failure == 'other_draft':
+    if failure in {'other_draft', 'empty_draft'}:
         assert not any('uploadType=media' in url or method == 'PUT' for url, method in calls)
+
+
+def test_review_in_progress_refusal_has_no_fallback_commit():
+    calls = []
+    def call(url, method='GET', payload=None):
+        calls.append(url)
+        if url == module.API + '/edits':
+            return {'id': 'synthetic-edit'}
+        if url.endswith('/tracks/internal'):
+            return payload if method == 'PUT' else {'track': 'internal', 'releases': []}
+        if url.endswith('/bundles'):
+            return {'bundles': [{'versionCode': int(module.VERSION), 'sha256': module.SHA256}]}
+        if ':commit?' in url:
+            raise RuntimeError('play_http_400')
+        return {}
+    with pytest.raises(RuntimeError, match='play_http_400'):
+        module.upload(b'synthetic', call)
+    commit_calls = [url for url in calls if ':commit' in url]
+    assert len(commit_calls) == 1
+    assert 'changesInReviewBehavior=ERROR_IF_IN_REVIEW' in commit_calls[0]
 
 
 @pytest.mark.parametrize('field,value', [('id', 1), ('head_sha', 'bad'), ('event', 'pull_request'),

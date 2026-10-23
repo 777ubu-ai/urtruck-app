@@ -47,7 +47,7 @@ def draft_releases(track):
     for release in track.get('releases', []):
         codes = [str(code) for code in release.get('versionCodes', [])]
         if release.get('status') == 'draft':
-            if codes and codes != [VERSION]:
+            if codes != [VERSION]:
                 raise ValueError('existing_other_internal_draft')
             continue
         if VERSION in codes:
@@ -110,7 +110,7 @@ def upload(data, call):
     if result.get('track') != 'internal' or result.get('releases') != releases:
         raise ValueError('draft_readback_mismatch')
     call(base + ':validate', 'POST')
-    call(base + ':commit?changesNotSentForReview=true', 'POST')
+    call(base + ':commit?changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST')
     return {'status': 'INTERNAL_DRAFT_SAVED', 'package': PACKAGE, 'versionCode': VERSION,
             'source_sha': SOURCE, 'sha256': SHA256, 'edit_id': edit,
             'review_submitted': False, 'published': False}

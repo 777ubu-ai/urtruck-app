@@ -12,8 +12,9 @@ workflow на `main`, после проверки происхождения и 
 versionCode `214924807`. Новый код — только операционный uploader и его тесты.
 
 Writer сохраняет текущие активные releases и добавляет только internal draft.
-Чужой непустой draft, иной bundle с этим versionCode или неожиданный ответ
-останавливает операцию. Commit вызывается с `changesNotSentForReview=true`.
+Любой draft, кроме точного кандидата, иной bundle с этим versionCode или неожиданный ответ
+останавливает операцию. Commit вызывается с `changesNotSentForReview=true`
+и `changesInReviewBehavior=ERROR_IF_IN_REVIEW`; текущий review не отменяется.
 Secrets находятся только в памяти и временном файле ключа с правами 0600;
 в выводе — только версия, hash, edit ID и статус. При ошибке транзакция не
 commit-ится. Production track, review, rollout и публикация недоступны коду.
