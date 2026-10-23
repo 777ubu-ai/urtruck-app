@@ -104,3 +104,11 @@ def test_mixed_advertising_and_conflicting_routes_stay_review(text):
 def test_uz_vehicle_requests_are_cargo(text):
     item = map_selected_message(raw(text + "\nАлматы → Москва"))
     assert (item["kind"], item["status"]) == ("cargo", "active")
+
+@pytest.mark.parametrize("text", [
+    "Yuk kerak\nToshkentga\nBormayman",
+    "Fura kerak emas\nАлматы → Москва",
+    "Yuk kerak\nToshkentga\nНе поеду",
+])
+def test_negated_offer_or_separate_negation_not_activated(text):
+    assert map_selected_message(raw(text))["status"] == "review"

@@ -213,7 +213,8 @@ def map_selected_message(raw: dict) -> dict:
                 r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
                 r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
             origin = _place(location.group(1)) if location else None
-    if not route and not origin and not destination and kind == "vehicle" and status == "active":
+    if (not route and not origin and not destination and kind == "vehicle" and status == "active"
+            and not re.search(r"(?i)\b(?:bormayman|bormaymiz|emas|эмас)\b|не\s+(?:еду|поеду|поедем|поедет)", text)):
         origin, destination = _uz_vehicle_direction(text)
         if not origin and not destination and not _UZ_DIRECTION.search(text):
             origin, destination = _vehicle_city_pair(text)
