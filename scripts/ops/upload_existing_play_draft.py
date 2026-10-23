@@ -123,7 +123,7 @@ def upload(data, call):
             'internal_track_unchanged': True, 'assigned_by_this_operation': False,
             'existing_internal_statuses': [release.get('status') for release in track.get('releases', [])
                 if VERSION in [str(code) for code in release.get('versionCodes', [])]],
-            'review_submitted': False, 'published': False}
+            'review_submitted_by_this_operation': False, 'published_by_this_operation': False}
 
 
 def main():

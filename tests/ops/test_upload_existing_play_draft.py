@@ -77,7 +77,7 @@ def test_library_upload_preserves_other_draft_and_active_release(existing, empty
     assert all('changesNotSentForReview=true&changesInReviewBehavior=ERROR_IF_IN_REVIEW' in url for url in commits)
     assert call.edit == 2
     assert not any('/tracks/production' in url or method in {'PUT','PATCH','DELETE'} for url, method in call.calls)
-    assert not result['review_submitted'] and not result['published']
+    assert not result['review_submitted_by_this_operation'] and not result['published_by_this_operation']
 
 
 @pytest.mark.parametrize('failure', ['hash', 'upload', 'prechange', 'validate'])
