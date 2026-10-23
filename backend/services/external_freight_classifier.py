@@ -35,12 +35,26 @@ _UNAVAILABLE_OFFER = re.compile(
     r"(?i)\b(?:не|нет|если|нужен|нужна|нужны|куплю|продам|продаётся|продается|"
     r"ремонт\w*|занят\w*|загруж\w*)\b|[?？❓❔]")
 
+_SERVICE_SEARCH_PREFIX = re.compile(
+    r"(?i)\b(?:находите|находить|найдите|найти|ищите|поиск\w*|"
+    r"размещать|размещайте|оставляйте|регистрируйтесь)\b")
+
+
+def _direct_vehicle_context(value):
+    # Призыв искать/размещать транспорт рекламирует сервис, а не машину.
+    # Проверяем строку конкретного совпадения: отдельный footer не гасит заявку.
+    for match in _VEHICLE_CONTEXT.finditer(value):
+        start = value.rfind('\n', 0, match.start()) + 1
+        if not _SERVICE_SEARCH_PREFIX.search(value[max(start, match.start() - 240):match.start()]):
+            return True
+    return False
+
 
 def uses_extended_intent(value):
     """Limit new route handling to newly recognized intent formats."""
     return bool(
         (_CARGO_FORMAT_CONTEXT.search(value) and not _CARGO_CONTEXT.search(value))
-        or (_EMPTY_VEHICLE_OFFER.search(value) and not _VEHICLE_CONTEXT.search(value))
+        or (_EMPTY_VEHICLE_OFFER.search(value) and not _direct_vehicle_context(value))
     )
 
 
@@ -63,7 +77,7 @@ def _intents(value):
             r'(?i)\bесть\s+(?:свободн\w*\s+)?(?:машин\w*|фур\w*|транспорт)\s*[-–—]\s*'
             r'(?:пишите|звоните|забирайте|подключайтесь)[^\n.!?]*', ' ', vehicle_text)
     empty_offer = bool(_EMPTY_VEHICLE_OFFER.search(vehicle_text)) and not _UNAVAILABLE_OFFER.search(value)
-    return cargo, bool(_VEHICLE_CONTEXT.search(vehicle_text)) or empty_offer
+    return cargo, _direct_vehicle_context(vehicle_text) or empty_offer
 # Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
 _CLOSE_CONTEXT = re.compile(
     r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"
@@ -82,7 +96,9 @@ def classify_message(text: str) -> dict:
     cargo, vehicle = _intents(value)
     if cargo == vehicle:
         return {"kind": None, "status": "review", "segments": [value],
-                "reason": "mixed_intents" if cargo else "unrecognized_intent"}
+                "reason": "mixed_intents" if cargo else (
+                    "promotional_content" if _VEHICLE_CONTEXT.search(value)
+                    and not _direct_vehicle_context(value) else "unrecognized_intent")}
     # Split only on explicit, separately numbered/bulleted blocks. A line break
     # alone is common in contact details and is not sufficient evidence.
     blocks = re.split(r"(?m)(?=^(?:\s*(?:\d+[.)]|[-•])\s+))", value)

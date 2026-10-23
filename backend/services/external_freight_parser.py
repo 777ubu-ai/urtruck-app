@@ -22,7 +22,7 @@ _COUNT = re.compile(r"(?i)(?:нужно|требуется|требуются|н
 _CARGO = re.compile(r"(?im)^\s*(?:груз|наименование груза)\s*[:：-]\s*([^\n;]{2,120})")
 _READY = re.compile(r"(?im)^\s*(?:готовность|готов|дата погрузки|загрузка)\s*[:：-]\s*([^\n;]{2,120})")
 _PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|\$|EUR|€|RUB|₽|KZT|тг|CNY|JPY|¥)(?:[ \t]*\([ \t]*(CNY|JPY)[ \t]*\))?(?=$|[\W])")
-_NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договорная|торг уместен)\b")
+_NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договорная|торг уместен|(?:narx|нарх)\s*[:：]\s*(?:kelishiladi|келишилади))\b")
 _DATE = re.compile(r"(?<!\d)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)")
 _BODY = (
     ("tent", re.compile(r"(?i)\b(?:тент|тентов(?:ый|ая|ое)|tent)\b")),
@@ -139,6 +139,7 @@ def _place(value):
     value = "".join(c for c in value if unicodedata.category(c) not in {"So", "Sk"} and c != "\ufe0f")
     value = value.strip(" \t,.;:!#")
     if (not value or len(value) > 80 or _NOT_ROUTE_LABEL.search(value)
+            or re.search(r"(?i)(?:https?://|www\.|\b[\w-]+\.(?:com|net|org|ru|kz|uz|cn|io|рф)\b)", value)
             or re.search(r"(?i)\b(?:срочно|готов|погрузка|выгрузка|тент|реф|тонн|фрахт|машин)\b", value)
             or any(c.isdigit() for c in value)
             or not all(c.isalpha() or c.isspace() or c in "-(),.'’" for c in value)):
@@ -321,7 +322,7 @@ def block_contacts(text):
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
-        phone_context = re.search(r'(?i)(?:📞|☎|\bтел(?:ефон)?\.?|\btel)\s*[:=—–-]?\s*$', prefix)
+        phone_context = re.search(r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel)\ufe0f?\s*[:=—–-]?\s*$', prefix)
         local_phone = (len(digits) == 9 and raw.replace(' ', '').replace('\t', '').isdigit()
                        and (line.strip() == raw or phone_context))
         if (10 <= len(digits) <= 15 or local_phone) and raw not in result:
