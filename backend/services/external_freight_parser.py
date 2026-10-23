@@ -9,6 +9,7 @@ import unicodedata
 from datetime import datetime, timezone
 
 from services.external_freight_classifier import classify_message
+from services.external_freight_route_places import COMPACT_ROUTE_PLACES
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
@@ -85,6 +86,22 @@ def _vehicle_locations(text):
     if len(origins) > 1 or len(destinations) > 1:
         return None, None
     return next(iter(origins.values()), None), next(iter(destinations.values()), None)
+
+
+
+# Accept a whole line containing two explicit known names. A hyphen inside one
+# city (Санкт-Петербург) never creates a route. Preserve the literal spelling.
+_COMPACT_PLACES = "|".join(re.escape(name) for name in COMPACT_ROUTE_PLACES)
+_COMPACT_ROUTE = re.compile(
+    r"(?im)^[ \t]*[^\w\n]*?(" + _COMPACT_PLACES + r")"
+    r"(?:[ \t]*[-–—]{1,2}[ \t]*|[ \t]+)[^\w\n]*?("
+    + _COMPACT_PLACES + r")[^\w\n]*$"
+)
+
+
+def _compact_routes(text, *, allow_space=False):
+    return [m for m in _COMPACT_ROUTE.finditer(text)
+            if allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)])]
 
 
 def _place(value):
@@ -184,6 +201,13 @@ def map_selected_message(raw: dict) -> dict:
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
+    # Fallback only when the established arrow/label parser found no route.
+    if not routes and route is None:
+        compact = _compact_routes(text, allow_space=kind == "vehicle")
+        if len(compact) == 1:
+            route = compact[0]
+        elif len(compact) > 1:
+            status = "review"
     origin = _place(route.group(1)) if route else raw.get("origin")
     destination = _place(route.group(2)) if route else raw.get("destination")
     if not route and kind == 'vehicle' and not origin and not destination:
@@ -314,6 +338,8 @@ def map_selected_messages(raw):
             blocks.append(text[m.end():end].strip())
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+        if not route_matches:
+            route_matches = _compact_routes(text)
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             candidate_blocks=[]
