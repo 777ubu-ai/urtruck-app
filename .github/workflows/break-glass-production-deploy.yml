@@ -19,11 +19,17 @@ name: 🚨 BREAK-GLASS Production Deploy
 on:
   workflow_dispatch:
     inputs:
+      deploy_scope:
+        description: "Область: полный аварийный deploy или изолированная внешняя лента"
+        required: true
+        type: choice
+        options: [full, external_feed_overlay]
+        default: full
       reason:
         description: "Why does this need to bypass the normal release gate? (required, goes in the audit log)"
         required: true
       confirm:
-        description: 'Type exactly "DEPLOY" to confirm — this skips backend/frontend/E2E tests and the P0/P1 + Push/Bell subsets'
+        description: 'Введите DEPLOY: full — аварийный режим; external_feed_overlay — с полным quality-gate'
         required: true
 
 permissions:
@@ -52,8 +58,11 @@ jobs:
         env:
           CONFIRM_INPUT: ${{ inputs.confirm }}
           REASON_INPUT: ${{ inputs.reason }}
+          DEPLOY_SCOPE: ${{ inputs.deploy_scope }}
         run: |
           set -euo pipefail
+          DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
+          case "$DEPLOY_SCOPE" in full|external_feed_overlay) ;; *) exit 1 ;; esac
           if [ "$CONFIRM_INPUT" != "DEPLOY" ]; then
             printf '::error::Confirmation input must be exactly %s (got: %s). Aborting — nothing was deployed.\n' \
               "'DEPLOY'" "'$CONFIRM_INPUT'"
@@ -77,9 +86,11 @@ jobs:
         env:
           ACTOR: ${{ github.actor }}
           REF_INPUT: refs/heads/main
+          DEPLOY_SCOPE: ${{ inputs.deploy_scope }}
           REASON_INPUT: ${{ inputs.reason }}
         run: |
           set -euo pipefail
+          DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
           SHA=$(git rev-parse HEAD)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           # Defense in depth beyond the env:/$VAR fix above (which already
@@ -98,19 +109,33 @@ jobs:
             echo "| Resolved SHA | \`$SHA\` |"
             echo "| Timestamp (UTC) | \`$(date -u +%Y-%m-%dT%H:%M:%SZ)\` |"
             printf '| Reason | %s |\n' "$REASON_SAFE"
-            echo "| Normal release gate | **SKIPPED** — backend/frontend/E2E/P0-P1/Push-Bell suites did NOT run |"
+            if [ "$DEPLOY_SCOPE" = "external_feed_overlay" ]; then
+              echo "| Normal release gate | Обязателен отдельный полный quality-gate перед узким writer |"
+            else
+              echo "| Normal release gate | **SKIPPED** — backend/frontend/E2E/P0-P1/Push-Bell suites did NOT run |"
+            fi
+            printf '| Deploy scope | `%s` |\n' "$DEPLOY_SCOPE"
             echo ""
             echo "This record is this workflow run's own permanent log — GitHub retains it exactly like any other Actions run history entry (Settings → Actions retention policy controls how long)."
           } >> "$GITHUB_STEP_SUMMARY"
           printf '::warning::BREAK-GLASS DEPLOY by %s of %s — reason: %s\n' "$ACTOR" "$SHA" "$REASON_SAFE"
 
-  deploy:
+  overlay-quality-gate:
     needs: [guard]
+    if: ${{ inputs.deploy_scope == 'external_feed_overlay' }}
+    uses: 777ubu-ai/urtruck-app/.github/workflows/quality-gate-reusable.yml@refs/heads/main
+    with:
+      source_ref: ${{ needs.guard.outputs.sha }}
+
+  deploy:
+    needs: [guard, overlay-quality-gate]
+    if: ${{ always() && needs.guard.result == 'success' && (inputs.deploy_scope == 'full' || needs.overlay-quality-gate.result == 'success') }}
     # Do not resolve this local reusable workflow from the ref chosen in the
     # Actions UI.  The immutable job definition must come from protected main.
     uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@refs/heads/main
     with:
       deploy_sha: ${{ needs.guard.outputs.sha }}
       break_glass: true
+      deploy_scope: ${{ inputs.deploy_scope }}
       break_glass_reason: ${{ inputs.reason }}
     secrets: inherit

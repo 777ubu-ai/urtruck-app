@@ -1,0 +1,28 @@
+{
+  "status": "PREPARED_NOT_DEPLOYED",
+  "app_source": "a30dd65f74e803733457283acda35779df576ca8",
+  "production_main_before_sha256": "834e62282b20dc9e3af84a5739cdcfed4631d2432b075b0268322dd0c69ebe5b",
+  "files": {
+    "api/external_freight.py": "748fd3d766fab2aefce8ff2c9481c0536ceccec2dbb0c91e0cf471905f92f648",
+    "database/external_freight_connection.py": "b88c7509cd688ce9f5b125a2c62b3bd094b268f67ee1e984d348a392680ba101",
+    "database/external_freight_dal.py": "a2e2ebb91ce23b3162f2d90b408d4d1d0444dbe7010fab33bfa414aad084df62",
+    "main.py": "fd7071cdb71e49158ef79a9da4462ff0eb2bae4d40615fdfde42fca7ce8352b9",
+    "services/external_freight_classifier.py": "43501f1f8c1775764f108d34a9470de45ad863dbf4110ae69aa394795d6f41dc",
+    "services/external_freight_import_adapter.py": "0e45c6dda11ae7f19f0aa218f806b3fcc6232a8a2d4ba47bc13c15888a2a6ea7",
+    "services/external_freight_parser.py": "2957bf21fd78ae6b41766e198ab7b5b9b976f53158fffb595d47be963de82eb2",
+    "services/external_freight_queue_bridge.py": "9e5202e7b10013bec13d3e9bf9f4b6bd422beaccf82ffe7f2ce209f874bbee64",
+    "services/external_freight_route_places.py": "472f4862639ea8d798d406b936f23b3de5ea2b5b2fa066903ea8f1347fc7703b"
+  },
+  "primary_db_mutation": false,
+  "deployment_gates": [
+    "Exact nine-file bundle review",
+    "CI of bridge/source and QA2/native acceptance",
+    "Explicit production deployment authorization/protected procedure",
+    "Fresh online backup + separate restore probe",
+    "Separate private production key/state/DB; preserve existing push transport",
+    "Old client/auth/API/import smoke; no changes to existing user records"
+  ],
+  "default_flag": false,
+  "rollback": "Код/конфигурация; не восстанавливать старую БД поверх текущей",
+  "bridge_source": "a9f5a6de3de20fb7c20733fe94da9b4a09ba958c"
+}

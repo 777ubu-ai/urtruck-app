@@ -30,17 +30,11 @@ jobs:
     environment: production
     env:
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
-      GH_TOKEN: ${{ github.token }}
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       QA2_API_URL: ${{ secrets.QA2_API_URL }}
       EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
       URTRUCK_BUILD_FLAVOR: qa2
       URTRUCK_VERSION_NAME: 1.0.9
       URTRUCK_MIN_IOS_BUILD: 99
-      EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-      EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-      YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
-      OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
 
     steps:
       - name: Checkout exact QA2 candidate
@@ -48,6 +42,7 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -55,19 +50,17 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Verify protected QA2 TestFlight intent
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF_NAME" = main
           test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
-          [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Некорректный SHA кандидата'; exit 1; }
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/561" --jq '.state')" = open
           test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/561" --jq '.head.sha')" = "$QA_SOURCE_SHA"
@@ -82,9 +75,6 @@ jobs:
               exit 1
             }
           done
-          test -n "${EXPO_TOKEN:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           test -n "${QA2_API_URL:-}"
           QA_HOST="$(python3 - <<'PY'
           from urllib.parse import urlparse
@@ -100,9 +90,32 @@ jobs:
           curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
           echo "SOURCE_SHA=$QA_SOURCE_SHA"
           echo "QA2_API_HOST=$QA_HOST"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Apply reviewed native dependency patches
+        run: |
+          set -euo pipefail
+          test -s patches/react-native-yamap+4.8.3.patch
+          ./node_modules/.bin/patch-package --error-on-fail
+
+      - name: Verify TestFlight account
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           npx eas-cli@latest whoami
 
       - name: Verify resolved Expo QA2 configuration
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -127,6 +140,11 @@ jobs:
           NODE
 
       - name: Inject QA2 runtime configuration
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+          YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
         shell: bash
         run: |
           node <<'NODE'
@@ -159,6 +177,12 @@ jobs:
           xcodebuild -version
 
       - name: Build signed QA2 IPA locally
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+          YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -203,5 +227,7 @@ jobs:
           retention-days: 14
 
       - name: Submit QA2 IPA to TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
         run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck-QA2.ipa" --non-interactive --wait

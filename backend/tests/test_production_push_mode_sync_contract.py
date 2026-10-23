@@ -111,8 +111,8 @@ class PushModePreflightTests(unittest.TestCase):
         caller = (ROOT / ".github/workflows/sync-production-push-mode.yml").read_text(encoding="utf-8")
 
         self.assertIn('default: "deploy"', writer)
-        self.assertIn("if: ${{ inputs.operation == 'deploy' }}", writer)
-        self.assertIn("if: ${{ inputs.operation == 'sync_push_mode' }}", writer)
+        self.assertIn("if: ${{ inputs.operation == 'deploy' && inputs.deploy_scope == 'full' }}", writer)
+        self.assertIn("if: ${{ inputs.operation == 'sync_push_mode' && inputs.deploy_scope == 'full' }}", writer)
         self.assertIn("refs/heads/main", writer)
         self.assertIn("REQUESTED_SHA", writer)
         self.assertIn("CALLER_SHA", writer)
