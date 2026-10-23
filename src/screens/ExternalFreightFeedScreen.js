@@ -106,16 +106,31 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const signal = suppliedSignal || controller?.signal;
     busyRef.current = true;
     if (!background) setBusy(true);
-    setError(null);
     const owner = ownerKey;
     const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly };
-    const result = await externalFreightAPI.list(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
+    let result = await externalFreightAPI.list(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
+    // Сохранённые могут содержать закрытые/скрытые карточки без даты.
+    // Освежаем только уже загруженные страницы атомарно, включая их cursor.
+    if (background && savedOnly && result.ok) {
+      const refreshed = [...(result.items || [])];
+      let next = result.next_cursor;
+      const pages = Math.max(1, Math.ceil(rows.length / 30));
+      for (let page = 1; page < pages && next; page += 1) {
+        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+        const older = await externalFreightAPI.list({ ...raw, cursor: next }, signal).catch(() => ({ ok: false, error: 'network_error' }));
+        if (!older.ok) { result = older; break; }
+        refreshed.push(...(older.items || []));
+        next = older.next_cursor;
+      }
+      if (result.ok) result = { ...result, items: appendUnique([], refreshed), next_cursor: next };
+    }
     if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
     if (!result.ok) {
       setError(result.error || 'server_error');
       busyRef.current = false; setBusy(false); setRefreshing(false);
       return;
     }
+    setError(null);
     const incoming = Array.isArray(result.items) ? result.items : [];
     if (result.sort_error && filters.sort !== 'newest') {
       setFilters(current => ({ ...current, sort: 'newest' }));
@@ -149,9 +164,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         setUnseenIds(current => [...new Set([...current, ...added.map(item => String(item.id))])].filter(id => activeIds.has(id)));
       }
     }
-    if (reset && timeline && Platform.OS === 'web' && !savedOnly) scrollToLatestRef.current = true;
+    if (reset && !background && timeline && Platform.OS === 'web' && !savedOnly) scrollToLatestRef.current = true;
     setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
-    if (!background || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
+    if (!background || savedOnly || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
     busyRef.current = false; setBusy(false); setRefreshing(false);
   }, [filters, cursor, savedOnly, ownerKey, rows, timeline]);
   loadRef.current = load;
@@ -182,11 +197,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     };
     const blur = navigation.addListener('blur', () => { blurredRef.current = true; cancel(); });
     const focus = navigation.addListener('focus', () => {
-      if (blurredRef.current) { blurredRef.current = false; loadRef.current?.({ reset: true }); }
+      if (blurredRef.current) { blurredRef.current = false; loadRef.current?.({ reset: true, background: true }); }
     });
     const app = AppState.addEventListener('change', state => {
       if (state !== 'active') cancel();
-      else if (!blurredRef.current && navigation.isFocused?.()) loadRef.current?.({ reset: true });
+      else if (!blurredRef.current && navigation.isFocused?.()) loadRef.current?.({ reset: true, background: true });
     });
     return () => { blur(); focus(); app?.remove?.(); cancel(); };
   }, [navigation]);

@@ -19,7 +19,7 @@ from services.external_freight_classifier import classify_message
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261023-explicit-vehicle-pair-v6'
+PARSER_REVISION = '20261023-promotion-contact-price-v7'
 
 
 def validate_qa_target(api_url):

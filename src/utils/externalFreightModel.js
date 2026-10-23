@@ -68,10 +68,13 @@ export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.n
   const visible = item => item.status !== 'closed' && item.status !== 'hidden'
     && item.status !== 'expired' && (!item.expires_at || Date.parse(item.expires_at) > now);
   const fresh = incoming.filter(visible);
-  const ids = new Set(fresh.map(item => item.id));
-  const boundary = fresh.length ? Date.parse(fresh[fresh.length - 1].source_published_at) : null;
+  const ids = new Set(incoming.map(item => item.id));
+  const last = incoming[incoming.length - 1];
+  const boundary = last ? Date.parse(last.source_published_at) : null;
   const tail = current.filter(item => visible(item) && !ids.has(item.id)
-    && hasMore && sort === 'newest' && boundary != null && Date.parse(item.source_published_at) < boundary);
+    && hasMore && sort === 'newest' && boundary != null
+    && (Date.parse(item.source_published_at) < boundary
+      || (Date.parse(item.source_published_at) === boundary && String(item.id) < String(last.id))));
   return [...fresh, ...tail];
 }
 
