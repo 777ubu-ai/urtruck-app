@@ -48,6 +48,9 @@ jobs:
       - name: Регрессии узкого production writer
         if: ${{ hashFiles('tests/ops/test_external_feed_production_overlay.py') != '' }}
         run: python -m pytest tests/ops/test_external_feed_production_overlay.py -q
+      - name: Регрессии проверки исходника TestFlight до исполнения кода
+        if: ${{ hashFiles('tests/ops/test_testflight_intent_gate.py') != '' }}
+        run: python -m pytest tests/ops/test_testflight_intent_gate.py -q
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
