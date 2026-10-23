@@ -21,6 +21,8 @@ ROOT = Path('/home/ubuntu/urtruck/backend')
 RUNTIME = Path('/home/ubuntu/urtruck/runtime/external-feed')
 SOURCE_DB = Path('/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3')
 BACKUP_ROOT = Path('/home/ubuntu/urtruck-backups')
+PM2_ENTRY = Path('/home/ubuntu/.nvm/versions/node/v22.15.0/bin/pm2')
+PM2_TARGET = Path('/home/ubuntu/.nvm/versions/node/v22.15.0/lib/node_modules/pm2/bin/pm2')
 FILES = frozenset({
     'api/external_freight.py', 'database/external_freight_connection.py',
     'database/external_freight_dal.py', 'services/external_freight_classifier.py',
@@ -119,6 +121,14 @@ def updated_env(original, additions):
     return ('\n'.join(kept + [f'{key}={value}' for key, value in additions.items()]) + '\n').encode()
 
 
+def verified_pm2_entry():
+    """Существующий CLI проверяется отдельно от executable работающего daemon."""
+    if (not PM2_ENTRY.is_file() or PM2_ENTRY.resolve(strict=True) != PM2_TARGET
+            or not os.access(PM2_ENTRY, os.X_OK)):
+        raise ValueError('pm2_identity_unavailable')
+    return PM2_ENTRY
+
+
 def runtime_identity(*, allow_feed_env=False):
     result = subprocess.run(['ss', '-ltnpH', 'sport = :8001'], check=True,
                             text=True, capture_output=True)
@@ -141,9 +151,10 @@ def runtime_identity(*, allow_feed_env=False):
         raise ValueError('production_python_version_unsupported')
     daemon = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1]
     node = Path(f'/proc/{daemon}/exe').resolve(strict=True)
-    pm2 = node.parent / 'pm2'
-    if not pm2.is_file() or not env.get('pm_id', '').isdigit():
+    if (node != Path('/usr/bin/node') or env.get('PM2_HOME') != '/home/ubuntu/.pm2'
+            or not env.get('pm_id', '').isdigit()):
         raise ValueError('pm2_identity_unavailable')
+    pm2 = verified_pm2_entry()
     return {**env, '_pid': pid}, pm2
 
 
@@ -299,6 +310,7 @@ def apply(bundle, bundle_sha, source_sha):
                      'EXTERNAL_FREIGHT_IMPORTER_KEY': key}
         command_env = dict(os.environ)
         command_env['PATH'] = str(pm2.parent) + ':' + command_env.get('PATH', '')
+        command_env['PM2_HOME'] = env['PM2_HOME']
 
         def restart():
             subprocess.run([str(pm2), 'restart', env['pm_id']], env=command_env,
