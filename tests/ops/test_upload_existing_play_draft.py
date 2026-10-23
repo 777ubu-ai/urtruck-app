@@ -148,7 +148,7 @@ def test_workflow_secrets_only_upload_step_and_no_build_or_dependency_execution(
     assert not any(word in str(job['steps']) for word in ['npm ', 'gradlew', 'pip install', 'eas '])
     gate = yaml.safe_load((ROOT / '.github/workflows/quality-gate-reusable.yml').read_text())
     assert any(step.get('run') == 'python -m pytest tests/ops/test_upload_existing_play_draft.py -q'
-               for step in gate['jobs']['backend']['steps'])
+               for step in gate['jobs']['backend-tests']['steps'])
 
 
 @pytest.mark.parametrize('failure', [None, 'checksum', 'extra', 'size', 'filename'])
