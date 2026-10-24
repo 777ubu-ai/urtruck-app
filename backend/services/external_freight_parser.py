@@ -13,19 +13,46 @@ from services.external_freight_classifier import classify_message
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
 # Compact route spellings are enabled only for explicit pairs confirmed by the
 # application freight-city directory. Hyphenated city names remain indivisible.
-_KNOWN_COMPACT_ROUTES = {"хоргос-алматы": ("Хоргос", "Алматы")}
+_ROUTE_CITY_NAMES = (
+    "Алматы", "Астана", "Шымкент", "Караганда", "Актобе", "Атырау", "Усть-Каменогорск",
+    "Павлодар", "Семей", "Тараз", "Костанай", "Кызылорда", "Уральск", "Актау",
+    "Петропавловск", "Кокшетау", "Хоргос", "Достык", "Калжат", "Бахты", "Қарасу",
+    "Талдыкорган", "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
+    "Нижний Новгород", "Челябинск", "Самара", "Омск", "Уфа", "Красноярск", "Воронеж",
+    "Волгоград", "Ростов-на-Дону", "Краснодар", "Иркутск", "Владивосток", "Хабаровск",
+    "Оренбург", "Сочи", "Иу", "Гуанчжоу", "Шэньчжэнь", "Пекин", "Шанхай", "Ханчжоу",
+    "Урумчи", "Хоргос (Хуэйэрго)", "Алашанькоу", "Кашгар", "Дулаты", "Циндао", "Чэнду",
+    "Чунцин", "Тяньцзинь", "Сиань", "Ланьчжоу", "Иньчуань", "Хух-Хото", "Нинбо",
+    "Циньхуандао", "Ташкент", "Самарканд", "Бухара", "Андижан", "Наманган", "Фергана",
+    "Нукус", "Термез", "Карши", "Бишкек", "Ош", "Каракол", "Нарын", "Токмок",
+    "Душанбе", "Худжанд", "Куляб", "Ашхабад", "Туркменабад", "Тбилиси", "Батуми",
+    "Минск", "Брест", "Ереван", "Баку", "Стамбул", "Анкара", "Измир", "Мерсин",
+    "Гамбург", "Берлин", "Мюнхен", "Франкфурт", "Варшава", "Гданьск", "Дубай", "Тегеран",
+)
+_CITY_ROUTE = re.compile(
+    r"(?<!\w)(?P<origin>" + "|".join(re.escape(name) for name in sorted(_ROUTE_CITY_NAMES, key=len, reverse=True))
+    + r")\s*[-–—]\s*(?P<destination>"
+    + "|".join(re.escape(name) for name in sorted(_ROUTE_CITY_NAMES, key=len, reverse=True)) + r")(?!\w)",
+    re.I,
+)
+
 
 def _compact_route_lines(text):
     result = []
     for line in text.splitlines():
-        # A spaced route is already handled by _ROUTE; don't count that same
-        # line twice as both compact and explicit route evidence.
-        if _ROUTE.fullmatch(line):
+        explicit = [m for m in _ROUTE.finditer(line)
+                    if _place(m.group(1)) and _place(m.group(2))]
+        if explicit:
             continue
-        key = unicodedata.normalize("NFKC", line).casefold().replace("ё", "е")
-        key = re.sub(r"\s+", "", key)
-        if key in _KNOWN_COMPACT_ROUTES:
-            result.append(_KNOWN_COMPACT_ROUTES[key])
+        for match in _CITY_ROUTE.finditer(line):
+            origin = _place(match.group("origin"))
+            destination = _place(match.group("destination"))
+            # Do not infer where a hyphenated city ends inside compact text.
+            if not origin or not destination or "-" in origin or "-" in destination:
+                continue
+            pair = (origin, destination)
+            if pair not in result:
+                result.append(pair)
     return result
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
 _ROUTE_LABEL_HINT = re.compile(r"(?i)\b(?:откуда|куда|загрузка|погрузка|выгрузка|доставка)(?:\s*[:：]|\s+)")
@@ -179,6 +206,14 @@ def map_selected_message(raw: dict) -> dict:
     if not isinstance(phones, list):
         phones = []
     phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
+    # Collector metadata can miss a formatted phone number. Recover explicit
+    # phone-shaped values from this message only; never use source/post links.
+    known_digits = {re.sub(r"\D", "", phone) for phone in phones}
+    for phone in block_contacts(text):
+        digits = re.sub(r"\D", "", phone)
+        if digits and digits not in known_digits and len(phones) < 20:
+            phones.append(phone)
+            known_digits.add(digits)
     # Never attach a shared contact bundle to multiple separately typed blocks.
     if classification.get("status") == "split" or len(routes) > 1:
         status = "review"
@@ -211,16 +246,33 @@ def map_selected_message(raw: dict) -> dict:
 
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)(?:\+?\d[\d \t().-]{7,24}\d)(?!\d)")
+_CONTACT_HINT = re.compile(r"(?i)(?:тел(?:ефон)?|контакт|whats?app|ватс?ап|звон|моб(?:ильный)?|phone|call)")
 
 
 def block_contacts(text):
-    """Только явно написанные в блоке номера, без угадывания страны."""
+    """Извлекает номера, явно записанные в тексте; прочие числа не контакты."""
     result = []
+    seen = set()
     for match in _PHONE_BLOCK.finditer(text):
         raw = match.group().strip()
         digits = re.sub(r"\D", "", raw)
-        if 10 <= len(digits) <= 15 and raw not in result:
-            result.append(raw)
+        if not 10 <= len(digits) <= 15 or digits in seen:
+            continue
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.end())
+        line = text[line_start:line_end if line_end >= 0 else len(text)]
+        # Plain digit-only values count only when they occupy a contact line.
+        formatted = raw.startswith("+") or bool(re.search(r"[ ().-]", raw))
+        explicit_label = bool(_CONTACT_HINT.search(line))
+        residual = line.replace(raw, "")
+        residual = _CONTACT_HINT.sub("", residual)
+        isolated = not re.sub(r"[\s:：=,;.!#()\-]", "", residual)
+        if not (formatted or explicit_label or isolated):
+            continue
+        if re.fullmatch(r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}", raw):
+            continue
+        seen.add(digits)
+        result.append(raw)
     return result[:20]
 
 
