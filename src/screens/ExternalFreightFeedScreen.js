@@ -252,7 +252,6 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <TouchableOpacity key={`${item.id}-contact-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>)}
-      {externalTelegramPost(item) ? <TouchableOpacity accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.contactText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && item.original_text ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
