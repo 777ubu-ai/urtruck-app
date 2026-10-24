@@ -5,10 +5,10 @@ import {resolve} from 'node:path';
 import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '../..');
-const vendor = resolve(root, 'vendor/braces-3.0.4-d0d575e');
-const expectedCommit = 'd0d575e55e74a4e0218e5248fafb79efc3e54ebb';
+const vendor = resolve(root, 'vendor/braces-3.0.4-28d440b');
+const expectedCommit = '28d440b5dd449dbf1fe6f3506cf94ecca4d02660';
 const expectedManifestHash =
-  '2c341159f8f3cdab843945e2e831ce6590f2a09f0910c324d30e36903cd6957d';
+  '588c8cf853f59072989fb90289e697067ce76ac8056c9596b9721e49840ac9d3';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
@@ -19,7 +19,7 @@ test('vetted braces package is pinned to the reviewed source manifest', () => {
     .map(line => line.split(/\s{2}/));
   const actualLines = sums.map(([expected, file]) => {
     assert.equal(sha256(readFileSync(resolve(vendor, file))), expected, `${file} checksum`);
-    return `${expected}  vendor/braces-3.0.4-d0d575e/${file}`;
+    return `${expected}  vendor/braces-3.0.4-28d440b/${file}`;
   });
   assert.equal(sha256(actualLines.join('\n') + '\n'), expectedManifestHash);
 
@@ -31,9 +31,9 @@ test('vetted braces package is pinned to the reviewed source manifest', () => {
 test('vetted distribution carries only runtime package metadata', () => {
   const rootPackage = JSON.parse(readFileSync(resolve(root, 'package.json')));
   const vendorPackage = JSON.parse(readFileSync(resolve(vendor, 'package.json')));
-  const sbom = JSON.parse(readFileSync(resolve(root, 'security/sbom/braces-3.0.4-d0d575e.spdx.json')));
+  const sbom = JSON.parse(readFileSync(resolve(root, 'security/sbom/braces-3.0.4-28d440b.spdx.json')));
 
-  assert.equal(rootPackage.dependencies.braces, 'file:vendor/braces-3.0.4-d0d575e');
+  assert.equal(rootPackage.dependencies.braces, 'file:vendor/braces-3.0.4-28d440b');
   assert.equal(vendorPackage.version, '3.0.4');
   assert.deepEqual(vendorPackage.dependencies, {'fill-range': '^7.1.1'});
   assert.equal('devDependencies' in vendorPackage, false);

@@ -9,3 +9,12 @@
 - Dependency security: при необходимости только независимо проверенный CLI Zod override PR599; SDK/native packages не обновлять. Новые release/signing/version/store operations вне этого патча.
 - Rollback: revert UI/helper/query/model patch; базы данных и опубликованный каталог не откатывать.
 - Status: PREPARED_NOT_RELEASED.
+
+## Проверенный кандидат
+
+- Frontend port: e7387879 +0b7fdde2. Новый API capability query/carrier cursor проверяется реальным модулем запросов; старый тест счётчика обновлён на pathname +include_carriers=true с сохранением owner guard.
+- 23 адресные регрессии PASS; полный frontend/unit **1528/1528 PASS**,0 fail/skip. Lint **584 active JS PASS**. Web export/finalize PASS,1JS bundle/8 обязательных источников. Native APIs в Node замоканы.
+- Безопасность: **19/19 security tests PASS**. Audit gate PASS с прежним единственным компенсирующим node-forge patch; новых исключений нет. Braces upstream monitor PASS.
+- Портированы точные vetted braces28d440b runtime/provenance/SBOM/monitor/tests из af93 и scoped CLI Zod4.6.7 из PR599. Package versions native/application и devDependencies **идентичны f387**; dependency diff только braces path и CLI override. Lockfile diff только braces vendor и Zod; libc/optional metadata не изменены.
+- Byte parity с f387: ios/android, app.config.js/app.json/eas.json, patches/plugins, navigation, AuthContext/ThemeContext, env.js, deal/chat protected paths — **0 изменений**. Все PDF/webview/blob/navigation-bar зависимости сохранены.
+- Backend, production runtime/catalog и магазины этот кандидат не меняет. Native сборка/system-share/звонок/clipboard/физический iPhone — PENDING. Review/CI нового кандидата и платформенная приёмка требуются до release.
