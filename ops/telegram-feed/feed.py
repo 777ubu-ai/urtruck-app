@@ -27,7 +27,9 @@ def app_sources():
     extra=json.loads(path.read_text()) if path.exists() else []
     if not isinstance(extra,list) or any(not isinstance(x,str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}",x) for x in extra):
         raise ValueError("invalid_app_sources")
-    return tuple(dict.fromkeys((*SOURCES,*extra)))
+    # A non-empty app-sources.json is an explicit input allowlist.
+    # This lets the app ingest a canonical channel without mirroring other sources.
+    return tuple(dict.fromkeys(extra)) if extra else SOURCES
 
 
 LOG = logging.getLogger("urtruck_feed")
@@ -483,11 +485,8 @@ async def run(once=False, check=False):
     reader.add_event_handler(incoming, events.MessageEdited())
     try:
         if check:
-            target=await reader.get_input_entity(DESTINATION)
-            permission=await reader.get_permissions(target,"me")
-            if not (permission.is_creator or permission.is_admin):
-                raise RuntimeError("DESTINATION_ADMIN_REQUIRED")
-            print(json.dumps({"authorized":True,"destination_admin":True,"destination":DESTINATION_NAME}))
+            source=await reader.get_entity(app_sources()[0])
+            print(json.dumps({"authorized":True,"source_access":True,"source":getattr(source,"username",None) or app_sources()[0]}))
             return
         last_scan = 0
         telegram_state = {}
@@ -495,8 +494,8 @@ async def run(once=False, check=False):
             if time.monotonic()-last_scan >= 60:
                 last_scan=time.monotonic()
                 await collect(reader,db)
-            if cfg.get("PUBLISH_ENABLED","false").lower()=="true":
-                await telegram_tick(reader,db,telegram_state)
+            # This worker is now inbound-only: source posts flow into the app bridge.
+            # It never republishes announcements to a Telegram destination.
             with db:
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('last_tick',?)",(utcnow().isoformat(),))
             if once:
