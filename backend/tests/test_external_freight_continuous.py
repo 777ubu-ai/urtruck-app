@@ -95,7 +95,7 @@ def test_incoming_delivers_before_telegram_and_survives_restart(tmp_path,monkeyp
 def test_publisher_has_no_night_gate():
     m=collector()
     class DB:
-        def execute(self,query):
+        def execute(self,query,*args):
             class R:
                 def fetchone(self):return [None] if 'max(' in query else [0]
             return R()
@@ -162,3 +162,55 @@ def test_scan_failure_keeps_first_durable_cursor_and_recovers_next_message(tmp_p
     assert reader.queries[-1]['reverse'] is True and reader.queries[-1]['min_id']==1
     assert db.execute('select message_id from app_cursors').fetchone()[0]==2
     assert db.execute('select count(*) from app_messages').fetchone()[0]==2
+
+
+
+def test_wide_channel_gate_requires_route_and_phone_only(tmp_path):
+    m=collector();m.ROOT=tmp_path
+    now=m.utcnow()
+    long_post='Алматы → Москва\n+77001234567\n' + ('Подробности без обязательной цены. ' * 180)
+    assert m.DESTINATION_NAME == '@UrTruck_UT'
+    assert m.eligible(long_post, now)
+    assert not m.eligible('Есть тент\n+77001234567', now)
+    assert not m.eligible('Алматы → Москва\nбез телефона', now)
+
+
+def test_all_seventeen_sources_are_enabled_for_both_outputs(tmp_path):
+    m=collector()
+    assert len(m.app_sources())==17
+    m.ROOT=tmp_path;m.SOURCES=('base_channel', 'second_channel')
+    (tmp_path/'app-sources.json').write_text(json.dumps(['extra_channel', 'second_channel']))
+    assert m.app_sources()==('base_channel','second_channel','extra_channel')
+    db=m.database(tmp_path/'source.sqlite3')
+    status=m.status(db)
+    assert status['sources']==['base_channel','second_channel','extra_channel']
+
+
+def test_near_duplicate_is_not_discarded_by_similarity_threshold():
+    m=collector()
+    a='Алматы → Москва\nГруз: шины\n+77001234567'
+    b='Алматы → Москва\nНужна машина для перевозки шин\n+77001234567'
+    assert not m.similar(a,b)
+    assert m.similar(a,'Алматы → Москва\nГруз: шины\n+7 700 123 45 67')
+
+
+def test_destination_change_archives_group_state_and_requeues_only_fresh(tmp_path):
+    m=collector();path=tmp_path/'source.sqlite3';db=m.database(path)
+    now=m.utcnow().timestamp()
+    with db:
+        db.execute('INSERT INTO prior VALUES(?,?,?)',(17,'Алматы → Москва\n+77001234567','2026-10-24'))
+        db.execute("INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint,status,published_date,published_at) VALUES(?,?,?,?,?,?,?,?,?,?)",('public_channel',123,1,now,'Алматы → Москва\n+77001234567','[]','old-fingerprint','published','2026-10-24',now))
+        db.execute("INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint,status,published_date,published_at) VALUES(?,?,?,?,?,?,?,?,?,?)",('public_channel',123,2,now-25*60*60,'Астана → Бишкек\n+77001234567','[]','stale-fingerprint','published','2026-10-23',now-25*60*60))
+        db.execute("DELETE FROM metadata WHERE key IN ('destination_name','destination_started_at')")
+    db.close()
+    migrated=m.database(path)
+    assert migrated.execute('SELECT count(*) FROM prior').fetchone()[0]==0
+    assert migrated.execute('SELECT count(*) FROM prior_group_archive_20261025').fetchone()[0]==1
+    row=migrated.execute('SELECT status,published_at FROM queue').fetchone()
+    assert tuple(row)==('queued',None)
+    assert migrated.execute('SELECT count(*) FROM queue_group_archive_20261025').fetchone()[0]==2
+    assert migrated.execute('SELECT status FROM queue WHERE source_message=2').fetchone()[0]=='published'
+    assert migrated.execute("SELECT value FROM metadata WHERE key='destination_name'").fetchone()[0]=='@UrTruck_UT'
+    channel_status=m.status(migrated)
+    assert channel_status['queue']=={'queued':1}
+    assert channel_status['published_today']==0
