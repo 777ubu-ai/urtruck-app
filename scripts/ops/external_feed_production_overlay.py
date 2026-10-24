@@ -34,6 +34,28 @@ ENV_KEYS = frozenset({'EXTERNAL_FREIGHT_FEED_ENABLED', 'EXTERNAL_FREIGHT_DB_PATH
                       'EXTERNAL_FREIGHT_IMPORTER_KEY'})
 
 
+# Единственный разрешённый переход: уже принятый каталог PR589/596.
+CARRIER_MODULE = 'services/carrier_directory.py'
+CARRIER_SOURCE = Path('/home/ubuntu/urtruck-qa2/runtime/carrier-directory.sqlite3')
+CARRIER_EXPECTED_COUNT = 1297
+CARRIER_OLD_API = '748fd3d766fab2aefce8ff2c9481c0536ceccec2dbb0c91e0cf471905f92f648'
+CARRIER_NEW_API = '1e8c785e058b8dc2f0ed406b20b83ba0df0acca01996e175f3a17f35114ef077'
+CARRIER_MODULE_SHA = 'c5b0a9b2c1c27e5cd3fb424aaf6103b90f200fb8a09bde79912c09e2cc403f60'
+CARRIER_MAIN_SHA = 'fd7071cdb71e49158ef79a9da4462ff0eb2bae4d40615fdfde42fca7ce8352b9'
+
+
+def carrier_manifest(manifest):
+    if manifest.get('carrier_activation') != 'reviewed-directory-v1':
+        return False
+    files = manifest['files']
+    if (set(files) != FILES | {'main.py', CARRIER_MODULE}
+            or files['api/external_freight.py'] != CARRIER_NEW_API
+            or files[CARRIER_MODULE] != CARRIER_MODULE_SHA
+            or files['main.py'] != CARRIER_MAIN_SHA):
+        raise ValueError('invalid_carrier_transition_manifest')
+    return True
+
+
 def digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -59,19 +81,23 @@ def write_atomic(path, data, mode=0o600):
 
 def unpack_verified(bundle, destination):
     """Не разрешает дополнительные файлы, traversal, ссылки и подмену manifest."""
-    expected = FILES | {'main.patch', 'manifest.json'}
     with tarfile.open(bundle, 'r:gz') as archive:
         members = archive.getmembers()
-        if len(members) != len(expected) or {x.name for x in members} != expected:
+        names = {x.name for x in members}
+        expected = FILES | {'main.patch', 'manifest.json'}
+        if len(members) != len(names) or names not in (expected, expected | {CARRIER_MODULE}):
             raise ValueError('unexpected_overlay_members')
         for item in members:
             if not item.isfile() or item.size > 200_000:
                 raise ValueError('invalid_overlay_member')
+        manifest = json.load(archive.extractfile('manifest.json'))
+        carrier = carrier_manifest(manifest)
+        allowed = FILES | ({CARRIER_MODULE} if carrier else set())
+        if set(manifest['files']) != allowed | {'main.py'} or names != allowed | {'main.patch', 'manifest.json'}:
+            raise ValueError('invalid_overlay_allowlist')
+        for item in members:
             write_atomic(destination / item.name, archive.extractfile(item).read())
-    manifest = json.loads((destination / 'manifest.json').read_text())
-    if set(manifest['files']) != FILES | {'main.py'}:
-        raise ValueError('invalid_overlay_allowlist')
-    for name in FILES:
+    for name in allowed:
         if digest(destination / name) != manifest['files'][name]:
             raise ValueError('overlay_checksum_mismatch')
     return manifest
@@ -416,11 +442,174 @@ def reconcile_bridge_source(env, manifest, source_sha):
         raise
 
 
+def validate_carrier_catalog(path):
+    path = Path(path)
+    if path.resolve(strict=True) != path or not path.is_file():
+        raise ValueError('redirected_carrier_catalog')
+    allowed = {'id', 'record_type', 'name', 'phones', 'emails', 'city', 'country',
+               'transport_type', 'notes', 'availability', 'contact_verification', 'sources'}
+    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
+        if connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
+            raise ValueError('carrier_catalog_integrity_failed')
+        tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if tables != {'carrier_directory', 'sqlite_sequence'}:
+            raise ValueError('unexpected_carrier_catalog_schema')
+        rows = connection.execute('SELECT id,payload,status FROM carrier_directory').fetchall()
+        if len(rows) != CARRIER_EXPECTED_COUNT:
+            raise ValueError('unexpected_carrier_catalog_count')
+        for key, payload, status_value in rows:
+            value = json.loads(payload)
+            if (set(value) != allowed or value['id'] != key
+                    or not re.fullmatch(r'carrier_[a-f0-9]{20}', key)
+                    or value['availability'] != 'unknown'
+                    or value['contact_verification'] != 'not_checked'
+                    or value['record_type'] not in {'carrier', 'driver_contact'}
+                    or status_value not in {'active', 'hidden'}
+                    or not isinstance(value['phones'], list) or not value['phones']
+                    or any(not isinstance(p, str) or not re.fullmatch(r'\+[1-9][0-9]{9,14}', p) for p in value['phones'])):
+                raise ValueError('unreviewed_carrier_catalog_payload')
+    return sum(row[2] == 'active' for row in rows)
+
+
+def prepare_carrier_transition(manifest):
+    if not carrier_manifest(manifest):
+        raise ValueError('carrier_transition_required')
+    for name, expected in manifest['files'].items():
+        target = ROOT / name
+        if target.is_symlink() or not target.resolve().is_relative_to(ROOT):
+            raise ValueError('overlay_target_outside_backend')
+        if name == CARRIER_MODULE:
+            if target.exists() and digest(target) != expected:
+                raise ValueError('existing_carrier_module_changed')
+        elif name == 'api/external_freight.py':
+            if digest(target) not in {CARRIER_OLD_API, CARRIER_NEW_API}:
+                raise ValueError('carrier_router_baseline_changed')
+        elif digest(target) != expected:
+            raise ValueError('carrier_protected_baseline_changed')
+
+
+def apply_carriers(staged, manifest, source_sha):
+    """Не переустанавливает ленту: только reviewed router/module и отдельный каталог."""
+    prepare_carrier_transition(manifest)
+    env, pm2 = runtime_identity(allow_feed_env=True)
+    verify_bridge_units(env['pm_exec_path'])
+    destination = RUNTIME / 'carrier-directory.sqlite3'
+    expected_env = str(destination)
+    original_env = (ROOT / '.env').read_bytes()
+    configured = dict(line.split('=', 1) for line in original_env.decode().splitlines()
+                      if '=' in line and not line.lstrip().startswith('#'))
+    if (configured.get('EXTERNAL_CARRIER_DIRECTORY_DB', expected_env) != expected_env
+            or env.get('EXTERNAL_CARRIER_DIRECTORY_DB', expected_env) != expected_env):
+        raise ValueError('existing_carrier_configuration_changed')
+    for key in ('EXTERNAL_FREIGHT_DB_PATH', 'EXTERNAL_FREIGHT_FEED_ENABLED'):
+        expected = str(RUNTIME / 'feed.sqlite3') if key.endswith('DB_PATH') else 'true'
+        if configured.get(key) != expected:
+            raise ValueError('existing_feed_configuration_changed')
+    if destination.is_symlink() or destination.resolve() != destination:
+        raise ValueError('redirected_carrier_destination')
+    protected_databases = [Path(env['DB_PATH']), RUNTIME / 'feed.sqlite3', RUNTIME / 'adapter.sqlite3']
+    for candidate in [destination, CARRIER_SOURCE]:
+        for other in protected_databases:
+            if (candidate.resolve() == other.resolve()
+                    or candidate.exists() and other.exists() and candidate.samefile(other)):
+                raise ValueError('carrier_catalog_aliases_protected_database')
+    if (destination.resolve() == CARRIER_SOURCE.resolve()
+            or destination.exists() and CARRIER_SOURCE.exists() and destination.samefile(CARRIER_SOURCE)):
+        raise ValueError('carrier_catalog_source_destination_alias')
+    complete = installed_overlay_matches(manifest) and configured.get('EXTERNAL_CARRIER_DIRECTORY_DB') == expected_env
+    if complete:
+        active = validate_carrier_catalog(destination)
+        if status('/health') != 200 or status('/api/v1/external-freight/directory') != 401:
+            raise ValueError('carrier_existing_runtime_unhealthy')
+        print(json.dumps({'status': 'ALREADY_ACTIVE', 'active_contacts': active, 'source_sha': source_sha}))
+        return
+    # Существующий production каталог никогда не заменяется QA-снимком.
+    if destination.exists():
+        validate_carrier_catalog(destination)
+    else:
+        if validate_carrier_catalog(CARRIER_SOURCE) != CARRIER_EXPECTED_COUNT:
+            raise ValueError('source_carrier_catalog_not_fully_active')
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = BACKUP_ROOT / ('carrier-directory-' + stamp)
+    backup.mkdir(mode=0o700)
+    protected = {k: v for k, v in protected_hashes(ROOT).items() if k != CARRIER_MODULE}
+    originals = {name: (ROOT / name).read_bytes() if (ROOT / name).exists() else None
+                 for name in ('api/external_freight.py', CARRIER_MODULE)}
+    for name, data in originals.items():
+        if data is not None:
+            write_atomic(backup / 'code' / name, data)
+    write_atomic(backup / 'backend.env', original_env)
+    (backup / 'primary').mkdir(mode=0o700)
+    proof = online_backup(env['DB_PATH'], backup / 'primary' / 'snapshot.sqlite3')
+    if not destination.exists():
+        (backup / 'carrier').mkdir(mode=0o700)
+        snapshot = backup / 'carrier' / 'snapshot.sqlite3'
+        online_backup(CARRIER_SOURCE, snapshot)
+        validate_carrier_catalog(snapshot)
+        write_atomic(destination, snapshot.read_bytes())
+    command_env = dict(os.environ)
+    command_env['PATH'] = str(pm2.parent) + ':' + command_env.get('PATH', '')
+    command_env['PM2_HOME'] = env['PM2_HOME']
+
+    def restart():
+        subprocess.run([str(pm2), 'restart', env['pm_id']], env=command_env,
+                       check=True, capture_output=True)
+
+    def check_protected():
+        current = {k: v for k, v in protected_hashes(ROOT).items() if k != CARRIER_MODULE}
+        if current != protected:
+            raise ValueError('carrier_protected_code_changed')
+
+    try:
+        for name in originals:
+            compile((staged / name).read_bytes(), name, 'exec')
+            write_atomic(ROOT / name, (staged / name).read_bytes(), 0o644)
+        write_atomic(ROOT / '.env', updated_env(original_env, {'EXTERNAL_CARRIER_DIRECTORY_DB': expected_env}))
+        check_protected()
+        restart()
+        wait_healthy(env, require_new_pid=True)
+        if not installed_overlay_matches(manifest):
+            raise ValueError('carrier_installed_code_mismatch')
+        for endpoint in ['/api/v1/external-freight/directory', '/api/v1/external-freight/count', '/api/v1/driver/expenses']:
+            if status(endpoint) != 401:
+                raise ValueError('carrier_auth_guard_changed')
+        check_protected()
+        report = {'status': 'CARRIER_DIRECTORY_ACTIVE', 'source_sha': source_sha,
+                  'active_contacts': validate_carrier_catalog(destination), 'backup': proof,
+                  'protected_unchanged': True, 'primary_db_mutation': False, 'stores_changed': False}
+        write_atomic(backup / 'result.json', json.dumps(report, ensure_ascii=False, indent=2).encode())
+        print(json.dumps(report))
+    except BaseException:
+        try:
+            # Новый service остаётся инертным; каталог/primary/feed/QA не откатываются.
+            for name, data in originals.items():
+                if data is not None:
+                    write_atomic(ROOT / name, data, 0o644)
+            write_atomic(ROOT / '.env', original_env)
+            restart()
+            wait_healthy(env)
+            check_protected()
+            if ((ROOT / '.env').read_bytes() != original_env
+                    or any((ROOT / name).read_bytes() != data for name, data in originals.items() if data is not None)):
+                raise ValueError('carrier_rollback_configuration_mismatch')
+            print(json.dumps({'status': 'CARRIER_CODE_ENV_ROLLED_BACK', 'backup': str(backup)}))
+        except BaseException:
+            print(json.dumps({'status': 'ROLLBACK_FAILED', 'backup': str(backup)}))
+            raise RuntimeError('carrier_production_rollback_failed') from None
+        raise
+
+
 def apply(bundle, bundle_sha, source_sha):
     if not re.fullmatch('[0-9a-f]{40}', source_sha) or digest(bundle) != bundle_sha:
         raise ValueError('release_identity_mismatch')
     if ROOT.resolve() != ROOT or RUNTIME.resolve() != RUNTIME:
         raise ValueError('redirected_production_path')
+    with tempfile.TemporaryDirectory(prefix='carrier-feed-verify-') as name:
+        staged = Path(name)
+        manifest = unpack_verified(bundle, staged)
+        if carrier_manifest(manifest):
+            apply_carriers(staged, manifest, source_sha)
+            return
     # Повтор разрешён только для уже установленного идентичного девятифайлового пакета.
     with tempfile.TemporaryDirectory(prefix='external-feed-verify-') as name:
         manifest = unpack_verified(bundle, Path(name))

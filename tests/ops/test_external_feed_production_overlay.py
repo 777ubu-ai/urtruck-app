@@ -451,3 +451,190 @@ def test_existing_overlay_requires_all_nine_hashes_and_safe_paths(fixture, tmp_p
     assert module.installed_overlay_matches(manifest)
     (root / 'main.py').write_text('changed')
     assert not module.installed_overlay_matches(manifest)
+
+
+def synthetic_catalog(path, *, private=False, status_value='active'):
+    with sqlite3.connect(path) as connection:
+        connection.execute('''CREATE TABLE carrier_directory(sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          id TEXT UNIQUE,payload TEXT,status TEXT)''')
+        payload = {'id': 'carrier_00000000000000000001', 'record_type': 'carrier', 'name': 'Synthetic',
+                   'phones': ['+77000000001'], 'emails': [], 'city': '', 'country': '',
+                   'transport_type': '', 'notes': '', 'availability': 'unknown',
+                   'contact_verification': 'not_checked', 'sources': []}
+        if private:
+            payload['iin'] = 'private-never-published'
+        connection.execute('INSERT INTO carrier_directory(id,payload,status) VALUES(?,?,?)',
+                           (payload['id'], json.dumps(payload), status_value))
+
+
+@pytest.mark.parametrize('defect', ['private', 'count', 'symlink'])
+def test_carrier_source_rejects_private_payload_wrong_count_and_redirect(tmp_path, monkeypatch, defect):
+    source = tmp_path / 'catalog.sqlite3'
+    synthetic_catalog(source, private=defect == 'private')
+    monkeypatch.setattr(module, 'CARRIER_EXPECTED_COUNT', 2 if defect == 'count' else 1)
+    if defect == 'symlink':
+        link = tmp_path / 'link.sqlite3'
+        link.symlink_to(source)
+        source = link
+    with pytest.raises(ValueError):
+        module.validate_carrier_catalog(source)
+
+
+@pytest.fixture
+def carrier_fixture(tmp_path, monkeypatch):
+    root, runtime, source_dir, backups, staged = [tmp_path / p for p in ['backend', 'runtime', 'qa2', 'backups', 'staged']]
+    for p in [root, runtime, source_dir, backups, staged]:
+        p.mkdir()
+    main = b'PROTECTED_MAIN=True\n'
+    old_api, new_api, service = b'OLD_API=True\n', b'NEW_API=True\n', b'SERVICE=True\n'
+    hashes = {name: hashlib.sha256(b'EXISTING=True\n').hexdigest() for name in module.FILES}
+    hashes.update({'main.py': hashlib.sha256(main).hexdigest(),
+                   'api/external_freight.py': hashlib.sha256(new_api).hexdigest(),
+                   module.CARRIER_MODULE: hashlib.sha256(service).hexdigest()})
+    manifest = {'carrier_activation': 'reviewed-directory-v1', 'files': hashes}
+    for name in module.FILES:
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(old_api if name == 'api/external_freight.py' else b'EXISTING=True\n')
+    (root / 'main.py').write_bytes(main)
+    (root / 'auth.py').write_bytes(b'PROTECTED_AUTH=True\n')
+    for name, value in [('api/external_freight.py', new_api), (module.CARRIER_MODULE, service)]:
+        path = staged / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(value)
+    original_env = (f'EXTERNAL_FREIGHT_FEED_ENABLED=true\nEXTERNAL_FREIGHT_DB_PATH={runtime}/feed.sqlite3\n'
+                    'AUTH_SECRET=synthetic-private-secret\nPUSH_TRANSPORT=legacy\n').encode()
+    (root / '.env').write_bytes(original_env)
+    source = source_dir / 'carrier-directory.sqlite3'
+    synthetic_catalog(source)
+    primary = tmp_path / 'primary.sqlite3'
+    with sqlite3.connect(primary) as c:
+        c.execute('CREATE TABLE deals(id TEXT)')
+        c.execute("INSERT INTO deals VALUES('preserve-primary-data')")
+    (runtime / 'feed.sqlite3').write_bytes(b'PRESERVE_FEED_DATA')
+    (runtime / 'adapter.sqlite3').write_bytes(b'PRESERVE_ADAPTER_DATA')
+    pm2 = tmp_path / 'bin/pm2'
+    env = {'DB_PATH': str(primary), 'pm_id': '3', 'pm_exec_path': '/synthetic/python',
+           '_pid': '1', 'PM2_HOME': '/synthetic/pm2-home'}
+    for name, value in [('ROOT', root), ('RUNTIME', runtime), ('BACKUP_ROOT', backups),
+                        ('CARRIER_SOURCE', source), ('CARRIER_EXPECTED_COUNT', 1),
+                        ('CARRIER_OLD_API', hashlib.sha256(old_api).hexdigest()),
+                        ('CARRIER_NEW_API', hashlib.sha256(new_api).hexdigest()),
+                        ('CARRIER_MODULE_SHA', hashlib.sha256(service).hexdigest()),
+                        ('CARRIER_MAIN_SHA', hashlib.sha256(main).hexdigest())]:
+        monkeypatch.setattr(module, name, value)
+    calls = []
+    monkeypatch.setattr(module, 'runtime_identity', lambda **kw: (env, pm2))
+    monkeypatch.setattr(module, 'verify_bridge_units', lambda python: None)
+    monkeypatch.setattr(module, 'wait_healthy', lambda *a, **kw: None)
+    monkeypatch.setattr(module, 'status', lambda path: 200 if path == '/health' else 401)
+    monkeypatch.setattr(module.subprocess, 'run', lambda args, **kw: calls.append(args))
+    return root, runtime, source, backups, staged, manifest, primary, old_api, original_env, calls
+
+
+@pytest.mark.parametrize('failure', [False, True, 'rollback'])
+def test_carrier_deploy_and_code_env_only_rollback(carrier_fixture, monkeypatch, capsys, failure):
+    root, runtime, source, backups, staged, manifest, primary, old_api, original_env, calls = carrier_fixture
+    primary_hash, source_hash = module.digest(primary), module.digest(source)
+    if failure:
+        health_calls = []
+        def health(*args, **kwargs):
+            health_calls.append(1)
+            if len(health_calls) == 1 or failure == 'rollback':
+                raise ValueError('synthetic_restart_failure')
+        monkeypatch.setattr(module, 'wait_healthy', health)
+        error = RuntimeError if failure == 'rollback' else ValueError
+        with pytest.raises(error):
+            module.apply_carriers(staged, manifest, 'a' * 40)
+        assert (root / 'api/external_freight.py').read_bytes() == old_api
+        assert (root / '.env').read_bytes() == original_env
+        output = capsys.readouterr().out
+        assert ('ROLLBACK_FAILED' if failure == 'rollback' else 'CARRIER_CODE_ENV_ROLLED_BACK') in output
+        assert len(calls) == 2
+    else:
+        module.apply_carriers(staged, manifest, 'a' * 40)
+        assert (root / '.env').read_bytes() == original_env + f'EXTERNAL_CARRIER_DIRECTORY_DB={runtime}/carrier-directory.sqlite3\n'.encode()
+        assert list(backups.glob('*/result.json'))
+        assert len(calls) == 1
+        module.apply_carriers(staged, manifest, 'a' * 40)
+        assert len(calls) == 1
+        assert len(list(backups.iterdir())) == 1
+        assert 'ALREADY_ACTIVE' in capsys.readouterr().out
+    assert module.validate_carrier_catalog(runtime / 'carrier-directory.sqlite3') == 1
+    assert module.digest(primary) == primary_hash
+    assert module.digest(source) == source_hash
+    assert (runtime / 'feed.sqlite3').read_bytes() == b'PRESERVE_FEED_DATA'
+    assert (runtime / 'adapter.sqlite3').read_bytes() == b'PRESERVE_ADAPTER_DATA'
+    assert (root / 'auth.py').read_bytes() == b'PROTECTED_AUTH=True\n'
+    assert list(backups.glob('*/primary/restore-probe.sqlite3'))
+    assert list(backups.glob('*/carrier/restore-probe.sqlite3'))
+
+
+def test_existing_hidden_production_contacts_never_overwritten_by_qa(carrier_fixture):
+    root, runtime, source, backups, staged, manifest, *_ = carrier_fixture
+    target = runtime / 'carrier-directory.sqlite3'
+    synthetic_catalog(target, status_value='hidden')
+    checksum = module.digest(target)
+    module.apply_carriers(staged, manifest, 'a' * 40)
+    assert module.digest(target) == checksum
+    assert module.validate_carrier_catalog(target) == 0
+
+
+@pytest.mark.parametrize('drift', ['router', 'main', 'module', 'environment', 'source'])
+def test_carrier_drift_stops_before_backup_restart_or_live_write(carrier_fixture, drift):
+    root, runtime, source, backups, staged, manifest, primary, old_api, original_env, calls = carrier_fixture
+    if drift in {'router', 'main', 'module'}:
+        path = root / {'router': 'api/external_freight.py', 'main': 'main.py', 'module': module.CARRIER_MODULE}[drift]
+        path.write_bytes(b'UNREVIEWED=True\n')
+    elif drift == 'environment':
+        (root / '.env').write_bytes(original_env + b'EXTERNAL_CARRIER_DIRECTORY_DB=/unexpected.sqlite3\n')
+    else:
+        with sqlite3.connect(source) as c:
+            c.execute("UPDATE carrier_directory SET payload='{}'")
+    before = (root / 'api/external_freight.py').read_bytes()
+    with pytest.raises((ValueError, KeyError)):
+        module.apply_carriers(staged, manifest, 'a' * 40)
+    assert not list(backups.iterdir()) and not calls
+    assert not (runtime / 'carrier-directory.sqlite3').exists()
+    assert (root / 'api/external_freight.py').read_bytes() == before
+
+
+def test_carrier_manifest_rejects_other_module_or_different_target_hash(carrier_fixture):
+    *_, manifest, primary, old_api, original_env, calls = carrier_fixture
+    manifest['files'][module.CARRIER_MODULE] = '0' * 64
+    with pytest.raises(ValueError, match='invalid_carrier_transition_manifest'):
+        module.carrier_manifest(manifest)
+
+
+def test_real_carrier_bundle_hashes_match_reviewed_repository(tmp_path):
+    root = SCRIPT.parents[2]
+    manifest = json.loads((root / 'ops/external-feed-production/manifest.json').read_text())
+    bundle = tmp_path / 'carrier.tar.gz'
+    with tarfile.open(bundle, 'w:gz') as archive:
+        for name in manifest['files']:
+            if name != 'main.py':
+                archive.add(root / 'backend' / name, arcname=name, recursive=False)
+        for name in ['main.patch', 'manifest.json']:
+            archive.add(root / 'ops/external-feed-production' / name, arcname=name, recursive=False)
+    result = module.unpack_verified(bundle, tmp_path / 'staged')
+    assert module.carrier_manifest(result)
+    assert result['files']['main.py'] == module.CARRIER_MAIN_SHA
+
+
+@pytest.mark.parametrize('alias', ['primary', 'feed', 'source'])
+def test_carrier_destination_hardlinks_to_protected_or_qa_data_rejected(carrier_fixture, alias):
+    root, runtime, source, backups, staged, manifest, primary, *rest = carrier_fixture
+    target = runtime / 'carrier-directory.sqlite3'
+    target.hardlink_to({'primary': primary, 'feed': runtime / 'feed.sqlite3', 'source': source}[alias])
+    with pytest.raises(ValueError, match='aliases_protected_database|source_destination_alias'):
+        module.apply_carriers(staged, manifest, 'a' * 40)
+    assert not list(backups.iterdir())
+
+
+def test_carrier_process_env_cannot_override_reviewed_path(carrier_fixture, monkeypatch):
+    root, runtime, source, backups, staged, manifest, primary, *rest = carrier_fixture
+    monkeypatch.setattr(module, 'runtime_identity', lambda **kw: ({'DB_PATH': str(primary),
+        'EXTERNAL_CARRIER_DIRECTORY_DB': '/unexpected/catalog.sqlite3', 'pm_exec_path': '/synthetic/python'}, None))
+    with pytest.raises(ValueError, match='existing_carrier_configuration_changed'):
+        module.apply_carriers(staged, manifest, 'a' * 40)
+    assert not list(backups.iterdir())
