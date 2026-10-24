@@ -289,11 +289,9 @@ async def collect(reader, db):
             if getattr(entity, "noforwards", False):
                 report[source] = {"blocked": "protected_content"}
                 continue
-            legacy = db.execute("SELECT message_id FROM cursors WHERE source=?", (source,)).fetchone()
             app = db.execute("SELECT message_id FROM app_cursors WHERE source=?", (source,)).fetchone()
-            high = min(legacy[0] if legacy else 0, app[0] if app else 0)
-            added = seen = captured = 0
-            legacy_high = legacy[0] if legacy else 0
+            high = app[0] if app else 0
+            seen = captured = 0
             # Свежая голова доступна приложению до исторического catch-up.
             # Курсор здесь не двигаем: оставшийся диапазон не должен пропасть.
             async for msg in reader.iter_messages(entity,limit=25):
@@ -308,8 +306,6 @@ async def collect(reader, db):
                 text = msg.raw_text or ""
                 protected = bool(getattr(msg, "noforwards", False))
                 captured += capture_for_app(db,source,entity.id,msg.id,text,msg.date,protected)
-                if msg.id>legacy_high and eligible(text,msg.date,protected):
-                    added += enqueue(db,source,entity.id,msg.id,text,msg.date)
                 # Обе записи durable до продвижения курсора; хронологические страницы.
                 with db:
                     for table in ("cursors", "app_cursors"):
@@ -317,7 +313,7 @@ async def collect(reader, db):
             with db:
                 db.execute("INSERT OR IGNORE INTO app_cursors VALUES(?,?)",(source,high))
                 db.execute("INSERT OR REPLACE INTO source_health VALUES(?,?,NULL)",(source,time.time()))
-            report[source] = {"seen":seen,"accepted":added,"app_received":captured}
+            report[source] = {"seen":seen,"app_received":captured}
         except FloodWaitError as exc:
             with db:
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('scan_after',?)",(str(time.time()+exc.seconds+1),))
