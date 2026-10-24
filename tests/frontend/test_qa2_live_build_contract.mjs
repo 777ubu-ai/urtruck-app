@@ -125,10 +125,10 @@ test('explicit QA release stays in the isolated QA2 package', () => {
 
 test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
   assert.ok(testflightWorkflow.includes('environment: production'));
-  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = main'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025'));
   assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha }}'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
-  assert.ok(testflightWorkflow.includes('pulls/561'));
+  assert.ok(testflightWorkflow.includes('pulls/602'));
   assert.ok(testflightWorkflow.includes('commits/$QA_SOURCE_SHA/check-runs'));
   assert.ok(testflightWorkflow.includes("'quality-gate / Backend tests'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Frontend tests, lint, and build'"));
@@ -136,7 +136,7 @@ test('TestFlight uses a protected exact-SHA QA2 trigger and never the production
   assert.ok(!testflightWorkflow.includes("'qa2-final-testflight-*'"));
   assert.ok(!testflightWorkflow.includes('push:\n    branches:'));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
-  assert.ok(testflightWorkflow.includes('URTRUCK_MIN_IOS_BUILD: 99'));
+  assert.ok(testflightWorkflow.includes('URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}'));
   assert.ok(testflightWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(testflightWorkflow.includes('test "$QA_HOST" = qa2.urtruck.kz'));
   assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));

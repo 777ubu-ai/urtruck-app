@@ -90,6 +90,11 @@ on:
         required: false
         default: false
         type: boolean
+      last_verified_play_code:
+        description: Latest versionCode verified in Play before building the reviewed internal candidate
+        required: false
+        default: ""
+        type: string
       build_installable_apk:
         description: "Produce a signed production APK encrypted for this local device-QA session"
         required: true
@@ -115,6 +120,8 @@ jobs:
     if: ${{ inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
     env:
+      URTRUCK_VERSION_NAME: 1.0.9
+      URTRUCK_SOURCE_SHA: ${{ github.sha }}
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ inputs.enable_external_freight_feed && 'true' || 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -122,6 +129,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Prepare reviewed internal candidate identity
+        env:
+          API_ENVIRONMENT_INPUT: ${{ inputs.api_environment || 'production' }}
+          TRACK_INPUT: ${{ inputs.track || 'internal' }}
+          VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test "$API_ENVIRONMENT_INPUT" = qa2
+            test "$TRACK_INPUT" = internal
+            test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
+            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+            test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
+            test "$VERIFIED_PLAY_MAX_CODE" -lt 2100000000
+            python3 scripts/prepare_store_candidate_version.py --platform android \
+              --version 1.0.12 --source-sha "$GITHUB_SHA"
+            echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
+          fi
 
       - name: Проверить среду и ограничить QA2 внутренним треком
         env:
@@ -196,6 +225,8 @@ jobs:
           python3 scripts/verify_android_firebase_config.py --check-plugin android
 
       - name: Compute collision-resistant versionCode
+        env:
+          VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
         # Старый `100 + GITHUB_RUN_NUMBER` столкнулся с уже использованным
         # versionCode=212. Run number локален конкретному workflow и может
         # пересечься с историческими/manual кодами или сброситься при замене
@@ -209,6 +240,12 @@ jobs:
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
           installed_version_code=213720253
+          if [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
+            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+            test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
+            installed_version_code="$VERIFIED_PLAY_MAX_CODE"
+            if [ "$version_code" -le "$installed_version_code" ]; then version_code=$((installed_version_code + 1)); fi
+          fi
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
             exit 1
@@ -283,7 +320,16 @@ jobs:
           fi
           printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
+          printf '%s\n' "$manifest_xml" | grep -q "android:versionName=\"${URTRUCK_VERSION_NAME}\""
           unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
+          if [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
+            node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (config.version !== '1.0.12' || config.extra?.urtruckExternalFreightFeedEnabled !== true
+              || config.extra?.urtruckSourceSha !== process.env.GITHUB_SHA) throw new Error('Candidate version/source/feed identity mismatch');
+          NODEVERIFY
+          fi
           if [ "$API_ENVIRONMENT" = qa2 ]; then
             node scripts/qa2-internal-store-config.mjs "$RUNNER_TEMP/aab-app-config.json"
           else
@@ -328,7 +374,7 @@ jobs:
           apk="android/app/build/outputs/apk/release/app-release.apk"
           test -f "$apk"
           badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.urtruck.app' versionCode='${URTRUCK_VERSION_CODE}' versionName='1.0.9'"
+          printf '%s\n' "$badging" | grep -F "package: name='com.urtruck.app' versionCode='${URTRUCK_VERSION_CODE}' versionName='${URTRUCK_VERSION_NAME}'"
           unzip -p "$apk" assets/index.android.bundle | grep -aq "$EXPO_PUBLIC_API_URL"
           # The JS bundle legitimately contains the QA2 host allowlist for public share links.
           # Verify the actual Expo config embedded in this APK instead of treating any
@@ -377,7 +423,7 @@ jobs:
             --arg iv "$iv" \
             --arg hmac_sha256 "$auth_tag" \
             --arg package "com.urtruck.app" \
-            --arg version_name "1.0.9" \
+            --arg version_name "$URTRUCK_VERSION_NAME" \
             --arg api_host "${EXPO_PUBLIC_API_URL#https://}" \
             --argjson version_code "$URTRUCK_VERSION_CODE" \
             '{source_sha:$source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
