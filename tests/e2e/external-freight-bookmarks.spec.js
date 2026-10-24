@@ -22,7 +22,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video
 
 async function boot(page, role = 'driver', options = {}) {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
-  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [] };
+  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [], liveItems: null };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
     original_text: options.text ?? Array.from({ length: 16 }, (_, i) => `Условие ${i + 1}: нужен тент, груз готов, документы на погрузке.`).join('\n'), source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'], ...options.item };
   page.on('pageerror', error => box.errors.push(error.message));
@@ -48,7 +48,7 @@ async function boot(page, role = 'driver', options = {}) {
       box.writes += 1;
       if (box.fail) { box.fail = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       box.saved = route.request().method() === 'PUT'; data = { id: item.id, saved: box.saved };
-    } else if (u.pathname === '/api/v1/external-freight') { box.feedQueries.push(Object.fromEntries(u.searchParams)); data = { items: u.searchParams.get('saved_only') === 'true' && !box.saved ? [] : [{ ...item, saved: box.saved }], next_cursor: null }; }
+    } else if (u.pathname === '/api/v1/external-freight') { box.feedQueries.push(Object.fromEntries(u.searchParams)); data = { items: u.searchParams.get('saved_only') === 'true' && !box.saved ? [] : (box.liveItems || [{ ...item, saved: box.saved }]), next_cursor: null }; }
     else if (u.pathname.endsWith('/translate')) data = { translated_text: 'Truck needed. Cargo ready', source_revision: item.source_revision };
     else if (u.pathname.includes('/notifications')) data = { notifications: [], unread: 0 };
     else if (u.pathname.includes('/chat/')) data = { messages: [], rooms: [], unread: 0 };
@@ -328,5 +328,59 @@ test('short original text needs no expand button and copying contact does not fo
   await page.getByTestId('external-feed-copy-external-fixture-0').click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('+7 700 000 00 01');
   expect(await page.evaluate(() => ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName))).toBe(false);
+  expect(box.errors).toEqual([]);
+});
+
+
+test('continuous refresh adds a real UI card while preserving chosen filters and source link', async ({ page }) => {
+  await page.clock.install();
+  const box = await boot(page, 'driver', { item: { origin_source: 'test_channel', source_message_id: '123' } });
+  await page.getByTestId('external-feed-filter-origin').click();
+  await page.getByTestId('external-feed-location-search').fill('Алматы');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.origin).toBe('Алматы');
+  const requests = box.feedQueries.length;
+  box.liveItems = [{
+    id:'auto-new',kind:'cargo',status:'active',origin:'Алматы',destination:'Астана',
+    original_text:'Груз: шины',price_state:'unknown',contacts:[],
+    source_published_at:'2026-10-22T10:00:00Z', origin_source:'test_channel',source_message_id:'124'
+  }];
+  await page.clock.runFor(21000);
+  await expect(page.getByTestId('external-feed-card-auto-new')).toBeVisible({timeout:10000});
+  expect(box.feedQueries.length).toBeGreaterThan(requests);
+  expect(box.feedQueries.at(-1).origin).toBe('Алматы');
+  await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Алматы');
+  await expect(page.getByText('Цена не указана',{exact:true})).toBeVisible();
+  await expect(page.getByTestId('external-feed-source-auto-new')).toBeVisible();
+  expect(box.errors).toEqual([]);
+  expect(box.businessWrites).toEqual([]);
+});
+
+test('continuous head insertion preserves the scrolled card position', async ({ page }) => {
+  await page.clock.install();
+  const box = await boot(page);
+  const now = new Date().toISOString();
+  const rows = Array.from({length:24},(_,i)=>({
+    id:'scroll-'+i,kind:'cargo',status:'active',origin:'Алматы',destination:'Астана',
+    original_text:'Груз: доски',price_state:'unknown',contacts:[],
+    source_published_at:new Date(Date.now()-i*60000).toISOString()
+  }));
+  box.liveItems=rows;
+  await page.clock.runFor(21000);
+  await expect(page.getByTestId('external-feed-card-scroll-4')).toBeAttached();
+  await page.getByTestId('external-feed-card-scroll-4').evaluate(el=>{
+    let parent=el.parentElement;
+    while(parent && parent.scrollHeight<=parent.clientHeight+10) parent=parent.parentElement;
+    if(!parent)throw new Error('scroll container missing');
+    parent.scrollTop=400;
+  });
+  await page.clock.runFor(100);
+  const anchor=page.getByTestId('external-feed-card-scroll-4');
+  const before=(await anchor.boundingBox()).y;
+  box.liveItems=[{...rows[0],id:'head-new',source_published_at:now},...rows];
+  await page.clock.runFor(21000);
+  await expect(page.getByTestId('external-feed-card-head-new')).toBeAttached();
+  await expect.poll(async()=>Math.abs((await anchor.boundingBox()).y-before)).toBeLessThan(4);
+  await page.screenshot({path:'test-results/external-feed-continuous-scroll.png'});
   expect(box.errors).toEqual([]);
 });

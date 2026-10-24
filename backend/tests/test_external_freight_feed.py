@@ -811,3 +811,58 @@ def test_import_and_read_preserve_explicit_jpy_without_currency_conversion():
     assert read.status_code == 200
     item = read.json()['item']
     assert (item['amount'], item['currency'], item['original_text']) == (2000, 'JPY', text)
+
+
+def test_continuous_source_to_api_both_roles_without_telegram_publication(tmp_path, monkeypatch):
+    """Полная цепочка на синтетической БД; не является живой приёмкой QA2."""
+    import importlib.util
+    import json
+    from pathlib import Path
+    from services.external_freight_queue_bridge import IncomingQueueBridge
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    script=next(parent/'ops/telegram-feed/feed.py' for parent in Path(__file__).parents if (parent/'ops/telegram-feed/feed.py').exists())
+    spec=importlib.util.spec_from_file_location('integration_collector',script)
+    collector=importlib.util.module_from_spec(spec);spec.loader.exec_module(collector)
+    source=tmp_path/'source.sqlite3';db=collector.database(source)
+    published=collector.utcnow()
+    collector.capture_for_app(db,'test_channel',98765,1,'Алматы → Москва\nНужна машина\nГруз: шины',published)
+    collector.capture_for_app(db,'test_channel',98765,2,'Астана → Бишкек\nЕсть свободная машина',published)
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    def opener(request,timeout):
+        response=client.post('/api/v1/external-freight/import',headers={'X-External-Importer-Key':'test-importer-key-only'},json=json.loads(request.data))
+        class Response:
+            status=response.status_code
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):return response.content
+        return Response()
+    adapter=ExternalFreightFeedAdapter(db_path=str(tmp_path/'adapter.sqlite3'),api_url='https://qa2.urtruck.kz',importer_key='test-importer-key-only',opener=opener)
+    assert IncomingQueueBridge(source,adapter).run_once()['sent']==2
+    global _actor
+    for role,kind in [('driver','cargo'),('client','vehicle')]:
+        _actor={'id':'actor-'+role,'role':role}
+        rows=client.get('/api/v1/external-freight').json()['items']
+        assert len(rows)==1 and rows[0]['kind']==kind and rows[0]['contacts']==[]
+        assert rows[0]['price_state']=='unknown'
+    assert IncomingQueueBridge(source,adapter).run_once()['sent']==0
+    assert db.execute('select count(*) from queue').fetchone()[0]==0
+
+
+def test_explicit_partial_vehicle_location_is_visible_to_shipper_without_phone_or_price():
+    from services.external_freight_parser import map_selected_message
+    record=map_selected_message({'source_id':'tg-free-location','source_message':1,
+        'source_date':datetime.now(timezone.utc).timestamp(),
+        'text':'Свободный Реф в Маньчжурии , готов к погрузке. Рассмотрю варианты за Урал в сторону Запада.'})
+    response=_import(record)
+    assert response.status_code==200
+    result=response.json()['results'][0]
+    assert result['status']=='active'
+    global _actor
+    _actor={'id':'partial-shipper','role':'client'}
+    item=client.get('/api/v1/external-freight').json()['items'][0]
+    assert item['id']==result['id'] and item['kind']=='vehicle'
+    assert item['origin']=='Маньчжурии' and item['destination'] is None
+    assert item['price_state']=='unknown' and item['contacts']==[]
+    assert _import(record).json()['results'][0]['result']=='replayed'
+    _actor={'id':'partial-driver','role':'driver'}
+    assert client.get('/api/v1/external-freight').json()['items']==[]

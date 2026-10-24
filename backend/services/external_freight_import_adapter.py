@@ -160,7 +160,7 @@ class ExternalFreightFeedAdapter:
                 return result
             try:
                 status = self._send([row])
-                self._ack([row], now, status)
+                self._ack([row], self.clock(), status)
                 sent += 1
             except Exception as exc:
                 status = getattr(exc, "code", None)
@@ -195,7 +195,7 @@ class ExternalFreightFeedAdapter:
                     "quarantined": self.quarantined_count()}
         try:
             status = self._send(rows)
-            self._ack(rows, now, status)
+            self._ack(rows, self.clock(), status)
             return {"status": "delivered", "sent": len(rows), "pending": self.pending_count(),
                     "quarantined": self.quarantined_count(), "http_status": status}
         except Exception as exc:
