@@ -45,3 +45,31 @@ UI открывает только подтверждённую по данны�
 ## Открыто
 
 Live Telegram/QA2/server/бот права, физический iPhone/Android, финальный CI и независимое review пока не подтверждены. Отправка/звонки с пользовательских телефонов не выполнялись. Статус PARTIAL, не release-ready.
+
+## PRE-FLIGHT review fixes — 25.10.2026
+
+Branch `fix/owned-telegram-feed-share-20261025`, starting SHA `99bb4973a8b3afcf648fd14778c64c721d522a44`. Exact-SHA CI3/3 PASS; this is not runtime/device proof. Independent review found common closure prefix loss, contact-blind owned dedup, stale dedup after edits, offline edit recovery gap, ambiguous multiple unload labels. Scope: own parser/bridge/collector and their tests only; legacy intake and all unrelated modules protected. Graphify refreshed:14664nodes30612edges. Checks: failing regressions then targeted suites and independent re-review/exact-head CI. Rollback: revert new narrow commit, preserve all state/data and flags. No production/store writes.
+
+Live Telegram: verified own group `@UrTruck_obyavleniya` ID -1004325478296, linked channel `@UrTruck_UT` ID -1003711161303. Bot `@UrTruck_UT_bot` ID8756237748 is channel administrator but group membership is left. Existing pinned channelpost47 now has Android/iPhone URL buttons (Telegram edit success, message/chat/markup verified); no group replies enabled.
+
+### Focused read-only QA2 audit PRE-FLIGHT
+
+Starting99bb, same branch. Add `.github/workflows/qa2-owned-feed-readonly-audit.yml` and `scripts/qa/audit_owned_feed_runtime.py` to inspect actual collector/bridge flags, code hashes and aggregate counts through existing QA2 SSH credentials. Dispatch-only, exact source SHA and SSH host-key guards; no remote files, business data, configuration or service writes. Never output secrets/text/phones. Rollback: remove this unused manual workflow/script. Checks: Python compile, YAML parse, independent review; remote execution requires authenticated Actions dispatch. Existing full backend deploy is deliberately not used for this scope.
+
+### Review fixes validation
+
+Five primary regressions reproduced FAIL before fixes; owned tests now21PASS. Full external suite275PASS before final concurrency guard, then owned/bridge/collector56PASS including seed/query interleaving and malformed duplicate owner. Missing get_messages entries do not delete cards; bad response IDs do not advance reconciliation cursor. A current owner fingerprint is rechecked before duplicate ACK. Legacy parser revision/fingerprint behavior preserved. Independent re-review pending final commit.
+
+Parallel PR603 (`5990c00b`) is draft/CI failure and removes the Telegram action; not merged into this candidate. Read current Play workflow evidence: run40112977456 successfully uploaded production AAB code215024884 on24.10; it uses different older sourceb7c5bcc2, not this candidate, and is not a live Play API maximum query. No counter is reserved/reset.
+
+### QA2 APK identity PRE-FLIGHT
+
+Verified latest successful QA2 APK run40099399525/job120888255255, source54cbecad: packagecom.urtruck.app.qa2, versionName1.0.9-qa2, code214494471, certfac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c, apk7a1afb6c9554f0478e1e70601f8caf237bf41cae53d7ea66e867b3a01514b000. Scope: QA2-only build metadata/workflow/contract test; prepare next code214494472 and owner-requested marketing1.0.12-qa2, preserving production/iOS configs. Check runtime-generated config and workflow contract. Rollback revert QA2-only metadata; do not reuse code if an artifact is actually distributed. No build dispatched or store publish performed yet.
+
+Audit execution adjustment: GitHub requires a registered/default-branch workflow path for workflow_dispatch. Instead of adding an unusable new path, the existing registered `qa2-server-readonly-audit.yml` gains a separate branch-gated owned-feed read-only job. Original capacity audit job remains intact, restricted to its original voice branch; no general deploy is used. Owned job accepts only current owned-feed branch onmanualdispatch and exactmatching sourceSHA. New standalone audit workflow removed before commit.
+
+Registration check correction: read of main confirmed `qa2-server-readonly-audit.yml` is absent (404); no action dispatch attempted. Read of main confirmed `build-android-apk.yml` exists. Audit is therefore prepared as an explicit `operation=read_only_audit` in that existing QA2 build workflow, with APK job skipped. Default `apk` mode preserves prior build behavior; invalid operation runs neither job. Owned audit retains exact branch/SHA/host-key gates. Original readonly audit workflow restored byte-for-byte. This adds no automatic deploy/credentials workaround: authenticated Actions dispatch remains required.
+
+### Final reviewed candidate
+
+Independent business review APPROVE:21ownedPASS; additional owner edit→closed/contact-change/review interleaves retain the valid new post. Audit privacy review on synthetic databases: aggregate values correct, both database hashes unchanged, marker secrets/PII absent. Final workflow path is `build-android-apk.yml`, operationread_only_audit, source_refexactSHA; mainGET200 verified. Original separate server-audit file unchanged. Local18build/auditcontractsPASS;56owned/bridge/collectorPASS; Pythoncompile/diffcheckPASS. Exact final GitHub CI still required after commit. Production/native/iOS metadata unchanged; only QA2 identity prepared. Runtime flags remain disabled until server evidence and controlled activation.

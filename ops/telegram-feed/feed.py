@@ -173,6 +173,28 @@ async def collect_owned(reader, db):
             with db:
                 db.execute('INSERT INTO app_cursors VALUES(?,?) ON CONFLICT(source) DO UPDATE SET message_id=max(message_id,excluded.message_id)',
                            (OWNED_FEED_SOURCE, msg.id))
+        # Revisit known posts throughout the active window, not just latest25.
+        # The durable rotating cursor survives restart; each scan is bounded.
+        key = 'owned_reconcile_cursor'
+        cursor = int((db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone() or [0])[0])
+        query = ('SELECT id,source_message FROM app_messages WHERE lower(source)=? '
+                 'AND source_id=? AND source_date>=? AND id>? ORDER BY id LIMIT 50')
+        args = (OWNED_FEED_SOURCE.lower(), entity.id, time.time()-120*3600)
+        known = db.execute(query, (*args, cursor)).fetchall()
+        if not known:
+            known = db.execute(query, (*args, 0)).fetchall()
+        if known:
+            ids = [row[1] for row in known]
+            messages = await reader.get_messages(entity, ids=ids)
+            if len(messages) != len(ids) or any(msg is not None and msg.id != ident
+                                               for msg, ident in zip(messages, ids)):
+                raise RuntimeError('OWNED_RECONCILE_RESPONSE_MISMATCH')
+            for msg in messages:
+                # An absent/inaccessible message is not proof of deletion.
+                if msg is not None:
+                    capture_owned_message(db, entity, msg)
+            with db:
+                db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', (key, str(known[-1][0])))
         with db:
             db.execute('INSERT OR REPLACE INTO source_health VALUES(?,?,NULL)', (OWNED_FEED_SOURCE, time.time()))
     except Exception as exc:

@@ -3,6 +3,7 @@ import hashlib
 import re
 import unicodedata
 
+from services.external_freight_classifier import classify_message
 from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages
 
 OWNED_SOURCE = 'UrTruck_obyavleniya'
@@ -35,10 +36,18 @@ def map_owned_messages(raw):
         shared = []
     result = []
     if starts:
+        prefix = clean[:starts[0].start()].strip()
+        common_closure = '\n'.join(line for line in prefix.splitlines()
+                                   if classify_message(line)['status'] == 'closed')
         blocks = [clean[m.start():starts[i + 1].start() if i + 1 < len(starts) else len(clean)].strip()
                   for i, m in enumerate(starts)]
         for i, block in enumerate(blocks):
+            # Preserve the common closure in every block for importer verification.
+            # Other header fields belong only to the first block, never shared prices.
+            header = prefix if i == 0 else common_closure
+            block = '\n'.join(part for part in (header, block) if part)
             origin, destination = _FROM.search(block), _TO.search(block)
+            destinations = {' '.join(m[1].casefold().split()) for m in _TO.finditer(block)}
             normalized = block
             if origin and destination:
                 normalized = _TO.sub('', normalized, count=1)
@@ -49,6 +58,8 @@ def map_owned_messages(raw):
                             segment_id=f'block-{i+1}' if len(blocks) > 1 else str(raw.get('segment_id') or '0'))
             item = map_selected_message(item_raw)
             item['original_text'] = block
+            if len(destinations) > 1 and item['status'] == 'active':
+                item['status'] = item['classification_status'] = 'review'
             result.append(item)
     else:
         result = map_selected_messages({**raw, 'text': clean, 'original_text': clean})

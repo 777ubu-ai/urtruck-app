@@ -215,3 +215,162 @@ def test_legacy_incoming_does_not_duplicate_staged_own_intake(tmp_path, monkeypa
     adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'state.db'), api_url='https://qa2.urtruck.kz', importer_key='test-only')
     assert IncomingQueueBridge(source, adapter).run_once()['scanned'] == 0
     assert adapter.pending_count() == 0
+
+
+def test_common_closure_prefix_reaches_every_selection_block():
+    items = map_owned_messages(raw('Заявка закрыта\nПогрузка: Алматы\nВыгрузка: Москва\nГруз: сыр\n'
+                                  'Погрузка: Астана\nВыгрузка: Бишкек\nГруз: шины\n+77001234567'))
+    assert len(items) == 2
+    assert all(x['status'] == 'closed' and 'Заявка закрыта' in x['original_text'] for x in items)
+
+
+def test_multiple_distinct_unloads_require_review():
+    item = map_owned_messages(raw('Погрузка: Алматы\nВыгрузка: Москва\nВыгрузка: Астана\n'
+                                 'Груз: сыр\n+77001234567'))[0]
+    assert item['status'] == 'review'
+
+
+def owned_worker(tmp_path, monkeypatch):
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED', 'true')
+    m = collector()
+    source = tmp_path/'feed.db'
+    db = m.database(source)
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'state.db'), api_url='https://qa2.urtruck.kz',
+                                         importer_key='test-only')
+    monkeypatch.setattr(adapter, 'flush_once', lambda: {'status': 'idle', 'sent': 0})
+    return m, db, adapter, OwnedTelegramQueueBridge(source, adapter)
+
+
+def test_distinct_shared_footer_phones_do_not_collapse_routes(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    selection = ('Погрузка: Алматы\nВыгрузка: Москва\nГруз: сыр\n'
+                 'Погрузка: Астана\nВыгрузка: Бишкек\nГруз: шины\nОбщий телефон: ')
+    for ident, phone in ((44, '+77001234567'), (45, '+77001234568')):
+        m.capture_for_app(db, OWNED_SOURCE, 123, ident, selection + phone, m.utcnow())
+    result = worker.run_once()
+    assert result['duplicates'] == 0 and result['enqueued'] == 4
+    assert adapter.pending_count() == 4
+    assert worker.run_once()['scanned'] == 0
+
+
+def test_edited_away_route_does_not_block_new_post_with_old_route(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    old = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, old, m.utcnow())
+    assert worker.run_once()['enqueued'] == 1
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, old.replace('Москва', 'Астана'), m.utcnow())
+    # Newer message is processed before the edit: stale outbox must not seed dedup.
+    m.capture_for_app(db, OWNED_SOURCE, 123, 45, old, m.utcnow())
+    result = worker.run_once()
+    assert result['duplicates'] == 0 and result['enqueued'] == 2
+    with adapter._connect() as state:
+        payloads = [json.loads(row[0]) for row in state.execute('SELECT payload FROM selected_outbox')]
+    assert {x['destination'] for x in payloads if x['status'] == 'active'} == {'Москва', 'Астана'}
+    # The same route after a completed edit must also be accepted on a later run.
+    m.capture_for_app(db, OWNED_SOURCE, 123, 45, old.replace('Москва', 'Бишкек'), m.utcnow())
+    worker.run_once()
+    m.capture_for_app(db, OWNED_SOURCE, 123, 46, old, m.utcnow())
+    assert worker.run_once()['duplicates'] == 0
+
+
+def test_owned_reconciliation_recovers_old_edit_after_restart(tmp_path, monkeypatch):
+    m = collector()
+    db = m.database(tmp_path/'feed.db')
+    monkeypatch.setattr(m, 'settings', lambda: {'OWNED_FEED_ENABLED': 'true'})
+    monkeypatch.setitem(sys.modules, 'telethon.utils', SimpleNamespace(get_peer_id=lambda _: -100123))
+    entity = SimpleNamespace(id=123, username=OWNED_SOURCE, noforwards=False)
+    date = m.utcnow()
+    for ident in range(1, 62):
+        m.capture_for_app(db, OWNED_SOURCE, 123, ident,
+                          'Алматы → Москва\nГруз: сыр\n+77001234567', date)
+    with db:
+        db.execute('INSERT INTO app_cursors VALUES(?,?)', (OWNED_SOURCE, 61))
+    calls = []
+    class Reader:
+        async def get_entity(self, _): return entity
+        async def iter_messages(self, *args, **kw):
+            for _ in ():
+                yield None
+        async def get_messages(self, _, ids):
+            calls.append(ids)
+            return [SimpleNamespace(id=i, raw_text='Заявка закрыта' if i == 1 else
+                    'Алматы → Астана\nГруз: сыр\n+77001234567', date=date, fwd_from=None) for i in ids]
+    asyncio.run(m.collect_owned(Reader(), db))
+    assert db.execute('SELECT text FROM app_messages WHERE source_message=1').fetchone()[0] == 'Заявка закрыта'
+    db.close()
+    db = m.database(tmp_path/'feed.db')
+    asyncio.run(m.collect_owned(Reader(), db))
+    assert len(calls[0]) == 50 and calls[1] == list(range(51, 62))
+    assert db.execute('SELECT text FROM app_messages WHERE source_message=61').fetchone()[0].startswith('Алматы → Астана')
+    asyncio.run(m.collect_owned(Reader(), db))
+    assert calls[2] == list(range(1, 51))
+
+
+def test_owned_dedup_survives_restart_and_closed_route_can_be_reposted(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, text, m.utcnow())
+    worker.run_once()
+    m.capture_for_app(db, OWNED_SOURCE, 123, 45, text, m.utcnow())
+    assert OwnedTelegramQueueBridge(worker.source_path, adapter).run_once()['duplicates'] == 1
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, 'Заявка закрыта\n' + text, m.utcnow())
+    worker.run_once()
+    m.capture_for_app(db, OWNED_SOURCE, 123, 46, text, m.utcnow())
+    assert OwnedTelegramQueueBridge(worker.source_path, adapter).run_once()['duplicates'] == 0
+
+
+def test_reconcile_invalid_response_does_not_advance_or_remove_posts(tmp_path, monkeypatch):
+    m = collector()
+    db = m.database(tmp_path/'feed.db')
+    monkeypatch.setattr(m, 'settings', lambda: {'OWNED_FEED_ENABLED': 'true'})
+    entity = SimpleNamespace(id=123, username=OWNED_SOURCE, noforwards=False)
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, text, m.utcnow())
+    class Reader:
+        async def get_entity(self, _): return entity
+        async def iter_messages(self, *args, **kw):
+            for _ in (): yield None
+        async def get_messages(self, _, ids): return [SimpleNamespace(id=999)]
+    asyncio.run(m.collect_owned(Reader(), db))
+    assert db.execute("SELECT value FROM metadata WHERE key='owned_reconcile_cursor'").fetchone() is None
+    assert db.execute('SELECT text FROM app_messages').fetchone()[0] == text
+    assert db.execute('SELECT error FROM source_health').fetchone()[0] == 'RuntimeError'
+    async def missing(*args, **kw): return [None]
+    monkeypatch.setattr(Reader, 'get_messages', missing)
+    asyncio.run(m.collect_owned(Reader(), db))
+    assert db.execute('SELECT text FROM app_messages').fetchone()[0] == text
+    assert db.execute('SELECT error FROM source_health').fetchone()[0] is None
+
+
+def test_edit_between_dedup_seed_and_source_query_cannot_suppress_new_post(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, text, m.utcnow())
+    worker.run_once()
+    m.capture_for_app(db, OWNED_SOURCE, 123, 45, text, m.utcnow())
+    seed = worker.seed_dedup
+    def concurrent_edit(now):
+        seed(now)
+        m.capture_for_app(db, OWNED_SOURCE, 123, 44, text.replace('Москва', 'Астана'), m.utcnow())
+    monkeypatch.setattr(worker, 'seed_dedup', concurrent_edit)
+    result = worker.run_once()
+    assert result['duplicates'] == 0 and result['enqueued'] == 2
+    with adapter._connect() as state:
+        assert state.execute('SELECT count(*) FROM selected_outbox').fetchone()[0] == 2
+
+
+def test_malformed_dedup_owner_does_not_reject_valid_new_post(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, text, m.utcnow())
+    worker.run_once()
+    m.capture_for_app(db, OWNED_SOURCE, 123, 45, text, m.utcnow())
+    seed = worker.seed_dedup
+    def malformed_edit(now):
+        seed(now)
+        m.capture_for_app(db, OWNED_SOURCE, 123, 44, 'x' * 20001, m.utcnow())
+    monkeypatch.setattr(worker, 'seed_dedup', malformed_edit)
+    result = worker.run_once()
+    assert result['duplicates'] == 0 and result['enqueued'] == 1 and result['rejected'] == 1
+    with adapter._connect() as state:
+        assert state.execute("SELECT count(*) FROM selected_outbox WHERE source_message_id='45'").fetchone()[0] == 1
