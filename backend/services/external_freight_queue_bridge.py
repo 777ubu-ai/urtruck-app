@@ -16,10 +16,11 @@ from urllib.parse import urlparse
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
 from services.external_freight_parser import map_selected_message, map_selected_messages
 from services.external_freight_classifier import classify_message
+from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 120 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261023-promotion-contact-price-v7'
+PARSER_REVISION = '20261025-owned-contact-recall-v8'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -132,6 +133,9 @@ class PublishedQueueBridge:
 
 class IncomingQueueBridge(PublishedQueueBridge):
     """Читает независимый вход той же очереди, не ожидая Telegram publication."""
+    source_name = None
+    mode = 'incoming'
+    parse = staticmethod(map_selected_messages)
     def __init__(self, source_path, adapter):
         super().__init__(source_path,adapter)
         with adapter._connect() as state:
@@ -169,8 +173,17 @@ class IncomingQueueBridge(PublishedQueueBridge):
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
             # Историческая загрузка имеет новый updated_at, но не должна вытеснять
             # свежие исходные публикации. Правки/старый хвост обслуживаются ниже.
-            newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION)).fetchall()
-            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(now-ACTIVE_SECONDS,now+300,PARSER_REVISION,MAX_SCAN)).fetchall()
+            arguments = (now-ACTIVE_SECONDS,now+300,PARSER_REVISION)
+            if self.source_name:
+                query += ' AND lower(q.source)=?'
+                arguments += (self.source_name.lower(),)
+            else:
+                # Подготовленный собственный поток включается отдельным режимом.
+                # Его сбор до переключения не создаёт параллельные карточки.
+                query += ' AND lower(q.source)<>?'
+                arguments += (OWNED_SOURCE.lower(),)
+            newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
+            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
         enqueued=review=rejected=duplicates=0
@@ -179,7 +192,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             raw=dict(row)
             reason="accepted"
             try:
-                records=map_selected_messages(raw)
+                records=self.parse(raw)
                 identities={record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
@@ -222,7 +235,23 @@ class IncomingQueueBridge(PublishedQueueBridge):
             reasons[reason]=reasons.get(reason,0)+1
         delivery=self.adapter.flush_once()
         return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
-                "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":"incoming"}
+                "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode}
+
+
+class OwnedTelegramQueueBridge(IncomingQueueBridge):
+    """Только посты собственного чата, включая сообщения его участников."""
+    source_name = OWNED_SOURCE
+    mode = 'owned'
+    parse = staticmethod(map_owned_messages)
+
+    def __init__(self, source_path, adapter):
+        # Старый outbox может ещё содержать недоставленные чужие посты.
+        # Не отправлять их под видом собственного потока и не удалять при переходе.
+        with adapter._connect() as state:
+            for row in state.execute('SELECT payload FROM selected_outbox'):
+                if str(json.loads(row['payload']).get('origin_source', '')).lower() != OWNED_SOURCE.lower():
+                    raise ValueError('owned_source_requires_separate_adapter_state')
+        super().__init__(source_path, adapter)
 
 
 def main():
@@ -237,7 +266,11 @@ def main():
     validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
     os.umask(0o077)
     # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
-    worker = IncomingQueueBridge if os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE") == "incoming" else PublishedQueueBridge
+    mode = os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE", 'published')
+    workers = {'incoming': IncomingQueueBridge, 'published': PublishedQueueBridge, 'owned': OwnedTelegramQueueBridge}
+    if mode not in workers:
+        raise ValueError('invalid_source_mode')
+    worker = workers[mode]
     result = worker(source, ExternalFreightFeedAdapter()).run_once()
     print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] in {"delivered", "idle", "busy", "disabled"} else 1

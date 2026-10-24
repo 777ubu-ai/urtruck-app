@@ -127,9 +127,10 @@ _COMPACT_ROUTE = re.compile(
 )
 
 
-def _compact_routes(text, *, allow_space=False):
+def _compact_routes(text, *, allow_space=False, allow_hyphenated=False):
     return [m for m in _COMPACT_ROUTE.finditer(text)
             if (allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)]))
+            and (allow_hyphenated or not ('-' in m.group(1) or '-' in m.group(2)))
             and not re.search(r"[?？❓❔/]", m.group())]
 
 
@@ -228,22 +229,25 @@ def map_selected_message(raw: dict) -> dict:
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
-    compact = _compact_routes(text, allow_space=kind == "vehicle")
+    # В свободной форме предложения машины компактный дефисный город может
+    # означать местонахождение. Подтверждённый груз задаёт маршрут явно.
+    compact = _compact_routes(text, allow_space=kind == "vehicle", allow_hyphenated=kind == 'cargo')
     # Count mixed arrow/compact formats together; never collapse two requests.
-    if not routes or uses_extended_intent(text):
-        routes += [m for m in compact if not any(
-            m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
+    routes += [m for m in compact if not any(
+        m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
     routes.sort(key=lambda m: m.start())
-    if len(routes) > 1:
+    route_conflict = len(routes) > 1 or bool(compact and re.search(
+        r'(?i)\b(?:откуда|куда|погрузка|выгрузка|загрузка|доставка)(?:\s*[:：]|\s+)', text))
+    if route_conflict:
         status = "review"
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
-    origin = _place(route.group(1)) if route else raw.get("origin")
-    destination = _place(route.group(2)) if route else raw.get("destination")
-    if not route and kind == 'vehicle' and not origin and not destination:
+    origin = None if route_conflict else _place(route.group(1)) if route else raw.get("origin")
+    destination = None if route_conflict else _place(route.group(2)) if route else raw.get("destination")
+    if not route_conflict and not route and kind == 'vehicle' and not origin and not destination:
         origin, destination = _vehicle_locations(text)
-    if not origin and not destination:
+    if not route_conflict and not origin and not destination:
         partial = re.search(r"(?im)^\s*(?:местонахождение|нахожусь|стою|откуда|из)\s*[:：]?\s+([^\n;]{2,80})$", text)
         origin = _place(partial.group(1)) if partial else None
         if not origin and kind=="vehicle":
@@ -320,6 +324,8 @@ def block_contacts(text):
         end = text.find('\n', match.end())
         line = text[start:end if end >= 0 else len(text)]
         prefix = text[start:match.start()]
+        if re.search(r'(?i)\b(?:ID|номер\s+заявки|номер\s+заказа)\s*[:#=]?\s*$', prefix):
+            continue
         if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):

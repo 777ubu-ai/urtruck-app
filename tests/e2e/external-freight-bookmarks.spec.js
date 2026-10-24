@@ -376,7 +376,7 @@ test('even short original text stays hidden until expanded and copying contact d
 
 test('continuous refresh adds a real UI card while preserving chosen filters and source link', async ({ page }) => {
   await page.clock.install();
-  const box = await boot(page, 'driver', { item: { origin_source: 'test_channel', source_message_id: '123' } });
+  const box = await boot(page, 'driver', { item: { origin_source: 'UrTruck_obyavleniya', source_message_id: '123' } });
   await page.getByTestId('external-feed-filter-origin').click();
   await page.getByTestId('external-feed-location-search').fill('Алматы');
   await page.getByTestId('external-feed-apply-filters').click();
@@ -385,7 +385,7 @@ test('continuous refresh adds a real UI card while preserving chosen filters and
   box.liveItems = [{
     id:'auto-new',kind:'cargo',status:'active',origin:'Алматы',destination:'Астана',
     original_text:'Груз: шины',price_state:'unknown',contacts:[],
-    source_published_at:'2026-10-22T10:00:00Z', origin_source:'test_channel',source_message_id:'124'
+    source_published_at:'2026-10-22T10:00:00Z', origin_source:'UrTruck_obyavleniya',source_message_id:'124'
   }];
   await page.clock.runFor(21000);
   await expect(page.getByTestId('external-feed-card-auto-new')).toBeVisible({timeout:10000});
@@ -394,6 +394,7 @@ test('continuous refresh adds a real UI card while preserving chosen filters and
   await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Алматы');
   await expect(page.getByText('Цена не указана',{exact:true})).toBeVisible();
   await expect(page.getByTestId('external-feed-source-auto-new')).toBeVisible();
+  await expect(page.getByTestId('external-feed-source-auto-new')).toHaveText('В Telegram UrTruck');
   expect(box.errors).toEqual([]);
   expect(box.businessWrites).toEqual([]);
 });

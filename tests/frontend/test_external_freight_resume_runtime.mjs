@@ -175,3 +175,20 @@ test('контакт перевозчика открывает тот же modal
   assert.match(h.shareModal().props.shareText, /Контакт перевозчика/);
   assert.ok(!h.shareModal().props.shareText.includes(item.phones[0]));
 });
+
+for (const role of ['driver', 'client']) test(`${role}: переход в свой пост и Share — независимые действия`, async () => {
+  const item = { id: 'own', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', contacts: [],
+    origin_source: 'UrTruck_obyavleniya', source_message_id: '44', body_types: [] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
+  let nodes = descendants(h.renderItem(item));
+  const source = nodes.find(n => n.props.testID === 'external-feed-source-own');
+  assert.ok(source);
+  await source.props.onPress();
+  assert.deepEqual(h.opened, ['https://t.me/UrTruck_obyavleniya/44']);
+  const actions = nodes.find(n => n.type === 'Description').props.actions;
+  actions.props.onPress(); await h.flush();
+  assert.equal(h.shareModal().props.url, 'https://urtruck.kz/');
+  nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
+  assert.equal(nodes.find(n => n.props.testID === 'external-feed-source-own'), undefined);
+  assert.ok(nodes.find(n => n.type === 'Description').props.actions);
+});

@@ -174,7 +174,7 @@ def test_parser_upgrade_automatically_rechecks_previously_seen_review(tmp_path,m
         payload.update(status='review',origin=None,classification_status='review')
         state.execute('update selected_outbox set payload=?',(json.dumps(payload),))
         row=db.execute('select id,revision from app_messages').fetchone()
-        state.execute('insert into incoming_bridge_seen values(?,?,?,?)',(row['id'],row['revision'],a.clock(),'unresolved_direction'))
+        state.execute('insert into incoming_bridge_seen values(?,?,?,?)',(row['id'],row['revision']+':20261022-free-location-bulk-v2',a.clock(),'unresolved_direction'))
     assert a.flush_once()['sent']==1
     date_before=payload['source_published_at']
     assert worker.run_once()['sent']==1
