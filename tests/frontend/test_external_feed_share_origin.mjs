@@ -44,7 +44,7 @@ test('закрытые и истёкшие объявления не стано�
   assert.equal(buildExternalFreightShare({ kind: 'cargo', status: 'active', expires_at: '2020-01-01' }, { origin: env.PUBLIC_WEB_ORIGIN }), null);
 });
 
-test('реальная карточка перевозчика сохраняет звонок/копирование и вызывает отправку', async () => {
+for (const lang of ['RU', 'KK', 'ZH', 'EN']) test(`${lang}: карточка перевозчика только копирует телефоны и сохраняет Share`, async () => {
   const { readFileSync } = await import('node:fs');
   const { createRequire } = await import('node:module');
   const { default: vm } = await import('node:vm');
@@ -59,17 +59,23 @@ test('реальная карточка перевозчика сохраняе�
   const mocks = {
     react: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useMemo: fn => fn() },
     'react-native': native, '@expo/vector-icons/Feather': 'Feather', 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },
-    '../../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n }) },
+    '../../utils/useI18n': { useI18n: () => ({ lang, sp: n => n }) },
     '../../utils/ThemeContext': { useTheme: () => ({ theme: {} }) },
     '../../components/Toast': { useToast: () => ({ toast() {} }) },
   };
   const module = { exports: {} };
   vm.runInNewContext(code, { module, exports: module.exports, require: name => { assert.ok(name in mocks, name); return mocks[name]; } });
-  const tree = module.exports.default({ item: { id: 'synthetic-carrier', name: 'Компания', sources: [], phones: ['+77000000001'] }, shareLabel: 'Поделиться', onShare: () => { shared++; } });
+  const tree = module.exports.default({ item: { id: 'synthetic-carrier', name: 'Компания', sources: [], phones: ['+7 (700) 000-00-01', '998500014250'] }, shareLabel: 'Поделиться', onShare: () => { shared++; } });
   const nodes = [];
   const walk = n => { if (Array.isArray(n)) return n.forEach(walk); if (n?.props) { nodes.push(n); walk(n.props.children); } }; walk(tree);
   nodes.find(n => n.props.testID === 'carrier-directory-share-synthetic-carrier').props.onPress();
-  await nodes.find(n => n.props.accessibilityLabel === 'Позвонить +77000000001').props.onPress();
-  await nodes.find(n => n.props.accessibilityLabel === 'Копировать телефон').props.onPress();
-  assert.equal(shared, 1); assert.deepEqual(opened, ['tel:+77000000001']); assert.deepEqual(copied, ['+77000000001']);
+  const copyLabel = module.exports.CARRIER_COPY[lang].copy;
+  for (const phone of ['+7 (700) 000-00-01', '998500014250']) {
+    await nodes.find(n => n.props.accessibilityLabel === `${copyLabel} ${phone}`).props.onPress();
+  }
+  for (const button of nodes.filter(n => n.props.accessibilityLabel === copyLabel)) await button.props.onPress();
+  assert.equal(shared, 1);
+  assert.deepEqual(opened, [], 'нажатие номера/копирования не открывает звонилку');
+  assert.deepEqual(copied, ['+7 (700) 000-00-01', '998500014250', '+7 (700) 000-00-01', '998500014250']);
+  assert.ok(!nodes.some(n => n.type === 'Feather' && n.props.name === 'phone'));
 });

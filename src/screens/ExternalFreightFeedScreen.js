@@ -15,7 +15,7 @@ import ExternalFeedDescription from '../components/externalFreight/ExternalFeedD
 import CarrierContactCard from '../components/externalFreight/CarrierDirectory';
 import ShareModal from '../components/ShareModal';
 import { PUBLIC_WEB_ORIGIN } from '../config/env';
-import { externalPhoneURL, externalTelegramContactURL } from '../utils/externalFreightContact';
+import { externalTelegramContactURL } from '../utils/externalFreightContact';
 import { buildCarrierContactShare, buildExternalFreightShare } from '../utils/externalFreightShare';
 // Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
@@ -304,10 +304,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <View key={`${item.id}-contact-${index}`} style={styles.contactRow}>
         <TouchableOpacity onPress={() => copyContact(contact)} style={[styles.contact, styles.contactCopy]} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>
-        {externalPhoneURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="button" accessibilityLabel={`${t('contact_call')} ${contact}`}
-          testID={`external-feed-call-${item.id}-${index}`} onPress={() => Linking.openURL(externalPhoneURL(contact)).catch(() => toast(t('share_open_failed'), 'error'))}>
-          <Feather name="phone" size={18} color="#168759" />
-        </TouchableOpacity> : externalTelegramContactURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="link" accessibilityLabel={l.telegramContact}
+        {externalTelegramContactURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="link" accessibilityLabel={l.telegramContact}
           testID={`external-feed-telegram-contact-${item.id}-${index}`} onPress={() => Linking.openURL(externalTelegramContactURL(contact)).catch(() => toast(t('share_open_failed'), 'error'))}>
           <Feather name="external-link" size={18} color="#168759" />
         </TouchableOpacity> : null}

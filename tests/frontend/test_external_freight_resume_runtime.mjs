@@ -154,17 +154,20 @@ for (const role of ['driver', 'client']) test(`${role}: реальный env и 
   shareModal.props.onClose(); await h.flush();
   assert.equal(h.shareModal(), undefined);
 });
-test('реальный обработчик телефона сохраняет копирование и отдельно открывает tel', async () => {
-  const item = { id: 'phone', kind: 'cargo', status: 'active', contacts: ['+7 (700) 000-00-01', '@source_user'], body_types: [] };
-  const h = harness({ fixtures: [item] }); await h.flush();
+for (const role of ['driver', 'client']) test(`${role}: телефоны только копируются, звонилки нет`, async () => {
+  const item = { id: 'phone', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
+    contacts: ['+7 (700) 000-00-01', '998500014250', '@source_user'], body_types: [] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
-  await nodes.find(n => n.props.testID === 'external-feed-copy-phone-0').props.onPress();
-  assert.deepEqual(h.copied, [item.contacts[0]]);
-  await nodes.find(n => n.props.testID === 'external-feed-call-phone-0').props.onPress();
-  assert.deepEqual(h.opened, ['tel:+77000000001']);
-  assert.equal(nodes.find(n => n.props.testID === 'external-feed-call-phone-1'), undefined);
-  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-1').props.onPress();
-  assert.deepEqual(h.opened, ['tel:+77000000001', 'https://t.me/source_user']);
+  for (let index = 0; index < 2; index++) {
+    await nodes.find(n => n.props.testID === `external-feed-copy-phone-${index}`).props.onPress();
+  }
+  assert.deepEqual(h.copied, item.contacts.slice(0, 2));
+  assert.deepEqual(h.opened, [], 'копирование не открывает внешние приложения');
+  assert.ok(!nodes.some(n => n.props.testID?.startsWith('external-feed-call-')));
+  assert.ok(!nodes.some(n => n.type === 'Feather' && n.props.name === 'phone'));
+  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-2').props.onPress();
+  assert.deepEqual(h.opened, ['https://t.me/source_user']);
 });
 test('контакт перевозчика открывает тот же modal без фиктивного объявления', async () => {
   const item = { id: 'carrier', kind: 'carrier_contact', status: 'active', name: 'Синтетическая компания', phones: ['+77000000001'], sources: [] };
