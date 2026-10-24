@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,7 +58,9 @@ def test_missing_contact_review_and_free_vehicle_has_correct_kind():
 def test_own_chat_capture_never_enters_publisher_and_keeps_forward_date(tmp_path, monkeypatch):
     m = collector()
     db = m.database(tmp_path/'feed.db')
-    monkeypatch.setattr('telethon.utils.get_peer_id', lambda entity: -100123)
+    # Telethon установлен у отдельного collector, не у backend/CI.
+    # Подменяем только transport helper, без установки Telegram SDK в API.
+    monkeypatch.setitem(sys.modules, 'telethon.utils', SimpleNamespace(get_peer_id=lambda entity: -100123))
     entity = SimpleNamespace(id=123, username=OWNED_SOURCE, noforwards=False)
     date = m.utcnow()
     msg = SimpleNamespace(id=44, raw_text='Алматы → Москва\nГруз: сыр\n+77001234567',
