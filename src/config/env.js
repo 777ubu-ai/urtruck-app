@@ -76,6 +76,9 @@ export const API_URL = SERVER_URL;
 export const API_BASE = `${SERVER_URL}/api/v1`;
 export const API_BASE_URL = SERVER_URL;
 
+// Внешние объявления всегда распространяют публичный сайт, а не API/QA-хост.
+export const PUBLIC_WEB_ORIGIN = 'https://urtruck.kz';
+
 // Public website / share links. Always HTTPS in production.
 export const WEB_URL = IS_WEB
   ? 'https://urtruck.kz'
@@ -117,5 +120,6 @@ export default {
   API_BASE,
   API_BASE_URL,
   WEB_URL,
+  PUBLIC_WEB_ORIGIN,
   IS_BETA,
 };

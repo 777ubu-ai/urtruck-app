@@ -13,7 +13,7 @@ export const CARRIER_COPY = {
   EN: { title: 'Carriers', open: 'Carrier contacts', availability: 'Confirm availability', type: 'Carrier contact', driver: 'Driver contact', unknownName: 'Carrier', search: 'Company, city or vehicle type', find: 'Search', copy: 'Copy phone', copied: 'Phone copied', call: 'Call', source: 'Source', total: 'Contacts', empty: 'No matching contacts', error: 'Could not load contacts', retry: 'Retry', back: 'Back to listings', phoneError: 'Could not open the call', copyError: 'Could not copy the phone', note: 'Carrier contacts. Call to confirm whether a truck is available.' },
 };
 
-export default function CarrierContactCard({ item }) {
+export default function CarrierContactCard({ item, onShare, shareLabel }) {
   const { lang, sp } = useI18n();
   const { theme } = useTheme();
   const { toast } = useToast();
@@ -38,6 +38,10 @@ export default function CarrierContactCard({ item }) {
       </TouchableOpacity>
       <TouchableOpacity style={styles.copy} accessibilityRole="button" accessibilityLabel={l.copy} onPress={() => copy(phone)}><Feather name="copy" size={18} color={theme.text} /></TouchableOpacity>
     </View>)}
+    {onShare ? <TouchableOpacity style={styles.share} accessibilityRole="button" accessibilityLabel={shareLabel}
+      testID={`carrier-directory-share-${item.id}`} onPress={onShare}>
+      <Feather name="share-2" size={16} color="#168759" /><Text style={styles.shareText}>{shareLabel}</Text>
+    </TouchableOpacity> : null}
     {item.sources.length ? <Text style={styles.meta}>{l.source}: {item.sources.join(', ')}</Text> : null}
   </View>;
 }
@@ -47,6 +51,8 @@ function makeStyles(theme, sp) {
     card: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 7, gap: 3 },
     type: { fontSize: sp(11), lineHeight: sp(16), color: theme.textMuted }, name: { color: theme.text, fontSize: sp(15), lineHeight: sp(20), fontWeight: '700' }, meta: { color: theme.textMuted, fontSize: sp(12), lineHeight: sp(17), flexShrink: 1 },
     availability: { color: theme.text, fontSize: sp(12), lineHeight: sp(17) }, phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, phoneButton: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }, phone: { color: '#168759', fontSize: sp(13), lineHeight: sp(18), flexShrink: 1 },
+    share: { alignSelf: 'flex-start', minHeight: 44, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#168759', borderRadius: 14 },
+    shareText: { color: '#168759', fontSize: sp(12), lineHeight: sp(17), fontWeight: '600', flexShrink: 1 },
     copy: { minHeight: 44, width: 44, alignItems: 'center', justifyContent: 'center' },
   });
 }
