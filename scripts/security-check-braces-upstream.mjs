@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 export const UPSTREAM_PULL_URL =
   'https://api.github.com/repos/micromatch/braces/pulls/72';
 export const UPSTREAM_COMMIT =
-  'd0d575e55e74a4e0218e5248fafb79efc3e54ebb';
+  '28d440b5dd449dbf1fe6f3506cf94ecca4d02660';
 export const LAST_AFFECTED_VERSION = '3.0.3';
 
 function parseVersion(value) {
@@ -17,8 +17,12 @@ function parseVersion(value) {
 export function isNewerVersion(left, right) {
   const leftParts = parseVersion(left);
   const rightParts = parseVersion(right);
-  return leftParts.some((part, index) =>
-    part !== rightParts[index] && part > rightParts[index]);
+  for (const [index, part] of leftParts.entries()) {
+    if (part !== rightParts[index]) {
+      return part > rightParts[index];
+    }
+  }
+  return false;
 }
 
 export function evaluateUpstreamStatus({latestVersion, pullRequest}) {
@@ -62,7 +66,7 @@ async function main() {
   });
   console.log(JSON.stringify(status));
   assert.equal(status.removalRequired, false,
-    'Official braces remediation is available: remove vendor/braces-3.0.4-d0d575e, update the lockfile, and retire the vetted package.');
+    'Official braces remediation is available: remove vendor/braces-3.0.4-28d440b, update the lockfile, and retire the vetted package.');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

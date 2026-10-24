@@ -13,22 +13,31 @@ import sqlite3
 import stat
 import time
 import unicodedata
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 TZ = ZoneInfo("Asia/Almaty")
-DESTINATION = -1004325478296
-DESTINATION_NAME = "@UrTruck_obyavleniya"
+DESTINATION = -1003711161303
+DESTINATION_NAME = "@UrTruck_UT"
+OWNED_FEED_SOURCE = 'UrTruck_obyavleniya'
+DOWNLOAD_TEXT = 'Скачать UrTruck — грузы и машины в приложении'
+DOWNLOAD_BUTTONS = {'inline_keyboard': [[
+    {'text': 'Android — Google Play', 'url': 'https://play.google.com/store/apps/details?id=com.urtruck.app'},
+    {'text': 'iPhone — App Store', 'url': 'https://apps.apple.com/kz/app/urtruck/id6764504167'},
+]]}
 SOURCES= ("gruz_china", "alashankougruz", "gruzbaktyshankou", "cargo_china_gruz", "Cargo75", "K7777KZ", "nurzholychat", "nurzholy23", "zzzzz777777zzzz777", "kaljatchat")
-# Дополнительные источники обслуживают только приложение; старый Telegram allowlist сохранён.
+# Дополнительные согласованные источники обслуживают оба независимых выхода.
 def app_sources():
     path=ROOT / "app-sources.json"
     extra=json.loads(path.read_text()) if path.exists() else []
     if not isinstance(extra,list) or any(not isinstance(x,str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}",x) for x in extra):
         raise ValueError("invalid_app_sources")
-    return tuple(dict.fromkeys((*SOURCES,*extra)))
+    own = {OWNED_FEED_SOURCE.lower(), DESTINATION_NAME.lstrip('@').lower()}
+    return tuple(name for name in dict.fromkeys((*SOURCES,*extra)) if name.lower() not in own)
 
 
 LOG = logging.getLogger("urtruck_feed")
@@ -68,28 +77,21 @@ def fingerprint(text):
 
 
 def similar(left, right):
-    """Ignore cosmetic edits; retain distinct routes, quantities and loading dates."""
-    if not set(phones(left)).intersection(phones(right)):
-        return False
-    a, b = canonical(left), canonical(right)
-    if a == b:
-        return True
-    # Changing a rate, weight, quantity or date deserves a fresh evaluation.
-    if re.findall(r"\d+(?:[.,]\d+)?", a) != re.findall(r"\d+(?:[.,]\d+)?", b):
-        return False
-    aa, bb = set(a.split()), set(b.split())
-    return len(aa & bb) / max(1, len(aa | bb)) >= 0.90
+    """Suppress only a normalized exact copy with at least one shared contact."""
+    return bool(set(phones(left)).intersection(phones(right))) and canonical(left) == canonical(right)
 
 
 def eligible(text, source_date, protected=False, now=None):
     now = now or utcnow()
-    if protected or not text or len(text) > 3600:
+    if protected or not text:
         return False
     if not source_date or source_date < now - timedelta(hours=24):
         return False
     if source_date > now + timedelta(minutes=5):
         return False
-    return bool(phones(text) and CARGO.search(text) and ROUTE.search(text)
+    # Price, cargo wording and post length are optional. Long selections pass
+    # intact; application parsing splits their individual routes downstream.
+    return bool(phones(text) and ROUTE.search(text)
                 and not UNRELATED.search(text) and not CLOSED.search(text))
 
 
@@ -122,10 +124,154 @@ def settings():
             if line.strip() and not line.lstrip().startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 cfg[key.strip()] = value.strip()
-    for key in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_BOT_TOKEN", "PUBLISH_ENABLED"):
+    for key in ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_BOT_TOKEN", "PUBLISH_ENABLED", "TELEGRAM_PUBLISH_INTERVAL_SECONDS", "OWNED_FEED_ENABLED", "OWNED_TELEGRAM_CTA_ENABLED"):
         if key in os.environ:
             cfg[key] = os.environ[key]
     return cfg
+
+
+def capture_owned_message(db, entity, msg):
+    """Свой чат — только вход приложения; никогда не очередь публикации Telegram."""
+    if not msg or getattr(entity, 'noforwards', False) or getattr(msg, 'noforwards', False):
+        return False
+    if str(getattr(entity, 'username', '')).lower() != OWNED_FEED_SOURCE.lower():
+        return False
+    text = msg.raw_text or ''
+    if text == DOWNLOAD_TEXT:
+        return False
+    date = getattr(getattr(msg, 'fwd_from', None), 'date', None) or msg.date
+    changed = capture_for_app(db, OWNED_FEED_SOURCE, entity.id, msg.id, text, date)
+    # Кнопки — ответ бота на новую подходящую публикацию, не изменение чужого поста.
+    # Исторический backfill не запускает массовые ответы.
+    if changed and date and date >= utcnow()-timedelta(minutes=10) and phones(text) and (
+            ROUTE.search(text) or (re.search(r'(?i)погрузка\s*:', text) and re.search(r'(?i)выгрузка\s*:', text))):
+        from telethon.utils import get_peer_id
+        key = f'owned_cta:{get_peer_id(entity)}:{msg.id}'
+        with db:
+            db.execute('INSERT OR IGNORE INTO metadata VALUES(?,?)', (key, json.dumps({
+                'status': 'pending', 'chat_id': get_peer_id(entity), 'message_id': msg.id,
+                'created_at': time.time(),
+            })))
+    return changed
+
+
+async def collect_owned(reader, db):
+    if settings().get('OWNED_FEED_ENABLED', 'false').lower() != 'true':
+        return
+    try:
+        entity = await reader.get_entity(OWNED_FEED_SOURCE)
+        if str(getattr(entity, 'username', '')).lower() != OWNED_FEED_SOURCE.lower():
+            raise RuntimeError('OWNED_SOURCE_IDENTITY_MISMATCH')
+        row = db.execute('SELECT message_id FROM app_cursors WHERE source=?', (OWNED_FEED_SOURCE,)).fetchone()
+        high = row[0] if row else 0
+        async for msg in reader.iter_messages(entity, limit=25):
+            capture_owned_message(db, entity, msg)
+        kwargs = {'min_id': high, 'reverse': True, 'limit': 200} if high else {
+            'offset_date': utcnow()-timedelta(hours=24), 'reverse': True, 'limit': 200}
+        async for msg in reader.iter_messages(entity, **kwargs):
+            capture_owned_message(db, entity, msg)
+            with db:
+                db.execute('INSERT INTO app_cursors VALUES(?,?) ON CONFLICT(source) DO UPDATE SET message_id=max(message_id,excluded.message_id)',
+                           (OWNED_FEED_SOURCE, msg.id))
+        # Revisit known posts throughout the active window, not just latest25.
+        # The durable rotating cursor survives restart; each scan is bounded.
+        key = 'owned_reconcile_cursor'
+        cursor = int((db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone() or [0])[0])
+        query = ('SELECT id,source_message FROM app_messages WHERE lower(source)=? '
+                 'AND source_id=? AND source_date>=? AND id>? ORDER BY id LIMIT 50')
+        args = (OWNED_FEED_SOURCE.lower(), entity.id, time.time()-120*3600)
+        known = db.execute(query, (*args, cursor)).fetchall()
+        if not known:
+            known = db.execute(query, (*args, 0)).fetchall()
+        if known:
+            ids = [row[1] for row in known]
+            messages = await reader.get_messages(entity, ids=ids)
+            if len(messages) != len(ids) or any(msg is not None and msg.id != ident
+                                               for msg, ident in zip(messages, ids)):
+                raise RuntimeError('OWNED_RECONCILE_RESPONSE_MISMATCH')
+            for msg in messages:
+                # An absent/inaccessible message is not proof of deletion.
+                if msg is not None:
+                    capture_owned_message(db, entity, msg)
+            with db:
+                db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', (key, str(known[-1][0])))
+        with db:
+            db.execute('INSERT OR REPLACE INTO source_health VALUES(?,?,NULL)', (OWNED_FEED_SOURCE, time.time()))
+    except Exception as exc:
+        with db:
+            db.execute('INSERT OR REPLACE INTO source_health VALUES(?,?,?)', (OWNED_FEED_SOURCE, time.time(), type(exc).__name__))
+        LOG.warning('owned_source_unavailable type=%s', type(exc).__name__)
+
+
+class BotReplyRejected(Exception):
+    def __init__(self, code, retry_after=0):
+        self.code = code
+        self.retry_after = retry_after
+        super().__init__('bot_reply_rejected')
+
+
+def _send_download_reply(token, payload):
+    request = urllib.request.Request('https://api.telegram.org/bot'+token+'/sendMessage',
+        data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            body = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read(10000))
+            delay = max(1, int(body.get('parameters', {}).get('retry_after', 60)))
+        except (ValueError, TypeError):
+            delay = 60
+        raise BotReplyRejected(exc.code, delay) from None
+    if not body.get('ok'):
+        raise BotReplyRejected(body.get('error_code', 400), body.get('parameters', {}).get('retry_after', 60))
+    if not body.get('ok') or not body.get('result', {}).get('message_id'):
+        raise ValueError('invalid_bot_ack')
+    return body['result']['message_id']
+
+
+async def owned_download_tick(db, cfg, sender=None):
+    if (cfg.get('OWNED_FEED_ENABLED', 'false').lower() != 'true'
+            or cfg.get('OWNED_TELEGRAM_CTA_ENABLED', 'false').lower() != 'true'
+            or not cfg.get('TELEGRAM_BOT_TOKEN')):
+        return
+    pause = db.execute("SELECT value FROM metadata WHERE key='owned_cta_pause_until'").fetchone()
+    if pause and time.time() < float(pause[0]):
+        return
+    # Один bot request за цикл. Не повторять неизвестный исход отправки вслепую.
+    row = db.execute("""SELECT key,value FROM metadata WHERE key LIKE 'owned_cta:%'
+        AND json_extract(value,'$.status')='pending'
+        ORDER BY json_extract(value,'$.created_at'),key LIMIT 1""").fetchone()
+    if row is None:
+        return
+    state = json.loads(row['value'])
+    if state['created_at'] < time.time()-24*3600:
+        state['status'] = 'expired'
+    else:
+        state['status'] = 'sending'
+    with db:
+        db.execute('UPDATE metadata SET value=? WHERE key=?', (json.dumps(state), row['key']))
+    if state['status'] == 'expired':
+        return
+    payload = {'chat_id': state['chat_id'], 'text': DOWNLOAD_TEXT, 'disable_notification': True,
+               'reply_parameters': {'message_id': state['message_id'], 'allow_sending_without_reply': False},
+               'reply_markup': DOWNLOAD_BUTTONS}
+    try:
+        state['reply_message_id'] = await asyncio.to_thread(sender or _send_download_reply, cfg['TELEGRAM_BOT_TOKEN'], payload)
+        state['status'] = 'sent'
+    except BotReplyRejected as exc:
+        state['status'] = 'pending' if exc.code == 429 else 'rejected'
+        state['reason'] = f'http_{exc.code}'
+        with db:
+            db.execute("INSERT OR REPLACE INTO metadata VALUES('owned_cta_pause_until',?)",
+                       (str(time.time()+max(1, exc.retry_after)),))
+    except Exception as exc:
+        # Ошибка не останавливает приём. Секрет/текст исключения не логируются.
+        state['status'] = 'uncertain'
+        state['reason'] = type(exc).__name__
+        LOG.warning('owned_download_reply_unconfirmed type=%s', type(exc).__name__)
+    with db:
+        db.execute('UPDATE metadata SET value=? WHERE key=?', (json.dumps(state), row['key']))
 
 
 def _secure_database_files(path):
@@ -191,6 +337,31 @@ def database(path=None):
         CREATE TABLE IF NOT EXISTS prior (message_id INTEGER PRIMARY KEY,text TEXT NOT NULL,published_date TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """)
+    # Keep prior Telegram output history, but scope the active deduplication
+    # window and counters to the configured destination. The first migration
+    # archives the old group queue/history and replays only still-fresh items.
+    destination = db.execute("SELECT value FROM metadata WHERE key='destination_name'").fetchone()
+    if destination is None:
+        prior_count = db.execute("SELECT count(*) FROM prior").fetchone()[0]
+        queue_count = db.execute("SELECT count(*) FROM queue").fetchone()[0]
+        with db:
+            if prior_count:
+                db.execute("ALTER TABLE prior RENAME TO prior_group_archive_20261025")
+                db.execute("CREATE TABLE prior (message_id INTEGER PRIMARY KEY,text TEXT NOT NULL,published_date TEXT NOT NULL)")
+            if queue_count:
+                db.execute("CREATE TABLE IF NOT EXISTS queue_group_archive_20261025 AS SELECT * FROM queue")
+                cutoff = time.time() - 24 * 60 * 60
+                db.execute("""UPDATE queue SET status='queued',random_id=NULL,destination_message=NULL,
+                  published_date=NULL,published_at=NULL,reason=NULL
+                  WHERE status IN ('published','sending','uncertain') AND source_date>=?""", (cutoff,))
+                db.execute("""UPDATE queue SET status='expired',reason='older_than_24_hours'
+                  WHERE status IN ('sending','uncertain') AND source_date<?""", (cutoff,))
+            db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_name',?)", (DESTINATION_NAME,))
+            db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_started_at',?)", (str(time.time()),))
+    elif destination[0] != DESTINATION_NAME:
+        raise RuntimeError("DESTINATION_CHANGE_REQUIRES_MANUAL_MIGRATION")
+    with contextlib.suppress(OSError):
+        os.chmod(path, 0o600)
     return db
 
 
@@ -198,8 +369,9 @@ def enqueue(db, source, source_id, message_id, text, source_date, now=None):
     if db.execute("SELECT 1 FROM queue WHERE source_id=? AND source_message=?", (source_id, message_id)).fetchone():
         return False
     contact = phones(text)
-    # Include historical channel text and all previously accepted candidates.
-    previous = db.execute("SELECT text FROM prior UNION ALL SELECT text FROM queue WHERE status NOT IN ('expired','rejected')").fetchall()
+    # Compare exact copies only against the active destination and its queue.
+    started = destination_started_at(db)
+    previous = db.execute("SELECT text FROM prior UNION ALL SELECT text FROM queue WHERE status NOT IN ('expired','rejected') AND (published_at IS NULL OR published_at>=?)", (started,)).fetchall()
     if any(similar(text, row[0]) for row in previous):
         return False
     with db:
@@ -208,24 +380,40 @@ def enqueue(db, source, source_id, message_id, text, source_date, now=None):
     return True
 
 
+def destination_started_at(db):
+    row = db.execute("SELECT value FROM metadata WHERE key='destination_started_at'").fetchone()
+    return float(row[0]) if row else 0.0
+
+
 def day_count(db, date):
-    n = db.execute("SELECT count(*) FROM queue WHERE status IN ('published','sending','uncertain') AND published_date=?", (date,)).fetchone()[0]
+    started = destination_started_at(db)
+    n = db.execute("SELECT count(*) FROM queue WHERE status IN ('published','sending','uncertain') AND published_date=? AND published_at>=?", (date,started)).fetchone()[0]
     n += db.execute("SELECT count(*) FROM prior WHERE published_date=?", (date,)).fetchone()[0]
     return n
 
 
+def publish_interval_seconds():
+    try:
+        return max(1.0, float(settings().get("TELEGRAM_PUBLISH_INTERVAL_SECONDS", "15")))
+    except (TypeError, ValueError):
+        return 15.0
+
+
 def due(db, now=None):
     now = (now or utcnow()).astimezone(TZ)
-    last = db.execute("SELECT max(published_at) FROM queue WHERE status IN ('published','sending','uncertain')").fetchone()[0]
+    started = destination_started_at(db)
+    last = db.execute("SELECT max(published_at) FROM queue WHERE status IN ('published','sending','uncertain') AND published_at>=?", (started,)).fetchone()[0]
     pause = float((db.execute("SELECT value FROM metadata WHERE key='publish_after'").fetchone() or [0])[0])
-    return now.timestamp() >= pause and (last is None or now.timestamp() - last >= 60)
+    interval = publish_interval_seconds()
+    return now.timestamp() >= pause and (last is None or now.timestamp() - last >= interval)
 
 
 def reserve(db, now=None):
     now = now or utcnow()
     db.execute("BEGIN IMMEDIATE")
     try:
-        if db.execute("SELECT 1 FROM queue WHERE status IN ('sending','uncertain')").fetchone() or not due(db, now):
+        started = destination_started_at(db)
+        if db.execute("SELECT 1 FROM queue WHERE status IN ('sending','uncertain') AND published_at>=?", (started,)).fetchone() or not due(db, now):
             db.rollback()
             return None
         db.execute("UPDATE queue SET status='expired',reason='older_than_24_hours' WHERE status='queued' AND source_date<?", ((now - timedelta(hours=24)).timestamp(),))
@@ -259,17 +447,19 @@ async def make_reader(cfg):
 
 async def sync_prior(reader, db, target):
     # History before publishing is mandatory: it also catches manual posts.
-    last = db.execute("SELECT value FROM metadata WHERE key='destination_cursor'").fetchone()
+    cursor_key = f"destination_cursor:{DESTINATION_NAME}"
+    last = db.execute("SELECT value FROM metadata WHERE key=?", (cursor_key,)).fetchone()
     kwargs = {"min_id": int(last[0])} if last else {"limit": 300}
     messages = [m async for m in reader.iter_messages(target, **kwargs)]
-    own = {row[0] for row in db.execute("SELECT destination_message FROM queue WHERE status='published'")}
+    started = destination_started_at(db)
+    own = {row[0] for row in db.execute("SELECT destination_message FROM queue WHERE status='published' AND published_at>=?", (started,))}
     with db:
         for msg in messages:
             text = msg.raw_text or ""
             if phones(text) and msg.id not in own:
                 db.execute("INSERT OR IGNORE INTO prior VALUES(?,?,?)", (msg.id,text,msg.date.astimezone(TZ).date().isoformat()))
         high = max([m.id for m in messages] + [int(last[0]) if last else 0])
-        db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_cursor',?)", (str(high),))
+        db.execute("INSERT OR REPLACE INTO metadata VALUES(?,?)", (cursor_key,str(high)))
 
 
 APP_HISTORY_PAGE = 200
@@ -315,6 +505,7 @@ async def collect_app_history(reader, db, source, entity):
 
 async def collect(reader, db):
     from telethon.errors import FloodWaitError
+    await collect_owned(reader, db)
     report = {}
     pause = float((db.execute("SELECT value FROM metadata WHERE key='scan_after'").fetchone() or [0])[0])
     if time.time() < pause:
@@ -328,8 +519,7 @@ async def collect(reader, db):
                 continue
             legacy = db.execute("SELECT message_id FROM cursors WHERE source=?", (source,)).fetchone()
             app = db.execute("SELECT message_id FROM app_cursors WHERE source=?", (source,)).fetchone()
-            high = (min(legacy[0] if legacy else 0, app[0] if app else 0)
-                    if source in SOURCES else (app[0] if app else 0))
+            high = min(legacy[0] if legacy else 0, app[0] if app else 0)
             added = seen = captured = 0
             legacy_high = legacy[0] if legacy else 0
             # Свежая голова доступна приложению до исторического catch-up.
@@ -346,11 +536,11 @@ async def collect(reader, db):
                 text = msg.raw_text or ""
                 protected = bool(getattr(msg, "noforwards", False))
                 captured += capture_for_app(db,source,entity.id,msg.id,text,msg.date,protected)
-                if source in SOURCES and msg.id>legacy_high and eligible(text,msg.date,protected):
+                if msg.id>legacy_high and eligible(text,msg.date,protected):
                     added += enqueue(db,source,entity.id,msg.id,text,msg.date)
                 # Обе записи durable до продвижения курсора; хронологические страницы.
                 with db:
-                    for table in (("cursors", "app_cursors") if source in SOURCES else ("app_cursors",)):
+                    for table in ("cursors", "app_cursors"):
                         db.execute(f"INSERT INTO {table} VALUES(?,?) ON CONFLICT(source) DO UPDATE SET message_id=max(message_id,excluded.message_id)",(source,msg.id))
             with db:
                 db.execute("INSERT OR IGNORE INTO app_cursors VALUES(?,?)",(source,high))
@@ -476,13 +666,23 @@ async def reconcile(reader, db, target):
 
 
 def status(db):
-    today=datetime.now(TZ).date().isoformat()
-    confirmed=db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_date=?",(today,)).fetchone()[0]
-    confirmed+=db.execute("SELECT count(*) FROM prior WHERE published_date=?",(today,)).fetchone()[0]
-    return {"destination":DESTINATION_NAME,"sources":list(SOURCES),"timezone":"Asia/Almaty",
+    local_now = datetime.now(TZ)
+    today = local_now.date().isoformat()
+    started = destination_started_at(db)
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    confirmed = db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_date=? AND published_at>=?", (today,started)).fetchone()[0]
+    confirmed += db.execute("SELECT count(*) FROM prior WHERE published_date=?", (today,)).fetchone()[0]
+    queue = dict(db.execute("""SELECT status,count(*) FROM queue WHERE
+      status='queued' OR (status IN ('published','sending','uncertain','rejected') AND published_at>=?)
+      OR (status='expired' AND source_date>=?) GROUP BY status""", (started,started-24*60*60)))
+    app_by_source = dict(db.execute("SELECT source,count(*) FROM app_messages WHERE received_at>=? GROUP BY source", (day_start,)))
+    source_health = {row[0]: {"checked_at":row[1],"error":row[2]} for row in db.execute("SELECT source,checked_at,error FROM source_health")}
+    app_received = sum(app_by_source.values())
+    app_updated = db.execute("SELECT count(*) FROM app_messages WHERE updated_at>=? AND received_at<?", (day_start,day_start)).fetchone()[0]
+    return {"destination":DESTINATION_NAME,"sources":list(app_sources()),"source_health":source_health,"timezone":"Asia/Almaty",
             "today":today,"published_today":confirmed,"budget_used_today":day_count(db,today),
-            "publish_interval_seconds":60,"daily_limit":None,
-            "queue":dict(db.execute("SELECT status,count(*) FROM queue GROUP BY status")),
+            "app_messages_received_today":app_received,"app_messages_updated_today":app_updated,"app_by_source_today":app_by_source,
+            "publish_interval_seconds":publish_interval_seconds(),"daily_limit":None,"queue":queue,
             "last_tick":(db.execute("SELECT value FROM metadata WHERE key='last_tick'").fetchone() or [None])[0]}
 
 
@@ -525,11 +725,24 @@ async def run(once=False, check=False):
                 allowed[entity.id] = source
         except Exception as exc:
             LOG.warning("source_unavailable source=%s type=%s",source,type(exc).__name__)
+    owned_entity = None
+    if cfg.get('OWNED_FEED_ENABLED', 'false').lower() == 'true':
+        try:
+            candidate = await reader.get_entity(OWNED_FEED_SOURCE)
+            if str(getattr(candidate, 'username', '')).lower() == OWNED_FEED_SOURCE.lower():
+                owned_entity = candidate
+        except Exception as exc:
+            LOG.warning('owned_source_unavailable type=%s', type(exc).__name__)
     async def incoming(event):
         msg = event.message
         ident = getattr(event,"chat_id",None)
         # Telethon использует marked channel id: -100 + исходный id.
         raw_id = int(str(ident)[4:]) if str(ident).startswith("-100") else abs(ident or 0)
+        if owned_entity is not None:
+            from telethon.utils import get_peer_id
+            if ident == get_peer_id(owned_entity):
+                capture_owned_message(db, owned_entity, msg)
+                return
         source = allowed.get(raw_id)
         if source:
             capture_for_app(db,source,raw_id,msg.id,msg.raw_text or "",msg.date,bool(getattr(msg,"noforwards",False)))
@@ -543,23 +756,43 @@ async def run(once=False, check=False):
                 raise RuntimeError("DESTINATION_ADMIN_REQUIRED")
             print(json.dumps({"authorized":True,"destination_admin":True,"destination":DESTINATION_NAME}))
             return
-        last_scan = 0
-        telegram_state = {}
-        while True:
-            if time.monotonic()-last_scan >= 60:
-                last_scan=time.monotonic()
-                await collect(reader,db)
-            if cfg.get("PUBLISH_ENABLED","false").lower()=="true":
-                await telegram_tick(reader,db,telegram_state)
-            with db:
-                db.execute("INSERT OR REPLACE INTO metadata VALUES('last_tick',?)",(utcnow().isoformat(),))
-            if once:
-                print(json.dumps(status(db),ensure_ascii=False))
-                return
-            await asyncio.sleep(15)
+        await run_cycles(reader, db, cfg, once=once)
     finally:
         await reader.disconnect()
         db.close()
+
+
+async def run_cycles(reader, db, cfg, once=False):
+    """Не более одного обхода; долгое collect не блокирует публикатор и heartbeat."""
+    scan_task = None
+    last_scan = float('-inf')
+    telegram_state = {}
+    try:
+        while True:
+            if scan_task is not None and scan_task.done():
+                try:
+                    scan_task.result()
+                except Exception as exc:
+                    LOG.warning('source_scan_failed type=%s', type(exc).__name__)
+                scan_task = None
+            if scan_task is None and time.monotonic()-last_scan >= 60:
+                last_scan = time.monotonic()
+                scan_task = asyncio.create_task(collect(reader, db))
+            if cfg.get('PUBLISH_ENABLED', 'false').lower() == 'true':
+                await telegram_tick(reader, db, telegram_state)
+            await owned_download_tick(db, cfg)
+            with db:
+                db.execute("INSERT OR REPLACE INTO metadata VALUES('last_tick',?)", (utcnow().isoformat(),))
+            if once:
+                await scan_task
+                print(json.dumps(status(db), ensure_ascii=False))
+                return
+            await asyncio.sleep(5)
+    finally:
+        if scan_task is not None:
+            scan_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await scan_task
 
 
 def main():

@@ -167,3 +167,57 @@ def test_closure_requires_request_context_not_conditions():
     for status in ['Заявка закрыта', 'Груз закрыт', 'Объявление снято', 'Закрыто', 'Уже нашли машину', 'Уже нашли груз', 'Listing is closed', 'Closed', 'Статус: закрыто', 'Status: closed']:
         text = 'Алматы → Москва\nНужен тент, груз готов\n' + status
         assert map_selected_message(_queue(text))['status'] == 'closed', status
+
+
+
+def test_explicit_machine_offer_with_directory_verified_compact_route_is_active():
+    text = "Есть машина\nХоргос-Алматы\n88 куб\n+77002668251\nТент"
+    item = map_selected_message(_queue(text, phones='["+77002668251"]'))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "active"
+    assert item["origin"] == "Хоргос" and item["destination"] == "Алматы"
+    assert item["volume"] == 88
+    assert item["body_types"] == ["tent"]
+    assert item["price_state"] == "unknown"
+    assert item["contacts"] == ["+77002668251"]
+    assert item["original_text"] == text
+
+
+def test_explicit_machine_offer_does_not_split_hyphenated_city_names():
+    for place in ("Усть-Каменогорск", "Санкт-Петербург", "Петропавловск-Камчатский", "Санкт-Петербург-Москва"):
+        item = map_selected_message(_queue("Есть машина\n" + place))
+        assert item["kind"] == "vehicle"
+        assert item["status"] == "review"
+        assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_and_explicit_routes_in_same_message_stay_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nАлматы → Москва\n88 куб"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_and_labelled_routes_in_same_message_stay_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nОткуда: Астана\nКуда: Бишкек\n88 куб"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_route_with_partial_label_stays_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nОткуда: Астана"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None
+
+
+def test_compact_route_with_unpunctuated_partial_label_stays_unattributed_for_review():
+    text = "Есть машина\nХоргос-Алматы\nОткуда Астана"
+    item = map_selected_message(_queue(text))
+    assert item["kind"] == "vehicle"
+    assert item["status"] == "review"
+    assert item["origin"] is None and item["destination"] is None

@@ -24,6 +24,9 @@ test('monitor accepts the current upstream state while no fixed release exists',
 
 test('monitor requires removal after a published fixed release or merge', () => {
   assert.equal(isNewerVersion('3.0.4', '3.0.3'), true);
+  assert.equal(isNewerVersion('4.0.0', '3.99.99'), true);
+  assert.equal(isNewerVersion('2.99.99', '3.0.3'), false);
+  assert.equal(isNewerVersion('3.0.3', '3.0.3'), false);
   assert.equal(evaluateUpstreamStatus({
     latestVersion: '3.0.4',
     pullRequest: openPullRequest,
