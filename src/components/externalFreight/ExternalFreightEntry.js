@@ -54,8 +54,8 @@ export default function ExternalFreightEntry(props) {
   const labels = {
     RU: role === 'driver' ? 'Лента грузов' : 'Лента машин',
     KK: role === 'driver' ? 'Жүк лентасы' : 'Көлік лентасы',
-    ZH: role === 'driver' ? '货源信息' : '空车信息',
-    EN: role === 'driver' ? 'Cargo feed' : 'Available trucks',
+    ZH: role === 'driver' ? '货源信息' : '车辆信息',
+    EN: role === 'driver' ? 'Cargo feed' : 'Truck feed',
   };
   const palette = ceramic ? ceramicColors : colors;
   const count = result?.ownerKey === ownerKey ? result.count : null;
