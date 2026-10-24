@@ -423,7 +423,7 @@ def status(db):
     source_health = {row[0]: {"checked_at":row[1],"error":row[2]} for row in db.execute("SELECT source,checked_at,error FROM source_health")}
     app_received = sum(app_by_source.values())
     app_updated = db.execute("SELECT count(*) FROM app_messages WHERE updated_at>=? AND received_at<?", (day_start,day_start)).fetchone()[0]
-    return {"destination":DESTINATION_NAME,"sources":list(app_sources()),"source_health":source_health,"timezone":"Asia/Almaty",
+    return {"mode":"incoming_only","publication_enabled":False,"sources":list(app_sources()),"source_health":source_health,"timezone":"Asia/Almaty",
             "today":today,"published_today":confirmed,"budget_used_today":day_count(db,today),
             "app_messages_received_today":app_received,"app_messages_updated_today":app_updated,"app_by_source_today":app_by_source,
             "publish_interval_seconds":publish_interval_seconds(),"daily_limit":None,"queue":queue,
