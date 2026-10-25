@@ -128,14 +128,14 @@ test('TestFlight uses a protected exact-SHA QA2 trigger and never the production
   assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = qa2/integration-candidate'));
   assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha }}'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
-  assert.ok(testflightWorkflow.includes('pulls/602'));
+  assert.ok(testflightWorkflow.includes('pulls/605'));
   assert.ok(testflightWorkflow.includes(".merge_commit_sha' <<<\"$PR_JSON\")"));
-  assert.doesNotMatch(testflightWorkflow, /pulls\/602\/reviews|Current independent approval/);
+  assert.doesNotMatch(testflightWorkflow, /pulls\/605\/reviews|Current independent approval/);
   assert.ok(testflightWorkflow.includes('commits/$PR_HEAD_SHA/check-runs'));
   assert.ok(testflightWorkflow.includes("'quality-gate / Backend tests'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Frontend tests, lint, and build'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Mandatory web E2E subset'"));
-  assert.doesNotMatch(workflow, /pulls\/602\/reviews|Current independent approval/);
+  assert.doesNotMatch(workflow, /pulls\/605\/reviews|Current independent approval/);
   assert.ok(!testflightWorkflow.includes("'qa2-final-testflight-*'"));
   assert.ok(!testflightWorkflow.includes('push:\n    branches:'));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
@@ -158,7 +158,7 @@ test('Expo SDK 57 native iOS project uses the required deployment target and arc
 test('Play workflow can build a signed AAB without submitting and records release identity', () => {
   assert.ok(playWorkflow.includes('submit_to_play:'));
   assert.ok(playWorkflow.includes('QA2 internal candidates may only be built from the reviewed integration-candidate branch'));
-  assert.doesNotMatch(playWorkflow, /pulls\/602\/reviews|Current independent approval/);
+  assert.doesNotMatch(playWorkflow, /pulls\/605\/reviews|Current independent approval/);
   assert.ok(playWorkflow.includes("github.event_name != 'workflow_dispatch' || inputs.submit_to_play"));
   assert.ok(playWorkflow.includes('uses: actions/upload-artifact@v4'));
   assert.ok(playWorkflow.includes('AAB SHA-256=${aab_sha}'));
