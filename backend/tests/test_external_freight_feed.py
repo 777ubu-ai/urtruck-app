@@ -134,7 +134,7 @@ def test_bulk_cargo_wording_is_not_misclassified_as_a_free_vehicle():
     assert _import(mixed).json()["results"][0]["status"] == "review"
 
 
-def test_replay_and_edit_preserve_original_expiry_and_identity():
+def test_replay_and_edit_preserve_original_publication_and_identity_with_seven_day_expiry():
     published = datetime.now(timezone.utc) - timedelta(hours=20)
     original = _record(source="replay", message="1", published=published)
     first = _import(original).json()["results"][0]
@@ -147,10 +147,29 @@ def test_replay_and_edit_preserve_original_expiry_and_identity():
     with get_conn() as c:
         row = c.execute("SELECT id,expires_at,ingested_at,source_revision FROM external_freight_items WHERE source_id='replay' AND source_message_id='1'").fetchone()
     assert second["id"] == first["id"] == third["id"] == row["id"]
-    assert row["expires_at"] == before
+    assert row["expires_at"] == (published + timedelta(days=7)).isoformat()
     assert row["ingested_at"] == before_ingested_at
     assert row["source_revision"] != before_revision
     assert second["result"] == "replayed" and third["result"] == "updated"
+
+
+def test_replay_extends_legacy_expiry_from_original_publication():
+    published = datetime.now(timezone.utc) - timedelta(days=6)
+    record = _record(source="retention-migration", message="1", published=published)
+    first = _import(record).json()["results"][0]
+    old_expiry = (published + timedelta(hours=120)).isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET expires_at=?,status='expired' WHERE id=?", (old_expiry, first["id"]))
+
+    replay = _import(record).json()["results"][0]
+    with get_conn() as c:
+        row = c.execute("SELECT id,source_published_at,expires_at,status FROM external_freight_items WHERE id=?", (first["id"],)).fetchone()
+
+    assert replay["id"] == first["id"] == row["id"]
+    assert replay["result"] == "updated"
+    assert row["source_published_at"] == published.isoformat()
+    assert row["expires_at"] == (published + timedelta(days=7)).isoformat()
+    assert row["status"] == "active"
 
 
 def test_expired_rows_are_hidden_without_cleanup_job():
