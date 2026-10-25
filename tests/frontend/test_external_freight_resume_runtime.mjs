@@ -149,10 +149,30 @@ for (const role of ['driver', 'client']) test(`${role}: реальный env и 
   description.props.actions.props.onPress(); await h.flush();
   // Проверяем настоящее состояние экрана после нажатия, а не mock payload.
   const shareModal = h.shareModal();
-  assert.equal(shareModal.props.url, 'https://urtruck.kz/');
+  assert.equal(shareModal.props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
+  assert.match(shareModal.props.shareText, /Android: https:\/\/play\.google\.com/);
+  assert.match(shareModal.props.shareText, /iPhone: https:\/\/apps\.apple\.com/);
+  assert.ok(!shareModal.props.shareText.includes('https://urtruck.kz/'));
   assert.ok(shareModal.props.visible);
   shareModal.props.onClose(); await h.flush();
   assert.equal(h.shareModal(), undefined);
+});
+
+for (const role of ['driver', 'client']) test(`${role}: панель фильтров отделена от ленты, ввод и отмена сохраняют поведение`, async () => {
+  const h = harness({ role }); await h.flush();
+  h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+  const sheet = h.node('external-feed-filter-sheet');
+  assert.equal(sheet.props.accessibilityViewIsModal, true);
+  assert.equal(sheet.props.style.borderWidth, 1);
+  assert.ok(sheet.props.style.shadowOpacity > 0);
+  assert.equal(sheet.props.style.elevation, 20);
+  const input = h.node('external-feed-location-search');
+  assert.equal(input.props.autoFocus, true);
+  assert.equal(input.props.style.borderWidth, 2);
+  input.props.onChangeText('Алматы'); await h.flush();
+  assert.equal(h.node('external-feed-location-search').props.value, 'Алматы');
+  h.pressLabel('Отмена'); await h.flush();
+  assert.equal(h.node('external-feed-filter-sheet'), undefined);
 });
 for (const role of ['driver', 'client']) test(`${role}: телефоны только копируются, звонилки нет`, async () => {
   const item = { id: 'phone', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
@@ -190,7 +210,7 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   assert.deepEqual(h.opened, ['https://t.me/UrTruck_obyavleniya/44']);
   const actions = nodes.find(n => n.type === 'Description').props.actions;
   actions.props.onPress(); await h.flush();
-  assert.equal(h.shareModal().props.url, 'https://urtruck.kz/');
+  assert.equal(h.shareModal().props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
   assert.equal(nodes.find(n => n.props.testID === 'external-feed-source-own'), undefined);
   assert.ok(nodes.find(n => n.type === 'Description').props.actions);
