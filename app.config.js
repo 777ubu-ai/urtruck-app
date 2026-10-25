@@ -45,6 +45,7 @@ const sourceSha = process.env.URTRUCK_SOURCE_SHA || process.env.GITHUB_SHA || ''
 if (sourceSha && !/^[0-9a-f]{40}$/.test(sourceSha)) throw new Error('Неверный SHA исходника сборки');
 
 const resolvedApiUrl = isProductionBuild ? PRODUCTION_API_URL : apiOverride;
+const externalFreightFeedEnabled = String(process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED || '').toLowerCase() === 'true';
 
 // QA2 must never silently reuse the production API. A missing or production
 // endpoint makes the build fail before any test account can reach real data.
@@ -74,6 +75,7 @@ module.exports = ({ config }) => {
     ...(resolvedApiUrl ? { urtruckApiUrl: resolvedApiUrl } : {}),
     ...(sourceSha ? { urtruckSourceSha: sourceSha } : {}),
     urtruckBuildFlavor: isQa2 ? 'qa2' : 'production',
+    urtruckExternalFreightFeedEnabled: externalFreightFeedEnabled,
   },
   android: {
     ...androidConfig,
