@@ -262,7 +262,8 @@ jobs:
         # workflow. Новый код = число секунд с 2020-01-01 UTC. Он глобально
         # растёт независимо от GitHub run number и остаётся < 2_100_000_000
         # примерно до 2086 года. Concurrency выше сериализует Play jobs, поэтому
-        # повторный/manual запуск получает следующую секунду, а не тот же код.
+        # Для QA2 Internal владелец выбрал последовательный код: проверенный
+        # максимум магазина + 1. В production прежний алгоритм сохраняется.
         run: |
           set -euo pipefail
           base_epoch=1577836800
@@ -273,14 +274,14 @@ jobs:
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
-            if [ "$version_code" -le "$installed_version_code" ]; then version_code=$((installed_version_code + 1)); fi
+            version_code=$((installed_version_code + 1))
           fi
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
             exit 1
           fi
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
-          echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
+          echo "Android versionCode=${version_code} (greater than verified baseline ${installed_version_code})"
 
       - name: Validate Play release inputs
         env:
