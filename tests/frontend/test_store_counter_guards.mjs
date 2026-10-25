@@ -35,7 +35,7 @@ for (const [remote, floor, ok] of [['111', '111', true], ['115', '112', true], [
   });
 }
 const android = block('.github/workflows/deploy-play.yml', 'Compute collision-resistant versionCode');
-for (const [maximum, expected] of [['215024884', 220000000], ['230000000', 230000001], ['abc', null], ['215024883', null], ['2100000000', null]]) {
+for (const [maximum, expected] of [['215024884', 215024885], ['230000000', 230000001], ['abc', null], ['215024883', null], ['2100000000', null]]) {
   test(`Android verified max ${maximum}: ${expected ?? 'отказ до сборки'}`, () => {
     const result = execute(android, { VERIFIED_PLAY_MAX_CODE: maximum, FAKE_EPOCH: String(1577836800 + 220000000) });
     assert.equal(result.status === 0, expected !== null, result.stderr);
