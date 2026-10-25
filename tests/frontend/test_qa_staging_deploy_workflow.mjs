@@ -87,6 +87,7 @@ test('QA2 backup separately snapshots and verifies the permanent carrier directo
   assert.match(workflow, /EXTERNAL_CARRIER_DIRECTORY_DB/);
   assert.match(workflow, /qa_root = Path\('\/home\/ubuntu\/urtruck-qa2'\)\.resolve\(\)\s+qa_backend = qa_root \/ 'backend'/);
   assert.match(workflow, /def configured_path\(name, fallback, relative_to=qa_root\):[\s\S]*?result = relative_to \/ result/);
+  assert.match(workflow, /feed = configured_path\([\s\S]*?relative_to=qa_backend/);
   assert.match(workflow, /carrier_db = configured_path\([\s\S]*?relative_to=qa_backend/);
   assert.match(workflow, /carrier-directory\.sqlite3/);
   assert.match(workflow, /carrier-directory-restore-probe\.sqlite3/);

@@ -270,7 +270,12 @@ jobs:
               if not result.is_absolute():
                   result = relative_to / result
               return result.resolve()
-          feed = configured_path('EXTERNAL_FREIGHT_DB_PATH', source_path.with_name('external-freight.sqlite3'))
+          # Both external SQLite paths are resolved from the backend process CWD at runtime.
+          feed = configured_path(
+              'EXTERNAL_FREIGHT_DB_PATH',
+              source_path.with_name('external-freight.sqlite3'),
+              relative_to=qa_backend,
+          )
           if qa_root not in feed.parents or feed == source_path or (feed.exists() and feed.samefile(source_path)):
               raise SystemExit('QA_EXTERNAL_FEED_DB_ISOLATION_FAILED')
           if feed.exists():
