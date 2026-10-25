@@ -82,17 +82,12 @@ jobs:
           test "$(jq -r '.merged' <<<"$PR_JSON")" = true
           test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$QA_SOURCE_SHA"
           PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
-          PR_AUTHOR="$(jq -r '.user.login' <<<"$PR_JSON")"
           git fetch origin "$PR_HEAD_SHA" --depth=1
           git diff --quiet "$PR_HEAD_SHA" "$QA_SOURCE_SHA" -- || {
             echo '::error::Merged candidate tree differs from the reviewed PR head'
             exit 1
           }
-          REVIEWS_JSON="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100" | jq -s 'add')"
-          APPROVED="$(jq --arg sha "$PR_HEAD_SHA" --arg author "$PR_AUTHOR" \
-            '[.[] | select(.commit_id == $sha and .user.login != $author) | {login: .user.login, state: .state, submitted_at: (.submitted_at // "")}]
-             | sort_by(.submitted_at) | group_by(.login) | map(last) | any(.state == "APPROVED")' <<<"$REVIEWS_JSON")"
-          test "$APPROVED" = true || { echo '::error::Current independent approval of the exact PR head is required'; exit 1; }
+          # Владелец 25.10.2026 разрешил внутренний выпуск без независимого GitHub approval.
           CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
           for CHECK_NAME in \
             'quality-gate / Backend tests' \
