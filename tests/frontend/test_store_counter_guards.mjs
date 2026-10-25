@@ -42,3 +42,9 @@ for (const [maximum, expected] of [['215024884', 220000000], ['230000000', 23000
     if (expected !== null) assert.equal(result.output, `URTRUCK_VERSION_CODE=${expected}\n`);
   });
 }
+
+const playCandidate = block('.github/workflows/deploy-play.yml', 'Prepare reviewed internal candidate identity');
+test('Play rejects QA2 candidate runs from refs other than the reviewed integration branch', () => {
+  const result = execute(playCandidate, { API_ENVIRONMENT_INPUT: 'qa2', GITHUB_REF_NAME: 'main' });
+  assert.notEqual(result.status, 0);
+});

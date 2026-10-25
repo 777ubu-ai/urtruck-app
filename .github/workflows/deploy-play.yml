@@ -140,6 +140,12 @@ jobs:
           VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
         run: |
           set -euo pipefail
+          if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate || {
+              echo '::error::QA2 internal candidates may only be built from the reviewed integration-candidate branch'
+              exit 1
+            }
+          fi
           if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
@@ -162,10 +168,11 @@ jobs:
               echo '::error::Merged candidate tree differs from the reviewed PR head'
               exit 1
             }
-            REVIEWS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100")"
+            REVIEWS_JSON="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100" | jq -s 'add')"
             APPROVED="$(jq --arg sha "$PR_HEAD_SHA" --arg author "$PR_AUTHOR" \
-              '[.[] | select(.commit_id == $sha and .state == "APPROVED" and .user.login != $author)] | length' <<<"$REVIEWS_JSON")"
-            test "$APPROVED" -gt 0 || { echo '::error::Independent approval of the exact PR head is required'; exit 1; }
+              '[.[] | select(.commit_id == $sha and .user.login != $author) | {login: .user.login, state: .state, submitted_at: (.submitted_at // "")}]
+               | sort_by(.submitted_at) | group_by(.login) | map(last) | any(.state == "APPROVED")' <<<"$REVIEWS_JSON")"
+            test "$APPROVED" = true || { echo '::error::Current independent approval of the exact PR head is required'; exit 1; }
             CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
             for CHECK in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
               CONCLUSION="$(jq -r --arg name "$CHECK" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$CHECKS_JSON")"

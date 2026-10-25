@@ -418,10 +418,11 @@ jobs:
             echo '::error::Merged candidate tree differs from the reviewed PR head'
             exit 1
           }
-          reviews="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100")"
+          reviews="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100" | jq -s 'add')"
           approved="$(jq --arg sha "$pr_head" --arg author "$pr_author" \
-            '[.[] | select(.commit_id == $sha and .state == "APPROVED" and .user.login != $author)] | length' <<<"$reviews")"
-          test "$approved" -gt 0 || { echo '::error::Independent approval of the exact PR head is required'; exit 1; }
+            '[.[] | select(.commit_id == $sha and .user.login != $author) | {login: .user.login, state: .state, submitted_at: (.submitted_at // "")}]
+             | sort_by(.submitted_at) | group_by(.login) | map(last) | any(.state == "APPROVED")' <<<"$reviews")"
+          test "$approved" = true || { echo '::error::Current independent approval of the exact PR head is required'; exit 1; }
           checks="$(gh api "repos/$GITHUB_REPOSITORY/commits/$pr_head/check-runs?per_page=100")"
           for check in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
             conclusion="$(jq -r --arg name "$check" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$checks")"

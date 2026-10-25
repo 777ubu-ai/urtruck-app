@@ -203,9 +203,13 @@ class IncomingQueueBridge(PublishedQueueBridge):
         reasons={}
         for row in rows:
             raw=dict(row)
+            deleted_source = self.mode == "owned" and str(raw.get("text", "")).strip().casefold() == "заявка закрыта"
             reason="accepted"
             try:
-                records=self.parse(raw)
+                # A deletion tombstone is control data, not an incomplete listing.
+                # Process it by closing the previous segments below instead of
+                # trying to parse it as a new listing with missing route fields.
+                records=[] if deleted_source else self.parse(raw)
                 identities={record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
@@ -215,6 +219,12 @@ class IncomingQueueBridge(PublishedQueueBridge):
                     previous=json.loads(previous["payload"])
                     if previous["segment_id"] not in identities:
                         previous["status"]="closed"
+                        if deleted_source:
+                            # Tombstone means the source author removed the entire
+                            # post. Do not keep the old segment payload (which may
+                            # contain a phone number and the full original text).
+                            previous["original_text"] = "Исходное объявление удалено"
+                            previous["contacts"] = []
                         enqueued+=bool(self.adapter.enqueue(previous))
                 for record in records:
                     identity="/".join((record["source_id"],record["source_message_id"],record["segment_id"]))

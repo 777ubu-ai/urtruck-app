@@ -373,6 +373,28 @@ def test_deleted_owned_post_is_closed_without_extending_ttl_or_leaking_contact(t
     assert all(not item.get('contacts') and '+77001234567' not in item['original_text'] for item in payloads)
 
 
+def test_deleted_multisegment_owned_post_redacts_every_previous_segment(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, 'telethon.utils', SimpleNamespace(get_peer_id=lambda _: -100123))
+    entity = SimpleNamespace(id=123, username=OWNED_SOURCE, noforwards=False)
+    published = m.utcnow() - m.timedelta(hours=3)
+    text = ('Погрузка: Алматы\nВыгрузка: Москва\nГруз: сыр\n'
+            'Погрузка: Астана\nВыгрузка: Бишкек\nГруз: шины\n+77001234567')
+    assert m.capture_for_app(db, OWNED_SOURCE, entity.id, 45, text, published)
+    assert worker.run_once()['enqueued'] == 2
+
+    assert m.capture_owned_deletion_event(db, entity, -100123, [45], -100123) == 1
+    replay = worker.run_once()
+    assert replay['enqueued'] >= 2, replay
+    with adapter._connect() as state:
+        payloads = [json.loads(row[0]) for row in state.execute(
+            'SELECT payload FROM selected_outbox WHERE source_message_id=?', ('45',))]
+    assert len(payloads) == 2
+    assert all(item['status'] == 'closed' for item in payloads)
+    assert all(item.get('contacts') == [] and item.get('original_text') == 'Исходное объявление удалено' for item in payloads)
+    assert all('+77001234567' not in json.dumps(item, ensure_ascii=False) for item in payloads)
+
+
 def test_edit_between_dedup_seed_and_source_query_cannot_suppress_new_post(tmp_path, monkeypatch):
     m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
     text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
