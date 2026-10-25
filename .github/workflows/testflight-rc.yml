@@ -29,9 +29,8 @@ jobs:
   build-and-upload:
     runs-on: macos-15
     timeout-minutes: 180
-    # Reviewer-gated environment protects credentials and the private TestFlight upload.
-    # The built app still targets QA2; this is not a production backend deploy.
-    environment: production
+    # QA2 deployment-branch protection gates this internal TestFlight candidate.
+    environment: qa2
     env:
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
       GH_TOKEN: ${{ github.token }}
@@ -68,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
-          test "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025
+          test "$GITHUB_REF_NAME" = qa2/integration-candidate
           test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
@@ -76,11 +75,24 @@ jobs:
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
           [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
           test "$URTRUCK_MIN_IOS_BUILD" -ge 111
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/602" --jq '.head.repo.full_name')" = "$GITHUB_REPOSITORY"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/602" --jq '.base.ref')" = qa2/integration-candidate
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/602" --jq '.state')" = open
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/602" --jq '.head.sha')" = "$QA_SOURCE_SHA"
-          CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$QA_SOURCE_SHA/check-runs?per_page=100")"
+          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602")"
+          test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
+          test "$(jq -r '.state' <<<"$PR_JSON")" = closed
+          test "$(jq -r '.merged' <<<"$PR_JSON")" = true
+          test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$QA_SOURCE_SHA"
+          PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
+          PR_AUTHOR="$(jq -r '.user.login' <<<"$PR_JSON")"
+          git fetch origin "$PR_HEAD_SHA" --depth=1
+          git diff --quiet "$PR_HEAD_SHA" "$QA_SOURCE_SHA" -- || {
+            echo '::error::Merged candidate tree differs from the reviewed PR head'
+            exit 1
+          }
+          REVIEWS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100")"
+          APPROVED="$(jq --arg sha "$PR_HEAD_SHA" --arg author "$PR_AUTHOR" \
+            '[.[] | select(.commit_id == $sha and .state == "APPROVED" and .user.login != $author)] | length' <<<"$REVIEWS_JSON")"
+          test "$APPROVED" -gt 0 || { echo '::error::Independent approval of the exact PR head is required'; exit 1; }
+          CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
           for CHECK_NAME in \
             'quality-gate / Backend tests' \
             'quality-gate / Frontend tests, lint, and build' \

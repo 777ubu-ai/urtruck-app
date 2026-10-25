@@ -155,6 +155,41 @@ def capture_owned_message(db, entity, msg):
     return changed
 
 
+def capture_owned_deletion(db, entity, message_id, chat_id):
+    """Сохраняет tombstone удалённого поста, не продлевая его исходный TTL."""
+    from telethon.utils import get_peer_id
+    if not entity or chat_id != get_peer_id(entity):
+        return False
+    row = db.execute(
+        "SELECT source_date FROM app_messages WHERE lower(source)=? AND source_id=? AND source_message=?",
+        (OWNED_FEED_SOURCE.lower(), entity.id, message_id),
+    ).fetchone()
+    if row is None:
+        return False
+    published_at = datetime.fromtimestamp(row[0], timezone.utc)
+    # capture_for_app сохраняет source_date при UPDATE, поэтому удаление
+    # немедленно закрывает карточку, не продлевая 120-часовой срок жизни.
+    changed = capture_for_app(db, OWNED_FEED_SOURCE, entity.id, message_id,
+                              'Заявка закрыта', published_at)
+    cta_key = f'owned_cta:{chat_id}:{message_id}'
+    cta_row = db.execute('SELECT value FROM metadata WHERE key=?', (cta_key,)).fetchone()
+    if cta_row:
+        cta = json.loads(cta_row[0])
+        if cta.get('status') == 'pending':
+            cta['status'] = 'cancelled_source_deleted'
+            with db:
+                db.execute('UPDATE metadata SET value=? WHERE key=?', (json.dumps(cta), cta_key))
+    return changed
+
+
+def capture_owned_deletion_event(db, entity, chat_id, message_ids, expected_chat_id):
+    """Принимает только события удаления из подтверждённой supergroup-ленты."""
+    if chat_id != expected_chat_id:
+        return 0
+    return sum(capture_owned_deletion(db, entity, message_id, chat_id)
+               for message_id in message_ids)
+
+
 async def collect_owned(reader, db):
     if settings().get('OWNED_FEED_ENABLED', 'false').lower() != 'true':
         return
@@ -733,13 +768,14 @@ async def run(once=False, check=False):
                 owned_entity = candidate
         except Exception as exc:
             LOG.warning('owned_source_unavailable type=%s', type(exc).__name__)
+    if owned_entity is not None:
+        from telethon.utils import get_peer_id
     async def incoming(event):
         msg = event.message
         ident = getattr(event,"chat_id",None)
         # Telethon использует marked channel id: -100 + исходный id.
         raw_id = int(str(ident)[4:]) if str(ident).startswith("-100") else abs(ident or 0)
         if owned_entity is not None:
-            from telethon.utils import get_peer_id
             if ident == get_peer_id(owned_entity):
                 capture_owned_message(db, owned_entity, msg)
                 return
@@ -748,6 +784,13 @@ async def run(once=False, check=False):
             capture_for_app(db,source,raw_id,msg.id,msg.raw_text or "",msg.date,bool(getattr(msg,"noforwards",False)))
     reader.add_event_handler(incoming, events.NewMessage())
     reader.add_event_handler(incoming, events.MessageEdited())
+    if owned_entity is not None:
+        async def deleted(event):
+            capture_owned_deletion_event(
+                db, owned_entity, getattr(event, 'chat_id', None),
+                getattr(event, 'deleted_ids', ()), get_peer_id(owned_entity),
+            )
+        reader.add_event_handler(deleted, events.MessageDeleted(chats=owned_entity))
     try:
         if check:
             target=await reader.get_input_entity(DESTINATION)

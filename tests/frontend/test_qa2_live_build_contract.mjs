@@ -124,12 +124,14 @@ test('explicit QA release stays in the isolated QA2 package', () => {
 });
 
 test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
-  assert.ok(testflightWorkflow.includes('environment: production'));
-  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025'));
+  assert.ok(testflightWorkflow.includes('environment: qa2'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = qa2/integration-candidate'));
   assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha }}'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
   assert.ok(testflightWorkflow.includes('pulls/602'));
-  assert.ok(testflightWorkflow.includes('commits/$QA_SOURCE_SHA/check-runs'));
+  assert.ok(testflightWorkflow.includes(".merge_commit_sha' <<<\"$PR_JSON\")"));
+  assert.ok(testflightWorkflow.includes('Independent approval of the exact PR head is required'));
+  assert.ok(testflightWorkflow.includes('commits/$PR_HEAD_SHA/check-runs'));
   assert.ok(testflightWorkflow.includes("'quality-gate / Backend tests'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Frontend tests, lint, and build'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Mandatory web E2E subset'"));

@@ -382,23 +382,51 @@ jobs:
 
   owned-feed-audit:
     name: Read-only owned feed evidence
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'read_only_audit' && github.ref_name == 'fix/owned-telegram-feed-share-20261025'
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'read_only_audit' && github.ref_name == 'qa2/integration-candidate'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: qa2
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
       - name: Require exact reviewed workflow source
         env:
           AUDIT_SOURCE_SHA: ${{ inputs.source_ref }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "fix/owned-telegram-feed-share-20261025"
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
           [[ "$AUDIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$AUDIT_SOURCE_SHA" = "$GITHUB_SHA"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602")"
+          test "$(jq -r '.state' <<<"$pr")" = closed
+          test "$(jq -r '.merged' <<<"$pr")" = true
+          test "$(jq -r '.base.ref' <<<"$pr")" = qa2/integration-candidate
+          test "$(jq -r '.merge_commit_sha' <<<"$pr")" = "$AUDIT_SOURCE_SHA"
+          pr_head="$(jq -r '.head.sha' <<<"$pr")"
+          pr_author="$(jq -r '.user.login' <<<"$pr")"
+          git fetch origin "$pr_head" --depth=1
+          git diff --quiet "$pr_head" "$AUDIT_SOURCE_SHA" -- || {
+            echo '::error::Merged candidate tree differs from the reviewed PR head'
+            exit 1
+          }
+          reviews="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602/reviews?per_page=100")"
+          approved="$(jq --arg sha "$pr_head" --arg author "$pr_author" \
+            '[.[] | select(.commit_id == $sha and .state == "APPROVED" and .user.login != $author)] | length' <<<"$reviews")"
+          test "$approved" -gt 0 || { echo '::error::Independent approval of the exact PR head is required'; exit 1; }
+          checks="$(gh api "repos/$GITHUB_REPOSITORY/commits/$pr_head/check-runs?per_page=100")"
+          for check in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
+            conclusion="$(jq -r --arg name "$check" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$checks")"
+            test "$conclusion" = success || { echo "::error::Required check '$check' is $conclusion"; exit 1; }
+          done
           python3 -m py_compile scripts/qa/audit_owned_feed_runtime.py
       - name: Install SSH helper on ephemeral runner
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass

@@ -342,6 +342,37 @@ def test_reconcile_invalid_response_does_not_advance_or_remove_posts(tmp_path, m
     assert db.execute('SELECT error FROM source_health').fetchone()[0] is None
 
 
+def test_deleted_owned_post_is_closed_without_extending_ttl_or_leaking_contact(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    monkeypatch.setitem(sys.modules, 'telethon.utils', SimpleNamespace(get_peer_id=lambda _: -100123))
+    entity = SimpleNamespace(id=123, username=OWNED_SOURCE, noforwards=False)
+    published = m.utcnow() - m.timedelta(hours=3)
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    assert m.capture_for_app(db, OWNED_SOURCE, entity.id, 44, text, published)
+    assert worker.run_once()['enqueued'] == 1
+    original_source_date = db.execute('SELECT source_date FROM app_messages').fetchone()[0]
+    cta_key = 'owned_cta:-100123:44'
+    with db:
+        db.execute('INSERT INTO metadata VALUES(?,?)',
+                   (cta_key, json.dumps({'status': 'pending', 'chat_id': -100123,
+                                         'message_id': 44, 'created_at': m.time.time()})))
+
+    assert m.capture_owned_deletion_event(db, entity, -100123, [44], -100123) == 1
+    assert m.capture_owned_deletion_event(db, entity, -100123, [44], -100123) == 0
+    assert m.capture_owned_deletion_event(db, entity, -100999, [44], -100123) == 0
+    row = db.execute('SELECT source_date,text,phones FROM app_messages').fetchone()
+    assert row[0] == original_source_date
+    assert row[1] == 'Заявка закрыта' and json.loads(row[2]) == []
+    assert json.loads(db.execute('SELECT value FROM metadata WHERE key=?', (cta_key,)).fetchone()[0])['status'] == 'cancelled_source_deleted'
+
+    result = worker.run_once()
+    assert result['enqueued'] >= 1
+    with adapter._connect() as state:
+        payloads = [json.loads(row[0]) for row in state.execute('SELECT payload FROM selected_outbox')]
+    assert payloads and all(item['status'] == 'closed' for item in payloads)
+    assert all(not item.get('contacts') and '+77001234567' not in item['original_text'] for item in payloads)
+
+
 def test_edit_between_dedup_seed_and_source_query_cannot_suppress_new_post(tmp_path, monkeypatch):
     m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
     text = 'Алматы → Москва\nГруз: сыр\n+77001234567'

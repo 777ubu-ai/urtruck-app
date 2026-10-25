@@ -21,7 +21,7 @@ function execute(script, environment) {
     const output = join(root, 'environment');
     const result = spawnSync('/bin/bash', ['-c', script], { encoding: 'utf8', env: {
       ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH,
-      RUNNER_TEMP: root, GITHUB_ENV: output, GITHUB_REF_NAME: 'fix/owned-telegram-feed-share-20261025', ...environment,
+      RUNNER_TEMP: root, GITHUB_ENV: output, GITHUB_REF_NAME: 'qa2/integration-candidate', ...environment,
     } });
     return { status: result.status, output: result.status === 0 ? readFileSync(output, 'utf8') : '', stderr: result.stderr };
   } finally { rmSync(root, { recursive: true, force: true }); }
