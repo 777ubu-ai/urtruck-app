@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_sha:
-        description: Exact 40-character head SHA of PR 602 with all required checks green
+        description: Exact 40-character head SHA of PR 605 with all required checks green
         required: true
         type: string
       last_verified_ios_build:
@@ -75,7 +75,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
           [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
           test "$URTRUCK_MIN_IOS_BUILD" -ge 111
-          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602")"
+          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
           test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"
           test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
           test "$(jq -r '.state' <<<"$PR_JSON")" = closed

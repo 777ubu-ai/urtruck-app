@@ -6,13 +6,29 @@ process.env.EXPO_PUBLIC_WEB_URL = 'https://urtruck.kz';
 const env = await import('../../src/config/env.js?ios110-release-contract');
 if (previousPublicOrigin === undefined) delete process.env.EXPO_PUBLIC_WEB_URL;
 else process.env.EXPO_PUBLIC_WEB_URL = previousPublicOrigin;
-import { buildCarrierContactShare, buildExternalFreightShare } from '../../src/utils/externalFreightShare.js';
+import { buildCarrierContactShare, buildExternalFreightShare, URTRUCK_ANDROID_STORE, URTRUCK_IOS_STORE } from '../../src/utils/externalFreightShare.js';
+
+for (const lang of ['RU', 'KK', 'ZH', 'EN']) test(`${lang}: отправка грузов, машин и перевозчиков ведёт в оба магазина`, () => {
+  for (const origin of ['https://urtruck.kz', 'https://qa2.urtruck.kz']) {
+    for (const kind of ['cargo', 'vehicle', 'carrier_contact']) {
+      const build = kind === 'carrier_contact' ? buildCarrierContactShare : buildExternalFreightShare;
+      const result = build({ kind, status: 'active', origin: 'Buxoro', destination: 'Toshkent' }, { origin, lang });
+      assert.equal(result.url, URTRUCK_IOS_STORE);
+      assert.match(result.text, /Android: https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.urtruck\.app/);
+      assert.ok(result.text.endsWith(`iPhone: ${URTRUCK_IOS_STORE}`));
+      assert.equal(result.text.split(URTRUCK_ANDROID_STORE).length - 1, 1);
+      assert.equal(result.text.split(URTRUCK_IOS_STORE).length - 1, 1);
+      assert.ok(!result.text.includes('https://urtruck.kz'));
+      assert.ok(!result.text.includes('https://qa2.urtruck.kz'));
+    }
+  }
+});
 
 test('реальная конфигурация даёт видимую кнопку отправки для минимального активного объявления', () => {
   for (const kind of ['cargo', 'vehicle']) {
     const result = buildExternalFreightShare({ id: 'synthetic', kind, status: 'active' }, { origin: env.PUBLIC_WEB_ORIGIN });
     assert.ok(result, `active ${kind} must have a share payload with the real env export`);
-    assert.equal(result.url, 'https://urtruck.kz/');
+    assert.equal(result.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   }
 });
 

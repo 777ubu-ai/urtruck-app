@@ -18,6 +18,7 @@ const guards = [
 ];
 for (const [label, workflow, step] of guards) {
   const source = readFileSync(`.github/workflows/${workflow}.yml`, 'utf8');
+  if (label !== 'audit') assert.ok(source.includes('pulls/605'), 'Сборка должна проверять PR605');
   const section = source.split(`- name: ${step}\n`)[1];
   assert.ok(section, step);
   const script = section.split('        run: |\n')[1].split(/\n      - (?:name:|uses:)/)[0]

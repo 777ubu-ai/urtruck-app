@@ -87,7 +87,9 @@ jobs:
           QA2_API_URL: ${{ secrets.QA2_API_URL }}
           API_TARGET: ${{ inputs.api_target || 'qa2' }}
           LAB_CONFIRMATION: ${{ inputs.lab_confirmation || '' }}
-          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ inputs.enable_external_freight_feed || false }}
+          # Разовая ветка PR605 использует существующий push-триггер APK.
+          # Остальные push/manual сборки сохраняют прежний выбор флага.
+          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ inputs.enable_external_freight_feed || (github.event_name == 'push' && github.ref_name == 'claude/pr605-device-apk-20261025') }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"

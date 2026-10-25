@@ -156,7 +156,7 @@ jobs:
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             test "$VERIFIED_PLAY_MAX_CODE" -lt 2100000000
-            PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602")"
+            PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
             test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
             test "$(jq -r '.state' <<<"$PR_JSON")" = closed
             test "$(jq -r '.merged' <<<"$PR_JSON")" = true
@@ -177,7 +177,7 @@ jobs:
               --version 1.0.12 --source-sha "$GITHUB_SHA"
             echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
-            echo '::error::Promote PR 602 to qa2/integration-candidate before building its internal store candidate'
+            echo '::error::Promote PR 605 to qa2/integration-candidate before building its internal store candidate'
             exit 1
           fi
 
@@ -262,7 +262,8 @@ jobs:
         # workflow. Новый код = число секунд с 2020-01-01 UTC. Он глобально
         # растёт независимо от GitHub run number и остаётся < 2_100_000_000
         # примерно до 2086 года. Concurrency выше сериализует Play jobs, поэтому
-        # повторный/manual запуск получает следующую секунду, а не тот же код.
+        # Для QA2 Internal владелец выбрал последовательный код: проверенный
+        # максимум магазина + 1. В production прежний алгоритм сохраняется.
         run: |
           set -euo pipefail
           base_epoch=1577836800
@@ -273,14 +274,14 @@ jobs:
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
-            if [ "$version_code" -le "$installed_version_code" ]; then version_code=$((installed_version_code + 1)); fi
+            version_code=$((installed_version_code + 1))
           fi
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
             exit 1
           fi
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
-          echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
+          echo "Android versionCode=${version_code} (greater than verified baseline ${installed_version_code})"
 
       - name: Validate Play release inputs
         env:

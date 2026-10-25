@@ -489,12 +489,14 @@ for (const role of ['driver', 'client']) {
     await page.getByText('WeChat', { exact: true }).click();
     await expect(page.getByText('Telegram', { exact: true })).toHaveCount(0);
     const data = await page.evaluate(() => window.__sharedExternal[0]);
-    expect(data.url).toBe('https://qa2.urtruck.kz/');
+    expect(data.url).toBe('https://apps.apple.com/kz/app/urtruck/id6764504167');
     expect(data.text).toContain(role === 'driver' ? 'UrTruck · Груз' : 'UrTruck · Машина');
     expect(data.text).toContain('Алматы → Ташкент');
     expect(data.text.replace(/\u00a0|\u202f/g, ' ')).toContain('4 500 USD');
     expect(data.text).toContain('Тент');
-    expect(data.text).not.toContain('https://');
+    expect(data.text).toContain('Android: https://play.google.com/store/apps/details?id=com.urtruck.app');
+    expect(data.text).not.toContain('https://qa2.urtruck.kz');
+    expect(data.text).not.toContain(data.url);
     expect(data.text).not.toContain('+7 700');
     expect(data.text).not.toContain('Условие 1');
     expect(box.businessWrites).toEqual([]);

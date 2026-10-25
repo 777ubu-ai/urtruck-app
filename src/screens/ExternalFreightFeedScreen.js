@@ -378,7 +378,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     <View style={styles.modalOverlay} testID="external-feed-filter-overlay">
       <Pressable style={styles.scrim} onPress={() => setModal(null)} />
       <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} pointerEvents="box-none">
-      <Pressable style={styles.sheet} onPress={e => e.stopPropagation()}>
+      <Pressable style={styles.sheet} onPress={e => e.stopPropagation()} testID="external-feed-filter-sheet" accessibilityViewIsModal>
+        <View style={styles.sheetHandle} accessible={false} />
         <Text style={styles.sheetTitle}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text>
         <View style={styles.actions}>
           <SecondaryButton label={l.reset} onPress={resetFilters} role={role} numberOfLines={null} style={styles.filterAction} />
@@ -452,12 +453,13 @@ function makeStyles(theme, sp) {
     warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) },
     center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(14), lineHeight: sp(20) },
     retryButton: { alignSelf: 'stretch' },
-    modalOverlay: { flex: 1 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.42)' },
-    sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
+    modalOverlay: { flex: 1 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
+    sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: theme.textMuted, shadowColor: '#000000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.24, shadowRadius: 16, elevation: 20, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
+    sheetHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', backgroundColor: theme.textMuted, marginBottom: 4 },
     sheetScroll: { flexShrink: 1 }, sheetContent: { gap: 10, paddingBottom: 4 }, sheetTitle: { color: theme.text, fontSize: sp(18), lineHeight: sp(23), fontWeight: '700' },
     hint: { color: theme.textMuted, fontSize: sp(13), marginVertical: 5 }, option: { minHeight: 45, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     optionText: { color: theme.text, fontSize: sp(14), flexShrink: 1, minWidth: 0 },
-    input: { minHeight: 46, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, fontSize: sp(14), backgroundColor: theme.bg, minWidth: 0 },
+    input: { minHeight: 46, borderWidth: 2, borderColor: '#168759', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, fontSize: sp(14), backgroundColor: theme.bg, minWidth: 0 },
     quickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginVertical: 5 },
     actions: { flexDirection: 'row', alignItems: 'stretch', gap: 6, flexShrink: 0 },
     filterAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, alignSelf: 'stretch', width: 'auto', minWidth: 0, maxWidth: '100%', height: 'auto', minHeight: 48, paddingHorizontal: 0, paddingVertical: 8 },
