@@ -80,6 +80,21 @@ test('QA2 deploy snapshots the live SQLite database and verifies a separate rest
   assert.ok(workflow.indexOf('umask 077\n          backup_id=') < backupPosition);
 });
 
+test('QA2 backup separately snapshots and verifies the permanent carrier directory without exposing contacts', () => {
+  const backupPosition = workflow.indexOf('QA_CARRIER_DIRECTORY_BACKUP=online-snapshot-verified');
+  const mutationPosition = workflow.indexOf('Mirror exact backend source into isolated QA2 backend');
+  assert.ok(backupPosition >= 0 && mutationPosition > backupPosition);
+  assert.match(workflow, /EXTERNAL_CARRIER_DIRECTORY_DB/);
+  assert.match(workflow, /carrier-directory\.sqlite3/);
+  assert.match(workflow, /carrier-directory-restore-probe\.sqlite3/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_RESTORE_PROBE_FAILED/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_TOTAL=/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_ACTIVE=/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_RECORDS_SHA256=/);
+  assert.match(workflow, /hashlib\.sha256\(row\[2\]\.encode\('utf-8'\)\)/);
+  assert.doesNotMatch(workflow.slice(backupPosition - 5000, backupPosition + 500), /print\([^\n]*(?:phone|email|contact|payload)/i);
+});
+
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {
   assert.match(workflow, /Roll back QA2 code and settings if deploy validation fails/);
   assert.match(workflow, /if: failure\(\)/);

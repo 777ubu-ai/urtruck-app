@@ -222,9 +222,9 @@ jobs:
           chmod 600 "$backup_dir/backend-env.snapshot"
           chmod 600 "$backup_dir/qa2.env"
           db_backup="$backup_dir/qa2.sqlite3"
-          python3 - "$db_path" "$db_backup" "$qa_root/.env" <<'PY'
+          python3 - "$db_path" "$db_backup" "$qa_root/.env" "$qa_backend/.env" "$backup_dir" <<'PY'
           from pathlib import Path
-          import os, sqlite3, sys
+          import hashlib, json, os, sqlite3, sys
 
           source_path = Path(sys.argv[1]).resolve()
           backup_path = Path(sys.argv[2]).resolve()
@@ -253,13 +253,23 @@ jobs:
           print('QA_DB_BACKUP=online-snapshot-verified')
           print('QA_DB_RESTORE_PROBE=pass')
           # Отдельная БД ленты не включается в snapshot основного продукта.
-          values = {}
-          for line in Path(sys.argv[3]).read_text(encoding='utf-8').splitlines():
-              if '=' in line and not line.lstrip().startswith('#'):
-                  key, value = line.split('=', 1)
-                  values[key.strip()] = value.strip().strip('"').strip("'")
-          feed = Path(values.get('EXTERNAL_FREIGHT_DB_PATH') or source_path.with_name('external-freight.sqlite3')).resolve()
           qa_root = Path('/home/ubuntu/urtruck-qa2').resolve()
+          values = {}
+          for env_path in (Path(sys.argv[3]), Path(sys.argv[4])):
+              if env_path.is_file():
+                  for line in env_path.read_text(encoding='utf-8').splitlines():
+                      if '=' in line and not line.lstrip().startswith('#'):
+                          key, value = line.split('=', 1)
+                          values[key.strip()] = value.strip().strip('"').strip("'")
+          def configured_path(name, fallback):
+              raw = values.get(name, '').strip()
+              if raw.startswith('sqlite:///'):
+                  raw = raw[len('sqlite:///'):]
+              result = Path(raw).expanduser() if raw else Path(fallback)
+              if not result.is_absolute():
+                  result = qa_root / result
+              return result.resolve()
+          feed = configured_path('EXTERNAL_FREIGHT_DB_PATH', source_path.with_name('external-freight.sqlite3'))
           if qa_root not in feed.parents or feed == source_path or (feed.exists() and feed.samefile(source_path)):
               raise SystemExit('QA_EXTERNAL_FEED_DB_ISOLATION_FAILED')
           if feed.exists():
@@ -282,6 +292,60 @@ jobs:
                   if legacy and primary.execute('SELECT 1 FROM external_freight_items LIMIT 1').fetchone():
                       raise SystemExit('QA_EXTERNAL_FEED_LEGACY_MIGRATION_REQUIRED')
               print('QA_EXTERNAL_FEED_DB_BACKUP=not-yet-created')
+          # Каталог контактов перевозчиков хранится в своей SQLite базе.
+          # Снимок не печатает контакты: публикуются только counts и digest.
+          carrier_db = configured_path('EXTERNAL_CARRIER_DIRECTORY_DB', feed.with_name('carrier-directory.sqlite3'))
+          if qa_root not in carrier_db.parents or carrier_db == source_path or carrier_db == feed:
+              raise SystemExit('QA_CARRIER_DIRECTORY_DB_ISOLATION_FAILED')
+          if carrier_db.exists():
+              if carrier_db.is_symlink() or not carrier_db.is_file():
+                  raise SystemExit('QA_CARRIER_DIRECTORY_DB_NOT_REGULAR_FILE')
+              carrier_backup = Path(sys.argv[5]).resolve() / 'carrier-directory.sqlite3'
+              source = sqlite3.connect(carrier_db.as_uri() + '?mode=ro', uri=True, timeout=15)
+              try:
+                  source.execute('PRAGMA query_only=ON')
+                  tables = {row[0] for row in source.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                  if 'carrier_directory' not in tables:
+                      raise SystemExit('QA_CARRIER_DIRECTORY_TABLE_MISSING')
+                  source_rows = source.execute('SELECT id,status,payload FROM carrier_directory ORDER BY id').fetchall()
+                  source_fingerprint = hashlib.sha256(json.dumps(
+                      [(row[0], row[1], hashlib.sha256(row[2].encode('utf-8')).hexdigest()) for row in source_rows],
+                      ensure_ascii=False, separators=(',', ':')).encode('utf-8')).hexdigest()
+                  active_count = source.execute("SELECT count(*) FROM carrier_directory WHERE status='active'").fetchone()[0]
+                  integrity = source.execute('PRAGMA integrity_check').fetchone()[0]
+                  if integrity != 'ok':
+                      raise SystemExit('QA_CARRIER_DIRECTORY_SOURCE_INTEGRITY_FAILED')
+                  target = sqlite3.connect(carrier_backup)
+                  try:
+                      source.backup(target)
+                      if target.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                          raise SystemExit('QA_CARRIER_DIRECTORY_BACKUP_INTEGRITY_FAILED')
+                  finally:
+                      target.close()
+              finally:
+                  source.close()
+              os.chmod(carrier_backup, 0o600)
+              restore_probe = carrier_backup.with_name('carrier-directory-restore-probe.sqlite3')
+              origin = sqlite3.connect(carrier_backup.as_uri() + '?mode=ro', uri=True, timeout=15)
+              target = sqlite3.connect(restore_probe)
+              try:
+                  origin.backup(target)
+                  probe_rows = target.execute('SELECT id,status,payload FROM carrier_directory ORDER BY id').fetchall()
+                  probe_fingerprint = hashlib.sha256(json.dumps(
+                      [(row[0], row[1], hashlib.sha256(row[2].encode('utf-8')).hexdigest()) for row in probe_rows],
+                      ensure_ascii=False, separators=(',', ':')).encode('utf-8')).hexdigest()
+                  if target.execute('PRAGMA integrity_check').fetchone() != ('ok',) or probe_fingerprint != source_fingerprint:
+                      raise SystemExit('QA_CARRIER_DIRECTORY_RESTORE_PROBE_FAILED')
+              finally:
+                  target.close()
+                  origin.close()
+              restore_probe.unlink()
+              print('QA_CARRIER_DIRECTORY_BACKUP=online-snapshot-verified')
+              print(f'QA_CARRIER_DIRECTORY_TOTAL={len(source_rows)}')
+              print(f'QA_CARRIER_DIRECTORY_ACTIVE={active_count}')
+              print(f'QA_CARRIER_DIRECTORY_RECORDS_SHA256={source_fingerprint}')
+          else:
+              print('QA_CARRIER_DIRECTORY_BACKUP=not-yet-created')
           PY
           test -s "$db_backup"
           db_backup_hash="$(sha256sum "$db_backup" | awk '{print $1}')"
