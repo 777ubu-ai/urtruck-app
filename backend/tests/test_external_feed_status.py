@@ -58,10 +58,11 @@ class FeedStatusTests(unittest.TestCase):
         with sqlite3.connect(self.feed) as db:
             db.executescript('''
                 CREATE TABLE external_freight_items(kind TEXT,status TEXT,expires_at TEXT,
-                    source_published_at TEXT,ingested_at TEXT);
+                    source_published_at TEXT,ingested_at TEXT, contacts TEXT DEFAULT '["test-contact"]',
+                    origin TEXT DEFAULT 'Origin',destination TEXT DEFAULT 'Destination');
                 CREATE TABLE external_freight_audit(action TEXT,created_at TEXT);
             ''')
-            db.executemany('INSERT INTO external_freight_items VALUES(?,?,?,?,?)',[
+            db.executemany('INSERT INTO external_freight_items(kind,status,expires_at,source_published_at,ingested_at) VALUES(?,?,?,?,?)',[
                 ('cargo','active',status.iso(self.now+100),status.iso(self.now-431900),status.iso(self.now-20)),
                 ('vehicle','active',status.iso(self.now+500),status.iso(self.now-431500),status.iso(self.now-30)),
                 ('cargo','active',status.iso(self.now-1),status.iso(self.now-432001),status.iso(self.now-40)),
@@ -130,8 +131,20 @@ class FeedStatusTests(unittest.TestCase):
             db.execute('INSERT INTO queue VALUES(?,?,NULL,NULL)',('PRIVATE_TEXT',self.now-10))
         with sqlite3.connect(self.feed) as db:
             db.execute('INSERT INTO external_freight_audit VALUES(?,?)',('PRIVATE_TEXT',status.iso(self.now-10)))
-            db.execute('INSERT INTO external_freight_items VALUES(?,?,?,?,?)',('PRIVATE_TEXT','active',self.iso,self.iso,self.iso))
+            db.execute('INSERT INTO external_freight_items(kind,status,expires_at,source_published_at,ingested_at) VALUES(?,?,?,?,?)',('PRIVATE_TEXT','active',self.iso,self.iso,self.iso))
         self.assertNotIn('PRIVATE_TEXT',json.dumps(self.report()))
+
+    def test_visible_cards_are_not_automatically_validated_for_the_goal(self):
+        with sqlite3.connect(self.feed) as db:
+            db.execute("UPDATE external_freight_items SET contacts='not-json' WHERE kind='cargo'")
+            db.execute("UPDATE external_freight_items SET destination='' WHERE kind='vehicle'")
+        result=self.report()
+        self.assertEqual(result['goal']['actual_active_cards'],2)
+        self.assertEqual(result['goal']['active_with_route_and_contact'],0)
+        self.assertEqual(result['goal']['missing_using_minimum_fields'],10000)
+        self.assertEqual(result['cards']['active_missing_contacts'],1)
+        self.assertEqual(result['cards']['active_missing_full_route'],1)
+        self.assertIn('active_cards_missing_required_fields_need_review',result['blockers'])
 
 
 if __name__ == '__main__':

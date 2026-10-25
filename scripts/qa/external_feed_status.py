@@ -228,7 +228,18 @@ def build_report(root=Path('/home/ubuntu'), *, now=None, services=True):
                 if any(row['hours'] != 168 for row in report['cards']['ttl_hours_observed']):
                     report['blockers'].append('seven_day_ttl_not_deployed')
                 total = sum(report['cards']['active'].values())
-                report['goal'] = {'target': 10000,'actual_active_cards':total,'missing':max(0,10000-total)}
+                has_contact = "EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(contacts) THEN contacts ELSE '[]' END) WHERE type='text' AND length(trim(value))>0)"
+                full_route = "length(trim(coalesce(origin,'')))>0 AND length(trim(coalesce(destination,'')))>0"
+                visible = "status='active' AND julianday(expires_at)>julianday(?)"
+                report['cards']['active_missing_contacts'] = db.execute(f"SELECT count(*) FROM external_freight_items WHERE {visible} AND NOT ({has_contact})", (iso(now),)).fetchone()[0]
+                report['cards']['active_missing_full_route'] = db.execute(f"SELECT count(*) FROM external_freight_items WHERE {visible} AND NOT ({full_route})", (iso(now),)).fetchone()[0]
+                minimum_fields = db.execute(f"SELECT count(*) FROM external_freight_items WHERE {visible} AND ({has_contact}) AND ({full_route})", (iso(now),)).fetchone()[0]
+                report['goal'] = {'target': 10000,'actual_active_cards':total,'missing':max(0,10000-total),
+                    'active_with_route_and_contact':minimum_fields,
+                    'missing_using_minimum_fields':max(0,10000-minimum_fields),
+                    'validation':'nonempty_fields_do_not_prove_correct_contact_binding'}
+                if report['cards']['active_missing_contacts'] or report['cards']['active_missing_full_route']:
+                    report['blockers'].append('active_cards_missing_required_fields_need_review')
                 for window, start in windows.items():
                     target = report['windows'][window]
                     target['new_cards'] = [dict(kind=kind,status=status,cards=count) for kind,status,count in db.execute('SELECT kind,status,count(*) FROM external_freight_items WHERE julianday(ingested_at)>=julianday(?) AND julianday(ingested_at)<=julianday(?) GROUP BY kind,status', (iso(start),iso(now))) if kind in {'cargo','vehicle'} and status in {'active','review','closed','hidden','expired'}]
