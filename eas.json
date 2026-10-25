@@ -24,7 +24,9 @@
       "ios": { "autoIncrement": true, "image": "macos-sequoia-15.6-xcode-26.2" },
       "android": { "autoIncrement": true, "credentialsSource": "local" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://urtruck.kz"
+        "EXPO_PUBLIC_API_URL": "https://urtruck.kz",
+        "EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED": "true",
+        "EXPO_PUBLIC_IS_BETA": "false"
       }
     }
   },
