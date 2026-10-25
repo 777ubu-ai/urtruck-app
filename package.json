@@ -65,7 +65,7 @@
     "@sentry/react-native": "~7.11.0",
     "@supabase/supabase-js": "^2.45.0",
     "@types/react": "~19.2.4",
-    "braces": "file:vendor/braces-3.0.4-d0d575e",
+    "braces": "file:vendor/braces-3.0.4-28d440b",
     "country-flag-icons": "1.6.15",
     "expo": "^57.0.24",
     "expo-application": "~57.0.3",
@@ -125,6 +125,9 @@
       "ws": "8.21.3"
     },
     "uuid": "11.1.1",
-    "expo-modules-jsi": "57.0.4"
+    "expo-modules-jsi": "57.0.4",
+    "@expo/cli": {
+      "zod": "4.6.7"
+    }
   }
 }

@@ -63,6 +63,15 @@ API-изменения сохраняют backward compatibility старых к
 Database/RLS, Payments, FSM, GPS, Documents и production infrastructure
 требуется усиленное review. Новый commit сбрасывает устаревшее approval.
 
+### Решение владельца — внутренний кандидат PR602, 25.10.2026
+
+Для QA2 и внутренних TestFlight/Play Internal сборок PR602 владелец явно
+отменил обязательный независимый GitHub approval и назначение отдельного
+reviewer как блокирующее условие. Инженерное review выполняется, но не требует
+второго GitHub-аккаунта. Сохраняются PR-путь продвижения, точный SHA, успешный
+CI, резервное копирование, проверка подписей и изоляция QA2/Internal.
+Это решение не разрешает публичный rollout, новые расходы или удаление данных.
+
 ## 7. CI quality gate
 
 Обязательные проверки: install, format, lint, typecheck, secret scan, backend

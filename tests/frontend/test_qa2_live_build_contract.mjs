@@ -55,7 +55,7 @@ test('QA086 checks out and records an explicitly supplied exact source SHA', () 
   assert.ok(workflow.includes('QA2 Android versionCode must be greater than the previous QA2 APK'));
   assert.ok(!workflow.includes('211040090'), 'workflow must not silently rebuild the previous QA2 APK');
   assert.ok(workflow.includes('sourceSHA=${URTRUCK_SOURCE_SHA}'));
-  assert.ok(workflow.includes('URTRUCK_VERSION_NAME=1.0.9-qa2'), 'QA2 artifact must carry an explicit -qa2 versionName');
+  assert.ok(workflow.includes('URTRUCK_VERSION_NAME=1.0.12-qa2'), 'QA2 artifact must carry an explicit -qa2 versionName');
 });
 
 test('QA2 Android config carries explicit qa2 versionName', () => {
@@ -67,14 +67,14 @@ test('QA2 Android config carries explicit qa2 versionName', () => {
       env: {
         ...process.env,
         URTRUCK_BUILD_FLAVOR: 'qa2',
-        URTRUCK_VERSION_NAME: '1.0.9-qa2',
+        URTRUCK_VERSION_NAME: '1.0.12-qa2',
         URTRUCK_VERSION_CODE: String(qa2AndroidMetadata.QA2_ANDROID_VERSION_CODE),
         EXPO_PUBLIC_API_URL: 'https://qa2.example.test',
       },
     },
   ).toString();
 
-  assert.equal(output, '1.0.9-qa2');
+  assert.equal(output, '1.0.12-qa2');
 });
 
 test('QA2 Android APK versionCode is sourced from config and is newer than the installed baseline', () => {
@@ -124,19 +124,22 @@ test('explicit QA release stays in the isolated QA2 package', () => {
 });
 
 test('TestFlight uses a protected exact-SHA QA2 trigger and never the production API', () => {
-  assert.ok(testflightWorkflow.includes('environment: production'));
-  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = main'));
+  assert.ok(testflightWorkflow.includes('environment: qa2'));
+  assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = qa2/integration-candidate'));
   assert.ok(testflightWorkflow.includes('QA_SOURCE_SHA: ${{ inputs.source_sha }}'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
-  assert.ok(testflightWorkflow.includes('pulls/561'));
-  assert.ok(testflightWorkflow.includes('commits/$QA_SOURCE_SHA/check-runs'));
+  assert.ok(testflightWorkflow.includes('pulls/602'));
+  assert.ok(testflightWorkflow.includes(".merge_commit_sha' <<<\"$PR_JSON\")"));
+  assert.doesNotMatch(testflightWorkflow, /pulls\/602\/reviews|Current independent approval/);
+  assert.ok(testflightWorkflow.includes('commits/$PR_HEAD_SHA/check-runs'));
   assert.ok(testflightWorkflow.includes("'quality-gate / Backend tests'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Frontend tests, lint, and build'"));
   assert.ok(testflightWorkflow.includes("'quality-gate / Mandatory web E2E subset'"));
+  assert.doesNotMatch(workflow, /pulls\/602\/reviews|Current independent approval/);
   assert.ok(!testflightWorkflow.includes("'qa2-final-testflight-*'"));
   assert.ok(!testflightWorkflow.includes('push:\n    branches:'));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
-  assert.ok(testflightWorkflow.includes('URTRUCK_MIN_IOS_BUILD: 99'));
+  assert.ok(testflightWorkflow.includes('URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}'));
   assert.ok(testflightWorkflow.includes('QA2_API_URL: ${{ secrets.QA2_API_URL }}'));
   assert.ok(testflightWorkflow.includes('test "$QA_HOST" = qa2.urtruck.kz'));
   assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
@@ -154,6 +157,8 @@ test('Expo SDK 57 native iOS project uses the required deployment target and arc
 
 test('Play workflow can build a signed AAB without submitting and records release identity', () => {
   assert.ok(playWorkflow.includes('submit_to_play:'));
+  assert.ok(playWorkflow.includes('QA2 internal candidates may only be built from the reviewed integration-candidate branch'));
+  assert.doesNotMatch(playWorkflow, /pulls\/602\/reviews|Current independent approval/);
   assert.ok(playWorkflow.includes("github.event_name != 'workflow_dispatch' || inputs.submit_to_play"));
   assert.ok(playWorkflow.includes('uses: actions/upload-artifact@v4'));
   assert.ok(playWorkflow.includes('AAB SHA-256=${aab_sha}'));

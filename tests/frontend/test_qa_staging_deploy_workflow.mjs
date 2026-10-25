@@ -7,6 +7,10 @@ const workflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-deploy.yml'),
   'utf8',
 );
+const preflightWorkflow = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa-staging-preflight.yml'),
+  'utf8',
+);
 const qaCenter = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-center.yml'),
   'utf8',
@@ -46,6 +50,18 @@ test('QA2 backend deploy is manual, fixed-source and gated by QA contracts', () 
   assert.match(workflow, /DEPLOY_QA2/);
 });
 
+test('QA2 deploy and preflight pin the configured SSH host key', () => {
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS:\n\s+required: true/);
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS: \$\{\{ secrets\.SERVER_SSH_KNOWN_HOSTS \}\}/);
+  assert.match(workflow, /UserKnownHostsFile=\"?\$\{?QA2_SSH_KNOWN_HOSTS_FILE/);
+  assert.match(workflow, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
+  assert.match(preflightWorkflow, /SERVER_SSH_KNOWN_HOSTS:\n\s+required: true/);
+  assert.match(preflightWorkflow, /UserKnownHostsFile=\"?\$\{?QA2_SSH_KNOWN_HOSTS_FILE/);
+  assert.match(preflightWorkflow, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(preflightWorkflow, /StrictHostKeyChecking=no/);
+});
+
 test('QA2 backend deploy protects database, storage and production', () => {
   assert.match(workflow, /\/home\/ubuntu\/urtruck-qa2/);
   assert.match(workflow, /sport = :8002/);
@@ -78,6 +94,25 @@ test('QA2 deploy snapshots the live SQLite database and verifies a separate rest
   assert.match(workflow, /DB_BACKUP_HASH=\$db_backup_hash/);
   assert.match(workflow, /chmod 600/);
   assert.ok(workflow.indexOf('umask 077\n          backup_id=') < backupPosition);
+});
+
+test('QA2 backup separately snapshots and verifies the permanent carrier directory without exposing contacts', () => {
+  const backupPosition = workflow.indexOf('QA_CARRIER_DIRECTORY_BACKUP=online-snapshot-verified');
+  const mutationPosition = workflow.indexOf('Mirror exact backend source into isolated QA2 backend');
+  assert.ok(backupPosition >= 0 && mutationPosition > backupPosition);
+  assert.match(workflow, /EXTERNAL_CARRIER_DIRECTORY_DB/);
+  assert.match(workflow, /qa_root = Path\('\/home\/ubuntu\/urtruck-qa2'\)\.resolve\(\)\s+qa_backend = qa_root \/ 'backend'/);
+  assert.match(workflow, /def configured_path\(name, fallback, relative_to=qa_root\):[\s\S]*?result = relative_to \/ result/);
+  assert.match(workflow, /feed = configured_path\([\s\S]*?relative_to=qa_backend/);
+  assert.match(workflow, /carrier_db = configured_path\([\s\S]*?relative_to=qa_backend/);
+  assert.match(workflow, /carrier-directory\.sqlite3/);
+  assert.match(workflow, /carrier-directory-restore-probe\.sqlite3/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_RESTORE_PROBE_FAILED/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_TOTAL=/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_ACTIVE=/);
+  assert.match(workflow, /QA_CARRIER_DIRECTORY_RECORDS_SHA256=/);
+  assert.match(workflow, /hashlib\.sha256\(row\[2\]\.encode\('utf-8'\)\)/);
+  assert.doesNotMatch(workflow.slice(backupPosition - 5000, backupPosition + 500), /print\([^\n]*(?:phone|email|contact|payload)/i);
 });
 
 test('QA2 backend deploy has rollback and self-contained runtime QA2P isolation proof', () => {

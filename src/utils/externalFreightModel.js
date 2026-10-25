@@ -81,11 +81,11 @@ export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.n
   return [...fresh, ...tail];
 }
 
-/** Только ссылка на исходный пост; не личный контакт автора. */
+/** Только собственный пост UrTruck; исходная группа остаётся в provenance API. */
 export function externalTelegramPost(item) {
   const message = String(item?.source_message_id || '');
   const source = String(item?.origin_source || '').replace(/^@/, '');
   if (!/^\d+$/.test(message)) return null;
-  if (/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(source)) return `https://t.me/${source}/${message}`;
+  if (['urtruck_obyavleniya', 'urtruck_ut'].includes(source.toLowerCase())) return `https://t.me/${source}/${message}`;
   return null;
 }

@@ -109,7 +109,7 @@ const WEB_RUNTIME_ORIGIN = IS_WEB && typeof window !== 'undefined'
   : '';
 export const PUBLIC_WEB_ORIGIN = APP_ENV === 'production'
   ? 'https://urtruck.kz'
-  : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE || WEB_RUNTIME_ORIGIN);
+  : publicOrigin(PUBLIC_WEB_OVERRIDE || ENV_OVERRIDE || WEB_RUNTIME_ORIGIN || CONFIG_OVERRIDE);
 
 // Beta pricing flag — keeps premium features free during the
 // pilot. Toggling to false enables paywalls; coordinate with

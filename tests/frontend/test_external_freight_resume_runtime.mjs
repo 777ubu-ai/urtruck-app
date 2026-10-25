@@ -4,6 +4,14 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as model from '../../src/utils/externalFreightModel.js';
+// Проверяем реальный resolver с явно заданным публичным release origin.
+const previousPublicOrigin = process.env.EXPO_PUBLIC_WEB_URL;
+process.env.EXPO_PUBLIC_WEB_URL = 'https://urtruck.kz';
+const env = await import('../../src/config/env.js?ios110-release-contract');
+if (previousPublicOrigin === undefined) delete process.env.EXPO_PUBLIC_WEB_URL;
+else process.env.EXPO_PUBLIC_WEB_URL = previousPublicOrigin;
+import * as share from '../../src/utils/externalFreightShare.js';
+import * as contact from '../../src/utils/externalFreightContact.js';
 const require = createRequire(import.meta.url);
 const babel = require('@babel/core');
 const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedScreen.js', 'utf8'), {
@@ -13,7 +21,8 @@ const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedSc
 const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness() {
+function harness({ role = 'driver', fixtures = cards } = {}) {
+  const opened = [], copied = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Set(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
@@ -32,25 +41,25 @@ function harness() {
   const native = Object.fromEntries(['ActivityIndicator', 'FlatList', 'Modal', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'TouchableOpacity', 'View'].map(name => [name, name]));
   native.Platform = { OS: 'android' }; native.StyleSheet = { create: x => x, hairlineWidth: 1 };
   native.AppState = { currentState: 'active', addEventListener: (_name, fn) => { appCallback = fn; return { remove() {} }; } };
-  native.Alert = { alert() {} }; native.Linking = { openURL: async () => {} };
+  native.Alert = { alert() {} }; native.Linking = { openURL: async url => { opened.push(url); } };
   const mocks = {
     react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@expo/vector-icons/Feather': 'Feather', '@expo/vector-icons/FontAwesome5': 'FontAwesome5',
-    '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': {},
+    '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },
     '../components/externalFreight/ExternalFeedDatePicker': 'DatePicker', '../components/ui/v1/BookmarkButton': 'BookmarkButton',
     '../components/ui/v1/PrimaryButton': 'PrimaryButton', '../components/ui/actions/SecondaryButton': 'SecondaryButton',
     '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
-    '../config/env': { PUBLIC_WEB_ORIGIN: 'https://qa2.urtruck.kz' }, '../utils/externalFreightShare': { buildExternalFreightShare: () => null },
+    '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact,
     '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
-    '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-driver', role: 'driver' } } }) },
-    '../utils/externalFreightSession': { sessionRole: () => 'driver' }, '../utils/truckConstants': { BODY_TYPES: [] },
+    '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-' + role, role } } }) },
+    '../utils/externalFreightSession': { sessionRole: () => role }, '../utils/truckConstants': { BODY_TYPES: [] },
     '../utils/countries': { ALL_COUNTRIES: [], getCountryName: x => x }, '../utils/externalFreightModel': model,
     '../utils/externalFreightFeed': { externalFreightAPI: { event() {}, async list(query) {
       calls++;
       queries.push(query);
       if (suspended) await new Promise(resolve => { resolvePending = resolve; });
       if (fail) return { ok: false, error: 'network_error' };
-      return { ok: true, items: query.cursor ? cards.slice(30) : cards.slice(0, 30), next_cursor: query.cursor ? 'older-page' : 'page2' };
+      return { ok: true, items: query.cursor ? fixtures.slice(30) : fixtures.slice(0, 30), next_cursor: query.cursor ? 'older-page' : 'page2' };
     } } },
   };
   const module = { exports: {} };
@@ -64,6 +73,8 @@ function harness() {
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
     poll: () => intervals.forEach(fn => fn()), fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
     node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
+    shareModal: () => nodes().find(n => n.type === 'ShareModal'),
+    opened, copied, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
@@ -117,4 +128,70 @@ test('Сброс возвращает полосу к началу после д
   h.pressLabel('Сброс'); await h.flush();
   assert.equal(h.filterOffset(), 0, 'полоса не должна оставаться за пределами уменьшенного содержимого');
   assert.equal(h.queries.at(-1).origin, undefined);
+});
+
+function descendants(tree) {
+  const all = [];
+  function walk(node) {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node?.props) return;
+    all.push(node); walk(node.props.children);
+  }
+  walk(tree); return all;
+}
+for (const role of ['driver', 'client']) test(`${role}: реальный env и helper открывают отправку даже без текста/телефона/цены`, async () => {
+  const item = { id: 'minimal', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', contacts: [], body_types: [] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
+  const nodes = descendants(h.renderItem(item));
+  const description = nodes.find(n => n.type === 'Description');
+  assert.equal(description.props.actions.props.testID, 'external-feed-share-minimal');
+  assert.ok(nodes.find(n => n.props.testID === 'external-feed-no-contact-minimal'));
+  description.props.actions.props.onPress(); await h.flush();
+  // Проверяем настоящее состояние экрана после нажатия, а не mock payload.
+  const shareModal = h.shareModal();
+  assert.equal(shareModal.props.url, 'https://urtruck.kz/');
+  assert.ok(shareModal.props.visible);
+  shareModal.props.onClose(); await h.flush();
+  assert.equal(h.shareModal(), undefined);
+});
+for (const role of ['driver', 'client']) test(`${role}: телефоны только копируются, звонилки нет`, async () => {
+  const item = { id: 'phone', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
+    contacts: ['+7 (700) 000-00-01', '998500014250', '@source_user'], body_types: [] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
+  const nodes = descendants(h.renderItem(item));
+  for (let index = 0; index < 2; index++) {
+    await nodes.find(n => n.props.testID === `external-feed-copy-phone-${index}`).props.onPress();
+  }
+  assert.deepEqual(h.copied, item.contacts.slice(0, 2));
+  assert.deepEqual(h.opened, [], 'копирование не открывает внешние приложения');
+  assert.ok(!nodes.some(n => n.props.testID?.startsWith('external-feed-call-')));
+  assert.ok(!nodes.some(n => n.type === 'Feather' && n.props.name === 'phone'));
+  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-2').props.onPress();
+  assert.deepEqual(h.opened, ['https://t.me/source_user']);
+});
+test('контакт перевозчика открывает тот же modal без фиктивного объявления', async () => {
+  const item = { id: 'carrier', kind: 'carrier_contact', status: 'active', name: 'Синтетическая компания', phones: ['+77000000001'], sources: [] };
+  const h = harness({ role: 'client', fixtures: [item] }); await h.flush();
+  const card = h.renderItem(item);
+  assert.equal(card.type, 'CarrierContactCard');
+  card.props.onShare(); await h.flush();
+  assert.match(h.shareModal().props.shareText, /Контакт перевозчика/);
+  assert.ok(!h.shareModal().props.shareText.includes(item.phones[0]));
+});
+
+for (const role of ['driver', 'client']) test(`${role}: переход в свой пост и Share — независимые действия`, async () => {
+  const item = { id: 'own', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', contacts: [],
+    origin_source: 'UrTruck_obyavleniya', source_message_id: '44', body_types: [] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
+  let nodes = descendants(h.renderItem(item));
+  const source = nodes.find(n => n.props.testID === 'external-feed-source-own');
+  assert.ok(source);
+  await source.props.onPress();
+  assert.deepEqual(h.opened, ['https://t.me/UrTruck_obyavleniya/44']);
+  const actions = nodes.find(n => n.type === 'Description').props.actions;
+  actions.props.onPress(); await h.flush();
+  assert.equal(h.shareModal().props.url, 'https://urtruck.kz/');
+  nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
+  assert.equal(nodes.find(n => n.props.testID === 'external-feed-source-own'), undefined);
+  assert.ok(nodes.find(n => n.type === 'Description').props.actions);
 });
