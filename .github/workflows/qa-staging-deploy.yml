@@ -261,13 +261,13 @@ jobs:
                       if '=' in line and not line.lstrip().startswith('#'):
                           key, value = line.split('=', 1)
                           values[key.strip()] = value.strip().strip('"').strip("'")
-          def configured_path(name, fallback):
+          def configured_path(name, fallback, relative_to=qa_root):
               raw = values.get(name, '').strip()
               if raw.startswith('sqlite:///'):
                   raw = raw[len('sqlite:///'):]
               result = Path(raw).expanduser() if raw else Path(fallback)
               if not result.is_absolute():
-                  result = qa_root / result
+                  result = relative_to / result
               return result.resolve()
           feed = configured_path('EXTERNAL_FREIGHT_DB_PATH', source_path.with_name('external-freight.sqlite3'))
           if qa_root not in feed.parents or feed == source_path or (feed.exists() and feed.samefile(source_path)):
@@ -294,7 +294,12 @@ jobs:
               print('QA_EXTERNAL_FEED_DB_BACKUP=not-yet-created')
           # Каталог контактов перевозчиков хранится в своей SQLite базе.
           # Снимок не печатает контакты: публикуются только counts и digest.
-          carrier_db = configured_path('EXTERNAL_CARRIER_DIRECTORY_DB', feed.with_name('carrier-directory.sqlite3'))
+          # The app resolves a relative carrier path from the backend process CWD.
+          carrier_db = configured_path(
+              'EXTERNAL_CARRIER_DIRECTORY_DB',
+              feed.with_name('carrier-directory.sqlite3'),
+              relative_to=qa_backend,
+          )
           if qa_root not in carrier_db.parents or carrier_db == source_path or carrier_db == feed:
               raise SystemExit('QA_CARRIER_DIRECTORY_DB_ISOLATION_FAILED')
           if carrier_db.exists():

@@ -85,6 +85,8 @@ test('QA2 backup separately snapshots and verifies the permanent carrier directo
   const mutationPosition = workflow.indexOf('Mirror exact backend source into isolated QA2 backend');
   assert.ok(backupPosition >= 0 && mutationPosition > backupPosition);
   assert.match(workflow, /EXTERNAL_CARRIER_DIRECTORY_DB/);
+  assert.match(workflow, /def configured_path\(name, fallback, relative_to=qa_root\):[\s\S]*?result = relative_to \/ result/);
+  assert.match(workflow, /carrier_db = configured_path\([\s\S]*?relative_to=qa_backend/);
   assert.match(workflow, /carrier-directory\.sqlite3/);
   assert.match(workflow, /carrier-directory-restore-probe\.sqlite3/);
   assert.match(workflow, /QA_CARRIER_DIRECTORY_RESTORE_PROBE_FAILED/);
