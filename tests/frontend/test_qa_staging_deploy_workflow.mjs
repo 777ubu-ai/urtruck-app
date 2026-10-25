@@ -7,6 +7,10 @@ const workflow = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-staging-deploy.yml'),
   'utf8',
 );
+const preflightWorkflow = fs.readFileSync(
+  path.join(process.cwd(), '.github/workflows/qa-staging-preflight.yml'),
+  'utf8',
+);
 const qaCenter = fs.readFileSync(
   path.join(process.cwd(), '.github/workflows/qa-center.yml'),
   'utf8',
@@ -44,6 +48,18 @@ test('QA2 backend deploy is manual, fixed-source and gated by QA contracts', () 
   assert.match(workflow, /SERVER_USER:\n\s+required: true/);
   assert.match(workflow, /SERVER_PASS:\n\s+required: true/);
   assert.match(workflow, /DEPLOY_QA2/);
+});
+
+test('QA2 deploy and preflight pin the configured SSH host key', () => {
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS:\n\s+required: true/);
+  assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS: \$\{\{ secrets\.SERVER_SSH_KNOWN_HOSTS \}\}/);
+  assert.match(workflow, /UserKnownHostsFile=\"?\$\{?QA2_SSH_KNOWN_HOSTS_FILE/);
+  assert.match(workflow, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
+  assert.match(preflightWorkflow, /SERVER_SSH_KNOWN_HOSTS:\n\s+required: true/);
+  assert.match(preflightWorkflow, /UserKnownHostsFile=\"?\$\{?QA2_SSH_KNOWN_HOSTS_FILE/);
+  assert.match(preflightWorkflow, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(preflightWorkflow, /StrictHostKeyChecking=no/);
 });
 
 test('QA2 backend deploy protects database, storage and production', () => {

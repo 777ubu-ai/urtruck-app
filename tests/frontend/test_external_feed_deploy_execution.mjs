@@ -14,7 +14,7 @@ test('удалённые проверки передаются SSH без рас
   const start = validation.indexOf('          sshpass ');
   const end = validation.indexOf('\n          REMOTE', start) + '\n          REMOTE'.length;
   for (const enabled of ['true', 'false']) {
-    const script = 'set -eu\nQA_SOURCE_SHA=71d1624222ca0788ad719a9cc3696d7848849c7e\nSERVER_USER=test\nSERVER_HOST=isolated.invalid\nsshpass() { cat; }\ncurl() { echo RUNNER_CURL_FORBIDDEN >&2; return 91; }\n'
+    const script = 'set -eu\nQA_SOURCE_SHA=71d1624222ca0788ad719a9cc3696d7848849c7e\nSERVER_USER=test\nSERVER_HOST=isolated.invalid\nQA2_SSH_KNOWN_HOSTS_FILE=/tmp/known-hosts-test\nsshpass() { cat; }\ncurl() { echo RUNNER_CURL_FORBIDDEN >&2; return 91; }\n'
       + validation.slice(start, end).replaceAll('${{ inputs.enable_external_freight_feed }}', enabled) + '\n';
     const result = spawnSync('bash', [], { input: script, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
