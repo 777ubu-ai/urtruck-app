@@ -38,9 +38,20 @@ iPhone → App Store. Обе ссылки получают все получат
   automatic JSX runtime несовместим с существующим harness. В изолированном
   тестовом каталоге заменён на Babel 7, соответствующий проекту; итог 38/38.
   Репозиторные package.json/lock не менялись.
-- Production build, GitHub CI и реальные iPhone/Android visual/WhatsApp smoke:
-  не выполнялись на момент создания PR. Скриншоты владельца — evidence BEFORE;
-  AFTER на устройствах ещё требуется, визуальная приёмка не PASS.
+- Расширенная проверка по просьбе владельца: npm ci PASS, весь frontend/unit
+  1584/1584 PASS, web production export PASS, i18n RU/KK/ZH/EN — 2048 ключей
+  на язык, missing 0. Это кодовые проверки, не физическая приёмка.
+- Первый CI 40190636474 на 52ad62a нашёл 3 старых unit expectations,
+  требующих ссылку на сайт. Обновлены под новое согласованное поведение;
+  проверки приватности/статусов сохранены. Также обновлены ожидания URL
+  существующего браузерного Share-сценария. Runtime-код не менялся.
+- Локальная установка Chromium для полного браузерного прогона не завершилась:
+  сервер загрузки отдаёт повреждённый ZIP (End of central directory record
+  signature not found). Локальный E2E/визуальный AFTER пока не подтверждён.
+- Новый GitHub CI и реальные iPhone/Android visual/WhatsApp smoke pending.
+  Скриншоты владельца — evidence BEFORE; AFTER на устройствах требуется.
+- Полное задание физическому Codex:
+  docs/qa/pr605-device-test-handoff-20261025.md.
 
 ## Выпуск
 
