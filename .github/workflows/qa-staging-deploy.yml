@@ -254,6 +254,7 @@ jobs:
           print('QA_DB_RESTORE_PROBE=pass')
           # Отдельная БД ленты не включается в snapshot основного продукта.
           qa_root = Path('/home/ubuntu/urtruck-qa2').resolve()
+          qa_backend = qa_root / 'backend'
           values = {}
           for env_path in (Path(sys.argv[3]), Path(sys.argv[4])):
               if env_path.is_file():
