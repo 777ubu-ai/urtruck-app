@@ -157,8 +157,9 @@ def test_explicit_free_vehicle_location_preserves_source_spelling_and_unknowns()
     no_location=map_selected_message({'source_id':'123','source_message':2,'text':'Свободный реф в пути'})
     assert no_location['kind']=='vehicle' and no_location['status']=='active'
     assert no_location['origin'] is None and no_location['destination'] is None
-    ambiguous=map_selected_message({'source_id':'123','source_message':3,'text':'Нужен свободный реф в Маньчжурии'})
-    assert ambiguous['status']=='review' and ambiguous['origin'] is None
+    needed=map_selected_message({'source_id':'123','source_message':3,'text':'Нужен свободный реф в Маньчжурии'})
+    assert needed['kind']=='cargo' and needed['status']=='active'
+    assert needed['origin'] is None and needed['destination'] is None
 
 def test_parser_upgrade_automatically_rechecks_previously_seen_review(tmp_path,monkeypatch):
     from services.external_freight_parser import map_selected_message
