@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
-from services.external_freight_parser import map_selected_message, map_selected_messages
+from services.external_freight_parser import map_selected_messages
 from services.external_freight_classifier import classify_message
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
@@ -45,6 +45,9 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
+    parser_revision = '20261026-published-segments-contact-v1'
+    parse = staticmethod(map_selected_messages)
+
     def __init__(self, source_path, adapter):
         self.source_path = Path(source_path).resolve()
         self.adapter = adapter
@@ -96,24 +99,44 @@ class PublishedQueueBridge:
             columns = [row["name"] for row in source.execute("PRAGMA table_info(queue)")]
             arguments = ",".join('q."' + name.replace('"', '""') + '"' for name in columns)
             revision = f"bridge_revision({arguments})"
-            rows = source.execute(f"""SELECT q.*, {revision} AS bridge_source_revision FROM queue q
+            revision_key = f"({revision} || ':{self.parser_revision}')"
+            rows = source.execute(f"""SELECT q.*, {revision_key} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
                 AND source_date>=? AND source_date<=?
                 AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
                                 WHERE s.source_queue_id=q.id
-                                AND s.source_revision={revision})
+                                AND s.source_revision={revision_key})
                 ORDER BY destination_message,id LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
         enqueued = rejected = review = 0
         for row in rows:
             try:
-                record = map_selected_message(dict(row))
-                # Не показываем пустой маршрут в автоматически принятой карточке.
-                if record["status"] == "active" and (not record.get("origin") or not record.get("destination")):
-                    record["status"] = "review"
-                    record["classification_status"] = "review"
-                review += record["status"] == "review"
-                enqueued += bool(self.adapter.enqueue(record))
+                records = self.parse(dict(row))
+                segment_ids = {record["segment_id"] for record in records}
+                with self.adapter._connect() as state:
+                    old = state.execute(
+                        "SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
+                        (str(row["source_id"]), str(row["source_message"]))).fetchall()
+                # При редактировании/закрытии многосоставного поста закрываем
+                # сегменты, которых больше нет в текущей версии публикации.
+                for previous in old:
+                    previous = json.loads(previous["payload"])
+                    if previous["segment_id"] not in segment_ids and previous.get("status") == "active":
+                        previous["status"] = "closed"
+                        enqueued += bool(self.adapter.enqueue(previous))
+                for record in records:
+                    # Грузу нужен маршрут с обоими концами; для свободной
+                    # машины достаточно места стоянки. Контакт обязателен.
+                    incomplete = (not record.get("contacts")
+                                  or (record["kind"] == "cargo" and
+                                      (not record.get("origin") or not record.get("destination")))
+                                  or (record["kind"] == "vehicle" and
+                                      not (record.get("origin") or record.get("destination"))))
+                    if record["status"] == "active" and incomplete:
+                        record["status"] = "review"
+                        record["classification_status"] = "review"
+                    review += record["status"] == "review"
+                    enqueued += bool(self.adapter.enqueue(record))
             except (ValueError, TypeError, OverflowError):
                 rejected += 1
                 with self.adapter._connect() as state:
