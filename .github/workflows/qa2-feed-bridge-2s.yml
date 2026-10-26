@@ -73,6 +73,7 @@ jobs:
           unit=/etc/systemd/system/urtruck-qa2-feed-bridge.timer
           dropin_dir=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d
           dropin="$dropin_dir/20-second-poll.conf"
+          legacy_dropin="$dropin_dir/30-five-second-poll.conf"
           backup_dir="$qa_root/backups/feed-bridge-poll-$run_id"
           state=/tmp/urtruck-qa2-feed-poll.state
           test -d "$qa_root" && test -f "$unit"
@@ -87,11 +88,22 @@ jobs:
           else
             previous=absent
           fi
+          if sudo -n test -f "$legacy_dropin"; then
+            sudo -n grep -qx 'OnUnitInactiveSec=5s' "$legacy_dropin"
+            sudo -n cp -p -- "$legacy_dropin" "$backup_dir/previous-30.conf"
+            previous_legacy=present
+          else
+            previous_legacy=absent
+          fi
           umask 077
           cat > "$state" <<STATE
           BACKUP_DIR=$backup_dir
           PREVIOUS_DROPIN=$previous
+          PREVIOUS_LEGACY_DROPIN=$previous_legacy
           STATE
+          if test "$previous_legacy" = present; then
+            sudo -n rm -- "$legacy_dropin"
+          fi
           tmp="$(mktemp)"
           cat > "$tmp" <<'TIMER'
           [Timer]
@@ -111,10 +123,9 @@ jobs:
           effective_timer="$(sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager)"
           sudo -n systemctl cat urtruck-qa2-feed-bridge.timer --no-pager
           printf '%s\n' "$effective_timer"
-          if ! printf '%s\n' "$effective_timer" | grep -q 'OnUnitInactiveUSec=2s'; then
-            echo '::warning::The QA2 drop-in is 2s, but systemd reports a different active timer interval; inspect the printed unit sources.'
-          fi
+          printf '%s\n' "$effective_timer" | grep -q 'OnUnitInactiveUSec=2s'
           sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
+          sudo -n journalctl -u urtruck-qa2-feed-bridge.service --since '-3 minutes' -n 20 --no-pager -o cat
           echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
           echo 'QA2_FEED_BRIDGE_ONESHOT=completed'
           REMOTE
@@ -152,10 +163,16 @@ jobs:
           qa_root=/home/ubuntu/urtruck-qa2
           case "$BACKUP_DIR" in /home/ubuntu/urtruck-qa2/backups/feed-bridge-poll-[0-9]*) ;; *) echo 'QA2_FEED_TIMER_BACKUP_PATH_INVALID' >&2; exit 1 ;; esac
           dropin=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d/20-second-poll.conf
+          legacy_dropin=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d/30-five-second-poll.conf
           case "$PREVIOUS_DROPIN" in
             present) test -f "$BACKUP_DIR/previous.conf"; sudo -n cp -p -- "$BACKUP_DIR/previous.conf" "$dropin" ;;
             absent) sudo -n rm -f -- "$dropin" ;;
             *) echo 'QA2_FEED_TIMER_BACKUP_STATE_INVALID' >&2; exit 1 ;;
+          esac
+          case "$PREVIOUS_LEGACY_DROPIN" in
+            present) test -f "$BACKUP_DIR/previous-30.conf"; sudo -n cp -p -- "$BACKUP_DIR/previous-30.conf" "$legacy_dropin" ;;
+            absent) sudo -n rm -f -- "$legacy_dropin" ;;
+            *) echo 'QA2_FEED_TIMER_LEGACY_BACKUP_STATE_INVALID' >&2; exit 1 ;;
           esac
           sudo -n systemctl daemon-reload
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
