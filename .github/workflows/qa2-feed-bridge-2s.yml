@@ -107,7 +107,7 @@ jobs:
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
           sudo -n grep -qx 'OnUnitInactiveSec=2' "$dropin"
-          sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager | grep -q 'OnUnitInactiveSec=2s'
+          sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager | grep -q 'OnUnitInactiveUSec=2s'
           sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
           echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
           echo 'QA2_FEED_BRIDGE_ONESHOT=completed'

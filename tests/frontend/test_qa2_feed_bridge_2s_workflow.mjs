@@ -13,7 +13,7 @@ test('QA2 bridge timer is set to two seconds and stays isolated', () => {
   assert.match(workflow, /test "\$QA_SOURCE_SHA" = "\$GITHUB_SHA"/);
   assert.match(workflow, /StrictHostKeyChecking=yes/);
   assert.match(workflow, /systemd-analyze verify/);
-  assert.match(workflow, /OnUnitInactiveSec=2s/);
+  assert.match(workflow, /OnUnitInactiveUSec=2s/);
   assert.match(workflow, /Verify Production fingerprint unchanged/);
   assert.match(workflow, /Restore prior QA2 timer if configuration failed/);
   assert.match(workflow, /systemctl restart urtruck-qa2-feed-bridge.timer/);
