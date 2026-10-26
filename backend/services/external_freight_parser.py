@@ -13,6 +13,7 @@ from services.external_freight_route_places import COMPACT_ROUTE_PLACES
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
+_WEB_DOMAIN = re.compile(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(?!\w))")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
 )
@@ -143,7 +144,7 @@ def _place(value):
     # Сокращения города допустимы, доменные имена географией не становятся.
     domain_candidate = re.sub(r"(?i)^(?:г\.|st\.|ste\.|mt\.)(?=[^\W\d_])", "", value)
     if (not value or len(value) > 80 or _NOT_ROUTE_LABEL.search(value)
-            or re.search(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(?!\w))", domain_candidate)
+            or _WEB_DOMAIN.search(domain_candidate)
             or re.search(r"(?i)\b(?:срочно|готов|погрузка|выгрузка|тент|реф|тонн|фрахт|машин)\b", value)
             or any(c.isdigit() for c in value)
             or not all(c.isalpha() or c.isspace() or c in "-(),.'’" for c in value)):
@@ -229,7 +230,13 @@ def map_selected_message(raw: dict) -> dict:
         status = "review" if status != "closed" else "closed"
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
-              if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
+              if (_place(match.group(1)) and _place(match.group(2))
+                  and not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip()))]
+    malformed_web_route = any(
+        _WEB_DOMAIN.search(re.sub(r"(?i)^(?:г\.|st\.|ste\.|mt\.)", "", endpoint.strip()))
+        for match in _ROUTE.finditer(text)
+        for endpoint in (match.group(1), match.group(2))
+    )
     # В свободной форме предложения машины компактный дефисный город может
     # означать местонахождение. Подтверждённый груз задаёт маршрут явно.
     # Два известных географических названия без стрелки/дефиса также задают
@@ -260,6 +267,8 @@ def map_selected_message(raw: dict) -> dict:
                 r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
             origin = _place(location.group(1)) if location else None
     amount, currency, price_state = _amount(text)
+    if malformed_web_route:
+        status = "review"
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
     phones = raw.get("contacts", raw.get("phones", []))
     if isinstance(phones, str):
@@ -391,6 +400,13 @@ def block_contacts(text):
                 candidates = []
         for candidate in candidates:
             digits = re.sub(r'\D', '', candidate)
+            numeric_values = {
+                re.sub(r'\D', '', match.group())
+                for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
+                for match in pattern.finditer(line)
+            }
+            if digits and digits in numeric_values:
+                continue
             allowed = 6 <= len(digits) <= 15 if marker else line_number in footer_lines and 6 <= len(digits) <= 9
             if allowed and _phone_identity(candidate) not in {_phone_identity(item) for item in result}:
                 result.append(candidate)
