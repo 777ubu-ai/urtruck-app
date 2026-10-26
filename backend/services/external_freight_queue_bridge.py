@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261026-published-segments-contact-v1'
+    parser_revision = '20261026-published-segments-shared-footer-v2'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):

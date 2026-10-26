@@ -352,6 +352,31 @@ def block_contacts(text):
     return result[:20]
 
 
+def _phone_identity(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) == 11 and digits.startswith("8"):
+        return "7" + digits[1:]
+    return digits
+
+
+def _single_post_footer_contact(text):
+    """Return one unambiguous contact footer for the current source post only."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    footer = "\n".join(lines[-3:])
+    all_contacts = block_contacts(text)
+    footer_contacts = block_contacts(footer)
+    identities = {_phone_identity(value) for value in all_contacts if _phone_identity(value)}
+    footer_identities = {_phone_identity(value) for value in footer_contacts if _phone_identity(value)}
+    if len(identities) != 1 or identities != footer_identities:
+        return None
+    identity = next(iter(identities))
+    # Preserve the exact source spelling and prefer the occurrence in the footer.
+    for value in reversed(footer_contacts):
+        if _phone_identity(value) == identity:
+            return value
+    return None
+
+
 def _only_country_headers(value):
     # Разрешаем только известные заголовки стран/декор; общие контакты и условия
     # перед первым маршрутом не могут быть безопасно распределены по заявкам.
@@ -377,10 +402,11 @@ def _country_header_offsets(value):
 
 
 def map_selected_messages(raw):
-    """Нумерованные или явно разделённые маршрутные блоки, без наследования."""
+    """Split explicit request blocks; allow one explicit footer contact per post."""
     text = raw.get("original_text", raw.get("text", ""))
     if not isinstance(text,str) or len(text)>20000:
         raise ValueError("invalid_original_text")
+    shared_footer_contact = _single_post_footer_contact(text)
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
     blocks = []
     if len(numbered)>1 and not text[:numbered[0].start()].strip():
@@ -419,5 +445,10 @@ def map_selected_messages(raw):
             "text","original_text","phones","contacts","origin","destination","amount","currency","kind","status"}}
         item_raw.update(text=block,contacts=block_contacts(block),segment_id=f"block-{i+1}")
         item=map_selected_message(item_raw)
+        # A single footer phone belongs to the whole published post. Reuse it
+        # only among that post's route-split blocks; multiple post contacts or
+        # phones outside the footer remain local to their own block.
+        if not item.get("contacts") and shared_footer_contact:
+            item["contacts"] = [shared_footer_contact]
         result.append(item)
     return result

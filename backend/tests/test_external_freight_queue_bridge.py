@@ -121,6 +121,41 @@ def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
     ]
 
 
+def test_one_footer_contact_is_shared_only_inside_same_published_post(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        'Алматы — Самарканд\nГруз готов\nТент стандарт, 1 шт\nВес 7 тонн\n'
+        'Ташкент — Алматы\nГруз готов\n15 тонн\nТел: +998 90 512 60 71'))
+    result = worker.run_once()
+    assert result['scanned'] == 1
+    assert result['sent'] == 2
+    assert [(item['segment_id'], item['kind'], item['contacts'], item['status']) for item in calls] == [
+        ('block-1', 'cargo', ['+998 90 512 60 71'], 'active'),
+        ('block-2', 'cargo', ['+998 90 512 60 71'], 'active'),
+    ]
+
+
+def test_multiple_footer_contacts_are_not_shared_between_segments(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n+998901234567\n'
+        '2. Груз готов\nАлматы-Москва\n+998901234568'))
+    result = worker.run_once()
+    assert result['sent'] == 2
+    assert [item['contacts'] for item in calls] == [['+998901234567'], ['+998901234568']]
+
+
+def test_post_footer_phone_must_be_in_last_three_nonempty_lines(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n+998905126071\nУсловия: тент\n'
+        '2. Груз готов\nАлматы-Москва\nОплата по договорённости\nДата 28.10.2026'))
+    result = worker.run_once()
+    assert result['sent'] == 2
+    assert calls[0]['contacts'] == ['+998905126071']
+    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'review'
+
+
 def test_published_vehicle_needs_one_location_and_contact(bridge):
     worker, calls = bridge
     add(worker, text='Есть свободная машина\nХоргос\n123456')
