@@ -301,7 +301,7 @@ def map_selected_message(raw: dict) -> dict:
     }
 
 
-_PHONE_BLOCK = re.compile(r"(?<!\d)(?:\+?\d[\d \t().-]{7,24}\d)(?!\d)")
+_PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,24}\d(?!\d)")
 
 
 def _vehicle_count(text, kind):
@@ -312,8 +312,11 @@ def _vehicle_count(text, kind):
 
 
 def block_contacts(text):
-    """Только явно написанные в блоке номера, без угадывания страны."""
+    """Номера из блока без угадывания страны; короткие местные — только в контакте внизу."""
     result = []
+    lines = text.splitlines()
+    nonempty = [index for index, line in enumerate(lines) if line.strip()]
+    footer_lines = set(nonempty[-3:])
     # Числа цены/веса/объёма не становятся телефоном даже рядом со словом «телефон».
     numeric_fields = [match.span() for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
                       for match in pattern.finditer(text)]
@@ -323,6 +326,7 @@ def block_contacts(text):
         start = text.rfind('\n', 0, match.start()) + 1
         end = text.find('\n', match.end())
         line = text[start:end if end >= 0 else len(text)]
+        line_number = text.count('\n', 0, start)
         prefix = text[start:match.start()]
         if re.search(r'(?i)\b(?:ID|номер\s+заявки|номер\s+заказа)\s*[:#=]?\s*$', prefix):
             continue
@@ -330,10 +334,17 @@ def block_contacts(text):
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
-        phone_context = re.search(r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel)\ufe0f?\s*[:=—–-]?\s*$', prefix)
-        local_phone = (len(digits) == 9 and raw.replace(' ', '').replace('\t', '').isdigit()
-                       and (line.strip() == raw or phone_context))
-        if (10 <= len(digits) <= 15 or local_phone) and raw not in result:
+        phone_context = re.search(
+            r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
+            r'\ufe0f?\s*[:=—–-]?\s*$', prefix)
+        # Владелец подтвердил локальные 6–7-значные номера в нижней части
+        # объявления. Требуем отдельную строку либо явную подпись контакта;
+        # цифры в маршруте, количестве, цене и дате контактами не становятся.
+        footer_phone = (
+            6 <= len(digits) <= 9 and line_number in footer_lines
+            and (line.strip() == raw or bool(phone_context))
+        )
+        if (10 <= len(digits) <= 15 or footer_phone) and raw not in result:
             result.append(raw)
     return result[:20]
 
