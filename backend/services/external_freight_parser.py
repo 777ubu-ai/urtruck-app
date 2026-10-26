@@ -131,7 +131,6 @@ def _compact_routes(text, *, allow_space=False, allow_hyphenated=False):
     return [m for m in _COMPACT_ROUTE.finditer(text)
             if (allow_space or re.search(r"[-–—]", text[m.end(1):m.start(2)]))
             and (allow_hyphenated or not ('-' in m.group(1) or '-' in m.group(2)))
-            and not re.search(r"[→➡➜↔]", m.group())
             and not re.search(r"[?？❓❔/]", m.group())]
 
 
