@@ -74,14 +74,24 @@ jobs:
           dropin_dir=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d
           dropin="$dropin_dir/20-second-poll.conf"
           legacy_dropin="$dropin_dir/30-five-second-poll.conf"
+          env_file=/home/ubuntu/urtruck-qa2/external-feed-bridge.env
           backup_dir="$qa_root/backups/feed-bridge-poll-$run_id"
           state=/tmp/urtruck-qa2-feed-poll.state
           test -d "$qa_root" && test -f "$unit"
+          test -f "$env_file"
           grep -q '^Unit=urtruck-qa2-feed-bridge.service$' "$unit"
+          grep -q '^EnvironmentFile=/home/ubuntu/urtruck-qa2/external-feed-bridge.env$' /etc/systemd/system/urtruck-qa2-feed-bridge.service
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.service)" != active
           sudo -n install -d -o ubuntu -g ubuntu -m 0700 "$backup_dir"
+          sudo -n test "$(stat -c '%a' "$env_file")" = 600
+          sudo -n test "$(stat -c '%U' "$env_file")" = ubuntu
+          sudo -n grep -qx 'EXTERNAL_FREIGHT_API_URL=https://qa2.urtruck.kz' "$env_file"
+          sudo -n grep -qx 'EXTERNAL_FREIGHT_SOURCE_DB=/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3' "$env_file"
+          sudo -n grep -Eq '^EXTERNAL_FREIGHT_IMPORTER_KEY=.+$' "$env_file"
+          sudo -n grep -Eq '^EXTERNAL_FREIGHT_SOURCE_MODE=(published|incoming)$' "$env_file"
+          sudo -n cp -p -- "$env_file" "$backup_dir/previous.env"
           if sudo -n test -f "$dropin"; then
             sudo -n cp -p -- "$dropin" "$backup_dir/previous.conf"
             previous=present
@@ -101,6 +111,15 @@ jobs:
           PREVIOUS_DROPIN=$previous
           PREVIOUS_LEGACY_DROPIN=$previous_legacy
           STATE
+          sudo -n python3 - "$env_file" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          lines = [line for line in path.read_text().splitlines()
+                   if not line.startswith("EXTERNAL_FREIGHT_SOURCE_MODE=")]
+          lines.append("EXTERNAL_FREIGHT_SOURCE_MODE=incoming")
+          path.write_text("\n".join(lines) + "\n")
+          PY
           if test "$previous_legacy" = present; then
             sudo -n rm -- "$legacy_dropin"
           fi
@@ -174,6 +193,8 @@ jobs:
             absent) sudo -n rm -f -- "$legacy_dropin" ;;
             *) echo 'QA2_FEED_TIMER_LEGACY_BACKUP_STATE_INVALID' >&2; exit 1 ;;
           esac
+          test -f "$BACKUP_DIR/previous.env" || { echo 'QA2_FEED_ENV_BACKUP_MISSING' >&2; exit 1; }
+          sudo -n cp -p -- "$BACKUP_DIR/previous.env" /home/ubuntu/urtruck-qa2/external-feed-bridge.env
           sudo -n systemctl daemon-reload
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
