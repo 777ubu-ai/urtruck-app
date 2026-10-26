@@ -48,7 +48,7 @@ def test_only_published_and_fresh_without_source_mutation(bridge):
     worker, calls = bridge
     for i, status in enumerate(["published", "queued", "sending", "rejected", "uncertain"], 1):
         add(worker, i, status)
-    add(worker, 6, date=NOW - 120 * 3600 - 1)
+    add(worker, 6, date=NOW - 168 * 3600 - 1)
     add(worker, 7, date=NOW + 301)
     before = hashlib.sha256(worker.source_path.read_bytes()).hexdigest()
     result = worker.run_once()
@@ -99,11 +99,12 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     assert calls[0]["source_published_at"] == "2026-10-21T10:00:00+00:00"
 
 
-def test_missing_route_is_review(bridge):
+def test_missing_route_and_contact_are_still_visible(bridge):
     worker, calls = bridge
     add(worker, text="Нужен тент 22 тонны. Груз готов")
-    assert worker.run_once()["review"] == 1
-    assert calls[0]["status"] == "review"
+    assert worker.run_once()["sent"] == 1
+    assert calls[0]["status"] == "active"
+    assert calls[0]["origin"] is None and calls[0]["destination"] is None
 
 
 def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
@@ -153,7 +154,7 @@ def test_post_footer_phone_must_be_on_final_nonempty_line(bridge):
     result = worker.run_once()
     assert result['sent'] == 2
     assert calls[0]['contacts'] == ['+998905126071']
-    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'review'
+    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'active'
 
 
 def test_published_vehicle_needs_one_location_and_contact(bridge):
@@ -164,11 +165,12 @@ def test_published_vehicle_needs_one_location_and_contact(bridge):
         'vehicle', 'active', 'Хоргос', ['123456'])
 
 
-def test_published_active_route_without_contact_stays_review(bridge):
+def test_published_active_route_without_contact_stays_visible(bridge):
     worker, calls = bridge
     add(worker, text='Груз готов\nХоргос → Алматы')
-    assert worker.run_once()['review'] == 1
-    assert calls[0]['status'] == 'review'
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['status'] == 'active'
+    assert calls[0]['contacts'] == []
 
 
 def test_parser_revision_replays_published_records_already_seen_by_old_parser(bridge):
@@ -182,7 +184,7 @@ def test_parser_revision_replays_published_records_already_seen_by_old_parser(br
     result = worker.run_once()
     assert result['scanned'] == result['sent'] == 1
     assert calls[0]['contacts'] == []
-    assert calls[0]['status'] == 'review'
+    assert calls[0]['status'] == 'active'
     assert worker.run_once()['scanned'] == 0
 
 

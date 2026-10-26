@@ -242,7 +242,8 @@ def map_selected_message(raw: dict) -> dict:
     route_conflict = len(routes) > 1 or bool(compact and re.search(
         r'(?i)\b(?:откуда|куда|погрузка|выгрузка|загрузка|доставка)(?:\s*[:：]|\s+)', text))
     if route_conflict:
-        status = "review"
+        # Несколько/неразобранных направлений не должны скрывать объявление.
+        # Полный текст остаётся на карточке; поля маршрута оставляем пустыми.
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
@@ -258,8 +259,6 @@ def map_selected_message(raw: dict) -> dict:
                 r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
                 r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
             origin = _place(location.group(1)) if location else None
-    if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
-        status = "review"
     amount, currency, price_state = _amount(text)
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
     phones = raw.get("contacts", raw.get("phones", []))
@@ -273,8 +272,10 @@ def map_selected_message(raw: dict) -> dict:
     phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
     if not phones:
         phones = block_contacts(text)
-    # Never attach a shared contact bundle to multiple separately typed blocks.
-    if classification.get("status") == "split" or len(routes) > 1:
+    # Explicit numbered multi-request posts need segmentation first. A route
+    # list that the parser cannot split remains one visible card with its full
+    # source text rather than disappearing into review.
+    if classification.get("status") == "split":
         status = "review"
         phones = []
     return {
@@ -305,6 +306,36 @@ def map_selected_message(raw: dict) -> dict:
 
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,24}\d(?!\d)")
+_PHONE_CONTEXT = re.compile(
+    r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
+    r'\ufe0f?\s*[:=—–-]?\s*'
+)
+
+
+def _unicode_phone_runs(value):
+    """Read ASCII, Arabic, and Telegram keycap digits without guessing a country."""
+    runs = []
+    digits = []
+    plus = False
+    for char in value:
+        try:
+            digit = unicodedata.digit(char)
+        except (TypeError, ValueError):
+            digit = None
+        if digit is not None:
+            digits.append(str(digit))
+        elif char == '+' and not digits:
+            plus = True
+        elif char.isspace() or char in '().-\ufe0f\u20e3':
+            continue
+        else:
+            if digits:
+                runs.append(('+' if plus else '') + ''.join(digits))
+            digits = []
+            plus = False
+    if digits:
+        runs.append(('+' if plus else '') + ''.join(digits))
+    return runs
 
 
 def _vehicle_count(text, kind):
@@ -337,9 +368,7 @@ def block_contacts(text):
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
-        phone_context = re.search(
-            r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
-            r'\ufe0f?\s*[:=—–-]?\s*$', prefix)
+        phone_context = _PHONE_CONTEXT.search(prefix)
         # Владелец подтвердил локальные 6–7-значные номера в нижней части
         # объявления. Требуем отдельную строку либо явную подпись контакта;
         # цифры в маршруте, количестве, цене и дате контактами не становятся.
@@ -349,6 +378,22 @@ def block_contacts(text):
         )
         if (10 <= len(digits) <= 15 or footer_phone) and raw not in result:
             result.append(raw)
+    # Many Telegram channels render digits as keycap emoji (9️⃣8️⃣...), which
+    # the ordinary phone regex cannot see. A nearby phone label makes this
+    # representation explicit; standalone 6–9 digit footer values are also
+    # accepted under the owner-confirmed rule.
+    for line_number, line in enumerate(lines):
+        marker = _PHONE_CONTEXT.search(line)
+        candidates = _unicode_phone_runs(line[marker.end():]) if marker else []
+        if not candidates and line_number in footer_lines:
+            candidates = _unicode_phone_runs(line)
+            if any(char.isalpha() for char in line):
+                candidates = []
+        for candidate in candidates:
+            digits = re.sub(r'\D', '', candidate)
+            allowed = 6 <= len(digits) <= 15 if marker else line_number in footer_lines and 6 <= len(digits) <= 9
+            if allowed and _phone_identity(candidate) not in {_phone_identity(item) for item in result}:
+                result.append(candidate)
     return result[:20]
 
 

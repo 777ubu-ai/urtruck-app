@@ -86,7 +86,8 @@ def test_explicit_cargo_search_from_verified_city_keeps_partial_vehicle_location
     'Есть машина\nИщу груз с Оренбурга\nИщу груз с Москвы',
 ])
 def test_unknown_or_conflicting_cargo_search_locations_remain_review(text):
-    assert map_selected_message(message(text))['status']=='review'
+    item=map_selected_message(message(text))
+    assert item['status']=='active' and item['origin'] is None and item['destination'] is None
 
 
 @pytest.mark.parametrize('text', [
@@ -94,10 +95,13 @@ def test_unknown_or_conflicting_cargo_search_locations_remain_review(text):
     'Есть машина\nСанкт-Петербург',
     'Есть машина\nНеизвестноегороддан\nНезнакомоега',
     'Есть машина\nToshkentdan Nukusga\nQarshidan Buxoroga',
-    'Fura bor — yuk kerakmi?\nSizga doimiy yuk topib beramiz!',
 ])
-def test_ambiguous_locations_and_broker_questions_remain_review(text):
-    assert map_selected_message(message(text))['status']=='review'
+def test_unparsed_but_clear_vehicle_offer_stays_visible(text):
+    assert map_selected_message(message(text))['status']=='active'
+
+
+def test_broker_question_and_promotion_remain_review():
+    assert map_selected_message(message('Fura bor — yuk kerakmi?\nSizga doimiy yuk topib beramiz!'))['status']=='review'
 
 
 def test_nine_digit_local_contact_requires_source_phone_context():
@@ -120,6 +124,14 @@ def test_six_digit_footer_contact_requires_terminal_standalone_line():
     assert block_contacts('Есть машина\nАлматы\nТел: 123456')==['123456']
     assert block_contacts('Есть машина\n123456\nАлматы\nТент\nВес 10 тонн')==[]
     assert block_contacts('Есть машина\nНомер заявки: 123456')==[]
+
+
+def test_keycap_emoji_digits_with_phone_marker_are_extracted():
+    assert block_contacts('Нужен тент\nАлматы → Ташкент\n📞 9️⃣9️⃣8️⃣9️⃣0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣') == ['998901234567']
+
+
+def test_keycap_six_digit_footer_is_extracted_as_owner_confirmed_local_contact():
+    assert block_contacts('Нужен тент\nАлматы → Ташкент\n1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣') == ['123456']
 
 
 def test_shared_footer_contact_is_not_copied_to_multiple_route_blocks():
