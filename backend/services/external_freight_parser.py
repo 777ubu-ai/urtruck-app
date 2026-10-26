@@ -477,16 +477,16 @@ def map_selected_messages(raw):
     shared_footer_contact = _single_post_footer_contact(text)
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
     blocks = []
+    route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+    if not route_matches or uses_extended_intent(text):
+        route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
+            m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
+    route_matches.sort(key=lambda m: m.start())
     if len(numbered)>1 and not text[:numbered[0].start()].strip():
         for i,m in enumerate(numbered):
             end = numbered[i+1].start() if i+1<len(numbered) else len(text)
             blocks.append(text[m.end():end].strip())
     else:
-        route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
-        if not route_matches or uses_extended_intent(text):
-            route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
-                m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
-        route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             candidate_blocks=[]
@@ -506,7 +506,17 @@ def map_selected_messages(raw):
             if safe:
                 blocks=candidate_blocks
     if not blocks:
-        return [map_selected_message(raw)]
+        item = map_selected_message(raw)
+        shared_header = bool(route_matches and (
+            not _only_country_headers(text[:route_matches[0].start()])
+            or _country_header_offsets(text)
+        ))
+        if len(route_matches) > 1 and shared_header:
+            # Keep the whole source post visible in review: don't assign shared
+            # fields from a country/request section to the wrong route.
+            item["status"] = "review"
+            item["classification_status"] = "review"
+        return [item]
     result=[]
     for i,block in enumerate(blocks):
         item_raw = {k:v for k,v in raw.items() if k not in {

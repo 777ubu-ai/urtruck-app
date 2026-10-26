@@ -57,9 +57,9 @@ def test_compact_bulk_keeps_contact_ownership():
     assert len(items)==2 and all(x["status"]=="active" for x in items)
     assert items[0]["contacts"]==["+77000000001"] and items[1]["contacts"]==[]
 
-def test_shared_header_keeps_one_visible_source_post_without_route_guessing():
+def test_shared_header_stays_review_when_fields_cannot_be_bound_to_routes():
     items=map_selected_messages(raw("Общий контакт: +77000000001\nМосква-Алматы\nГруз - шины\nАстана-Бишкек\nГруз📦 доски"))
-    assert len(items)==1 and items[0]["status"]=="active"
+    assert len(items)==1 and items[0]["status"]=="review"
     assert items[0]["origin"] is None and items[0]["destination"] is None
 
 def test_promotion_without_load_or_offer_is_not_published():
