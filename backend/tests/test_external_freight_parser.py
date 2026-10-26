@@ -59,10 +59,11 @@ def test_ambiguous_or_multi_request_text_stays_review_without_shared_contact():
     assert item["contacts"] == ["+7 700 123 45 67"]
 
 
-def test_unknown_currency_and_unlabelled_route_are_not_guessed():
+def test_unknown_currency_is_not_guessed_and_known_space_route_is_supported():
     item = map_selected_message(_queue("Нужен тент, груз готов\nХоргос Алматы\n4 500 ABC"))
-    assert item["origin"] is None
-    assert item["destination"] is None
+    assert item["origin"] == "Хоргос"
+    assert item["destination"] == "Алматы"
+    assert item["status"] == "active"
     assert item["amount"] is None
     assert item["currency"] is None
 
