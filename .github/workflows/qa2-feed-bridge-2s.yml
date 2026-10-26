@@ -1,0 +1,159 @@
+name: QA2 Feed Bridge 2-second Poll
+
+on:
+  push:
+    branches: [qa2/integration-candidate]
+    paths:
+      - .github/workflows/qa2-feed-bridge-2s.yml
+      - docs/qa/external-freight-feed-20261020/urtruck-qa2-feed-bridge.timer
+      - docs/qa/external-freight-feed-20261020/continuous-2s-20261026.md
+
+concurrency:
+  group: urtruck-qa2-feed-bridge-poll
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    name: Configure isolated QA2 bridge timer
+    if: github.ref_name == 'qa2/integration-candidate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      QA_SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require exact QA2 branch and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$QA_SOURCE_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
+          git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+
+      - name: Install pinned SSH helper
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Pin QA2 host and capture Production fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          known_hosts_file="$RUNNER_TEMP/qa2-feed-known-hosts"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$known_hosts_file"
+          echo "QA2_SSH_KNOWN_HOSTS_FILE=$known_hosts_file" >> "$GITHUB_ENV"
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          fingerprint="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          echo "PROD_VERSION_HASH_BEFORE=$fingerprint" >> "$GITHUB_ENV"
+
+      - name: Back up and set only the QA2 bridge interval
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_RUN_ID" <<'REMOTE'
+          set -euo pipefail
+          run_id="$1"
+          [[ "$run_id" =~ ^[0-9]+$ ]]
+          qa_root=/home/ubuntu/urtruck-qa2
+          unit=/etc/systemd/system/urtruck-qa2-feed-bridge.timer
+          dropin_dir=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d
+          dropin="$dropin_dir/20-second-poll.conf"
+          backup_dir="$qa_root/backups/feed-bridge-poll-$run_id"
+          state=/tmp/urtruck-qa2-feed-poll.state
+          test -d "$qa_root" && test -f "$unit"
+          grep -q '^Unit=urtruck-qa2-feed-bridge.service$' "$unit"
+          test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
+          test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
+          test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.service)" != active
+          sudo -n install -d -o ubuntu -g ubuntu -m 0700 "$backup_dir"
+          if sudo -n test -f "$dropin"; then
+            sudo -n cp -p -- "$dropin" "$backup_dir/previous.conf"
+            previous=present
+          else
+            previous=absent
+          fi
+          umask 077
+          cat > "$state" <<STATE
+          BACKUP_DIR=$backup_dir
+          PREVIOUS_DROPIN=$previous
+          STATE
+          tmp="$(mktemp)"
+          cat > "$tmp" <<'TIMER'
+          [Timer]
+          OnUnitInactiveSec=2
+          AccuracySec=1
+          TIMER
+          sudo -n install -d -m 0755 "$dropin_dir"
+          sudo -n install -o root -g root -m 0644 "$tmp" "$dropin"
+          rm -f "$tmp"
+          sudo -n systemd-analyze verify "$unit"
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
+          test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
+          test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
+          sudo -n grep -qx 'OnUnitInactiveSec=2' "$dropin"
+          sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager | grep -q 'OnUnitInactiveSec=2s'
+          sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
+          echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
+          echo 'QA2_FEED_BRIDGE_ONESHOT=completed'
+          REMOTE
+
+      - name: Verify Production fingerprint unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          after="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          test "$after" = "$PROD_VERSION_HASH_BEFORE"
+          echo 'PRODUCTION_AFTER=healthy-unchanged'
+
+      - name: Remove transient rollback state after success
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
+            'rm -f /tmp/urtruck-qa2-feed-poll.state'
+
+      - name: Restore prior QA2 timer if configuration failed
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          known_hosts_file="${QA2_SSH_KNOWN_HOSTS_FILE:-$RUNNER_TEMP/qa2-feed-known-hosts}"
+          test -f "$known_hosts_file" || exit 0
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          state=/tmp/urtruck-qa2-feed-poll.state
+          test -f "$state" || { echo 'QA2_FEED_TIMER_ROLLBACK=no-change'; exit 0; }
+          . "$state"
+          qa_root=/home/ubuntu/urtruck-qa2
+          case "$BACKUP_DIR" in /home/ubuntu/urtruck-qa2/backups/feed-bridge-poll-[0-9]*) ;; *) echo 'QA2_FEED_TIMER_BACKUP_PATH_INVALID' >&2; exit 1 ;; esac
+          dropin=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d/20-second-poll.conf
+          case "$PREVIOUS_DROPIN" in
+            present) test -f "$BACKUP_DIR/previous.conf"; sudo -n cp -p -- "$BACKUP_DIR/previous.conf" "$dropin" ;;
+            absent) sudo -n rm -f -- "$dropin" ;;
+            *) echo 'QA2_FEED_TIMER_BACKUP_STATE_INVALID' >&2; exit 1 ;;
+          esac
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
+          test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
+          rm -f "$state"
+          echo 'QA2_FEED_TIMER_ROLLBACK=restored'
+          REMOTE

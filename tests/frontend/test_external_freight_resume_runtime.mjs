@@ -23,7 +23,7 @@ const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), statu
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness({ role = 'driver', fixtures = cards } = {}) {
   const opened = [], copied = [];
-  const slots = [], pending = [], listeners = new Map(), intervals = new Set(), queries = [];
+  const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const React = {
@@ -64,20 +64,25 @@ function harness({ role = 'driver', fixtures = cards } = {}) {
   };
   const module = { exports: {} };
   vm.runInNewContext(code, { exports: module.exports, module, require: name => { assert.ok(name in mocks, name); return mocks[name]; }, AbortController, Map, Set, Date, console, setTimeout, clearTimeout,
-    setInterval: fn => { intervals.add(fn); return fn; }, clearInterval: fn => intervals.delete(fn) });
+    setInterval: (fn, delay) => { intervals.set(fn, delay); return fn; }, clearInterval: fn => intervals.delete(fn) });
   function render() { cursor = 0; dirty = false; tree = module.exports.default({ navigation }); pending.splice(0).forEach(fn => fn()); }
   function nodes() { const all = []; function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n?.props || (n.type === 'Modal' && !n.props.visible)) return; all.push(n); walk(n.props.children); } walk(tree); return all; }
   return {
     async flush() { for (let i = 0; i < 12; i++) { if (dirty) render(); await tick(); } },
     list: () => nodes().find(n => n.type === 'FlatList'), warning: () => nodes().find(n => n.type === 'TouchableOpacity' && n.props.children.some(c => c?.type === 'Text' && c.props.children.some(s => typeof s === 'string' && s.includes('Нет соединения')))),
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
-    poll: () => intervals.forEach(fn => fn()), fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
+    poll: () => intervals.forEach((_delay, fn) => fn()), intervals: () => [...intervals.values()], fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
     node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
     shareModal: () => nodes().find(n => n.type === 'ShareModal'),
     opened, copied, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
+
+test('активная лента обновляется каждые 2 секунды', async () => {
+  const h = harness(); await h.flush();
+  assert.deepEqual(h.intervals(), [2000]);
+});
 
 test('равные даты: фоновые первые30 сохраняют ранее загруженные60 и обновляют поля', () => {
   const result = model.mergeLiveFeed(cards, cards.slice(0, 30).map(x => ({ ...x, amount: 500 })), { hasMore: true });

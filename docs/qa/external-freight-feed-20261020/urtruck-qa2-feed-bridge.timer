@@ -1,9 +1,9 @@
 [Unit]
-Description=UrTruck QA2 feed mirror every 20 seconds
+Description=UrTruck QA2 feed mirror every 2 seconds
 
 [Timer]
 OnBootSec=30
-OnUnitInactiveSec=20
+OnUnitInactiveSec=2
 AccuracySec=1
 Unit=urtruck-qa2-feed-bridge.service
 
