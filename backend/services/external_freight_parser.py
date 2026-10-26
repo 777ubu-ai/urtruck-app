@@ -371,6 +371,8 @@ def block_contacts(text):
         line = text[start:end if end >= 0 else len(text)]
         line_number = text.count('\n', 0, start)
         prefix = text[start:match.start()]
+        if re.search(r'(?i)\bуточняйте\b', prefix):
+            continue
         if re.search(r'(?i)\b(?:ID|номер\s+заявки|номер\s+заказа)\s*[:#=]?\s*$', prefix):
             continue
         if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
@@ -400,6 +402,17 @@ def block_contacts(text):
                 candidates = []
         for candidate in candidates:
             digits = re.sub(r'\D', '', candidate)
+            candidate_start = line.find(candidate)
+            prefix = line[:candidate_start] if candidate_start >= 0 else ""
+            price_markers = list(re.finditer(
+                r"(?i)\b(?:цена|стоимость|ставка|оплата|price)\b", line
+            ))
+            last_price_marker = price_markers[-1].start() if price_markers else -1
+            if re.search(r"(?i)\bуточняйте\b", prefix):
+                continue
+            if last_price_marker >= 0 and last_price_marker < candidate_start and (
+                    marker is None or last_price_marker > marker.start()):
+                continue
             numeric_values = {
                 re.sub(r'\D', '', match.group())
                 for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)

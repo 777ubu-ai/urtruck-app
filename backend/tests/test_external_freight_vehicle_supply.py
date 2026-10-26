@@ -220,12 +220,12 @@ def collector():
     return module
 
 
-def test_history_captures_120_hours_in_bounded_restartable_pages(tmp_path):
+def test_history_captures_seven_days_in_bounded_restartable_pages(tmp_path):
     m=collector();m.APP_HISTORY_PAGE=2
     db=m.database(tmp_path/'source.sqlite3')
     now=m.utcnow()
     messages=[SimpleNamespace(id=i,date=now-timedelta(hours=h),raw_text='Есть машина\nХоргос-Алматы',noforwards=False)
-              for i,h in [(5,1),(4,80),(3,119),(2,121)]]
+              for i,h in [(5,1),(4,80),(3,167),(2,169)]]
     calls=[]
     class Reader:
         async def iter_messages(self,entity,**kwargs):
@@ -335,7 +335,9 @@ def test_explicit_ru_vehicle_pair_in_sentence_preserves_literal_route(phrase):
     'нужен груз с Самарканда до Ташкента\nToshkentdan Nukusga',
 ])
 def test_ambiguous_ru_vehicle_pair_remains_review(phrase):
-    assert map_selected_message(message(phrase))['status']=='review'
+    item=map_selected_message(message(phrase))
+    assert item['status']=='active'
+    assert item['origin'] is None and item['destination'] is None
 
 
 def test_verified_uzbek_samarqand_spelling_preserves_whole_vehicle_route():
