@@ -76,7 +76,9 @@ def test_ambiguous_price_invalid_date_and_multiple_routes_stay_visible_or_unknow
     assert invalid_date["loading_date"] is None
     assert multi_route["status"] == "active"
     assert multi_route["origin"] is None and multi_route["destination"] is None
-    assert multi_route["contacts"] == []
+    # Keep the source-post contact on the single full-text card when routes
+    # cannot be split safely; don't discard the post-level phone.
+    assert multi_route["contacts"] == ["+7 700 123 45 67"]
 
 
 def test_spaced_hyphen_route_and_bare_dollar():
@@ -101,7 +103,7 @@ def test_hyphenated_city_is_not_split_without_spaces():
 def test_hyphen_multi_route_stays_visible_without_fabricated_route():
     item = map_selected_message(_queue("Нужен тент\nАлашанькоу - Ташкент\nХоргос — Алматы\nГруз готов"))
     assert item["status"] == "active"
-    assert item["contacts"] == []
+    assert item["contacts"] == ["+7 700 123 45 67"]
     assert item["origin"] is None and item["destination"] is None
 
 
