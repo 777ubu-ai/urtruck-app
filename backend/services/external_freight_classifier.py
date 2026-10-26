@@ -27,6 +27,10 @@ _CARGO_CONTEXT = re.compile(
     # «нужен 6 ось», «нужен 96 куб». Это заявка на перевозку, не свободный авто.
     r"нуж(?:ен|на|ны|но)\s+[^\n]{0,40}\b(?:ос[ьи]|куб(?:ов|а)?|м\s*[³3])\b)", re.I,
 )
+_CARGO_DETAIL_CONTEXT = re.compile(
+    r"(?i)\b(?:груз(?:\s+готов)?|погрузк\w*|выгрузк\w*|фрахт|тонн\w*|кг|"
+    r"куб(?:ов|а)?|м\s*[³3]|ADR|химикат\w*|оборудован\w*|тент\w*|рефрижератор\w*)\b"
+)
 _VEHICLE_CONTEXT = re.compile(
     r"(?:\bесть\s+(?:свободн\w*\s+)?(?:машин[ауы]?|транспорт|фур[ауы]?|тент[аы]?|р[еэ]ф(?:а|ы)?)\b|"
     r"свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)|порожн(?:ий|яя|ие)\s+(?:машин\w*|тягач\w*|фур\w*)|ищ(?:у|ем)\s+(?:груз|загруз)|возьму\s+груз|нужен груз|нужна\s+загрузка|жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
@@ -107,6 +111,11 @@ def classify_message(text: str) -> dict:
     if _CLOSE_CONTEXT.search(value):
         return {"kind": None, "status": "closed", "segments": [value]}
     cargo, vehicle = _intents(value)
+    # The owned freight channel also contains shorthand load offers with no
+    # verb: route + load/weight/capacity is enough to treat as cargo unless an
+    # explicit free-vehicle offer is present. The source text remains intact.
+    if not cargo and not vehicle and _CARGO_DETAIL_CONTEXT.search(value) and not _VEHICLE_CONTEXT.search(value):
+        cargo = True
     if cargo == vehicle:
         return {"kind": None, "status": "review", "segments": [value],
                 "reason": "mixed_intents" if cargo else (

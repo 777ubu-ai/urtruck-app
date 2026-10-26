@@ -27,6 +27,8 @@ def test_need_machine_is_cargo_empty_container_is_not_vehicle():
 def test_freight_channel_shorthand_for_axles_and_capacity_is_cargo():
     assert classify_message('Алашанькоу — Ташкент\nНужен 6️⃣ ось тандем\n26,5 тонна\nADR')['kind'] == 'cargo'
     assert classify_message('Алашанькоу — Воронеж\nНужен 92/96/105 куб\n22,3 тонна')['kind'] == 'cargo'
+    assert classify_message('Алматы — Ташкент\nОборудование\n22 тонны\nТент')['kind'] == 'cargo'
+    assert classify_message('Есть свободная машина\nАлматы → Ташкент\n22 тонны\nТент')['kind'] == 'vehicle'
 
 
 def test_cargo_ad_without_structured_route_stays_visible_with_source_text():
