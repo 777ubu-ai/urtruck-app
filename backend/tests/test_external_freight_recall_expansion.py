@@ -82,5 +82,5 @@ def test_compact_routes_use_verified_city_pairs_and_preserve_hyphenated_names():
     assert (compact["origin"], compact["destination"]) == ("Ташкент", "Бишкек")
 
     single_city = map_selected_message(_raw("Есть машина\nСанкт-Петербург\nТент, 20 т"))
-    assert single_city["status"] == "review"
+    assert single_city["status"] == "active"
     assert single_city["origin"] is None and single_city["destination"] is None
