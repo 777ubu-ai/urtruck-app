@@ -231,9 +231,7 @@ def map_selected_message(raw: dict) -> dict:
               if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
     # В свободной форме предложения машины компактный дефисный город может
     # означать местонахождение. Подтверждённый груз задаёт маршрут явно.
-    # Два известных географических названия без стрелки/дефиса также задают
-    # направление: такие строки встречаются в коротких Telegram-объявлениях.
-    compact = _compact_routes(text, allow_space=True, allow_hyphenated=kind == 'cargo')
+    compact = _compact_routes(text, allow_space=kind == "vehicle", allow_hyphenated=kind == 'cargo')
     # Count mixed arrow/compact formats together; never collapse two requests.
     routes += [m for m in compact if not any(
         m.start() < existing.end() and m.end() > existing.start() for existing in routes)]
@@ -389,7 +387,7 @@ def map_selected_messages(raw):
     else:
         route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
         if not route_matches or uses_extended_intent(text):
-            route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
+            route_matches += [m for m in _compact_routes(text) if not any(
                 m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
         route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
