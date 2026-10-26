@@ -89,12 +89,12 @@ jobs:
           test "$(jq -r '.merged' <<<"$SOURCE_PR")" = true
           test "$(jq -r '.merge_commit_sha' <<<"$SOURCE_PR")" = "$URTRUCK_SOURCE_SHA"
 
-          RELEASE_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=$GITHUB_REPOSITORY:$GITHUB_REF_NAME&state=all")"
+          RELEASE_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=${GITHUB_REPOSITORY%%/*}:$GITHUB_REF_NAME&state=all")"
           test "$(jq 'length' <<<"$RELEASE_PR")" = 1
           test "$(jq -r '.[0].base.ref' <<<"$RELEASE_PR")" = qa2/integration-candidate
-          test "$(jq -r '.[0].head.sha' <<<"$RELEASE_PR")" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$(jq -r '.[0].head.sha' <<<"$RELEASE_PR")" "$GITHUB_SHA"
           RELEASE_PR_STATE="$(jq -r '.[0].state' <<<"$RELEASE_PR")"
-          RELEASE_PR_MERGED="$(jq -r '.[0].merged' <<<"$RELEASE_PR")"
+          RELEASE_PR_MERGED="$(jq -r '.[0].merged_at != null' <<<"$RELEASE_PR")"
           test "$RELEASE_PR_STATE" = open || { test "$RELEASE_PR_STATE" = closed && test "$RELEASE_PR_MERGED" = true; } || {
             echo '::error::Release PR must remain open or be merged; closed unmerged PRs cannot build'
             exit 1
