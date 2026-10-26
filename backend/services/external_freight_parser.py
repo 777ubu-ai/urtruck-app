@@ -361,6 +361,11 @@ def _phone_identity(value):
 
 def _single_post_footer_contact(text):
     """Return one unambiguous contact footer for the current source post only."""
+    numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+", text))
+    if (len(numbered) > 1 and not text[:numbered[0].start()].strip()) or _country_header_offsets(text):
+        # Explicit block/section boundaries indicate distinct requests. Their
+        # contacts stay local even when the final section ends in a phone.
+        return None
     lines = [line for line in text.splitlines() if line.strip()]
     # A number at the end of an earlier route block is local to that request.
     # Only a contact on the final non-empty line is a post-level footer.
