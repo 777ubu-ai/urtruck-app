@@ -48,7 +48,7 @@ def test_only_published_and_fresh_without_source_mutation(bridge):
     worker, calls = bridge
     for i, status in enumerate(["published", "queued", "sending", "rejected", "uncertain"], 1):
         add(worker, i, status)
-    add(worker, 6, date=NOW - 120 * 3600 - 1)
+    add(worker, 6, date=NOW - 168 * 3600 - 1)
     add(worker, 7, date=NOW + 301)
     before = hashlib.sha256(worker.source_path.read_bytes()).hexdigest()
     result = worker.run_once()
@@ -99,11 +99,12 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     assert calls[0]["source_published_at"] == "2026-10-21T10:00:00+00:00"
 
 
-def test_missing_route_is_review(bridge):
+def test_missing_route_and_contact_are_still_visible(bridge):
     worker, calls = bridge
     add(worker, text="Нужен тент 22 тонны. Груз готов")
-    assert worker.run_once()["review"] == 1
-    assert calls[0]["status"] == "review"
+    assert worker.run_once()["sent"] == 1
+    assert calls[0]["status"] == "active"
+    assert calls[0]["origin"] is None and calls[0]["destination"] is None
 
 
 def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
@@ -121,6 +122,41 @@ def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
     ]
 
 
+def test_one_footer_contact_is_shared_only_inside_same_published_post(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        'Алматы — Самарканд\nГруз готов\nТент стандарт, 1 шт\nВес 7 тонн\n'
+        'Ташкент — Алматы\nГруз готов\n15 тонн\nТел: +998 90 512 60 71'))
+    result = worker.run_once()
+    assert result['scanned'] == 1
+    assert result['sent'] == 2
+    assert [(item['segment_id'], item['kind'], item['contacts'], item['status']) for item in calls] == [
+        ('block-1', 'cargo', ['+998 90 512 60 71'], 'active'),
+        ('block-2', 'cargo', ['+998 90 512 60 71'], 'active'),
+    ]
+
+
+def test_multiple_footer_contacts_are_not_shared_between_segments(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n+998901234567\n'
+        '2. Груз готов\nАлматы-Москва\n+998901234568'))
+    result = worker.run_once()
+    assert result['sent'] == 2
+    assert [item['contacts'] for item in calls] == [['+998901234567'], ['+998901234568']]
+
+
+def test_post_footer_phone_must_be_on_final_nonempty_line(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n+998905126071\nУсловия: тент\n'
+        '2. Груз готов\nАлматы-Москва\nОплата по договорённости\nДата 28.10.2026'))
+    result = worker.run_once()
+    assert result['sent'] == 2
+    assert calls[0]['contacts'] == ['+998905126071']
+    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'active'
+
+
 def test_published_vehicle_needs_one_location_and_contact(bridge):
     worker, calls = bridge
     add(worker, text='Есть свободная машина\nХоргос\n123456')
@@ -129,11 +165,12 @@ def test_published_vehicle_needs_one_location_and_contact(bridge):
         'vehicle', 'active', 'Хоргос', ['123456'])
 
 
-def test_published_active_route_without_contact_stays_review(bridge):
+def test_published_active_route_without_contact_stays_visible(bridge):
     worker, calls = bridge
     add(worker, text='Груз готов\nХоргос → Алматы')
-    assert worker.run_once()['review'] == 1
-    assert calls[0]['status'] == 'review'
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['status'] == 'active'
+    assert calls[0]['contacts'] == []
 
 
 def test_parser_revision_replays_published_records_already_seen_by_old_parser(bridge):
@@ -147,7 +184,7 @@ def test_parser_revision_replays_published_records_already_seen_by_old_parser(br
     result = worker.run_once()
     assert result['scanned'] == result['sent'] == 1
     assert calls[0]['contacts'] == []
-    assert calls[0]['status'] == 'review'
+    assert calls[0]['status'] == 'active'
     assert worker.run_once()['scanned'] == 0
 
 

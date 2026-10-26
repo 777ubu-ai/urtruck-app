@@ -79,6 +79,34 @@ def _import(record, *, key="test-importer-key-only"):
     return client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": key}, json={"records": [record]})
 
 
+def test_active_listing_expires_seven_days_after_source_publication():
+    published = datetime.now(timezone.utc) - timedelta(days=6)
+    record = _record(source="seven-day-ttl", published=published)
+    response = _import(record)
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "active"
+    with get_conn() as c:
+        expires = datetime.fromisoformat(c.execute(
+            "SELECT expires_at FROM external_freight_items WHERE source_id='seven-day-ttl'"
+        ).fetchone()[0])
+    assert expires == published + timedelta(days=7)
+
+
+def test_replaying_old_five_day_card_uses_source_based_seven_day_expiry():
+    published = datetime.now(timezone.utc) - timedelta(days=6)
+    record = _record(source="replay-seven-day-ttl", published=published)
+    with get_conn() as c:
+        c.execute("INSERT INTO external_freight_items(id,source_id,source_message_id,segment_id,kind,source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,origin,destination,body_types,price_state,contacts,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("old-ttl", record["source_id"], record["source_message_id"], record["segment_id"], record["kind"], published.isoformat(), published.isoformat(), published.isoformat(), (published+timedelta(hours=120)).isoformat(), record["original_text"], "old", record["origin"], record["destination"], "[]", "unknown", '["+7 777 000 00 00"]', "expired"))
+    response = _import(record)
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "active"
+    with get_conn() as c:
+        row = c.execute("SELECT expires_at FROM external_freight_items WHERE id='old-ttl'").fetchone()
+    assert datetime.fromisoformat(row[0]) == published + timedelta(days=7)
+
+
 def test_import_requires_secret_and_user_is_read_only():
     record = _record()
     assert client.post("/api/v1/external-freight/import", json={"records": [record]}).status_code == 401
@@ -154,7 +182,7 @@ def test_replay_and_edit_preserve_original_expiry_and_identity():
 
 
 def test_expired_rows_are_hidden_without_cleanup_job():
-    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(hours=121))
+    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(hours=169))
     inserted = _import(expired).json()["results"][0]
     assert inserted["status"] == "expired"
     global _actor

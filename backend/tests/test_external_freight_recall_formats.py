@@ -48,16 +48,19 @@ def test_unconfirmed_or_unavailable_vehicle_stays_review(text):
     "Срочно Москва Алматы", "Москва-Неизвестное", "Авто-Тент",
 ])
 def test_not_a_confirmed_pair(route):
-    assert map_selected_message(raw(route+"\nГруз готов"))["status"]=="review"
+    item = map_selected_message(raw(route+"\nГруз готов"))
+    assert item["status"] == "active"
+    assert item["origin"] is None and item["destination"] is None
 
 def test_compact_bulk_keeps_contact_ownership():
     items=map_selected_messages(raw("Москва-Алматы\nГруз - шины\n+77000000001\nАстана-Бишкек\nГруз📦 доски"))
     assert len(items)==2 and all(x["status"]=="active" for x in items)
     assert items[0]["contacts"]==["+77000000001"] and items[1]["contacts"]==[]
 
-def test_shared_header_stays_review():
+def test_shared_header_stays_review_when_fields_cannot_be_bound_to_routes():
     items=map_selected_messages(raw("Общий контакт: +77000000001\nМосква-Алматы\nГруз - шины\nАстана-Бишкек\nГруз📦 доски"))
     assert len(items)==1 and items[0]["status"]=="review"
+    assert items[0]["origin"] is None and items[0]["destination"] is None
 
 def test_promotion_without_load_or_offer_is_not_published():
     assert map_selected_message(raw("Ростов Москва\nПоможем найти груз! Пишите нам"))["status"]=="review"
@@ -65,11 +68,15 @@ def test_promotion_without_load_or_offer_is_not_published():
 
 @pytest.mark.parametrize("route", ["Москва-Алматы?", "Москва-Алматы❓", "Москва-Алматы/"])
 def test_question_or_alternative_is_not_a_confirmed_compact_route(route):
-    assert map_selected_message(raw(route+"\nГруз - шины"))["status"]=="review"
+    item = map_selected_message(raw(route+"\nГруз - шины"))
+    assert item["status"] == "active"
+    assert item["origin"] is None and item["destination"] is None
 
 def test_mixed_arrow_and_compact_routes_are_separate_requests():
     text="Москва → Алматы\nГруз - шины\nАстана-Бишкек\nГруз📦 доски"
-    assert map_selected_message(raw(text))["status"]=="review"
+    whole_post = map_selected_message(raw(text))
+    assert whole_post["status"] == "active"
+    assert whole_post["origin"] is None and whole_post["destination"] is None
     items=map_selected_messages(raw(text))
     assert len(items)==2 and all(x["status"]=="active" for x in items)
     assert [(x["origin"],x["destination"]) for x in items]==[("Москва","Алматы"),("Астана","Бишкек")]

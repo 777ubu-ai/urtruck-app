@@ -18,7 +18,7 @@ from services.external_freight_parser import map_selected_messages
 from services.external_freight_classifier import classify_message
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
-ACTIVE_SECONDS = 120 * 3600
+ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
 PARSER_REVISION = '20261025-owned-contact-recall-v8'
 
@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261026-published-segments-contact-v1'
+    parser_revision = '20261026-broad-cargo-visible-contact-v4'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -128,16 +128,8 @@ class PublishedQueueBridge:
                         previous["status"] = "closed"
                         enqueued += bool(self.adapter.enqueue(previous))
                 for record in records:
-                    # Грузу нужен маршрут с обоими концами; для свободной
-                    # машины достаточно места стоянки. Контакт обязателен.
-                    incomplete = (not record.get("contacts")
-                                  or (record["kind"] == "cargo" and
-                                      (not record.get("origin") or not record.get("destination")))
-                                  or (record["kind"] == "vehicle" and
-                                      not (record.get("origin") or record.get("destination"))))
-                    if record["status"] == "active" and incomplete:
-                        record["status"] = "review"
-                        record["classification_status"] = "review"
+                    # Подтверждённые публикации не прячем из-за неполных
+                    # структурных полей: исходный текст остаётся доступен в карточке.
                     review += record["status"] == "review"
                     enqueued += bool(self.adapter.enqueue(record))
             except (ValueError, TypeError, OverflowError):

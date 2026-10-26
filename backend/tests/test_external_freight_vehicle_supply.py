@@ -86,7 +86,8 @@ def test_explicit_cargo_search_from_verified_city_keeps_partial_vehicle_location
     'Есть машина\nИщу груз с Оренбурга\nИщу груз с Москвы',
 ])
 def test_unknown_or_conflicting_cargo_search_locations_remain_review(text):
-    assert map_selected_message(message(text))['status']=='review'
+    item=map_selected_message(message(text))
+    assert item['status']=='active' and item['origin'] is None and item['destination'] is None
 
 
 @pytest.mark.parametrize('text', [
@@ -94,10 +95,13 @@ def test_unknown_or_conflicting_cargo_search_locations_remain_review(text):
     'Есть машина\nСанкт-Петербург',
     'Есть машина\nНеизвестноегороддан\nНезнакомоега',
     'Есть машина\nToshkentdan Nukusga\nQarshidan Buxoroga',
-    'Fura bor — yuk kerakmi?\nSizga doimiy yuk topib beramiz!',
 ])
-def test_ambiguous_locations_and_broker_questions_remain_review(text):
-    assert map_selected_message(message(text))['status']=='review'
+def test_unparsed_but_clear_vehicle_offer_stays_visible(text):
+    assert map_selected_message(message(text))['status']=='active'
+
+
+def test_broker_question_and_promotion_remain_review():
+    assert map_selected_message(message('Fura bor — yuk kerakmi?\nSizga doimiy yuk topib beramiz!'))['status']=='review'
 
 
 def test_nine_digit_local_contact_requires_source_phone_context():
@@ -120,6 +124,14 @@ def test_six_digit_footer_contact_requires_terminal_standalone_line():
     assert block_contacts('Есть машина\nАлматы\nТел: 123456')==['123456']
     assert block_contacts('Есть машина\n123456\nАлматы\nТент\nВес 10 тонн')==[]
     assert block_contacts('Есть машина\nНомер заявки: 123456')==[]
+
+
+def test_keycap_emoji_digits_with_phone_marker_are_extracted():
+    assert block_contacts('Нужен тент\nАлматы → Ташкент\n📞 9️⃣9️⃣8️⃣9️⃣0️⃣1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣') == ['998901234567']
+
+
+def test_keycap_six_digit_footer_is_extracted_as_owner_confirmed_local_contact():
+    assert block_contacts('Нужен тент\nАлматы → Ташкент\n1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣') == ['123456']
 
 
 def test_shared_footer_contact_is_not_copied_to_multiple_route_blocks():
@@ -208,12 +220,12 @@ def collector():
     return module
 
 
-def test_history_captures_120_hours_in_bounded_restartable_pages(tmp_path):
+def test_history_captures_seven_days_in_bounded_restartable_pages(tmp_path):
     m=collector();m.APP_HISTORY_PAGE=2
     db=m.database(tmp_path/'source.sqlite3')
     now=m.utcnow()
     messages=[SimpleNamespace(id=i,date=now-timedelta(hours=h),raw_text='Есть машина\nХоргос-Алматы',noforwards=False)
-              for i,h in [(5,1),(4,80),(3,119),(2,121)]]
+              for i,h in [(5,1),(4,80),(3,167),(2,169)]]
     calls=[]
     class Reader:
         async def iter_messages(self,entity,**kwargs):
@@ -323,7 +335,9 @@ def test_explicit_ru_vehicle_pair_in_sentence_preserves_literal_route(phrase):
     'нужен груз с Самарканда до Ташкента\nToshkentdan Nukusga',
 ])
 def test_ambiguous_ru_vehicle_pair_remains_review(phrase):
-    assert map_selected_message(message(phrase))['status']=='review'
+    item=map_selected_message(message(phrase))
+    assert item['status']=='active'
+    assert item['origin'] is None and item['destination'] is None
 
 
 def test_verified_uzbek_samarqand_spelling_preserves_whole_vehicle_route():

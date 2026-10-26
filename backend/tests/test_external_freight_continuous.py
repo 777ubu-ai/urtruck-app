@@ -2,7 +2,7 @@ import importlib.util
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from services.external_freight_parser import map_selected_messages, map_selected_message
@@ -22,6 +22,20 @@ def test_need_machine_is_cargo_empty_container_is_not_vehicle():
         assert classify_message(text)['kind'] == 'cargo'
     assert classify_message('Есть свободная машина\nАлматы → Москва')['kind'] == 'vehicle'
     assert classify_message('Жүк керек\nАлматы → Москва')['kind'] == 'vehicle'
+
+
+def test_freight_channel_shorthand_for_axles_and_capacity_is_cargo():
+    assert classify_message('Алашанькоу — Ташкент\nНужен 6️⃣ ось тандем\n26,5 тонна\nADR')['kind'] == 'cargo'
+    assert classify_message('Алашанькоу — Воронеж\nНужен 92/96/105 куб\n22,3 тонна')['kind'] == 'cargo'
+    assert classify_message('Алматы — Ташкент\nОборудование\n22 тонны\nТент')['kind'] == 'cargo'
+    assert classify_message('Есть свободная машина\nАлматы → Ташкент\n22 тонны\nТент')['kind'] == 'vehicle'
+
+
+def test_cargo_ad_without_structured_route_stays_visible_with_source_text():
+    item = map_selected_message(raw('Бахты Барнаул груз готов\nСрочно нужен тент\n8️⃣7️⃣0️⃣0️⃣'))
+    assert item['kind'] == 'cargo' and item['status'] == 'active'
+    assert item['origin'] is None and item['destination'] is None
+    assert item['original_text'].startswith('Бахты Барнаул')
 
 
 def test_separate_blocks_do_not_borrow_price_phone_or_direction():
@@ -114,6 +128,15 @@ def test_capture_without_phone_legacy_queue_unchanged_and_edit_ttl(tmp_path):
     assert db.execute('select count(*) from app_messages').fetchone()[0]==1
     assert db.execute('select count(*) from queue').fetchone()[0]==0
     assert db.execute('select source_date from app_messages').fetchone()[0]==published.timestamp()
+
+
+def test_app_capture_keeps_publications_for_seven_day_window(tmp_path):
+    m=collector();db=m.database(tmp_path/'source.sqlite3')
+    recent=m.utcnow()-timedelta(hours=167)
+    stale=m.utcnow()-timedelta(hours=169)
+    assert m.capture_for_app(db,'public_channel',12345,88,'Тент',recent)
+    assert not m.capture_for_app(db,'public_channel',12345,89,'Тент',stale)
+    assert db.execute('select count(*) from app_messages').fetchone()[0]==1
 
 
 def test_incoming_delivers_before_telegram_and_survives_restart(tmp_path,monkeypatch):

@@ -9,7 +9,7 @@ from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_HOURS = 120
+ACTIVE_HOURS = 168
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 
 
@@ -200,12 +200,15 @@ def import_records(records):
             current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
             if current:
                 values["id"] = current["id"]
-                values["expires_at"] = current["expires_at"]
                 # Replay/edit must keep its original admission time so a new
                 # ingest cannot move the row into an in-progress cursor snapshot.
                 values["ingested_at"] = current["ingested_at"]
                 if current["source_published_at"]:
                     values["source_published_at"] = current["source_published_at"]
+                    values["expires_at"] = (_utc(current["source_published_at"])
+                                             + timedelta(hours=ACTIVE_HOURS)).isoformat()
+                elif current["expires_at"]:
+                    values["expires_at"] = current["expires_at"]
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (

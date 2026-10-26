@@ -24,6 +24,7 @@ TZ = ZoneInfo("Asia/Almaty")
 DESTINATION = -1003711161303
 DESTINATION_NAME = "@UrTruck_UT"
 OWNED_FEED_SOURCE = 'UrTruck_obyavleniya'
+ACTIVE_HOURS = 168
 DOWNLOAD_TEXT = 'Скачать UrTruck — грузы и машины в приложении'
 DOWNLOAD_BUTTONS = {'inline_keyboard': [[
     {'text': 'Android — Google Play', 'url': 'https://play.google.com/store/apps/details?id=com.urtruck.app'},
@@ -99,7 +100,7 @@ def capture_for_app(db, source, source_id, message_id, text, source_date, protec
     """Независимый durable-вход; Telegram-публикация не является условием."""
     if protected or not text or not source_date:
         return False
-    if source_date < utcnow() - timedelta(hours=120) or source_date > utcnow() + timedelta(minutes=5):
+    if source_date < utcnow() - timedelta(hours=ACTIVE_HOURS) or source_date > utcnow() + timedelta(minutes=5):
         return False
     revision = hashlib.sha256(text.encode()).hexdigest()
     now = time.time()
@@ -168,7 +169,7 @@ def capture_owned_deletion(db, entity, message_id, chat_id):
         return False
     published_at = datetime.fromtimestamp(row[0], timezone.utc)
     # capture_for_app сохраняет source_date при UPDATE, поэтому удаление
-    # немедленно закрывает карточку, не продлевая 120-часовой срок жизни.
+    # немедленно закрывает карточку, не продлевая срок жизни от исходной даты.
     changed = capture_for_app(db, OWNED_FEED_SOURCE, entity.id, message_id,
                               'Заявка закрыта', published_at)
     cta_key = f'owned_cta:{chat_id}:{message_id}'
@@ -214,7 +215,7 @@ async def collect_owned(reader, db):
         cursor = int((db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone() or [0])[0])
         query = ('SELECT id,source_message FROM app_messages WHERE lower(source)=? '
                  'AND source_id=? AND source_date>=? AND id>? ORDER BY id LIMIT 50')
-        args = (OWNED_FEED_SOURCE.lower(), entity.id, time.time()-120*3600)
+        args = (OWNED_FEED_SOURCE.lower(), entity.id, time.time()-ACTIVE_HOURS*3600)
         known = db.execute(query, (*args, cursor)).fetchall()
         if not known:
             known = db.execute(query, (*args, 0)).fetchall()
@@ -503,7 +504,7 @@ APP_HISTORY_RECONCILE_SECONDS = 6 * 3600
 
 
 async def collect_app_history(reader, db, source, entity):
-    """Ограниченный обход 120h той же сессией; очередь Telegram не затрагивается."""
+    """Ограниченный семидневный обход той же сессией; очередь Telegram не затрагивается."""
     now = time.time()
     state = db.execute('SELECT * FROM app_history WHERE source=?', (source,)).fetchone()
     if state and state['completed_at'] and now-state['completed_at'] < APP_HISTORY_RECONCILE_SECONDS:
@@ -519,7 +520,7 @@ async def collect_app_history(reader, db, source, entity):
         kwargs['offset_id'] = oldest
     seen = captured = 0
     complete = False
-    cutoff = utcnow()-timedelta(hours=120)
+    cutoff = utcnow()-timedelta(hours=ACTIVE_HOURS)
     async for msg in reader.iter_messages(entity, **kwargs):
         seen += 1
         if msg.date and msg.date < cutoff:

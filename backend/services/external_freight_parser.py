@@ -13,6 +13,7 @@ from services.external_freight_route_places import COMPACT_ROUTE_PLACES
 
 _ROUTE = re.compile(r"(?m)^[ \t]*([^\n→]{2,80}?)(?:[ \t]*(?:→|->|➜|➡)[ \t]*|[ \t]+[-–—][ \t]+)([^\n]{2,120}?)[ \t]*$")
 _NOT_ROUTE_LABEL = re.compile(r"(?i)^(?:груз|цена|фрахт|вес|объём|объем|оплата|контакт|телефон|нужен|нужны|требуется)\b")
+_WEB_DOMAIN = re.compile(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(?!\w))")
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
 )
@@ -143,7 +144,7 @@ def _place(value):
     # Сокращения города допустимы, доменные имена географией не становятся.
     domain_candidate = re.sub(r"(?i)^(?:г\.|st\.|ste\.|mt\.)(?=[^\W\d_])", "", value)
     if (not value or len(value) > 80 or _NOT_ROUTE_LABEL.search(value)
-            or re.search(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(?!\w))", domain_candidate)
+            or _WEB_DOMAIN.search(domain_candidate)
             or re.search(r"(?i)\b(?:срочно|готов|погрузка|выгрузка|тент|реф|тонн|фрахт|машин)\b", value)
             or any(c.isdigit() for c in value)
             or not all(c.isalpha() or c.isspace() or c in "-(),.'’" for c in value)):
@@ -229,7 +230,13 @@ def map_selected_message(raw: dict) -> dict:
         status = "review" if status != "closed" else "closed"
         kind = kind if kind in {"cargo", "vehicle"} else "cargo"
     routes = [match for match in _ROUTE.finditer(text)
-              if not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip())]
+              if (_place(match.group(1)) and _place(match.group(2))
+                  and not _NOT_ROUTE_LABEL.search(_place(match.group(1)) or match.group(1).strip()))]
+    malformed_web_route = any(
+        _WEB_DOMAIN.search(re.sub(r"(?i)^(?:г\.|st\.|ste\.|mt\.)", "", endpoint.strip()))
+        for match in _ROUTE.finditer(text)
+        for endpoint in (match.group(1), match.group(2))
+    )
     # В свободной форме предложения машины компактный дефисный город может
     # означать местонахождение. Подтверждённый груз задаёт маршрут явно.
     # Два известных географических названия без стрелки/дефиса также задают
@@ -242,7 +249,8 @@ def map_selected_message(raw: dict) -> dict:
     route_conflict = len(routes) > 1 or bool(compact and re.search(
         r'(?i)\b(?:откуда|куда|погрузка|выгрузка|загрузка|доставка)(?:\s*[:：]|\s+)', text))
     if route_conflict:
-        status = "review"
+        # Несколько/неразобранных направлений не должны скрывать объявление.
+        # Полный текст остаётся на карточке; поля маршрута оставляем пустыми.
         route = None
     else:
         route = routes[0] if routes else _LABELLED_ROUTE.search(text)
@@ -258,9 +266,9 @@ def map_selected_message(raw: dict) -> dict:
                 r"(?m)^\s*(?i:свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)\s+в)\s+"
                 r"([А-ЯЁA-Z][^\n,.;]{1,79})(?:[,.;\n]|$)",text)
             origin = _place(location.group(1)) if location else None
-    if ((route and (not origin or not destination)) or (not origin and not destination)) and status == "active":
-        status = "review"
     amount, currency, price_state = _amount(text)
+    if malformed_web_route:
+        status = "review"
     bodies = [name for name, pattern in _BODY if pattern.search(text)]
     phones = raw.get("contacts", raw.get("phones", []))
     if isinstance(phones, str):
@@ -273,8 +281,10 @@ def map_selected_message(raw: dict) -> dict:
     phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
     if not phones:
         phones = block_contacts(text)
-    # Never attach a shared contact bundle to multiple separately typed blocks.
-    if classification.get("status") == "split" or len(routes) > 1:
+    # Explicit numbered multi-request posts need segmentation first. A route
+    # list that the parser cannot split remains one visible card with its full
+    # source text rather than disappearing into review.
+    if classification.get("status") == "split":
         status = "review"
         phones = []
     return {
@@ -305,6 +315,36 @@ def map_selected_message(raw: dict) -> dict:
 
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,24}\d(?!\d)")
+_PHONE_CONTEXT = re.compile(
+    r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
+    r'\ufe0f?\s*[:=—–-]?\s*'
+)
+
+
+def _unicode_phone_runs(value):
+    """Read ASCII, Arabic, and Telegram keycap digits without guessing a country."""
+    runs = []
+    digits = []
+    plus = False
+    for char in value:
+        try:
+            digit = unicodedata.digit(char)
+        except (TypeError, ValueError):
+            digit = None
+        if digit is not None:
+            digits.append(str(digit))
+        elif char == '+' and not digits:
+            plus = True
+        elif char.isspace() or char in '().-\ufe0f\u20e3':
+            continue
+        else:
+            if digits:
+                runs.append(('+' if plus else '') + ''.join(digits))
+            digits = []
+            plus = False
+    if digits:
+        runs.append(('+' if plus else '') + ''.join(digits))
+    return runs
 
 
 def _vehicle_count(text, kind):
@@ -331,15 +371,15 @@ def block_contacts(text):
         line = text[start:end if end >= 0 else len(text)]
         line_number = text.count('\n', 0, start)
         prefix = text[start:match.start()]
+        if re.search(r'(?i)\bуточняйте\b', prefix):
+            continue
         if re.search(r'(?i)\b(?:ID|номер\s+заявки|номер\s+заказа)\s*[:#=]?\s*$', prefix):
             continue
         if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
-        phone_context = re.search(
-            r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
-            r'\ufe0f?\s*[:=—–-]?\s*$', prefix)
+        phone_context = _PHONE_CONTEXT.search(prefix)
         # Владелец подтвердил локальные 6–7-значные номера в нижней части
         # объявления. Требуем отдельную строку либо явную подпись контакта;
         # цифры в маршруте, количестве, цене и дате контактами не становятся.
@@ -349,7 +389,73 @@ def block_contacts(text):
         )
         if (10 <= len(digits) <= 15 or footer_phone) and raw not in result:
             result.append(raw)
+    # Many Telegram channels render digits as keycap emoji (9️⃣8️⃣...), which
+    # the ordinary phone regex cannot see. A nearby phone label makes this
+    # representation explicit; standalone 6–9 digit footer values are also
+    # accepted under the owner-confirmed rule.
+    for line_number, line in enumerate(lines):
+        marker = _PHONE_CONTEXT.search(line)
+        candidates = _unicode_phone_runs(line[marker.end():]) if marker else []
+        if not candidates and line_number in footer_lines:
+            candidates = _unicode_phone_runs(line)
+            if any(char.isalpha() for char in line):
+                candidates = []
+        for candidate in candidates:
+            digits = re.sub(r'\D', '', candidate)
+            candidate_start = line.find(candidate)
+            prefix = line[:candidate_start] if candidate_start >= 0 else ""
+            price_markers = list(re.finditer(
+                r"(?i)\b(?:цена|стоимость|ставка|оплата|price)\b", line
+            ))
+            last_price_marker = price_markers[-1].start() if price_markers else -1
+            if re.search(r"(?i)\bуточняйте\b", prefix):
+                continue
+            if last_price_marker >= 0 and last_price_marker < candidate_start and (
+                    marker is None or last_price_marker > marker.start()):
+                continue
+            numeric_values = {
+                re.sub(r'\D', '', match.group())
+                for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
+                for match in pattern.finditer(line)
+            }
+            if digits and digits in numeric_values:
+                continue
+            allowed = 6 <= len(digits) <= 15 if marker else line_number in footer_lines and 6 <= len(digits) <= 9
+            if allowed and _phone_identity(candidate) not in {_phone_identity(item) for item in result}:
+                result.append(candidate)
     return result[:20]
+
+
+def _phone_identity(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) == 11 and digits.startswith("8"):
+        return "7" + digits[1:]
+    return digits
+
+
+def _single_post_footer_contact(text):
+    """Return one unambiguous contact footer for the current source post only."""
+    numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+", text))
+    if (len(numbered) > 1 and not text[:numbered[0].start()].strip()) or _country_header_offsets(text):
+        # Explicit block/section boundaries indicate distinct requests. Their
+        # contacts stay local even when the final section ends in a phone.
+        return None
+    lines = [line for line in text.splitlines() if line.strip()]
+    # A number at the end of an earlier route block is local to that request.
+    # Only a contact on the final non-empty line is a post-level footer.
+    footer = lines[-1] if lines else ""
+    all_contacts = block_contacts(text)
+    footer_contacts = block_contacts(footer)
+    identities = {_phone_identity(value) for value in all_contacts if _phone_identity(value)}
+    footer_identities = {_phone_identity(value) for value in footer_contacts if _phone_identity(value)}
+    if len(identities) != 1 or identities != footer_identities:
+        return None
+    identity = next(iter(identities))
+    # Preserve the exact source spelling and prefer the occurrence in the footer.
+    for value in reversed(footer_contacts):
+        if _phone_identity(value) == identity:
+            return value
+    return None
 
 
 def _only_country_headers(value):
@@ -377,22 +483,23 @@ def _country_header_offsets(value):
 
 
 def map_selected_messages(raw):
-    """Нумерованные или явно разделённые маршрутные блоки, без наследования."""
+    """Split explicit request blocks; allow one explicit footer contact per post."""
     text = raw.get("original_text", raw.get("text", ""))
     if not isinstance(text,str) or len(text)>20000:
         raise ValueError("invalid_original_text")
+    shared_footer_contact = _single_post_footer_contact(text)
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
     blocks = []
+    route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
+    if not route_matches or uses_extended_intent(text):
+        route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
+            m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
+    route_matches.sort(key=lambda m: m.start())
     if len(numbered)>1 and not text[:numbered[0].start()].strip():
         for i,m in enumerate(numbered):
             end = numbered[i+1].start() if i+1<len(numbered) else len(text)
             blocks.append(text[m.end():end].strip())
     else:
-        route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
-        if not route_matches or uses_extended_intent(text):
-            route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
-                m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
-        route_matches.sort(key=lambda m: m.start())
         # Безопасен список, где каждый блок начинается своим маршрутом.
         if len(route_matches)>1 and _only_country_headers(text[:route_matches[0].start()]):
             candidate_blocks=[]
@@ -412,12 +519,27 @@ def map_selected_messages(raw):
             if safe:
                 blocks=candidate_blocks
     if not blocks:
-        return [map_selected_message(raw)]
+        item = map_selected_message(raw)
+        shared_header = bool(route_matches and (
+            not _only_country_headers(text[:route_matches[0].start()])
+            or _country_header_offsets(text)
+        ))
+        if len(route_matches) > 1 and shared_header:
+            # Keep the whole source post visible in review: don't assign shared
+            # fields from a country/request section to the wrong route.
+            item["status"] = "review"
+            item["classification_status"] = "review"
+        return [item]
     result=[]
     for i,block in enumerate(blocks):
         item_raw = {k:v for k,v in raw.items() if k not in {
             "text","original_text","phones","contacts","origin","destination","amount","currency","kind","status"}}
         item_raw.update(text=block,contacts=block_contacts(block),segment_id=f"block-{i+1}")
         item=map_selected_message(item_raw)
+        # A single footer phone belongs to the whole published post. Reuse it
+        # only among that post's route-split blocks; multiple post contacts or
+        # phones outside the footer remain local to their own block.
+        if not item.get("contacts") and shared_footer_contact:
+            item["contacts"] = [shared_footer_contact]
         result.append(item)
     return result

@@ -11,6 +11,7 @@ _CARGO_FORMAT_CONTEXT = re.compile(
 )
 _CARGO_CONTEXT = re.compile(
     r"(?:нуж(?:ен|на|ны|но)\s+(?:\d+\s*)?(?:тент|реф|машин|транспорт|авто|фур)|ищу (?:машин|транспорт)|"
+    r"нуж(?:ен|на|ны|но)\s+свободн\w*\s+(?:тент|реф|машин|транспорт|авто|фур)|"
     r"требуется\s+(?:\d+\s*)?(?:машин|транспорт|авто|реф|тент)|требуются\s+(?:\d+\s*)?машин(?:а|ы)?|"
     r"нужен\s+перевозчик|(?:ищу|ищем|предлагайте)\s+свободн\w*\s+(?:машин|реф|тент|фур)|"
     r"(?:реф|тент)\s+нужен|(?:m[ao]shina|fura|tent|ref)\s+kerak\b|машин\w*\s+керек\b|"
@@ -22,8 +23,16 @@ _CARGO_CONTEXT = re.compile(
     r"нуж(?:ен|на|ны|но)\s+(?:автомобил\w*|авто|перевозк\w*|доставк\w*)|"
     r"требу(?:ется|ются)\s+(?:автомобил\w*|авто|перевозк\w*|транспорт\w*)|"
     r"(?:грузоперевозк\w*|перевозк\s+груз\w*|доставк\w*\s+груз\w*)|"
-    r"(?:load|cargo)\s+(?:from|ready|available)|freight\s+(?:from|to))", re.I,
+    r"(?:load|cargo)\s+(?:from|ready|available)|freight\s+(?:from|to)|"
+    # В коротких объявлениях о грузе часто пишут только требование к машине:
+    # «нужен 6 ось», «нужен 96 куб». Это заявка на перевозку, не свободный авто.
+    r"нуж(?:ен|на|ны|но)\s+[^\n]{0,40}\b(?:ос[ьи]|куб(?:ов|а)?|м\s*[³3])\b)", re.I,
 )
+_CARGO_DETAIL_CONTEXT = re.compile(
+    r"(?i)(?:\b\d+(?:[.,]\d+)?\s*(?:тонн\w*|т|кг|куб(?:ов|а)?|м\s*[³3])\b|"
+    r"\b(?:ADR|химикат\w*|оборудован\w*)\b|\bгруз\s*[:：]\s*[^\n.!?]{2,})"
+)
+_UNSPECIFIED_VEHICLE_MENTION = re.compile(r"(?i)\bмашин\w*\b")
 _VEHICLE_CONTEXT = re.compile(
     r"(?:\bесть\s+(?:свободн\w*\s+)?(?:машин[ауы]?|транспорт|фур[ауы]?|тент[аы]?|р[еэ]ф(?:а|ы)?)\b|"
     r"свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)|порожн(?:ий|яя|ие)\s+(?:машин\w*|тягач\w*|фур\w*)|ищ(?:у|ем)\s+(?:груз|загруз)|возьму\s+груз|нужен груз|нужна\s+загрузка|жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
@@ -76,6 +85,10 @@ def _intents(value):
         r"(?i)(?:ищу|ищем|предлагайте)\s+свободн\w*\s+(?:машин\w*|реф\w*|тент\w*|фур\w*)",
         " ", vehicle_text,
     )
+    vehicle_text = re.sub(
+        r"(?i)нуж(?:ен|на|ны|но)\s+свободн\w*\s+(?:машин\w*|реф\w*|тент\w*|фур\w*)",
+        " ", vehicle_text,
+    )
     # Условие, поиск перевозчика и ремонт не подтверждают наличие свободной машины.
     vehicle_text = re.sub(
         r'(?im)^.*\b(?:у\s+кого|если)\s+есть\s+[^\n]*$', ' ', vehicle_text)
@@ -104,6 +117,13 @@ def classify_message(text: str) -> dict:
     if _CLOSE_CONTEXT.search(value):
         return {"kind": None, "status": "closed", "segments": [value]}
     cargo, vehicle = _intents(value)
+    # The owned freight channel also contains shorthand load offers with no
+    # verb: route + load/weight/capacity is enough to treat as cargo unless an
+    # explicit free-vehicle offer is present. The source text remains intact.
+    if (not cargo and not vehicle and _CARGO_DETAIL_CONTEXT.search(value)
+            and not _VEHICLE_CONTEXT.search(value)
+            and not _UNSPECIFIED_VEHICLE_MENTION.search(value)):
+        cargo = True
     if cargo == vehicle:
         return {"kind": None, "status": "review", "segments": [value],
                 "reason": "mixed_intents" if cargo else (
