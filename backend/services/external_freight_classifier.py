@@ -31,6 +31,7 @@ _CARGO_DETAIL_CONTEXT = re.compile(
     r"(?i)\b(?:груз(?:\s+готов)?|погрузк\w*|выгрузк\w*|фрахт|тонн\w*|кг|"
     r"куб(?:ов|а)?|м\s*[³3]|ADR|химикат\w*|оборудован\w*|тент\w*|рефрижератор\w*)\b"
 )
+_UNSPECIFIED_VEHICLE_MENTION = re.compile(r"(?i)\bмашин\w*\b")
 _VEHICLE_CONTEXT = re.compile(
     r"(?:\bесть\s+(?:свободн\w*\s+)?(?:машин[ауы]?|транспорт|фур[ауы]?|тент[аы]?|р[еэ]ф(?:а|ы)?)\b|"
     r"свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)|порожн(?:ий|яя|ие)\s+(?:машин\w*|тягач\w*|фур\w*)|ищ(?:у|ем)\s+(?:груз|загруз)|возьму\s+груз|нужен груз|нужна\s+загрузка|жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
@@ -114,7 +115,9 @@ def classify_message(text: str) -> dict:
     # The owned freight channel also contains shorthand load offers with no
     # verb: route + load/weight/capacity is enough to treat as cargo unless an
     # explicit free-vehicle offer is present. The source text remains intact.
-    if not cargo and not vehicle and _CARGO_DETAIL_CONTEXT.search(value) and not _VEHICLE_CONTEXT.search(value):
+    if (not cargo and not vehicle and _CARGO_DETAIL_CONTEXT.search(value)
+            and not _VEHICLE_CONTEXT.search(value)
+            and not _UNSPECIFIED_VEHICLE_MENTION.search(value)):
         cargo = True
     if cargo == vehicle:
         return {"kind": None, "status": "review", "segments": [value],

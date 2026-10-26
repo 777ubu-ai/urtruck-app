@@ -182,7 +182,7 @@ def test_replay_and_edit_preserve_original_expiry_and_identity():
 
 
 def test_expired_rows_are_hidden_without_cleanup_job():
-    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(hours=121))
+    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(hours=169))
     inserted = _import(expired).json()["results"][0]
     assert inserted["status"] == "expired"
     global _actor
