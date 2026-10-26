@@ -91,7 +91,7 @@ on:
         default: false
         type: boolean
       last_verified_play_code:
-        description: Latest versionCode verified in Play before building the reviewed internal candidate
+        description: Latest versionCode verified in Play before building the reviewed store candidate
         required: false
         default: ""
         type: string
@@ -132,6 +132,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Prepare reviewed internal candidate identity
         env:
@@ -176,6 +178,30 @@ jobs:
             python3 scripts/prepare_store_candidate_version.py --platform android \
               --version 1.0.12 --source-sha "$GITHUB_SHA"
             echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test "$API_ENVIRONMENT_INPUT" = production
+            test "$TRACK_INPUT" = production
+            test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
+            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+            test "$VERIFIED_PLAY_MAX_CODE" -ge 215090227
+            test "$VERIFIED_PLAY_MAX_CODE" -lt 2099999999
+            git merge-base --is-ancestor 4a2000526e5b89c4fa93fd053ac0d4f21ece05c7 HEAD
+            git diff --exit-code 4a2000526e5b89c4fa93fd053ac0d4f21ece05c7 HEAD -- . ':!.github/workflows/deploy-play.yml' ':!tests/frontend/test_play_internal_sequential_version.mjs' ':!docs/release/play-production-1.0.12-20261026.md'
+            PRS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=777ubu-ai:$GITHUB_REF_NAME&state=all")"
+            test "$(jq 'length' <<<"$PRS_JSON")" = 1
+            test "$(jq -r '.[0].base.ref' <<<"$PRS_JSON")" = qa2/integration-candidate
+            test "$(jq -r '.[0].head.sha' <<<"$PRS_JSON")" = "$GITHUB_SHA"
+            CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100")"
+            for CHECK in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
+              CONCLUSION="$(jq -r --arg name "$CHECK" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$CHECKS_JSON")"
+              test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
+            done
+            echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
+            echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
+            echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
             echo '::error::Promote PR 605 to qa2/integration-candidate before building its internal store candidate'
             exit 1
@@ -263,14 +289,14 @@ jobs:
         # растёт независимо от GitHub run number и остаётся < 2_100_000_000
         # примерно до 2086 года. Concurrency выше сериализует Play jobs, поэтому
         # Для QA2 Internal владелец выбрал последовательный код: проверенный
-        # максимум магазина + 1. В production прежний алгоритм сохраняется.
+        # максимум магазина + 1. Принятый production-кандидат использует тот же порядок.
         run: |
           set -euo pipefail
           base_epoch=1577836800
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
           installed_version_code=213720253
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ]; then
+          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
@@ -352,7 +378,7 @@ jobs:
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           printf '%s\n' "$manifest_xml" | grep -q "android:versionName=\"${URTRUCK_VERSION_NAME}\""
           unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ]; then
+          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
