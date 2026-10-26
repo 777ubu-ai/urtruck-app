@@ -14,6 +14,7 @@ test('QA2 bridge timer is set to two seconds and stays isolated', () => {
   assert.match(workflow, /StrictHostKeyChecking=yes/);
   assert.match(workflow, /systemd-analyze verify/);
   assert.match(workflow, /OnUnitInactiveSec=\n\s+OnUnitInactiveSec=2/);
+  assert.match(workflow, /systemctl cat urtruck-qa2-feed-bridge\.timer --no-pager/);
   assert.match(workflow, /systemctl show urtruck-qa2-feed-bridge\.timer -p TimersMonotonic --no-pager/);
   assert.match(workflow, /OnUnitInactiveUSec=2s/);
   assert.match(workflow, /Verify Production fingerprint unchanged/);
