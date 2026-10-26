@@ -145,7 +145,7 @@ def test_multiple_footer_contacts_are_not_shared_between_segments(bridge):
     assert [item['contacts'] for item in calls] == [['+998901234567'], ['+998901234568']]
 
 
-def test_post_footer_phone_must_be_in_last_three_nonempty_lines(bridge):
+def test_post_footer_phone_must_be_on_final_nonempty_line(bridge):
     worker, calls = bridge
     add(worker, text=(
         '1. Груз готов\nХоргос-Астана\n+998905126071\nУсловия: тент\n'

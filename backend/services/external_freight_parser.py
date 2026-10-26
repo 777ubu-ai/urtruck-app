@@ -362,7 +362,9 @@ def _phone_identity(value):
 def _single_post_footer_contact(text):
     """Return one unambiguous contact footer for the current source post only."""
     lines = [line for line in text.splitlines() if line.strip()]
-    footer = "\n".join(lines[-3:])
+    # A number at the end of an earlier route block is local to that request.
+    # Only a contact on the final non-empty line is a post-level footer.
+    footer = lines[-1] if lines else ""
     all_contacts = block_contacts(text)
     footer_contacts = block_contacts(footer)
     identities = {_phone_identity(value) for value in all_contacts if _phone_identity(value)}
