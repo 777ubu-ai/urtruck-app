@@ -14,11 +14,15 @@ test('QA2 bridge timer is set to two seconds and stays isolated', () => {
   assert.match(workflow, /StrictHostKeyChecking=yes/);
   assert.match(workflow, /systemd-analyze verify/);
   assert.match(workflow, /OnUnitInactiveSec=\n\s+OnUnitInactiveSec=2/);
+  assert.match(workflow, /30-five-second-poll\.conf/);
+  assert.match(workflow, /previous-30\.conf/);
   assert.match(workflow, /systemctl cat urtruck-qa2-feed-bridge\.timer --no-pager/);
   assert.match(workflow, /systemctl show urtruck-qa2-feed-bridge\.timer -p TimersMonotonic --no-pager/);
   assert.match(workflow, /OnUnitInactiveUSec=2s/);
   assert.match(workflow, /Verify Production fingerprint unchanged/);
   assert.match(workflow, /Restore prior QA2 timer if configuration failed/);
+  assert.match(workflow, /PREVIOUS_LEGACY_DROPIN/);
   assert.match(workflow, /systemctl restart urtruck-qa2-feed-bridge.timer/);
+  assert.match(workflow, /journalctl -u urtruck-qa2-feed-bridge\.service/);
   assert.doesNotMatch(workflow, /urtruck\.kz\/api\/version[^\n]*POST/);
 });
