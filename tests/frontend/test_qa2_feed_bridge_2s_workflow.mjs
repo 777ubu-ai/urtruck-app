@@ -17,6 +17,7 @@ test('QA2 bridge timer is set to two seconds and stays isolated', () => {
   assert.match(workflow, /30-five-second-poll\.conf/);
   assert.match(workflow, /previous-30\.conf/);
   assert.match(workflow, /EXTERNAL_FREIGHT_SOURCE_MODE=incoming/);
+  assert.match(workflow, /if sudo -n grep -q '\^EXTERNAL_FREIGHT_SOURCE_MODE='/);
   assert.match(workflow, /previous\.env/);
   assert.match(workflow, /EXTERNAL_FREIGHT_IMPORTER_KEY/);
   assert.match(workflow, /systemctl cat urtruck-qa2-feed-bridge\.timer --no-pager/);

@@ -90,7 +90,9 @@ jobs:
           sudo -n grep -qx 'EXTERNAL_FREIGHT_API_URL=https://qa2.urtruck.kz' "$env_file"
           sudo -n grep -qx 'EXTERNAL_FREIGHT_SOURCE_DB=/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3' "$env_file"
           sudo -n grep -Eq '^EXTERNAL_FREIGHT_IMPORTER_KEY=.+$' "$env_file"
-          sudo -n grep -Eq '^EXTERNAL_FREIGHT_SOURCE_MODE=(published|incoming)$' "$env_file"
+          if sudo -n grep -q '^EXTERNAL_FREIGHT_SOURCE_MODE=' "$env_file"; then
+            sudo -n grep -Eq '^EXTERNAL_FREIGHT_SOURCE_MODE=(published|incoming)$' "$env_file"
+          fi
           sudo -n cp -p -- "$env_file" "$backup_dir/previous.env"
           if sudo -n test -f "$dropin"; then
             sudo -n cp -p -- "$dropin" "$backup_dir/previous.conf"
