@@ -9,7 +9,7 @@ from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_HOURS = 120
+ACTIVE_HOURS = 168
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 
 
@@ -200,12 +200,18 @@ def import_records(records):
             current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
             if current:
                 values["id"] = current["id"]
-                values["expires_at"] = current["expires_at"]
                 # Replay/edit must keep its original admission time so a new
                 # ingest cannot move the row into an in-progress cursor snapshot.
                 values["ingested_at"] = current["ingested_at"]
                 if current["source_published_at"]:
                     values["source_published_at"] = current["source_published_at"]
+                # Recalculate visibility from the original Telegram publication.
+                # Preserving the old expiry here would keep 120-hour rows hidden
+                # forever after the feed retention window is raised to seven days.
+                published = _utc(values["source_published_at"]) if values["source_published_at"] else None
+                values["expires_at"] = (published + timedelta(hours=ACTIVE_HOURS)).isoformat() if published else None
+                if values["status"] == "active" and values["expires_at"] and _utc(values["expires_at"]) <= _utc():
+                    values["status"] = "expired"
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (
@@ -217,7 +223,8 @@ def import_records(records):
                     values["status"] = "expired"
                 assignments = ",".join(f"{key}=?" for key in columns)
                 c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
-                action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
+                action = "updated" if (not unchanged or values["status"] != current["status"]
+                                        or values["expires_at"] != current["expires_at"]) else "replayed"
             else:
                 all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
                 c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
