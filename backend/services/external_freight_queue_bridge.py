@@ -96,6 +96,8 @@ class PublishedQueueBridge:
             # Хеш всех исходных полей замечает правку текста/контактов после ACK.
             source.create_function("bridge_revision", -1, lambda *values: hashlib.sha256(
                 json.dumps(values, ensure_ascii=False, default=str).encode("utf-8")).hexdigest())
+            source.create_function("bridge_kind", 1, lambda text: classify_message(
+                text if isinstance(text, str) else "").get("kind") or "")
             columns = [row["name"] for row in source.execute("PRAGMA table_info(queue)")]
             arguments = ",".join('q."' + name.replace('"', '""') + '"' for name in columns)
             revision = f"bridge_revision({arguments})"
@@ -106,7 +108,8 @@ class PublishedQueueBridge:
                 AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
                                 WHERE s.source_queue_id=q.id
                                 AND s.source_revision={revision_key})
-                ORDER BY destination_message,id LIMIT ?""",
+                ORDER BY CASE WHEN bridge_kind(q.text)='vehicle' THEN 0 ELSE 1 END,
+                         q.source_date DESC,q.destination_message DESC,q.id DESC LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
         enqueued = rejected = review = 0
         for row in rows:

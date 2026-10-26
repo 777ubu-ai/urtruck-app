@@ -57,6 +57,18 @@ def test_only_published_and_fresh_without_source_mutation(bridge):
     assert hashlib.sha256(worker.source_path.read_bytes()).hexdigest() == before
 
 
+def test_published_vehicle_messages_are_selected_before_cargo_backlog(bridge):
+    worker, calls = bridge
+    for ident in range(1, 56):
+        add(worker, ident, text='Нужен тент\nХоргос → Алматы\nГруз готов\n+77000000001')
+    for ident in range(56, 61):
+        add(worker, ident, text='Есть свободная машина\nАлматы\n123456')
+    result = worker.run_once()
+    assert result['scanned'] == 50
+    selected_ids = {int(item['source_message_id']) for item in calls}
+    assert set(range(56, 61)) <= selected_ids
+
+
 def test_replay_and_late_publication_reconciliation(bridge):
     worker, calls = bridge
     add(worker, 1, status="uncertain", destination=10)
