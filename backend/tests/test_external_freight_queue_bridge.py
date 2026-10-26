@@ -94,6 +94,64 @@ def test_missing_route_is_review(bridge):
     assert calls[0]["status"] == "review"
 
 
+def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n123456\n'
+        '2. Груз готов\nАлматы-Москва\n+998990512603'))
+    result = worker.run_once()
+    assert result['scanned'] == 1
+    assert result['enqueued'] == result['sent'] == 2
+    assert [(item['segment_id'], item['origin'], item['destination'], item['contacts'], item['status'])
+            for item in calls] == [
+        ('block-1', 'Хоргос', 'Астана', ['123456'], 'active'),
+        ('block-2', 'Алматы', 'Москва', ['+998990512603'], 'active'),
+    ]
+
+
+def test_published_vehicle_needs_one_location_and_contact(bridge):
+    worker, calls = bridge
+    add(worker, text='Есть свободная машина\nХоргос\n123456')
+    assert worker.run_once()['sent'] == 1
+    assert (calls[0]['kind'], calls[0]['status'], calls[0]['origin'], calls[0]['contacts']) == (
+        'vehicle', 'active', 'Хоргос', ['123456'])
+
+
+def test_published_active_route_without_contact_stays_review(bridge):
+    worker, calls = bridge
+    add(worker, text='Груз готов\nХоргос → Алматы')
+    assert worker.run_once()['review'] == 1
+    assert calls[0]['status'] == 'review'
+
+
+def test_parser_revision_replays_published_records_already_seen_by_old_parser(bridge):
+    worker, calls = bridge
+    add(worker)
+    with sqlite3.connect(worker.source_path) as source:
+        row = source.execute('SELECT * FROM queue WHERE id=1').fetchone()
+    legacy_revision = hashlib.sha256(json.dumps(row, ensure_ascii=False, default=str).encode()).hexdigest()
+    with worker.adapter._connect() as state:
+        state.execute('INSERT INTO published_bridge_seen_v2 VALUES(?,?)', (1, legacy_revision))
+    result = worker.run_once()
+    assert result['scanned'] == result['sent'] == 1
+    assert calls[0]['contacts'] == []
+    assert calls[0]['status'] == 'review'
+    assert worker.run_once()['scanned'] == 0
+
+
+def test_editing_multisegment_publication_closes_removed_segment(bridge):
+    worker, calls = bridge
+    add(worker, text=(
+        '1. Груз готов\nХоргос-Астана\n+77000000001\n'
+        '2. Груз готов\nАлматы-Москва\n+77000000002'))
+    assert worker.run_once()['sent'] == 2
+    with sqlite3.connect(worker.source_path) as source:
+        source.execute('UPDATE queue SET text=? WHERE id=1',
+                       ('Груз готов\nХоргос-Астана\n+77000000001',))
+    assert worker.run_once()['sent'] == 3
+    assert any(item['segment_id'] == 'block-2' and item['status'] == 'closed' for item in calls)
+
+
 def test_disabled_or_missing_key_does_not_deliver(bridge, monkeypatch):
     worker, calls = bridge
     add(worker)

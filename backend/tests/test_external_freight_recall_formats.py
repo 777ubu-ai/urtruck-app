@@ -19,6 +19,13 @@ def test_compact_city_pair_with_explicit_intent(route,a,b):
     assert item["original_text"].startswith(route)
     assert item["source_published_at"]=="2026-10-22T14:40:00+00:00"
 
+
+def test_known_city_pair_without_arrow_or_dash_is_a_route():
+    item=map_selected_message(raw('Груз готов\nХоргос Астана\n87051743567'))
+    assert (item['status'],item['kind'],item['origin'],item['destination']) == (
+        'active','cargo','Хоргос','Астана')
+    assert item['contacts']==['87051743567']
+
 @pytest.mark.parametrize("label",["Груз📦 доски","📦 Груз - шины","ЮК ТАЙЙОР","ЮК ТАЙЁР"])
 def test_explicit_cargo_labels(label):
     assert classify_message(label+"\nАлматы → Москва")["kind"]=="cargo"

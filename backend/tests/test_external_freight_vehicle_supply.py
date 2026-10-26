@@ -10,7 +10,7 @@ from datetime import timedelta
 import pytest
 
 from services.external_freight_classifier import classify_message
-from services.external_freight_parser import map_selected_message, map_selected_messages
+from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages
 
 
 def message(text):
@@ -107,6 +107,27 @@ def test_nine_digit_local_contact_requires_source_phone_context():
     assert other['contacts']==[]
     spaced=map_selected_message(message('Yuk kerak\n📍Toshkentdan\n📞 90 123 45 67'))
     assert spaced['contacts']==['90 123 45 67']
+
+
+@pytest.mark.parametrize('number', ['123456', '87051743567', '998705250671', '+998990512603'])
+def test_confirmed_footer_contact_formats_are_preserved(number):
+    item=map_selected_message(message(f'Есть машина\nХоргос\n{number}'))
+    assert item['contacts']==[number]
+
+
+def test_six_digit_footer_contact_requires_terminal_standalone_line():
+    assert block_contacts('Есть машина\nАлматы\n123456')==['123456']
+    assert block_contacts('Есть машина\nАлматы\nТел: 123456')==['123456']
+    assert block_contacts('Есть машина\n123456\nАлматы\nТент\nВес 10 тонн')==[]
+    assert block_contacts('Есть машина\nНомер заявки: 123456')==[]
+
+
+def test_shared_footer_contact_is_not_copied_to_multiple_route_blocks():
+    items=map_selected_messages(message(
+        '1. Есть машина\nХоргос → Алматы\n2. Есть машина\nМосква → Астана\n123456'))
+    assert len(items)==2
+    assert items[0]['contacts']==[]
+    assert items[1]['contacts']==['123456']
 
 
 def test_exists_word_does_not_match_inside_quantity():
