@@ -5,7 +5,7 @@
 ## PRE-FLIGHT
 
 - Исходный HEAD: `22727c7b137375885efc265780588f73bb9c2e09`.
-- Base: `dc982a291c5f0190612710b20da2be925bd5aa91` (`qa2/integration-candidate`).
+- Base: `4a200052` (`qa2/integration-candidate`, current fetched head when isolated PR was prepared).
 - Production SHA: UNKNOWN.
 - Known-good QA2: API `1.0.50`, source marker `54cbecadeb8fc8da8ea60df53750f82773c126fd`; серверный parser SHA-256 `2218dd871ab73265716315c7405c9f0315072d4c5f38d18d9c767022dd096df9`.
 - Изменяем только распознавание контактов в `backend/services/external_freight_parser.py` и его тесты. Защищены Telegram publisher, очередь публикаций, API, пользовательская БД, Production и прочие классификаторы.
