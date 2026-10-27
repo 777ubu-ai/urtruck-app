@@ -26,8 +26,9 @@ from api.marketplace import (
     _parse_iso_date,
     _is_dirty_text,
     _public_cargo_ok,
+    _public_trip_ok,
     _norm_route_triple,
-    PUBLIC_CUTOFF_DATE,
+    PUBLIC_LISTING_DAYS,
     IS_PRODUCTION,
 )
 
@@ -103,33 +104,45 @@ def public_cargo_ok_uses_correct_pickup_date():
         ok = _public_cargo_ok({**base_row, "pickup_date": pd}, today=today)
         _check(ok is True, f"future pickup {pd} → visible")
 
-    # Genuinely stale pickup must still be hidden
+    # Publication remains visible despite an old pickup date.
     stale = _public_cargo_ok({**base_row, "pickup_date": "2026-04-01"}, today=today)
-    _check(stale is False, "pickup 2026-04-01 (>1 day past) → hidden")
+    _check(stale is True, "old pickup date does not end the 30-day publication")
 
     # Pickup exactly today minus 1 → still visible (24h grace)
     edge = _public_cargo_ok({**base_row, "pickup_date": "2026-05-03"}, today=today)
     _check(edge is True, "pickup today-1 (within 24h grace) → visible")
 
 
-def public_cargo_ok_respects_cutoff_for_undated_legacy_rows():
-    print("public_cargo_ok — pre-cutoff legacy rows")
+def public_cargo_ok_uses_published_at_for_thirty_day_window():
+    print("public_cargo_ok — 30 days from publication")
     today = date(2026, 5, 4)
     legacy = {
         "cargo_desc": "Старый груз",
         "from_city": "Алматы",
         "to_city": "Москва",
         "cargo_type": "tent",
-        "created_at": "2026-04-15 10:00:00",
+        "created_at": "2026-01-01 10:00:00",
+        "published_at": "2026-04-15 10:00:00",
         "pickup_date": None,
     }
-    _check(_public_cargo_ok(legacy, today=today) is False,
-           "pre-cutoff legacy with no pickup → hidden")
+    _check(_public_cargo_ok(legacy, today=today) is True,
+           "republished listing uses published_at instead of created_at")
+    _check(_public_cargo_ok({**legacy, "published_at": "2026-04-04", "created_at": "2026-04-04"}, today=today) is True,
+           "exactly 30 days from publication remains visible")
+    _check(_public_cargo_ok({**legacy, "published_at": "2026-04-03", "created_at": "2026-04-03"}, today=today) is False,
+           "older than 30 days is hidden")
 
-    # Same row but with a future pickup → visible
-    legacy_with_pickup = {**legacy, "pickup_date": "2026-05-25"}
-    _check(_public_cargo_ok(legacy_with_pickup, today=today) is True,
-           "pre-cutoff but valid future pickup → visible")
+
+def public_trip_ok_uses_publication_not_departure():
+    print("public_trip_ok — 30 days from publication")
+    today = date(2026, 5, 4)
+    trip = {"driver_name": "Clean driver", "from_city": "Алматы", "to_city": "Москва",
+            "truck_type": "tent", "departure": "2026-04-01", "created_at": "2026-05-01",
+            "published_at": "2026-05-01"}
+    _check(_public_trip_ok(trip, today=today) is True,
+           "old departure does not hide a recently published trip")
+    _check(_public_trip_ok({**trip, "published_at": "2026-04-03", "created_at": "2026-04-03"}, today=today) is False,
+           "trip older than 30 days is hidden")
 
 
 def norm_route_triple_normalises_safely():
@@ -155,12 +168,13 @@ def norm_route_triple_normalises_safely():
 
 
 if __name__ == "__main__":
-    print(f"PUBLIC_CUTOFF_DATE={PUBLIC_CUTOFF_DATE}")
+    print(f"PUBLIC_LISTING_DAYS={PUBLIC_LISTING_DAYS}")
     parse_iso_date_keeps_full_day_digit()
     parse_iso_date_handles_timestamps()
     is_dirty_text_blocks_known_tokens_but_lets_qa_through()
     public_cargo_ok_uses_correct_pickup_date()
-    public_cargo_ok_respects_cutoff_for_undated_legacy_rows()
+    public_cargo_ok_uses_published_at_for_thirty_day_window()
+    public_trip_ok_uses_publication_not_departure()
     norm_route_triple_normalises_safely()
 
     if _failures:

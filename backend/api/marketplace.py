@@ -92,13 +92,7 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
     if is_public:
         if table == "cargos":
             return _public_cargo_ok(row)
-        departure = _parse_iso_date(row.get("departure"))
-        if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
-                          row.get("to_city"), row.get("truck_type")):
-            return False
-        if departure and departure < (datetime.utcnow().date() - timedelta(days=2)):
-            return False
-        return True
+        return _public_trip_ok(row)
 
     caller_id = caller.get("id") if caller else None
     if not caller_id:
@@ -143,10 +137,8 @@ DIRTY_TOKENS = (
     # Только явно тестовые слова; реальные имена (серик, boris и т.д.)
     # убраны — они скрывали настоящих пользователей из ленты (P1 bug).
 )
-# Date threshold below which an item must justify itself with a future
-# pickup_date — anything older than this with no pickup is treated as stale
-# pre-pilot leftover.
-PUBLIC_CUTOFF_DATE = "2026-05-01"
+# Публичная публикация активного груза или рейса живёт 30 дней с публикации.
+PUBLIC_LISTING_DAYS = 30
 # QA2 E2E records are intentionally visible on non-production environments
 # so the real driver feed can exercise the full cargo -> bid -> deal path.
 # Production keeps the existing hygiene rule and hides every QA marker.
@@ -299,10 +291,9 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
     Hides:
       - dirty tokens in cargo_desc/from_city/to_city/cargo_type
-      - active cargos created before PUBLIC_CUTOFF_DATE without a future pickup
-      - items whose pickup_date is more than 24h in the past
-      - items with no pickup_date AND created more than 2 days ago
-    Never deletes. Owner-side queries (/market/my) bypass this filter.
+      - listings whose 30-day publication window has elapsed
+    Pickup dates describe the job, not publication lifetime. Never deletes;
+    inactive/deal listings are already excluded by the public SQL query.
     """
     today = today or datetime.utcnow().date()
 
@@ -310,25 +301,22 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
                       row.get("to_city"), row.get("cargo_type")):
         return False
 
-    pickup = _parse_iso_date(row.get("pickup_date"))
-    created = _parse_iso_date(row.get("created_at"))
-    cutoff = _parse_iso_date(PUBLIC_CUTOFF_DATE)
+    return _within_publication_window(row, today=today)
 
-    # Stale pickup_date → hide from the public feed (day of pickup + 2).
-    # The owner's management list keeps the listing for 30 days from publish.
-    if pickup and pickup < (today - timedelta(days=2)):
+
+def _within_publication_window(row: dict, today=None) -> bool:
+    """Use the last publish/republish date; legacy rows fall back to creation."""
+    today = today or datetime.utcnow().date()
+    published = _parse_iso_date(row.get("published_at") or row.get("created_at"))
+    return published is None or published >= today - timedelta(days=PUBLIC_LISTING_DAYS)
+
+
+def _public_trip_ok(row: dict, today=None) -> bool:
+    """Public trip eligibility mirrors cargo: 30 days from publication."""
+    if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
+                      row.get("to_city"), row.get("truck_type")):
         return False
-
-    # Created before cutoff → must have a still-valid future pickup, otherwise hide
-    if created and cutoff and created < cutoff:
-        if not pickup or pickup < today:
-            return False
-
-    # No pickup_date AND older than 2 days → hide
-    if not pickup and created and created < (today - timedelta(days=2)):
-        return False
-
-    return True
+    return _within_publication_window(row, today=today)
 
 
 def _init():
@@ -1741,19 +1729,9 @@ def list_trips(
 
     trips = [dict(r) for r in rows]
     if not show_demo:
-        trips = [
-            t for t in trips
-            if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
-                                  t.get("to_city"), t.get("truck_type"))
-        ]
-        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (день выезда + 2).
-        # Владелец управляет публикацией в /my, где действует срок 30 дней.
-        _today = datetime.utcnow().date()
-        trips = [
-            t for t in trips
-            if not ((_dep := _parse_iso_date(t.get("departure")))
-                    and _dep < (_today - timedelta(days=2)))
-        ]
+        # Дата отправления описывает рейс. Срок публикации считается от
+        # published_at и совпадает с карточками грузов: 30 дней.
+        trips = [t for t in trips if _public_trip_ok(t)]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.

@@ -58,7 +58,8 @@ def test_physical_qa_push_cargo_is_visible_only_in_non_production(monkeypatch):
     }
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", False)
     assert marketplace._public_cargo_ok(row, today=date(2026, 10, 5)) is True
-    # Expired QA cargo must remain hidden; isolation must not bypass freshness.
-    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 8)) is False
+    # An old pickup does not shorten the 30-day publication window.
+    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 8)) is True
+    assert marketplace._public_cargo_ok(row, today=date(2026, 10, 31)) is False
     monkeypatch.setattr(marketplace, "IS_PRODUCTION", True)
     assert marketplace._public_cargo_ok(row, today=date(2026, 10, 5)) is False

@@ -160,32 +160,59 @@ def test_adapter_keeps_long_unicode_source_post_with_segment(tmp_path):
     assert saved['source_text'] == record['source_text']
 
 
-def test_active_listing_expires_seven_days_after_source_publication():
-    published = datetime.now(timezone.utc) - timedelta(days=6)
-    record = _record(source="seven-day-ttl", published=published)
+def test_active_listing_expires_thirty_days_after_source_publication():
+    published = datetime.now(timezone.utc) - timedelta(days=29)
+    record = _record(source="thirty-day-ttl", published=published)
     response = _import(record)
     assert response.status_code == 200
     result = response.json()["results"][0]
     assert result["status"] == "active"
     with get_conn() as c:
         expires = datetime.fromisoformat(c.execute(
-            "SELECT expires_at FROM external_freight_items WHERE source_id='seven-day-ttl'"
+            "SELECT expires_at FROM external_freight_items WHERE source_id='thirty-day-ttl'"
         ).fetchone()[0])
-    assert expires == published + timedelta(days=7)
+    assert expires == published + timedelta(days=30)
 
 
-def test_replaying_old_five_day_card_uses_source_based_seven_day_expiry():
-    published = datetime.now(timezone.utc) - timedelta(days=6)
-    record = _record(source="replay-seven-day-ttl", published=published)
+def test_replaying_old_card_uses_source_based_thirty_day_expiry():
+    published = datetime.now(timezone.utc) - timedelta(days=10)
+    record = _record(source="replay-thirty-day-ttl", published=published)
     with get_conn() as c:
         c.execute("INSERT INTO external_freight_items(id,source_id,source_message_id,segment_id,kind,source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,origin,destination,body_types,price_state,contacts,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            ("old-ttl", record["source_id"], record["source_message_id"], record["segment_id"], record["kind"], published.isoformat(), published.isoformat(), published.isoformat(), (published+timedelta(hours=120)).isoformat(), record["original_text"], "old", record["origin"], record["destination"], "[]", "unknown", '["+7 777 000 00 00"]', "expired"))
+            ("old-ttl", record["source_id"], record["source_message_id"], record["segment_id"], record["kind"], published.isoformat(), published.isoformat(), published.isoformat(), (published+timedelta(days=7)).isoformat(), record["original_text"], "old", record["origin"], record["destination"], "[]", "unknown", '["+7 777 000 00 00"]', "expired"))
     response = _import(record)
     assert response.status_code == 200
     assert response.json()["results"][0]["status"] == "active"
     with get_conn() as c:
         row = c.execute("SELECT expires_at FROM external_freight_items WHERE id='old-ttl'").fetchone()
-    assert datetime.fromisoformat(row[0]) == published + timedelta(days=7)
+    assert datetime.fromisoformat(row[0]) == published + timedelta(days=30)
+
+
+def test_schema_migration_extends_old_ttl_and_preserves_explicit_closures():
+    published = datetime.now(timezone.utc) - timedelta(days=10)
+    ids = {}
+    for status in ("active", "expired", "hidden", "closed", "review"):
+        ids[status] = _import(_record(source=f"migration-{status}", published=published)).json()["results"][0]["id"]
+    old_expiry = (published + timedelta(days=7)).isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET expires_at=? WHERE id IN (?,?)", (old_expiry, ids["active"], ids["expired"]))
+        c.execute("UPDATE external_freight_items SET status='expired' WHERE id=?", (ids["expired"],))
+        c.execute("UPDATE external_freight_items SET status='hidden' WHERE id=?", (ids["hidden"],))
+        c.execute("UPDATE external_freight_items SET status='closed' WHERE id=?", (ids["closed"],))
+        c.execute("UPDATE external_freight_items SET status='review' WHERE id=?", (ids["review"],))
+    dal.init_schema()
+    with get_conn() as c:
+        rows = {r["id"]: dict(r) for r in c.execute(
+            "SELECT id,status,expires_at FROM external_freight_items WHERE id IN (?,?,?,?,?)",
+            tuple(ids.values()),
+        )}
+    assert rows[ids["active"]]["status"] == "active"
+    assert datetime.fromisoformat(rows[ids["active"]]["expires_at"]) == published + timedelta(days=30)
+    assert rows[ids["expired"]]["status"] == "active"
+    assert datetime.fromisoformat(rows[ids["expired"]]["expires_at"]) == published + timedelta(days=30)
+    assert rows[ids["hidden"]]["status"] == "hidden"
+    assert rows[ids["closed"]]["status"] == "closed"
+    assert rows[ids["review"]]["status"] == "review"
 
 
 def test_import_requires_secret_and_user_is_read_only():
@@ -283,7 +310,7 @@ def test_replay_and_edit_preserve_original_expiry_and_identity():
 
 
 def test_expired_rows_are_hidden_without_cleanup_job():
-    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(hours=169))
+    expired = _record(source="old", published=datetime.now(timezone.utc) - timedelta(days=31))
     inserted = _import(expired).json()["results"][0]
     assert inserted["status"] == "expired"
     global _actor
