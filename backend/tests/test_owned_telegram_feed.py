@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import json
 import sys
+import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -528,3 +529,31 @@ def test_multiroute_duplicate_checks_share_parse_but_notice_source_edit(tmp_path
     for record in records:
         assert worker.find_duplicate(worker.fingerprint(record), adapter.clock()) is None
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize('mode', ['owned', 'incoming'])
+def test_vehicle_priority_skips_seen_posts_and_excluded_source(tmp_path, monkeypatch, mode):
+    import services.external_freight_queue_bridge as bridge_module
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    if mode == 'incoming':
+        worker = IncomingQueueBridge(worker.source_path, adapter)
+    eligible = OWNED_SOURCE if mode == 'owned' else 'public_source'
+    excluded = 'public_source' if mode == 'owned' else OWNED_SOURCE
+    text = 'Алматы → Москва\nГруз: сыр\n+77001234567'
+    m.capture_for_app(db, eligible, 123, 44, text, m.utcnow())
+    m.capture_for_app(db, excluded, 456, 45, text+'\nЧужой поток', m.utcnow())
+    hint = bridge_module.has_vehicle_supply_signal
+    calls = []
+    def counted(value):
+        calls.append(value)
+        return hint(value)
+    monkeypatch.setattr(bridge_module, 'has_vehicle_supply_signal', counted)
+    assert worker.run_once()['scanned'] == 1
+    assert calls == [text]
+    calls.clear()
+    assert worker.run_once()['scanned'] == 0
+    assert calls == []
+    vehicle = 'Машина свободна\nАлматы → Москва\n+77001234567'
+    m.capture_for_app(db, eligible, 123, 46, vehicle, m.utcnow())
+    assert worker.run_once()['vehicle_candidates'] == 1
+    assert calls == [vehicle]

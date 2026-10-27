@@ -118,12 +118,48 @@ for (const mode of ['focus', 'AppState']) test(`сохранённые: ${mode} 
   h.list().props.onEndReached(); await h.flush();
   assert.equal(h.queries.at(-1).cursor, 'older-page');
 });
+for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc', '↑ Дороже']]) {
+  for (const mode of ['poll', 'focus', 'AppState']) test(`${sort}: ${mode} обновляет все60, не обрезает хвост и продолжает cursor`, async () => {
+    const fixtures = cards.map(item => ({ ...item, amount: Number(item.id), currency: 'USD', price_state: 'known' }));
+    const h = harness({ fixtures }); await h.flush();
+    h.node('external-feed-filter-price').props.onPress(); await h.flush();
+    const choice = descendants(h.node('external-feed-price-options')).find(node =>
+      node.type === 'TouchableOpacity' && descendants(node).some(child => child.type === 'Text' && child.props.children.includes(label)));
+    choice.props.onPress(); await h.flush();
+    h.node('external-feed-apply-filters').props.onPress(); await h.flush();
+    assert.equal(h.queries.at(-1).sort, sort);
+    h.list().props.onEndReached(); await h.flush();
+    assert.equal(h.list().props.data.length, 60);
+    // Цена изменила положение записи: нужно освежить весь загруженный префикс,
+    // сохранив порядок сервера и следующий cursor, а не склеивать старые цены.
+    fixtures.reverse(); fixtures[0] = { ...fixtures[0], amount: 500 };
+    if (mode === 'poll') h.poll();
+    else if (mode === 'focus') { h.blur(); h.focus(); }
+    else { h.app('background'); h.app('active'); }
+    await h.flush();
+    assert.equal(h.list().props.data.length, 60);
+    assert.equal(h.list().props.data[0].id, fixtures[0].id);
+    assert.equal(h.list().props.data[0].amount, 500);
+    assert.equal(new Set(h.list().props.data.map(item => item.id)).size, 60);
+    h.list().props.onEndReached(); await h.flush();
+    assert.equal(h.queries.at(-1).cursor, 'older-page');
+  });
+}
 test('offline polling: warning остаётся во время повторного запроса и исчезает только после успеха', async () => {
   const h = harness(); await h.flush(); h.fail(true); h.poll(); await h.flush();
   assert.ok(h.warning());
   h.suspend(); h.poll(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
   h.release(); await h.flush(); assert.ok(h.warning());
   h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
+});
+test('достижение конца во время фонового запроса не теряет следующую страницу', async () => {
+  const h = harness(); await h.flush();
+  h.suspend(); h.poll(); await h.flush();
+  h.list().props.onEndReached(); await h.flush();
+  assert.equal(h.list().props.data.length, 30);
+  h.release(); await h.flush();
+  assert.equal(h.list().props.data.length, 60);
+  assert.equal(h.queries.at(-1).cursor, 'page2');
 });
 
 test('сброс кузова сохраняет откуда, а отдельный общий сброс очищает всё', async () => {
