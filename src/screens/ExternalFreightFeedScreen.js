@@ -94,6 +94,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [error, setError] = useState(null);
   const requestRef = useRef(null);
   const busyRef = useRef(false);
+  const paginationPendingRef = useRef(false);
   const listRef = useRef(null);
   const filterScrollRef = useRef(null);
   const viewportRef = useRef({ offset: 0, height: 0, contentHeight: 0 });
@@ -124,9 +125,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     const owner = ownerKey;
     const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly };
     let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
-    // Сохранённые могут содержать закрытые/скрытые карточки без даты.
-    // Освежаем только уже загруженные страницы атомарно, включая их cursor.
-    if (background && savedOnly && result.ok) {
+    // Для цены нельзя склеивать старый порядок с новой головой: обновляем
+    // весь загруженный префикс атомарно, как и сохранённые, вместе с cursor.
+    if (background && (savedOnly || !timeline) && result.ok) {
       const refreshed = [...(result.items || [])];
       let next = result.next_cursor;
       const pages = Math.max(1, Math.ceil(rows.length / 30));
@@ -186,7 +187,13 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   }, [filters, cursor, savedOnly, ownerKey, rows, timeline]);
   loadRef.current = load;
 
-  useEffect(() => { setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => { paginationPendingRef.current = false; setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => {
+    if (!busy && !busyRef.current && paginationPendingRef.current) {
+      paginationPendingRef.current = false;
+      if (cursor && !webTimeline) loadRef.current?.();
+    }
+  }, [busy, cursor, rows, webTimeline]);
   useEffect(() => () => clearTimeout(latestScrollTimerRef.current), [ownerKey]);
   useEffect(() => {
     setSaving({});
@@ -402,7 +409,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           const delta = y - anchor.y;
           if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + (timeline ? -delta : delta)), animated: false });
         });
-      }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!webTimeline && !busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
+      }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => {
+        if (webTimeline || !cursor) return;
+        if (busyRef.current) { paginationPendingRef.current = true; return; }
+        load();
+      }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
       onPress={() => {
         anchorRef.current = null;
