@@ -880,10 +880,43 @@ def test_full_invalid_batch_cannot_starve_following_valid_record(tmp_path, monke
         adapter.enqueue(_record(source=f"a-invalid-{index:02}", amount=2_000_000_000, currency="KZT"))
     adapter.enqueue(_record(source="z-valid", amount=1500, currency="KZT"))
     first = adapter.flush_once()
-    assert first["sent"] == 0
-    assert first["quarantined"] == 50
-    assert first["pending"] == 1
-    assert adapter.flush_once()["sent"] == 1
+    assert first['sent'] == 1, 'свежая корректная запись не ждёт всю ошибочную историю'
+    second = adapter.flush_once()
+    assert first['sent'] + second['sent'] == 1
+    assert adapter.quarantined_count() == 50
+    assert adapter.pending_count() == 0
+
+
+def test_delivery_reserves_closures_vehicles_fresh_and_retry_without_starving_old_tail(tmp_path, monkeypatch):
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED', 'true')
+    received = []
+    def send(request, timeout):
+        records = json.loads(request.data)['records']; received.extend(records)
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self): return json.dumps({'results': [{'id': r['source_id'], 'result': 'created'} for r in records]}).encode()
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'priority.db'), api_url='https://qa2.urtruck.kz', importer_key='test', opener=send)
+    old = datetime.now(timezone.utc)-timedelta(days=2)
+    for i in range(70):
+        adapter.enqueue(_record(source=f'a-history-{i:03}', published=old+timedelta(minutes=i)))
+    adapter.enqueue(_record(source='z-free-truck', kind='vehicle', text='Машина свободна', published=old))
+    adapter.enqueue(_record(source='z-close', status='closed', text='Заявка закрыта', published=old))
+    fresh = _record(source='z-fresh', text='Груз: свежий', published=datetime.now(timezone.utc))
+    adapter.enqueue(fresh)
+    adapter.enqueue(_record(source='z-retry', published=old))
+    with adapter._connect() as state:
+        state.execute("UPDATE selected_outbox SET attempts=4,next_attempt_at=? WHERE source_id='z-retry'", (adapter.clock()-1,))
+    first = adapter.flush_once()
+    assert first['sent'] == len(received) == 50
+    ids = {r['source_id'] for r in received}
+    assert {'z-free-truck','z-close','z-fresh','z-retry'} <= ids
+    assert any(ident.startswith('a-history-') for ident in ids)
+    assert next(r for r in received if r['source_id']=='z-fresh')['source_published_at'] == fresh['source_published_at']
+    assert adapter.flush_once()['sent'] == 24
     assert adapter.pending_count() == 0
 
 
