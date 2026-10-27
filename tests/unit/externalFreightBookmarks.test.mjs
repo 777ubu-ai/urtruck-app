@@ -68,7 +68,7 @@ test('count uses isolated read endpoint and rejects a changed owner before reque
   assert.equal((await valid.api.count()).count, 100001);
   const countURL = new URL(valid.calls[0].url);
   assert.equal(countURL.pathname, '/api/v1/external-freight/count');
-  assert.equal(countURL.searchParams.get('include_carriers'), 'true');
+  assert.equal(countURL.searchParams.has('include_carriers'), false, 'счётчик объявлений не включает справочник перевозчиков');
   assert.equal(valid.calls[0].options.method, 'GET');
   const changed = harness();
   assert.equal((await changed.api.count(undefined, () => false)).error, 'session_changed');

@@ -708,9 +708,9 @@ def test_count_is_authorized_role_scoped_and_excludes_inactive_and_expired(monke
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET expires_at=? WHERE id=?", ((datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(), expired))
     _actor = {"id": "driver", "role": "driver"}
-    assert client.get("/api/v1/external-freight/count?kind=vehicle&limit=1").json() == {"kind": "cargo", "count": 3}
+    assert client.get("/api/v1/external-freight/count?kind=vehicle&limit=1").json() == {"kind": "cargo", "count": 3, "offer_count": 3, "carrier_count": 0}
     _actor = {"id": "client", "role": "client"}
-    assert client.get("/api/v1/external-freight/count").json() == {"kind": "vehicle", "count": 1}
+    assert client.get("/api/v1/external-freight/count").json() == {"kind": "vehicle", "count": 1, "offer_count": 1, "carrier_count": 0}
     _actor = {"id": "guest", "role": "guest"}
     assert client.get("/api/v1/external-freight/count").status_code == 403
     monkeypatch.setenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false")

@@ -140,6 +140,62 @@ test('custom body filter is sent as text and displayed on the filter chip', asyn
   expect(box.errors).toEqual([]);
 });
 
+test('пустое меню закрывается и верхние фильтры переключаются без сброса', async ({ page }) => {
+  const box = await boot(page);
+  for (const action of ['external-feed-cancel-filters', 'external-feed-filter-close', 'external-feed-apply-filters']) {
+    await page.getByTestId('external-feed-filter-origin').click();
+    await expect(page.getByTestId('external-feed-location-search')).toBeFocused();
+    await page.getByTestId(action).click();
+    await expect(page.getByTestId('external-feed-filter-sheet')).toHaveCount(0);
+  }
+  await page.getByTestId('external-feed-filter-origin').click();
+  await page.getByTestId('external-feed-filter-scrim').click({ position: { x: 5, y: 5 } });
+  await expect(page.getByTestId('external-feed-filter-sheet')).toHaveCount(0);
+  await page.getByTestId('external-feed-filter-origin').click();
+  await page.getByTestId('external-feed-location-search').fill('Не применять');
+  await page.getByTestId('external-feed-filter-destination').click();
+  await expect(page.getByTestId('external-feed-location-search')).toHaveAttribute('placeholder', 'Куда');
+  await expect(page.getByTestId('external-feed-location-search')).toHaveValue('');
+  await page.getByTestId('external-feed-filter-destination').click();
+  await expect(page.getByTestId('external-feed-filter-sheet')).toHaveCount(0);
+  await page.getByTestId('external-feed-filter-origin').click();
+  await expect(page.getByTestId('external-feed-location-search')).toHaveValue('');
+  expect(box.errors).toEqual([]);
+});
+
+test('локальный сброс сохраняет соседний фильтр, общий сброс очищает всё', async ({ page }) => {
+  const box = await boot(page);
+  await page.getByTestId('external-feed-filter-origin').click();
+  await page.getByTestId('external-feed-location-search').fill('Алматы');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.origin).toBe('Алматы');
+  await page.getByTestId('external-feed-filter-destination').click();
+  await page.getByTestId('external-feed-location-search').fill('Ташкент');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Ташкент');
+  await page.getByTestId('external-feed-filter-destination').click();
+  await page.getByText('Сброс', { exact: true }).click();
+  await expect.poll(() => box.feedQueries.at(-1)?.destination).toBeUndefined();
+  await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Алматы');
+  await page.getByTestId('external-feed-filter-origin').click();
+  await page.getByTestId('external-feed-location-search').fill('Другой город');
+  await page.getByTestId('external-feed-cancel-filters').click();
+  await page.getByTestId('external-feed-filter-origin').click();
+  await expect(page.getByTestId('external-feed-location-search')).toHaveValue('Алматы');
+  await page.getByTestId('external-feed-reset-all').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.origin).toBeUndefined();
+  expect(box.errors).toEqual([]);
+});
+
+test('непривязанные номера видны как контакты исходного поста', async ({ page }) => {
+  const box = await boot(page, 'driver', { item: { contacts: [], source_contacts: ['12345678', '+998901234567'] } });
+  await expect(page.getByTestId('external-feed-source-contacts-external-fixture')).toContainText('Контакты исходного поста');
+  await expect(page.getByTestId('external-feed-copy-source-external-fixture-0').getByText('12345678', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('external-feed-copy-source-external-fixture-1').getByText('+998901234567', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('external-feed-no-contact-external-fixture')).toHaveCount(0);
+  expect(box.errors).toEqual([]);
+});
+
 test('route filters directly open visible search and distinguish country from city', async ({ page }) => {
   const box = await boot(page);
   await page.getByTestId('external-feed-filter-origin').click();

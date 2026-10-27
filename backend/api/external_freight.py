@@ -58,7 +58,8 @@ def count_external_feed(include_carriers: bool = Query(False), user: dict = Depe
     kind = _user_kind(user)
     from services.carrier_directory import list_contacts
     extra = list_contacts(limit=1)["total"] if include_carriers and kind == "vehicle" else 0
-    return {"kind": kind, "count": dal.count_active_items(kind) + extra}
+    offers = dal.count_active_items(kind)
+    return {"kind": kind, "count": offers + extra, "offer_count": offers, "carrier_count": extra}
 
 
 @router.get("")
