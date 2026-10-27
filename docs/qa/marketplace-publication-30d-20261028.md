@@ -7,7 +7,7 @@
 - Scope: публичная native-лента грузов/рейсов (`backend/api/marketplace.py`) и Telegram-лента грузов/машин (`backend/database/external_freight_dal.py`). Срок считается от публикации/повторной публикации.
 - Защищены: авторизация, чаты, сделки/FSM, GPS, платежи, production, существующие пользовательские данные и незавершённые локальные отчёты/доказательства.
 - Graphify до кода: 13 118 узлов, 29 350 связей. Проверены независимые пути native marketplace и external Telegram feed.
-- Rollback: отдельный PR и возврат QA2 к `e396a097b7f47f8344634ff54b56ff1d144b4ab9`; состояние SQLite восстанавливается резервной копией, сделанной штатным QA2 workflow перед deploy. Снимки статусов до rollout сохранить; вручную удалять/закрывать записи не требуется.
+- Rollback: отдельный PR и возврат QA2 к `e396a097b7f47f8344634ff54b56ff1d144b4ab9`. Штатная финальная deploy workflow делает code-only backup, поэтому перед изменением внешней SQLite отдельно сохранена согласованная копия через SQLite backup API; native database этой правкой не мигрируется. При отмене TTL-миграции восстанавливается эта копия.
 
 ## Изменение
 
@@ -20,10 +20,11 @@
 
 - Выборочные тесты feed/filter/publication/deal: 123 passed.
 - Полный backend: 1 826 passed, 10 subtests passed; 931 предупреждение, ошибок нет.
+- После добавления регрессии для TTL поверх explicit `closed`/`hidden`/`review`: адресный повтор external/native API — 67 passed.
 - Frontend unit: 1 615 passed; защищённая baseline-проверка проверяет новый утверждённый hash `marketplace.py` и сохраняет hash-контроль остальных областей.
 - `py_compile` изменённых Python-файлов и `git diff --check`: PASS.
 - Локальный прогон выполнен во временном Python 3.12 окружении, созданном из `requirements-test.txt`; зависимости проекта не менялись.
 
 ## QA2 rollout
 
-Ожидает PR/CI и проверку QA2 перед переключением. Production вне области этого изменения.
+До deploy QA2: `external-freight.sqlite3` сохранена штатным SQLite backup API в `/home/ubuntu/urtruck-qa2/backups/external-feed-pre-30d-20261027T211138Z.sqlite3`; размер 328 589 312 байт, `quick_check=ok`, SHA-256 `73a0507422310fa2737d6fb25118c9c08f4ecacc777e7a2f6f507995a02ba9e6`. Снимок перед запуском TTL-миграции. PR/CI и deploy ещё не завершены. Production вне области этого изменения.
