@@ -118,9 +118,9 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Dependency security audit
+      - name: Dependency security audit and regression
         run: |
-          npm run audit:node-forge-exception
+          npm run audit:dependencies-and-forge-regression
       - name: Preserve raw dependency audit reports
         if: always()
         uses: actions/upload-artifact@v4
