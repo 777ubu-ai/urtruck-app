@@ -4,7 +4,7 @@ import re
 import unicodedata
 
 from services.external_freight_classifier import classify_message
-from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages
+from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages, source_contact_values
 
 OWNED_SOURCE = 'UrTruck_obyavleniya'
 _FROM = re.compile(r'(?im)^\s*(?:погрузка|загрузка|откуда)\s*[:：]\s*([^\n]+)')
@@ -76,6 +76,7 @@ def map_owned_messages(raw):
         # Разбор использует очищенный блок, но пользователю нужен оригинал
         # целиком: эмодзи, контакты в середине и общий телефон в конце.
         item['source_text'] = text
+        item['source_contacts'] = source_contact_values(raw)
         item['origin_source'] = OWNED_SOURCE
         # Владелец просит пропускать все посты своей группы: неполные поля
         # маршрута/контакта или неоднозначный тип не должны блокировать карточку.

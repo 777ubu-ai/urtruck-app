@@ -15,6 +15,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+from urllib.parse import parse_qs, unquote, urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -96,13 +97,55 @@ def eligible(text, source_date, protected=False, now=None):
                 and not UNRELATED.search(text) and not CLOSED.search(text))
 
 
-def capture_for_app(db, source, source_id, message_id, text, source_date, protected=False):
+def message_entity_phones(msg):
+    """Только явные телефонные ссылки; обычные URL/приглашения не телефоны."""
+    result = []
+    for entity in getattr(msg, 'entities', None) or ():
+        url = getattr(entity, 'url', '') or ''
+        try:
+            parsed = urlparse(url)
+            host = (parsed.hostname or '').lower()
+            candidate = ''
+            if parsed.scheme.lower() == 'tel':
+                candidate = unquote(parsed.path).split(';', 1)[0]
+            elif parsed.scheme.lower() in {'https', 'http'} and host in {'wa.me', 'api.whatsapp.com'}:
+                candidate = unquote(parsed.path.strip('/')) if host == 'wa.me' else parse_qs(parsed.query).get('phone', [''])[0]
+            elif parsed.scheme.lower() == 'whatsapp' and parsed.netloc == 'send':
+                candidate = parse_qs(parsed.query).get('phone', [''])[0]
+            candidate = candidate.strip()
+            if candidate and re.fullmatch(r'\+?[\d ().-]+', candidate):
+                digits = re.sub(r'\D', '', candidate)
+                if 6 <= len(digits) <= 15 and candidate not in result:
+                    result.append(candidate)
+        except ValueError:
+            continue
+    return result[:20]
+
+
+def capture_message_for_app(db, source, source_id, msg, source_date=None, protected=False):
+    date = source_date or msg.date
+    if protected or getattr(msg, 'noforwards', False) or not date or not utcnow()-timedelta(hours=ACTIVE_HOURS) <= date <= utcnow()+timedelta(minutes=5):
+        return False
+    hints = message_entity_phones(msg)
+    media = getattr(msg, 'media', None)
+    with db:
+        db.execute('INSERT OR REPLACE INTO app_message_metadata VALUES(?,?,?,?,?,?,?)',
+                   (str(source_id), msg.id, int(bool(media)), type(media).__name__ if media else None,
+                    json.dumps(hints, ensure_ascii=False), date.timestamp(), time.time()))
+    return capture_for_app(db, source, source_id, msg.id, msg.raw_text or '', date, protected, hints)
+
+
+def capture_for_app(db, source, source_id, message_id, text, source_date, protected=False, contact_hints=None):
     """Независимый durable-вход; Telegram-публикация не является условием."""
     if protected or not text or not source_date:
         return False
     if source_date < utcnow() - timedelta(hours=ACTIVE_HOURS) or source_date > utcnow() + timedelta(minutes=5):
         return False
     revision = hashlib.sha256(text.encode()).hexdigest()
+    hints = list(contact_hints or [])[:20]
+    if hints:
+        revision = hashlib.sha256((text+'\0'+json.dumps(sorted(hints), ensure_ascii=False)).encode()).hexdigest()
+    contacts = list(dict.fromkeys([*hints, *phones(text)]))[:20]
     now = time.time()
     with db:
         previous = db.execute("SELECT revision FROM app_messages WHERE source_id=? AND source_message=?",
@@ -112,7 +155,7 @@ def capture_for_app(db, source, source_id, message_id, text, source_date, protec
         db.execute("""INSERT INTO app_messages(source,source_id,source_message,source_date,text,phones,revision,received_at,updated_at)
           VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,source_message) DO UPDATE SET
           text=excluded.text,phones=excluded.phones,revision=excluded.revision,updated_at=excluded.updated_at""",
-          (source,source_id,message_id,source_date.timestamp(),text,json.dumps(phones(text)),revision,now,now))
+          (source,source_id,message_id,source_date.timestamp(),text,json.dumps(contacts),revision,now,now))
     LOG.info("app_received source=%s message=%s received_at=%.3f",source,message_id,now)
     return True
 
@@ -141,7 +184,7 @@ def capture_owned_message(db, entity, msg):
     if text == DOWNLOAD_TEXT:
         return False
     date = getattr(getattr(msg, 'fwd_from', None), 'date', None) or msg.date
-    changed = capture_for_app(db, OWNED_FEED_SOURCE, entity.id, msg.id, text, date)
+    changed = capture_message_for_app(db, OWNED_FEED_SOURCE, entity.id, msg, date)
     # Кнопки — ответ бота на новую подходящую публикацию, не изменение чужого поста.
     # Исторический backfill не запускает массовые ответы.
     if changed and date and date >= utcnow()-timedelta(minutes=10) and phones(text) and (
@@ -172,6 +215,8 @@ def capture_owned_deletion(db, entity, message_id, chat_id):
     # немедленно закрывает карточку, не продлевая срок жизни от исходной даты.
     changed = capture_for_app(db, OWNED_FEED_SOURCE, entity.id, message_id,
                               'Заявка закрыта', published_at)
+    with db:
+        db.execute("UPDATE app_message_metadata SET has_media=0,media_type=NULL,entity_contacts='[]',updated_at=? WHERE source_id=? AND source_message=?", (time.time(), str(entity.id), message_id))
     cta_key = f'owned_cta:{chat_id}:{message_id}'
     cta_row = db.execute('SELECT value FROM metadata WHERE key=?', (cta_key,)).fetchone()
     if cta_row:
@@ -203,7 +248,7 @@ async def collect_owned(reader, db):
         async for msg in reader.iter_messages(entity, limit=25):
             capture_owned_message(db, entity, msg)
         kwargs = {'min_id': high, 'reverse': True, 'limit': 200} if high else {
-            'offset_date': utcnow()-timedelta(hours=24), 'reverse': True, 'limit': 200}
+            'offset_date': utcnow()-timedelta(hours=ACTIVE_HOURS), 'reverse': True, 'limit': 200}
         async for msg in reader.iter_messages(entity, **kwargs):
             capture_owned_message(db, entity, msg)
             with db:
@@ -236,6 +281,10 @@ async def collect_owned(reader, db):
     except Exception as exc:
         with db:
             db.execute('INSERT OR REPLACE INTO source_health VALUES(?,?,?)', (OWNED_FEED_SOURCE, time.time(), type(exc).__name__))
+            if type(exc).__name__ == 'FloodWaitError':
+                pause = str(time.time() + max(1, int(getattr(exc, 'seconds', 60))) + 1)
+                for key in ('scan_after', 'owned_scan_after'):
+                    db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', (key, pause))
         LOG.warning('owned_source_unavailable type=%s', type(exc).__name__)
 
 
@@ -363,7 +412,13 @@ def database(path=None):
           received_at REAL NOT NULL, updated_at REAL NOT NULL,
           UNIQUE(source_id,source_message));
         CREATE INDEX IF NOT EXISTS app_messages_updated ON app_messages(updated_at,id);
+        CREATE INDEX IF NOT EXISTS app_messages_published ON app_messages(source_date DESC,updated_at DESC,id DESC);
         CREATE TABLE IF NOT EXISTS app_cursors (source TEXT PRIMARY KEY, message_id INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS app_message_metadata (
+          source_id TEXT NOT NULL, source_message INTEGER NOT NULL,
+          has_media INTEGER NOT NULL DEFAULT 0, media_type TEXT,
+          entity_contacts TEXT NOT NULL DEFAULT '[]', source_date REAL NOT NULL, updated_at REAL NOT NULL,
+          PRIMARY KEY(source_id,source_message));
         CREATE TABLE IF NOT EXISTS source_health (source TEXT PRIMARY KEY, checked_at REAL, error TEXT);
         CREATE TABLE IF NOT EXISTS app_history (
           source TEXT PRIMARY KEY, oldest_id INTEGER NOT NULL DEFAULT 0,
@@ -526,8 +581,7 @@ async def collect_app_history(reader, db, source, entity):
         if msg.date and msg.date < cutoff:
             complete = True
             break
-        captured += capture_for_app(db,source,entity.id,msg.id,msg.raw_text or '',msg.date,
-                                    bool(getattr(msg,'noforwards',False)))
+        captured += capture_message_for_app(db,source,entity.id,msg,protected=bool(getattr(msg,'noforwards',False)))
         # Только после durable capture; исключение не перескакивает запись.
         with db:
             db.execute('UPDATE app_history SET oldest_id=? WHERE source=?', (msg.id,source))
@@ -541,7 +595,6 @@ async def collect_app_history(reader, db, source, entity):
 
 async def collect(reader, db):
     from telethon.errors import FloodWaitError
-    await collect_owned(reader, db)
     report = {}
     pause = float((db.execute("SELECT value FROM metadata WHERE key='scan_after'").fetchone() or [0])[0])
     if time.time() < pause:
@@ -562,8 +615,7 @@ async def collect(reader, db):
             # Курсор здесь не двигаем: оставшийся диапазон не должен пропасть.
             async for msg in reader.iter_messages(entity,limit=25):
                 if msg.date and msg.date>=utcnow()-timedelta(hours=24):
-                    captured += capture_for_app(db,source,entity.id,msg.id,msg.raw_text or "",msg.date,
-                                                bool(getattr(msg,"noforwards",False)))
+                    captured += capture_message_for_app(db,source,entity.id,msg,protected=bool(getattr(msg,'noforwards',False)))
             kwargs = {"min_id": high, "reverse": True, "limit": 200} if high else {
                 "offset_date": utcnow()-timedelta(hours=24), "reverse": True, "limit": 200}
             async for msg in reader.iter_messages(entity, **kwargs):
@@ -571,7 +623,7 @@ async def collect(reader, db):
                 high = max(high,msg.id)
                 text = msg.raw_text or ""
                 protected = bool(getattr(msg, "noforwards", False))
-                captured += capture_for_app(db,source,entity.id,msg.id,text,msg.date,protected)
+                captured += capture_message_for_app(db,source,entity.id,msg,protected=protected)
                 if msg.id>legacy_high and eligible(text,msg.date,protected):
                     added += enqueue(db,source,entity.id,msg.id,text,msg.date)
                 # Обе записи durable до продвижения курсора; хронологические страницы.
@@ -782,7 +834,7 @@ async def run(once=False, check=False):
                 return
         source = allowed.get(raw_id)
         if source:
-            capture_for_app(db,source,raw_id,msg.id,msg.raw_text or "",msg.date,bool(getattr(msg,"noforwards",False)))
+            capture_message_for_app(db,source,raw_id,msg,protected=bool(getattr(msg,'noforwards',False)))
     reader.add_event_handler(incoming, events.NewMessage())
     reader.add_event_handler(incoming, events.MessageEdited())
     if owned_entity is not None:
@@ -809,10 +861,18 @@ async def run(once=False, check=False):
 async def run_cycles(reader, db, cfg, once=False):
     """Не более одного обхода; долгое collect не блокирует публикатор и heartbeat."""
     scan_task = None
+    owned_task = None
     last_scan = float('-inf')
+    last_owned_scan = float('-inf')
     telegram_state = {}
     try:
         while True:
+            if owned_task is not None and owned_task.done():
+                try:
+                    owned_task.result()
+                except Exception as exc:
+                    LOG.warning('owned_scan_failed type=%s', type(exc).__name__)
+                owned_task = None
             if scan_task is not None and scan_task.done():
                 try:
                     scan_task.result()
@@ -822,6 +882,12 @@ async def run_cycles(reader, db, cfg, once=False):
             if scan_task is None and time.monotonic()-last_scan >= 60:
                 last_scan = time.monotonic()
                 scan_task = asyncio.create_task(collect(reader, db))
+            if cfg.get('OWNED_FEED_ENABLED', 'false').lower() == 'true' and owned_task is None and time.monotonic()-last_owned_scan >= 15:
+                pause = max(float((db.execute('SELECT value FROM metadata WHERE key=?', (key,)).fetchone() or [0])[0])
+                            for key in ('scan_after', 'owned_scan_after'))
+                if time.time() >= pause:
+                    last_owned_scan = time.monotonic()
+                    owned_task = asyncio.create_task(collect_owned(reader, db))
             if cfg.get('PUBLISH_ENABLED', 'false').lower() == 'true':
                 await telegram_tick(reader, db, telegram_state)
             await owned_download_tick(db, cfg)
@@ -829,14 +895,17 @@ async def run_cycles(reader, db, cfg, once=False):
                 db.execute("INSERT OR REPLACE INTO metadata VALUES('last_tick',?)", (utcnow().isoformat(),))
             if once:
                 await scan_task
+                if owned_task is not None:
+                    await owned_task
                 print(json.dumps(status(db), ensure_ascii=False))
                 return
             await asyncio.sleep(5)
     finally:
-        if scan_task is not None:
-            scan_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await scan_task
+        for task in (scan_task, owned_task):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
 
 def main():

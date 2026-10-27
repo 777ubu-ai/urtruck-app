@@ -65,6 +65,40 @@ def test_unrecognized_owned_post_is_preserved_in_feed_as_raw_text():
     assert item['original_text'] == text
 
 
+def test_entity_links_and_media_caption_are_saved_without_changing_source_text(tmp_path):
+    m = collector(); db = m.database(tmp_path/'feed.db')
+    msg = SimpleNamespace(id=1, raw_text='📦 Алматы → Москва\nГруз готов', date=m.utcnow(),
+        noforwards=False, media=SimpleNamespace(photo=True), entities=[
+            SimpleNamespace(url='tel:+998901234567'), SimpleNamespace(url='https://wa.me/77001234567'),
+            SimpleNamespace(url='https://example.org/123456789'), SimpleNamespace(url='https://t.me/+123456789'),
+        ])
+    assert m.capture_message_for_app(db, 'approved_source', 123, msg)
+    row = db.execute('SELECT * FROM app_messages').fetchone()
+    assert row['text'] == msg.raw_text
+    assert json.loads(row['phones']) == ['+998901234567', '77001234567']
+    metadata = db.execute('SELECT * FROM app_message_metadata').fetchone()
+    assert metadata['has_media'] == 1
+    assert not m.capture_message_for_app(db, 'approved_source', 123, msg)
+    msg.entities = [SimpleNamespace(url='tel:12345678')]
+    assert m.capture_message_for_app(db, 'approved_source', 123, msg)
+    edited = db.execute('SELECT * FROM app_messages').fetchone()
+    assert edited['text'] == row['text'] and edited['source_date'] == row['source_date']
+    assert edited['revision'] != row['revision']
+    assert json.loads(edited['phones']) == ['12345678']
+    msg.id = 2; msg.noforwards = True
+    assert not m.capture_message_for_app(db, 'approved_source', 123, msg)
+    assert db.execute('SELECT COUNT(*) FROM app_message_metadata').fetchone()[0] == 1
+
+
+def test_media_only_source_has_auditable_metadata_without_invented_text_or_phone(tmp_path):
+    m = collector(); db = m.database(tmp_path/'feed.db')
+    msg = SimpleNamespace(id=1, raw_text='', date=m.utcnow(), media=SimpleNamespace(photo=True), entities=[])
+    assert not m.capture_message_for_app(db, 'approved_source', 123, msg)
+    assert db.execute('SELECT COUNT(*) FROM app_messages').fetchone()[0] == 0
+    metadata = db.execute('SELECT * FROM app_message_metadata').fetchone()
+    assert metadata['has_media'] == 1 and json.loads(metadata['entity_contacts']) == []
+
+
 def test_own_chat_capture_never_enters_publisher_and_keeps_forward_date(tmp_path, monkeypatch):
     m = collector()
     db = m.database(tmp_path/'feed.db')
@@ -172,6 +206,36 @@ def test_slow_collection_does_not_block_publication_and_cancels_before_db_close(
             pass
     asyncio.run(scenario())
     assert len(started) == 1 and len(published) == 3 and stopped == [True]
+
+
+def test_owned_scan_does_not_wait_for_general_history_and_stops_with_worker(tmp_path, monkeypatch):
+    m = collector(); db = m.database(tmp_path/'feed.db')
+    started, owned, stopped = [], [], []
+    real_sleep = asyncio.sleep
+    async def slow(reader, state):
+        started.append(True)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.append(True)
+            state.execute('SELECT 1')
+    async def own(reader, state):
+        owned.append(True)
+        state.execute('SELECT 1')
+    async def sleep(_):
+        await real_sleep(0)
+        if owned:
+            raise asyncio.CancelledError()
+    monkeypatch.setattr(m, 'collect', slow)
+    monkeypatch.setattr(m, 'collect_owned', own)
+    monkeypatch.setattr(m.asyncio, 'sleep', sleep)
+    async def scenario():
+        try:
+            await m.run_cycles(None, db, {'OWNED_FEED_ENABLED': 'true'})
+        except asyncio.CancelledError:
+            pass
+    asyncio.run(scenario())
+    assert started == owned == stopped == [True]
 
 
 def test_bot_429_pauses_all_download_replies_without_losing_pending(tmp_path):

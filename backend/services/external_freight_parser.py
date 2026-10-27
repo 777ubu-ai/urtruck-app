@@ -22,6 +22,7 @@ _VOLUME = re.compile(r"(?i)(?<![\w.])(\d+(?:[.,]\d+)?)\s*(м\s*[³3]|куб(?:о
 _COUNT = re.compile(r"(?i)(?:нужно|требуется|требуются|нужны|количество)\s*[:：-]?\s*(\d{1,4})\s*(?:машин|авто|фур)")
 _CARGO = re.compile(r"(?im)^\s*(?:груз|наименование груза)\s*[:：-]\s*([^\n;]{2,120})")
 _READY = re.compile(r"(?im)^\s*(?:готовность|готов|дата погрузки|загрузка)\s*[:：-]\s*([^\n;]{2,120})")
+_VEHICLE_READY = re.compile(r'(?im)^([^\n]{0,80}\b(?:освободим\w*|освободит\w*|(?:готов\w*|свободн\w*)\s+(?:завтра|послезавтра|через\s+|\d{1,2}[.]))[^\n]{0,120})$')
 _PRICE = re.compile(r"(?i)(?<!\d)(\d[\d \t.,]{0,14})[ \t]*(USD|US\$|\$|EUR|€|RUB|₽|KZT|тг|CNY|JPY|¥)(?:[ \t]*\([ \t]*(CNY|JPY)[ \t]*\))?(?=$|[\W])")
 _NEGOTIABLE = re.compile(r"(?i)\b(?:договорная|цена договорная|торг уместен|(?:narx|нарх)\s*[:：]\s*(?:kelishiladi|келишилади))\b")
 _DATE = re.compile(r"(?<!\d)(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)")
@@ -310,7 +311,7 @@ def map_selected_message(raw: dict) -> dict:
         "volume": float(_first(_VOLUME, text).replace(",", ".").replace(" ", "")) if _first(_VOLUME, text) else None,
         "vehicle_count": _vehicle_count(text, kind),
         "loading_date": _loading_date(text),
-        "ready_text": _first(_READY, text),
+        "ready_text": _first(_READY, text) or (_first(_VEHICLE_READY, text) if kind == 'vehicle' else None),
         "amount": amount,
         "currency": currency,
         "price_state": price_state,
@@ -510,6 +511,23 @@ def _country_header_offsets(value):
     return result
 
 
+def source_contact_values(raw):
+    """Контакты исходного сообщения, включая подсказки из Telegram entities."""
+    result = []
+    for key in ('contacts', 'phones', 'source_contacts'):
+        values = raw.get(key) or []
+        if isinstance(values, str):
+            try:
+                values = json.loads(values)
+            except (TypeError, ValueError):
+                values = []
+        if isinstance(values, list):
+            for value in values:
+                if isinstance(value, str) and value.strip() and value not in result:
+                    result.append(value[:200])
+    return result[:20]
+
+
 def map_selected_messages(raw):
     """Split explicit request blocks; allow one explicit footer contact per post."""
     text = raw.get("original_text", raw.get("text", ""))
@@ -548,6 +566,7 @@ def map_selected_messages(raw):
                 blocks=candidate_blocks
     if not blocks:
         item = map_selected_message(raw)
+        item['source_contacts'] = source_contact_values(raw)
         shared_header = bool(route_matches and (
             not _only_country_headers(text[:route_matches[0].start()])
             or _country_header_offsets(text)
@@ -567,6 +586,7 @@ def map_selected_messages(raw):
         # Поля маршрута/цены разбираются из блока; раскрытие карточки должно
         # показывать весь неизменённый пост, включая общую шапку и контакты.
         item["source_text"] = text
+        item['source_contacts'] = source_contact_values(raw)
         # A single footer phone belongs to the whole published post. Reuse it
         # only among that post's route-split blocks; multiple post contacts or
         # phones outside the footer remain local to their own block.
