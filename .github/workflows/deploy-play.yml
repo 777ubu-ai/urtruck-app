@@ -297,7 +297,13 @@ jobs:
           version_code=$((now_epoch - base_epoch))
           installed_version_code=213720253
           if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
-            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
+            case "$VERIFIED_PLAY_MAX_CODE" in
+              ''|0*|*[!0-9]*)
+                echo '::error::Verified Play versionCode must be a positive decimal without leading zeroes'
+                exit 1
+                ;;
+            esac
+            test "${#VERIFIED_PLAY_MAX_CODE}" -le 10
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
             version_code=$((installed_version_code + 1))
