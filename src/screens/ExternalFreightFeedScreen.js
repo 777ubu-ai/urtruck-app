@@ -418,7 +418,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     {modal ? <View style={[styles.modalOverlay, { top: filterBottom }]} testID="external-feed-filter-overlay">
       <Pressable style={styles.scrim} onPress={closeFilter} testID="external-feed-filter-scrim" accessible={false} />
-      <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? filterBottom : 0} pointerEvents="box-none" testID="external-feed-filter-keyboard-area">
+      <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={filterBottom} pointerEvents="box-none" testID="external-feed-filter-keyboard-area">
       <Pressable style={styles.sheet} onPress={e => e.stopPropagation()} testID="external-feed-filter-sheet" accessibilityViewIsModal>
         <View {...sheetGesture.panHandlers} style={styles.handleArea} testID="external-feed-filter-handle"><View style={styles.sheetHandle} accessible={false} /></View>
         <View style={styles.sheetHeading}><Text style={[styles.sheetTitle, { flex: 1 }]}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text><TouchableOpacity onPress={closeFilter} style={styles.callButton} accessibilityRole="button" accessibilityLabel={({ RU: 'Закрыть фильтр', KK: 'Сүзгіні жабу', ZH: '关闭筛选', EN: 'Close filter' })[lang] || 'Close filter'} testID="external-feed-filter-close"><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>

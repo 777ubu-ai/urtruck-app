@@ -6,7 +6,7 @@
  */
 // Изолированная внешняя лента: локальные компоненты и перевод отключён.
 const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494473;
-const QA2_ANDROID_VERSION_CODE = 214494474;
+const QA2_ANDROID_VERSION_CODE = 214494475;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {
