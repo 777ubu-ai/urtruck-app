@@ -329,39 +329,17 @@ export default function MyTripsScreen({ navigation, route }) {
     myItemsRaw = reconcileCreatedCargoOverlay(myItemsRaw, createdCargoOverlay).items;
   }
 
-  // RC2 hotfix (P0-4): expired (pickup_date < сегодня) больше не
-  // попадают в Active. Перемещаем их в Archive виртуально (без
-  // изменения backend status). Tab='deals' (Архив) теперь покажет
-  // server-side completed/cancelled + локально expired.
-  const parseDate = (s) => {
-    if (!s) return null;
-    const str = String(s).trim();
-    for (const fmt of [
-      /^(\d{4})-(\d{2})-(\d{2})/,           // YYYY-MM-DD (+ timestamp)
-      /^(\d{2})\.(\d{2})\.(\d{4})$/,        // DD.MM.YYYY
-    ]) {
-      const m = fmt.exec(str);
-      if (m) {
-        const [, p1, p2, p3] = m;
-        // ISO branch: p1=YYYY, p2=MM, p3=DD; DD.MM.YYYY branch swap
-        const yyyy = p1.length === 4 ? +p1 : +p3;
-        const mm = +p2;
-        const dd = p1.length === 4 ? +p3 : +p1;
-        return new Date(yyyy, mm - 1, dd);
-      }
-    }
-    return null;
-  };
+  // Свои публикации остаются в разделе «Мои грузы»/«Мои рейсы» 30 дней
+  // от последней публикации. Даты погрузки и выезда по-прежнему ограничивают
+  // видимость в публичной ленте; в этом личном списке они не сокращают срок.
+  const OWN_LISTING_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
   const isExpiredItem = (it) => {
-    const d = parseDate(it.pickup_date || it.departure);
-    if (!d) return false;
-    // Модель А: публикация живёт 3 дня (день выезда + 2), согласовано с
-    // лентой. Дальше — «Срок истёк». Граница = сегодня-2: expired, если
-    // дата < (сегодня − 2 дня).
-    const grace = new Date();
-    grace.setHours(0, 0, 0, 0);
-    grace.setDate(grace.getDate() - 2);
-    return d < grace;
+    const raw = String(it.published_at || it.created_at || '').trim();
+    if (!raw) return false;
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+    const withUtc = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
+    const publishedAt = Date.parse(withUtc);
+    return Number.isFinite(publishedAt) && Date.now() >= publishedAt + OWN_LISTING_RETENTION_MS;
   };
   // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — ТОЛЬКО управление
   // объявлениями (active/draft/expired + архив unpublished/cancelled/rejected).

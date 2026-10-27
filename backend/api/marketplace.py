@@ -314,8 +314,8 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
     created = _parse_iso_date(row.get("created_at"))
     cutoff = _parse_iso_date(PUBLIC_CUTOFF_DATE)
 
-    # Stale pickup_date → hide. Модель А: публикация живёт 3 дня (день выезда
-    # + 2). Прячем, когда дата загрузки более чем на 2 дня в прошлом.
+    # Stale pickup_date → hide from the public feed (day of pickup + 2).
+    # The owner's management list keeps the listing for 30 days from publish.
     if pickup and pickup < (today - timedelta(days=2)):
         return False
 
@@ -1746,9 +1746,8 @@ def list_trips(
             if not _is_dirty_text(t.get("driver_name"), t.get("from_city"),
                                   t.get("to_city"), t.get("truck_type"))
         ]
-        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (Модель А: живёт
-        # 3 дня — departure + 2). Owner-side /my сюда не проходит — там рейсы
-        # остаются с пометкой «Срок истёк».
+        # Скрываем просроченные рейсы из ПУБЛИЧНОЙ ленты (день выезда + 2).
+        # Владелец управляет публикацией в /my, где действует срок 30 дней.
         _today = datetime.utcnow().date()
         trips = [
             t for t in trips

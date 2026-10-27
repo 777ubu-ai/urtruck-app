@@ -17,13 +17,17 @@ def _db():
             status TEXT,
             pickup_date TEXT,
             updated_at TEXT,
-            bids_count INTEGER DEFAULT 0
+            bids_count INTEGER DEFAULT 0,
+            published_at TEXT DEFAULT '2026-08-01 00:00:00',
+            created_at TEXT DEFAULT '2026-08-01 00:00:00'
         );
         CREATE TABLE trips (
             id TEXT PRIMARY KEY,
             status TEXT,
             departure TEXT,
-            updated_at TEXT
+            updated_at TEXT,
+            published_at TEXT DEFAULT '2026-08-01 00:00:00',
+            created_at TEXT DEFAULT '2026-08-01 00:00:00'
         );
         CREATE TABLE bids (
             id TEXT PRIMARY KEY,
@@ -57,7 +61,7 @@ def _db():
 
 def test_bid_expires_after_48_hours_but_parent_stays_active():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('c1','active','2026-08-25',NULL,1)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-25',NULL,1)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1','c1',NULL,12400,'pending','2026-08-18 10:00:00','2026-08-18 10:00:00')"
     )
@@ -76,7 +80,7 @@ def test_bid_expires_after_48_hours_but_parent_stays_active():
 
 def test_recent_activity_resets_48_hour_window():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('c1','active','2026-08-25',NULL,1)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-25',NULL,1)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1','c1',NULL,12400,'countered','2026-08-15 10:00:00','2026-08-20 11:00:00')"
     )
@@ -87,38 +91,38 @@ def test_recent_activity_resets_48_hour_window():
     assert conn.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "countered"
 
 
-def test_past_cargo_date_expires_listing_and_open_bid_immediately():
+def test_past_cargo_date_expires_open_bid_but_keeps_owned_listing_for_30_days():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('c1','active','2026-08-19',NULL,1)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-19',NULL,1)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1','c1',NULL,12400,'pending','2026-08-20 11:30:00','2026-08-20 11:30:00')"
     )
 
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
-    assert result["expired_cargos"] == ["c1"]
+    assert result["expired_cargos"] == []
     assert result["expired_bids"] == ["b1"]
-    assert conn.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == "active"
     assert conn.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "expired"
 
 
-def test_past_trip_date_expires_trip_and_open_bid():
+def test_past_trip_date_expires_open_bid_but_keeps_owned_trip_for_30_days():
     conn = _db()
-    conn.execute("INSERT INTO trips VALUES ('t1','active','2026-08-19',NULL)")
+    conn.execute("INSERT INTO trips (id,status,departure,updated_at) VALUES ('t1','active','2026-08-19',NULL)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1',NULL,'t1',4500,'pending','2026-08-20 11:30:00','2026-08-20 11:30:00')"
     )
 
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
-    assert result["expired_trips"] == ["t1"]
+    assert result["expired_trips"] == []
     assert result["expired_bids"] == ["b1"]
-    assert conn.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == "active"
 
 
 def test_departure_today_remains_actionable():
     conn = _db()
-    conn.execute("INSERT INTO trips VALUES ('t1','active','2026-08-20',NULL)")
+    conn.execute("INSERT INTO trips (id,status,departure,updated_at) VALUES ('t1','active','2026-08-20',NULL)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1',NULL,'t1',4500,'pending','2026-08-20 11:30:00','2026-08-20 11:30:00')"
     )
@@ -130,9 +134,47 @@ def test_departure_today_remains_actionable():
     assert conn.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == "active"
 
 
+def test_listing_expires_after_30_days_from_publication_not_route_date():
+    conn = _db()
+    conn.execute(
+        "INSERT INTO cargos (id,status,pickup_date,published_at,created_at) "
+        "VALUES ('old-cargo','active','2026-08-25','2026-07-21 11:59:59','2026-07-21 11:59:59')"
+    )
+    conn.execute(
+        "INSERT INTO trips (id,status,departure,published_at,created_at) "
+        "VALUES ('old-trip','active','2026-08-25','2026-07-21 11:59:59','2026-07-21 11:59:59')"
+    )
+
+    result = expire_stale_marketplace(now=NOW, conn=conn)
+
+    assert result["expired_cargos"] == ["old-cargo"]
+    assert result["expired_trips"] == ["old-trip"]
+    assert conn.execute("SELECT status FROM cargos WHERE id='old-cargo'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "expired"
+
+
+def test_recently_expired_listing_is_restored_until_30_day_deadline():
+    conn = _db()
+    conn.execute(
+        "INSERT INTO cargos (id,status,pickup_date,published_at,created_at) "
+        "VALUES ('recent-cargo','expired','2026-08-19','2026-08-01 00:00:00','2026-08-01 00:00:00')"
+    )
+    conn.execute(
+        "INSERT INTO trips (id,status,departure,published_at,created_at) "
+        "VALUES ('recent-trip','expired','2026-08-19','2026-08-01 00:00:00','2026-08-01 00:00:00')"
+    )
+
+    result = expire_stale_marketplace(now=NOW, conn=conn)
+
+    assert result["expired_cargos"] == []
+    assert result["expired_trips"] == []
+    assert conn.execute("SELECT status FROM cargos WHERE id='recent-cargo'").fetchone()[0] == "active"
+    assert conn.execute("SELECT status FROM trips WHERE id='recent-trip'").fetchone()[0] == "active"
+
+
 def test_accepted_deal_is_never_auto_expired_or_cancelled():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('c1','active','2026-08-19',NULL,0)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-19',NULL,0)")
     conn.execute("INSERT INTO deals VALUES ('d1','c1',NULL,'accepted')")
     conn.execute(
         "INSERT INTO bids VALUES ('winner','c1',NULL,12400,'accepted','2026-08-10 10:00:00','2026-08-10 10:00:00')"
@@ -149,7 +191,7 @@ def test_accepted_deal_is_never_auto_expired_or_cancelled():
 
 def test_expiry_is_idempotent_and_does_not_duplicate_audit_event():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('c1','active','2026-08-25',NULL,1)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-25',NULL,1)")
     conn.execute(
         "INSERT INTO bids VALUES ('b1','c1',NULL,12400,'pending','2026-08-18 10:00:00','2026-08-18 10:00:00')"
     )
@@ -163,7 +205,7 @@ def test_expiry_is_idempotent_and_does_not_duplicate_audit_event():
 
 def test_received_deal_protects_parent_until_final_completion():
     conn = _db()
-    conn.execute("INSERT INTO cargos VALUES ('received-cargo','active','2026-08-19',NULL,0)")
+    conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('received-cargo','active','2026-08-19',NULL,0)")
     conn.execute("INSERT INTO deals VALUES ('received-deal','received-cargo',NULL,'received')")
 
     result = expire_stale_marketplace(now=NOW, conn=conn)
