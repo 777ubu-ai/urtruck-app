@@ -195,7 +195,8 @@ for (const role of ['driver', 'client']) test(`${role}: панель фильт�
   assert.equal(overlay.position, 'absolute', 'RN 0.86 не экспортирует absoluteFillObject: геометрия должна быть задана явно');
   for (const edge of ['top', 'bottom', 'left', 'right']) assert.equal(overlay[edge], 0);
   assert.equal(h.node('external-feed-filter-scrim').props.style.position, 'absolute');
-  assert.equal(h.node('external-feed-filter-keyboard-area').props.behavior, undefined, 'Android adjustResize уже поднимает панель');
+  assert.equal(h.node('external-feed-filter-keyboard-area').props.behavior, 'height', 'Android edge-to-edge не поднимает вложенное окно одним adjustResize');
+  assert.equal(h.node('external-feed-filter-keyboard-area').props.keyboardVerticalOffset, h.node('external-feed-filter-overlay').props.style[1].top);
   assert.equal(sheet.props.accessibilityViewIsModal, true);
   assert.equal(sheet.props.style.borderWidth, 1);
   assert.ok(sheet.props.style.shadowOpacity > 0);
