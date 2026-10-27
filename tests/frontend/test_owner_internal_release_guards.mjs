@@ -39,7 +39,7 @@ for (const [label, workflow, step] of guards) {
         const bin = join(root, 'bin'); mkdirSync(bin);
         const mocks = {
           gh: 'case "$*" in *reviews*) echo "Unexpected review dependency" >&2; exit 91;; *check-runs*) printf "%s" "$FAKE_CHECKS";; *) printf "%s" "$FAKE_PR";; esac',
-          git: 'case "$1" in rev-parse) printf "%s" "$FAKE_CHECKOUT";; diff) exit "$FAKE_DIFF_STATUS";; fetch) exit 0;; *) exit 92;; esac',
+          git: 'case "$1" in rev-parse) printf "%s" "$FAKE_CHECKOUT";; diff) exit "$FAKE_DIFF_STATUS";; fetch|merge-base) exit 0;; *) exit 92;; esac',
           python3: 'if [ "$1" = - ]; then cat >/dev/null; printf "qa2.urtruck.kz\\n"; fi',
           curl: 'exit 0', npx: 'exit 0',
         };
@@ -51,6 +51,7 @@ for (const [label, workflow, step] of guards) {
           GITHUB_REPOSITORY: '777ubu-ai/urtruck-app', GITHUB_EVENT_NAME: 'workflow_dispatch',
           GITHUB_REF_NAME: 'qa2/integration-candidate', GITHUB_SHA: sha, QA_SOURCE_SHA: sha, AUDIT_SOURCE_SHA: sha,
           CONFIRMATION: 'BUILD_QA2_TESTFLIGHT', URTRUCK_MIN_IOS_BUILD: '111',
+          MERGED_PR_NUMBER: '605',
           EXPO_TOKEN: 'test-only', EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: 'test-only', EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: 'test-only',
           QA2_API_URL: 'https://qa2.urtruck.kz', API_ENVIRONMENT_INPUT: 'qa2', TRACK_INPUT: 'internal',
           EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true', VERIFIED_PLAY_MAX_CODE: '215024884',
