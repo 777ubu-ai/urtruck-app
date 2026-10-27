@@ -67,7 +67,7 @@ class ExternalFreightFeedAdapter:
             "original_text", "source_text", "source_revision", "status", "classification_status", "origin", "destination",
             "origin_country", "destination_country", "cargo_name", "body_types", "weight", "volume",
             "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state",
-            "contacts", "origin_source", "created_by",
+            "contacts", "source_contacts", "origin_source", "created_by",
         }
         explicit = {key: value for key, value in source.items() if key in contract_keys and value not in (None, "")}
         if explicit.get("status") not in {"active", "review", "closed", "hidden"}:

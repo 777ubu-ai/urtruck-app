@@ -36,7 +36,7 @@ def init_schema():
           cargo_name TEXT, body_types TEXT, weight REAL, volume REAL,
           vehicle_count INTEGER, loading_date TEXT, ready_text TEXT, amount REAL, currency TEXT,
           price_state TEXT NOT NULL DEFAULT 'unknown' CHECK(price_state IN ('known','negotiable','unknown')),
-          contacts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'review'
+          contacts TEXT NOT NULL DEFAULT '[]', source_contacts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'review'
             CHECK(status IN ('active','review','closed','hidden','expired')),
           origin_source TEXT, created_by TEXT
         );
@@ -79,6 +79,8 @@ def init_schema():
         for name in ("origin_country", "destination_country", "origin_folded", "destination_folded"):
             if name not in columns:
                 c.execute(f"ALTER TABLE external_freight_items ADD COLUMN {name} TEXT")
+        if 'source_contacts' not in columns:
+            c.execute("ALTER TABLE external_freight_items ADD COLUMN source_contacts TEXT NOT NULL DEFAULT '[]'")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_origin_route ON external_freight_items(kind,status,origin_folded,source_published_at DESC,id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_destination_route ON external_freight_items(kind,status,destination_folded,source_published_at DESC,id DESC)")
 
@@ -160,6 +162,9 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     contacts = raw.get("contacts") or []
     if not isinstance(contacts, list) or len(contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in contacts):
         raise ValueError("invalid_contacts")
+    source_contacts = raw.get('source_contacts') or []
+    if not isinstance(source_contacts, list) or len(source_contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in source_contacts):
+        raise ValueError('invalid_source_contacts')
     source_revision = str(raw.get("source_revision") or "")
     if len(source_revision) > 160:
         raise ValueError("source_revision_too_long")
@@ -181,7 +186,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "status": "expired" if published and published + timedelta(hours=ACTIVE_HOURS) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if published and published + timedelta(hours=ACTIVE_HOURS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
     }
 
@@ -200,7 +205,7 @@ def import_records(records):
         raise ValueError("invalid_batch_size")
     normalized_batch = [normalize_record(raw) for raw in records]
     results = []
-    columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "status", "origin_source", "created_by"]
+    columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
     with get_conn() as c:
         for values in normalized_batch:
             current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
@@ -248,7 +253,7 @@ def _serialize(row):
     item = dict(row)
     item.pop("origin_folded", None)
     item.pop("destination_folded", None)
-    for key in ("body_types", "contacts"):
+    for key in ("body_types", "contacts", "source_contacts"):
         try:
             item[key] = json.loads(item[key] or "[]")
         except (TypeError, ValueError):
@@ -257,8 +262,13 @@ def _serialize(row):
     # отдельно как контакты полного исходника, в том числе для старых строк БД.
     from services.external_freight_parser import _phone_identity
     assigned = {_phone_identity(value) for value in item["contacts"]}
-    item["source_contacts"] = [value for value in _source_contacts(item.get("original_text"))
-                               if _phone_identity(value) not in assigned]
+    source_contacts = []
+    for value in (*item['source_contacts'], *_source_contacts(item.get('original_text'))):
+        identity = _phone_identity(value)
+        if identity and identity not in assigned:
+            source_contacts.append(value)
+            assigned.add(identity)
+    item['source_contacts'] = source_contacts
     return item
 
 

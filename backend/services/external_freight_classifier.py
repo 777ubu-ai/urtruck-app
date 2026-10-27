@@ -37,7 +37,9 @@ _VEHICLE_CONTEXT = re.compile(
     r"(?:\bесть\s+(?:свободн\w*\s+)?(?:машин[ауы]?|транспорт|фур[ауы]?|тент[аы]?|р[еэ]ф(?:а|ы)?)\b|"
     r"свободн(?:ая|ый|ые)\s+(?:машин\w*|тент\w*|реф\w*|фур\w*|транспорт|авто)|порожн(?:ий|яя|ие)\s+(?:машин\w*|тягач\w*|фур\w*)|ищ(?:у|ем)\s+(?:груз|загруз)|возьму\s+груз|"
     r"(?:заберу|доставлю|перевезу)\s+(?:ваш\s+)?(?:груз|товар)|"
-    r"нужен груз|нужна\s+загрузка|жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
+    r"нужен груз|нужна\s+загрузка|ищ(?:у|ем)\s+(?:обратн\w*|попутн\w*)\s+груз|"
+    r"готов\w*\s+перевезти|ед(?:у|ем)\s+пуст\w*|освободил(?:ся|ась|ись)|освободимся|"
+    r"жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
     r"свобод(?:ен|на)\s+(?:тент|реф|машин|фур)|бос көлік|жүк іздеймін|yuk kerak\b|юк\s+керак\b|(?:m[ao]shina|fura) bor\b|free truck|available truck|empty truck|looking for cargo|"
     r"有空车|空车|找货|"
     r"предлага(?:ю|ем)\s+(?:свободн\w*\s+)?(?:машин\w*|авто|фур\w*|транспорт|тент\w*|реф\w*|тягач\w*|грузовик\w*)|"
@@ -80,7 +82,8 @@ def uses_extended_intent(value):
 
 
 def _intents(value):
-    cargo = bool(_CARGO_CONTEXT.search(value) or _CARGO_FORMAT_CONTEXT.search(value))
+    cargo_text = re.sub(r'(?i)\bготов\w*\s+перевезти\b', ' ', value)
+    cargo = bool(_CARGO_CONTEXT.search(cargo_text) or _CARGO_FORMAT_CONTEXT.search(cargo_text))
     # Вопрос грузоотправителя «Есть машина?» не является предложением машины.
     vehicle_text = re.sub(r"[^\n.!?]*\?", " ", value)
     vehicle_text = re.sub(
@@ -102,7 +105,18 @@ def _intents(value):
             r'(?i)\bесть\s+(?:свободн\w*\s+)?(?:машин\w*|фур\w*|транспорт)\s*[-–—]\s*'
             r'(?:пишите|звоните|забирайте|подключайтесь)[^\n.!?]*', ' ', vehicle_text)
     empty_offer = bool(_EMPTY_VEHICLE_OFFER.search(vehicle_text)) and not _UNAVAILABLE_OFFER.search(value)
-    return cargo, _direct_vehicle_context(vehicle_text) or empty_offer
+    unavailable = re.search(
+        r'(?i)\b(?:машин\w*|фур\w*|тент\w*|реф\w*|авто|транспорт)\s+'
+        r'(?:не\s+свободн\w*|занят\w*|в\s+ремонте)\b|'
+        r'\b(?:ваканси\w*|продам|прода[её]тся|куплю)\b|'
+        r'\b(?:ищу|ищем|нужен|требуется)\s+водител\w*|'
+        r'\bне\s+(?:освободил\w*|готов\w*|ищу|ищем)', value)
+    return cargo, bool(not unavailable and (_direct_vehicle_context(vehicle_text) or empty_offer))
+
+
+def has_vehicle_supply_signal(text):
+    """Быстрый кандидат приоритетной полосы; тип всё равно проверяется парсером."""
+    return bool(_VEHICLE_CONTEXT.search(text or '') or _EMPTY_VEHICLE_OFFER.search(text or ''))
 # Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
 _CLOSE_CONTEXT = re.compile(
     r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"

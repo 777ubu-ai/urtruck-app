@@ -1,0 +1,11 @@
+[Unit]
+Description=UrTruck QA2 own Telegram intake every 2 seconds
+
+[Timer]
+OnBootSec=5
+OnUnitInactiveSec=2
+AccuracySec=1
+Unit=urtruck-qa2-owned-feed-bridge.service
+
+[Install]
+WantedBy=timers.target

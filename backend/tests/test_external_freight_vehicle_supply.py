@@ -34,6 +34,10 @@ def test_explicit_vehicle_intents_are_recognized(text):
     'Заберу ваш груз',
     'Доставлю товар',
     'Перевезу груз',
+    'Готов перевезти',
+    'Ищу обратный груз',
+    'Еду пустой',
+    'Освободился',
 ])
 def test_first_person_carrier_offers_are_vehicle_supply(offer):
     result = classify_message(f'{offer}\nАлматы → Москва')
@@ -45,6 +49,29 @@ def test_vehicle_ready_with_freight_service_description_is_vehicle_supply():
     result = classify_message('Машина свободна, перевозка грузов\nАлматы → Москва')
     assert result['kind'] == 'vehicle'
     assert result['status'] == 'active'
+
+
+@pytest.mark.parametrize('text', [
+    'Ищу груз\nМашина в ремонте', 'Машина не свободна, ищу груз',
+    'Есть машина\nПродам фуру', 'Есть машина\nНужен водитель',
+    'Не ищу груз', 'Не освободился\nАлматы',
+])
+def test_unavailable_or_sale_or_vacancy_is_not_available_vehicle(text):
+    assert classify_message(text)['kind'] != 'vehicle'
+
+
+def test_future_offer_preserves_explicit_readiness_instead_of_calling_it_ready_now():
+    item = map_selected_message(message('Освободимся через неделю\nАлматы → Москва'))
+    assert item['kind'] == 'vehicle'
+    assert item['ready_text'] == 'Освободимся через неделю'
+    assert item['loading_date'] is None
+
+
+def test_numbered_cargo_and_vehicle_blocks_have_separate_types_and_full_source():
+    text = '1. Алматы → Москва\nГруз готов, нужен тент\n\n2. Ташкент → Казань\nМашина свободна, ищу груз'
+    items = map_selected_messages(message(text))
+    assert [item['kind'] for item in items] == ['cargo', 'vehicle']
+    assert all(item['source_text'] == text and item['status'] == 'active' for item in items)
 
 
 @pytest.mark.parametrize('text', [
@@ -222,6 +249,7 @@ def test_history_capture_does_not_displace_fresh_publication(tmp_path,monkeypatc
                           f'Груз: доски\nАлматы → Москва\nНомер заявки: {i+1}',
                           now-timedelta(hours=30 if i<60 else 80))
     m.capture_for_app(db,'approved_source',1001,999,'Есть машина\nАлматы → Астана',now)
+    m.capture_for_app(db,'approved_source',1001,998,'Машина свободна\nОренбург → Ташкент',now-timedelta(hours=50))
     # Старый хвост + массовый backfill, принятый позже свежей публикации.
     db.execute('UPDATE app_messages SET updated_at=? WHERE source_message<=60',(now.timestamp()-3600,))
     db.execute('UPDATE app_messages SET updated_at=? WHERE source_message>60 AND source_message<999',(now.timestamp()+1,))
@@ -238,6 +266,8 @@ def test_history_capture_does_not_displace_fresh_publication(tmp_path,monkeypatc
     result=IncomingQueueBridge(path,adapter).run_once()
     assert result['scanned']==50
     assert any(r['source_message_id']=='999' for r in received)
+    assert any(r['source_message_id']=='998' and r['kind']=='vehicle' for r in received)
+    assert result['enqueued_active_by_kind']['vehicle'] >= 2
     # Продвижение старого хвоста также сохраняется, а Telegram queue не меняется.
     with adapter._connect() as state:
         assert state.execute('select count(*) from incoming_bridge_seen where source_queue_id<=60').fetchone()[0]>0

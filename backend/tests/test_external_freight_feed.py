@@ -81,6 +81,25 @@ def _import(record, *, key="test-importer-key-only"):
     return client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": key}, json={"records": [record]})
 
 
+def test_hidden_entity_contact_is_available_for_all_blocks_without_route_assignment():
+    from services.external_freight_parser import map_selected_messages
+    text = 'Алматы → Москва\nНужен тент\n\nТашкент → Казань\nНужен тент'
+    items = map_selected_messages({'source_id': 'entity-test', 'source_message_id': '44',
+        'source_published_at': datetime.now(timezone.utc).isoformat(), 'text': text,
+        'phones': '["+998901234567"]'})
+    assert len(items) == 2
+    for item in items:
+        assert _import(item).status_code == 200
+    global _actor
+    _actor = {'id': 'driver', 'role': 'driver'}
+    rows = client.get('/api/v1/external-freight').json()['items']
+    assert len(rows) == 2
+    for row in rows:
+        assert row['contacts'] == []
+        assert row['source_contacts'] == ['+998901234567']
+        assert row['original_text'] == text
+
+
 def test_split_post_survives_adapter_import_and_public_api_without_losing_footer(tmp_path, monkeypatch):
     from services.external_freight_parser import map_selected_messages
     from services.external_freight_import_adapter import ExternalFreightFeedAdapter

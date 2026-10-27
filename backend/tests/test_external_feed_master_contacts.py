@@ -39,6 +39,21 @@ def test_existing_empty_contacts_are_visible_without_reimport_or_date_reset():
     assert item['source_published_at'] == raw['source_published_at']
 
 
+def test_entity_contacts_stay_separate_and_old_schema_migrates_without_losing_bookmark():
+    from database.external_freight_connection import get_conn
+    raw = record(1, source_contacts=['+998901234567'])
+    ident = dal.import_records([raw])[0]['id']
+    assert dal.list_items(kind='cargo')['items'][0]['source_contacts'] == ['+998901234567']
+    dal.set_bookmark('owner', ident, 'cargo', True)
+    with get_conn() as c:
+        c.execute('ALTER TABLE external_freight_items DROP COLUMN source_contacts')
+    dal.init_schema()
+    item = dal.list_items(kind='cargo', owner_id='owner')['items'][0]
+    assert item['saved'] is True and item['id'] == ident
+    assert item['source_published_at'] == raw['source_published_at']
+    assert item['source_contacts'] == []
+
+
 @pytest.mark.parametrize('text,expected', [
     ('Телефон: 70\u200b123\u20604567\nГруз готов', ['701234567']),
     ('Тент\n9️⃣8️⃣7️⃣6️⃣5️⃣4️⃣3️⃣2️⃣\nМосква\nЗагрузка\nДокументы готовы', ['98765432']),

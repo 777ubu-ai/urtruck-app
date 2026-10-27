@@ -15,12 +15,12 @@ from urllib.parse import urlparse
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
 from services.external_freight_parser import map_selected_messages
-from services.external_freight_classifier import classify_message
+from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261027-full-source-text-v10'
+PARSER_REVISION = '20261027-vehicle-lane-v11'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261027-published-full-source-text-v5'
+    parser_revision = '20261027-published-vehicle-lane-v6'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -167,7 +167,8 @@ class IncomingQueueBridge(PublishedQueueBridge):
     @staticmethod
     def fingerprint(record):
         normalized = " ".join(record["original_text"].casefold().split())
-        return hashlib.sha256(normalized.encode()).hexdigest()
+        value = [normalized, sorted(set(record.get('source_contacts') or []))]
+        return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def find_duplicate(self, fingerprint, now):
         with self.adapter._connect() as state:
@@ -196,6 +197,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
         self.seed_dedup(now)
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory=sqlite3.Row
+            source.create_function('bridge_vehicle_hint', 1, has_vehicle_supply_signal, deterministic=True)
             source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
             query="""SELECT q.* FROM app_messages q
                 WHERE source_date>=? AND source_date<=?
@@ -213,11 +215,15 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 # Его сбор до переключения не создаёт параллельные карточки.
                 query += ' AND lower(q.source)<>?'
                 arguments += (OWNED_SOURCE.lower(),)
+            # Отдельный резерв кандидатов машин: большой грузовой хвост не
+            # расходует всю квоту. Окончательный тип определяет общий парсер.
+            vehicles=source.execute(query+" AND bridge_vehicle_hint(q.text) ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
             oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
-            unique={row["id"]:row for row in newest+oldest}
+            unique={row["id"]:row for row in vehicles+newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
         enqueued=review=rejected=duplicates=0
+        active_by_kind = {'cargo': 0, 'vehicle': 0}
         reasons={}
         for row in rows:
             raw=dict(row)
@@ -244,6 +250,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                             previous["original_text"] = "Исходное объявление удалено"
                             previous.pop("source_text", None)
                             previous["contacts"] = []
+                            previous['source_contacts'] = []
                         enqueued+=bool(self.adapter.enqueue(previous))
                 for record in records:
                     identity="/".join((record["source_id"],record["source_message_id"],record["segment_id"]))
@@ -265,7 +272,10 @@ class IncomingQueueBridge(PublishedQueueBridge):
                     if record["status"]=="active":
                         with self.adapter._connect() as state:
                             state.execute("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,row["source_date"]))
-                    enqueued+=bool(self.adapter.enqueue(record))
+                    added = bool(self.adapter.enqueue(record))
+                    enqueued += added
+                    if added and record['status'] == 'active':
+                        active_by_kind[record['kind']] += 1
             except (ValueError,TypeError,OverflowError):
                 rejected+=1;reason="invalid_source_record"
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
@@ -274,14 +284,15 @@ class IncomingQueueBridge(PublishedQueueBridge):
             reasons[reason]=reasons.get(reason,0)+1
         delivery=self.adapter.flush_once()
         return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
-                "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode}
+                "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode,
+                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind}
 
 
 class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261027-owned-full-source-text-v10'
+    parser_revision = '20261027-owned-vehicle-lane-v11'
     parse = staticmethod(map_owned_messages)
 
     @staticmethod
@@ -289,7 +300,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
         # A selection's shared footer is absent from earlier original_text blocks.
         # Effective contacts therefore participate in owned-only deduplication.
         value = [" ".join(record["original_text"].casefold().split()),
-                 sorted(set(record.get("contacts") or []))]
+                 sorted(set(record.get("contacts") or [])), sorted(set(record.get('source_contacts') or []))]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def find_duplicate(self, fingerprint, now):
