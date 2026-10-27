@@ -20,6 +20,7 @@
 
 - Выборочные тесты feed/filter/publication/deal: 123 passed.
 - Полный backend: 1 826 passed, 10 subtests passed; 931 предупреждение, ошибок нет.
+- Frontend unit: 1 615 passed; защищённая baseline-проверка проверяет новый утверждённый hash `marketplace.py` и сохраняет hash-контроль остальных областей.
 - `py_compile` изменённых Python-файлов и `git diff --check`: PASS.
 - Локальный прогон выполнен во временном Python 3.12 окружении, созданном из `requirements-test.txt`; зависимости проекта не менялись.
 
