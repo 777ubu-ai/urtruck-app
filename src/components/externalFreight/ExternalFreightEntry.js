@@ -24,29 +24,41 @@ export default function ExternalFreightEntry(props) {
     if (!enabled || !session?.user?.id || currentRole !== role) return undefined;
     let alive = true, controller = null, timeout = null;
     const current = () => alive && ownerRef.current === ownerKey;
-    const cancel = () => { controller?.abort(); clearTimeout(timeout); };
+    const cancel = () => {
+      const request = controller;
+      controller = null;
+      clearTimeout(timeout);
+      timeout = null;
+      request?.abort();
+    };
     const refresh = async () => {
-      if (!current() || !navigation.isFocused() || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
-      cancel();
+      if (!current() || controller || !navigation.isFocused() || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
       const request = new AbortController();
       controller = request;
-      timeout = setTimeout(() => request.abort(), 8000);
+      const requestTimeout = setTimeout(() => request.abort(), 8000);
+      timeout = requestTimeout;
       try {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
         if (!current() || request.signal.aborted) return;
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
-        setResult({ ownerKey, count: data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0 ? data.count : null });
+        if (data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0) {
+          setResult({ ownerKey, count: data.count });
+        }
       } catch {
-        if (current() && controller === request) setResult(null);
+        // Сохраняем последний успешный счётчик и повторяем запрос на следующем цикле.
       } finally {
-        if (controller === request) clearTimeout(timeout);
+        if (controller === request) {
+          clearTimeout(requestTimeout);
+          timeout = null;
+          controller = null;
+        }
       }
     };
-    const onBlur = () => { cancel(); setResult(null); };
+    const onBlur = () => { cancel(); };
     const removeFocus = navigation.addListener('focus', refresh);
     const removeBlur = navigation.addListener('blur', onBlur);
     const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
-    const interval = setInterval(refresh, 60000);
+    const interval = setInterval(refresh, 2000);
     refresh();
     return () => { alive = false; cancel(); clearInterval(interval); removeFocus(); removeBlur(); appListener.remove(); };
   }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);

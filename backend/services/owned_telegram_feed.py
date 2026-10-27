@@ -57,6 +57,10 @@ def map_owned_messages(raw):
             item_raw.update(text=normalized, contacts=local or shared,
                             segment_id=f'block-{i+1}' if len(blocks) > 1 else str(raw.get('segment_id') or '0'))
             item = map_selected_message(item_raw)
+            # map_selected_message scans the rendered text too. For segmented
+            # posts that can re-add the post-wide footer to a block that has
+            # its own local contact; keep the block ownership decided above.
+            item['contacts'] = local or shared
             item['original_text'] = block
             if len(destinations) > 1 and item['status'] == 'active':
                 item['status'] = item['classification_status'] = 'review'

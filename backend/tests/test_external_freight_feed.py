@@ -3,6 +3,8 @@ import os
 import sqlite3
 import stat
 import uuid
+import base64
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -236,6 +238,31 @@ def test_all_filters_are_combined_currency_sort_and_cursor_are_stable():
     page2 = client.get("/api/v1/external-freight", params={"sort": "price_asc", "limit": 1, "cursor": mixed["next_cursor"]}).json()
     assert mixed["items"][0]["id"] != page2["items"][0]["id"]
     assert page2["sort_applied"] == "newest"
+
+
+def test_custom_body_query_matches_original_text_case_insensitively():
+    _import(_record(source="custom-body", message="ref", text="Нужен РЕФРИЖЕРАТОР, груз готов", body_types=[]))
+    _import(_record(source="custom-body", message="ref2", text="Нужен рефрижератор, груз готов", body_types=[]))
+    _import(_record(source="custom-body", message="tent", text="Нужен тент, груз готов", body_types=[]))
+    global _actor
+    _actor = {"id": "driver", "role": "driver"}
+    response = client.get("/api/v1/external-freight", params={"body_query": "рефрижератор", "limit": 1})
+    assert response.status_code == 200, response.text
+    first = response.json()
+    assert first["has_more"] is True
+    assert first["items"][0]["source_message_id"] in {"ref", "ref2"}
+    decoded = json.loads(base64.urlsafe_b64decode(first["next_cursor"] + "==").decode())
+    assert decoded["filters"]["body_query"] == "рефрижератор"
+    second = client.get("/api/v1/external-freight", params={"body_query": "рефрижератор", "limit": 1, "cursor": first["next_cursor"]}).json()
+    assert second["items"][0]["source_message_id"] in {"ref", "ref2"}
+    assert first["items"][0]["source_message_id"] != second["items"][0]["source_message_id"]
+    # Cursor minted before body_query existed remains valid when this filter is unused.
+    no_filter = client.get("/api/v1/external-freight", params={"limit": 1}).json()
+    old_cursor = json.loads(base64.urlsafe_b64decode(no_filter["next_cursor"] + "==").decode())
+    old_cursor["filters"].pop("body_query", None)
+    compatible = base64.urlsafe_b64encode(json.dumps(old_cursor, separators=(",", ":")).encode()).decode().rstrip("=")
+    assert client.get("/api/v1/external-freight", params={"limit": 1, "cursor": compatible}).status_code == 200
+    assert client.get("/api/v1/external-freight", params={"body_query": "рефрижератор " * 20}).status_code == 422
 
 
 def test_cursor_snapshot_excludes_new_rows_but_keeps_replayed_rows():

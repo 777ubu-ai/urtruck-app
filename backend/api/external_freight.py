@@ -64,7 +64,7 @@ def list_external_feed(
     origin: str | None = Query(None, max_length=240), destination: str | None = Query(None, max_length=240),
     origin_country: str | None = Query(None, min_length=2, max_length=3),
     destination_country: str | None = Query(None, min_length=2, max_length=3),
-    body_type: str | None = Query(None, max_length=40), published_from: str | None = Query(None, max_length=40),
+    body_type: str | None = Query(None, max_length=40), body_query: str | None = Query(None, max_length=80), published_from: str | None = Query(None, max_length=40),
     published_to: str | None = Query(None, max_length=40), currency: str | None = Query(None, min_length=3, max_length=3),
     min_price: float | None = Query(None, ge=0), max_price: float | None = Query(None, ge=0),
     sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
@@ -90,7 +90,7 @@ def list_external_feed(
             raise HTTPException(status_code=422, detail={"error": "invalid_date_range"}) from exc
     kind = _user_kind(user)
     use_carriers = include_carriers and kind == "vehicle" and not saved_only and sort == "newest" and not any((
-        origin, destination, origin_country, destination_country, body_type, published_from, published_to, currency,
+        origin, destination, origin_country, destination_country, body_type, body_query, published_from, published_to, currency,
         min_price is not None, max_price is not None))
     try:
         if cursor and cursor.startswith("carrier:"):
@@ -99,7 +99,7 @@ def list_external_feed(
             from services.carrier_directory import list_contacts
             page = list_contacts(cursor=int(cursor[8:]), limit=limit)
             return {"kind": kind, "items": page["items"], "next_cursor": "carrier:" + str(page["next_cursor"]) if page["next_cursor"] is not None else None}
-        result = dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type,
+        result = dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type, body_query=body_query,
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,

@@ -13,6 +13,7 @@ test('новый iOS-клиент явно запрашивает каталог
   }).code;
   const module = { exports: {} };
   const mocks = {
+    'expo-constants': { expoConfig: { extra: {} } },
     '../config/env': { API_BASE: 'https://urtruck.kz/security/api/v1' },
     './storage': { storage: { get: async () => 'synthetic-session' } },
     './authEvents': { authedFetch: async (url, options) => {

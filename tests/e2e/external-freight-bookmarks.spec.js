@@ -35,33 +35,36 @@ async function boot(page, role = 'driver', options = {}) {
   await page.route('**/*', async route => {
     const u = new URL(route.request().url());
     if (u.origin !== base && u.origin !== "https://qa2.urtruck.kz") return route.abort();
-    if (u.pathname.includes("/market/") && route.request().method() !== "GET") box.businessWrites.push(u.pathname);
-    if (u.pathname.includes("translate") || u.pathname.includes("/ai/")) box.aiRequests.push(u.pathname);
-    if (!u.pathname.startsWith('/api/')) return route.continue();
+    // QA nginx exposes the same API as both /api/v1 and /security/api/v1.
+    // Normalize before matching so this synthetic test never falls through to QA2.
+    const pathname = u.pathname.replace(/^\/security(?=\/api\/)/, '');
+    if (pathname.includes("/market/") && route.request().method() !== "GET") box.businessWrites.push(pathname);
+    if (pathname.includes("translate") || pathname.includes("/ai/")) box.aiRequests.push(pathname);
+    if (!pathname.startsWith('/api/')) return route.continue();
     let data = {};
-    if (u.pathname === '/api/v1/register/me') data = user;
-    else if (u.pathname === '/api/v1/users/me') data = { ...user, name: 'Тест ленты' };
-    else if (u.pathname === '/api/v1/external-freight/count') {
+    if (pathname === '/api/v1/register/me') data = user;
+    else if (pathname === '/api/v1/users/me') data = { ...user, name: 'Тест ленты' };
+    else if (pathname === '/api/v1/external-freight/count') {
       if (options.countFail) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
       data = { kind: role === 'driver' ? 'cargo' : 'vehicle', count: options.count ?? 100001 };
     }
-    else if (u.pathname.endsWith('/external-fixture/bookmark')) {
+    else if (pathname.endsWith('/external-fixture/bookmark')) {
       box.writes += 1;
       if (box.fail) { box.fail = false; return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }); }
       box.saved = route.request().method() === 'PUT'; data = { id: item.id, saved: box.saved };
-    } else if (u.pathname === '/api/v1/external-freight') {
+    } else if (pathname === '/api/v1/external-freight') {
       box.feedQueries.push(Object.fromEntries(u.searchParams));
       data = { items: u.searchParams.get('saved_only') === 'true' && !box.saved ? [] : (box.liveItems || [{ ...item, saved: box.saved }]), next_cursor: null };
       if (options.priceSortUnavailable && u.searchParams.get('sort')?.startsWith('price_')) data.sort_error = 'mixed_currency';
     }
-    else if (u.pathname.endsWith('/translate')) data = { translated_text: 'Truck needed. Cargo ready', source_revision: item.source_revision };
-    else if (u.pathname.includes('/notifications')) data = { notifications: [], unread: 0 };
-    else if (u.pathname.includes('/chat/')) data = { messages: [], rooms: [], unread: 0 };
-    else if (u.pathname.endsWith('/market/my')) data = { my_cargos: [], my_trips: [], my_bids: [], incoming_bids: [], my_deals: [] };
-    else if (u.pathname.endsWith('/market/my/listings')) data = { items: [], total: 0, archive_total: 0 };
-    else if (u.pathname.includes('/market/cargos')) data = { cargos: [], total: 0 };
-    else if (u.pathname.includes('/market/trips')) data = { trips: [], total: 0 };
-    else if (u.pathname.includes('/favorites')) data = { favorites: [] };
+    else if (pathname.endsWith('/translate')) data = { translated_text: 'Truck needed. Cargo ready', source_revision: item.source_revision };
+    else if (pathname.includes('/notifications')) data = { notifications: [], unread: 0 };
+    else if (pathname.includes('/chat/')) data = { messages: [], rooms: [], unread: 0 };
+    else if (pathname.endsWith('/market/my')) data = { my_cargos: [], my_trips: [], my_bids: [], incoming_bids: [], my_deals: [] };
+    else if (pathname.endsWith('/market/my/listings')) data = { items: [], total: 0, archive_total: 0 };
+    else if (pathname.includes('/market/cargos')) data = { cargos: [], total: 0 };
+    else if (pathname.includes('/market/trips')) data = { trips: [], total: 0 };
+    else if (pathname.includes('/favorites')) data = { favorites: [] };
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
   await page.goto(base + (options.initialPath || '/'), { waitUntil: 'domcontentloaded' });
@@ -121,6 +124,19 @@ test('failed save keeps unsaved state and allows retry', async ({ page }) => {
   await expect(page.getByText('Повторить', { exact: true }).filter({ visible: true })).toBeVisible();
   await button.click();
   await expect(button).toHaveAttribute('aria-label', 'Убрать из сохранённых');
+  expect(box.errors).toEqual([]);
+});
+
+test('custom body filter is sent as text and displayed on the filter chip', async ({ page }) => {
+  const box = await boot(page);
+  await page.getByTestId('external-feed-filter-body').click();
+  const custom = page.getByTestId('external-feed-body-custom-search');
+  await expect(custom).toBeVisible();
+  await custom.fill('изотерм с верхней загрузкой');
+  await page.getByTestId('external-feed-apply-filters').click();
+  await expect.poll(() => box.feedQueries.at(-1)?.body_query).toBe('изотерм с верхней загрузкой');
+  expect(box.feedQueries.at(-1)?.body_type).toBeUndefined();
+  await expect(page.getByTestId('external-feed-filter-body')).toContainText('изотерм с верхней загрузкой');
   expect(box.errors).toEqual([]);
 });
 

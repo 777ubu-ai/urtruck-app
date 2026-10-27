@@ -1,8 +1,12 @@
 import { API_BASE } from '../config/env';
+import Constants from 'expo-constants';
 import { storage } from './storage';
 import { authedFetch } from './authEvents';
 
-export const EXTERNAL_FREIGHT_ENABLED = String(process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED || '').toLowerCase() === 'true';
+const configuredFeedFlag = Constants?.expoConfig?.extra?.urtruckExternalFreightFeedEnabled;
+const envFeedFlag = process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED;
+export const EXTERNAL_FREIGHT_ENABLED = [configuredFeedFlag, envFeedFlag]
+  .some(value => String(value || '').toLowerCase() === 'true');
 
 function queryString(values = {}) {
   const params = new URLSearchParams();

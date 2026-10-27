@@ -8,7 +8,7 @@ const source = fs.readFileSync(new URL('../../src/utils/externalFreightFeed.js',
 function harness({ storage, send } = {}) {
   const calls = [];
   const context = vm.createContext({
-    process: { env: {} }, URLSearchParams, API_BASE: 'https://qa.example/api/v1',
+    process: { env: {} }, Constants: { expoConfig: { extra: { urtruckExternalFreightFeedEnabled: false } } }, URLSearchParams, API_BASE: 'https://qa.example/api/v1',
     storage: storage || { get: async () => 'private-test-token' },
     authedFetch: async (url, options) => {
       calls.push({ url, options });

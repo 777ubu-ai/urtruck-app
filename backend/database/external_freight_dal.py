@@ -244,7 +244,7 @@ def _serialize(row):
     return item
 
 
-def list_items(*, kind, origin=None, destination=None, body_type=None, published_from=None, published_to=None,
+def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
                sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
     now = _utc().isoformat()
@@ -253,6 +253,7 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
     cursor_filters = {
         "owner_id": str(owner_id) if owner_id is not None else None, "saved_only": bool(saved_only),
         "origin": origin, "destination": destination, "body_type": body_type,
+        **({"body_query": body_query} if body_query else {}),
         "origin_country": origin_country.upper() if origin_country else None,
         "destination_country": destination_country.upper() if destination_country else None,
         "published_from": published_from, "published_to": published_to,
@@ -292,6 +293,11 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
     if body_type:
         clauses.append("EXISTS (SELECT 1 FROM external_freight_item_body_types b WHERE b.item_id=external_freight_items.id AND b.body_type=?)")
         params.append(body_type)
+    if body_query:
+        escaped = str(body_query).strip().casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        clauses.append("(EXISTS (SELECT 1 FROM external_freight_item_body_types b WHERE b.item_id=external_freight_items.id AND CASEFOLD(b.body_type) LIKE ? ESCAPE '\\') OR CASEFOLD(original_text) LIKE ? ESCAPE '\\')")
+        params.extend([pattern, pattern])
     if published_from:
         clauses.append("source_published_at>=?")
         params.append(_utc(published_from).isoformat())
