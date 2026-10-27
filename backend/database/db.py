@@ -61,10 +61,10 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     """Cheap request-time guard for deadlines that can be evaluated in SQL.
 
     The full Python cleanup is throttled for performance, but a bid that turns
-    48h old or an ISO-dated listing that rolls into the past must not be
-    actionable during that throttle window. These LIMIT-1 probes close that
-    race; the periodic full scan remains the fallback for legacy DD.MM.YYYY
-    dates and any data anomaly the SQL fast-path does not express.
+    48h old, a 30-day owned-listing deadline, or an ISO route date that passes
+    must not remain actionable during that throttle window. These LIMIT-1
+    probes close that race; the periodic full scan remains the fallback for
+    legacy timestamps and any data anomaly the SQL fast-path does not express.
     """
     active_deals = "'accepted','in_progress','at_border','awaiting_confirmation','delivered','received'"
 
@@ -95,9 +95,10 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     cargo_due = conn.execute(
         f"""
         SELECT 1 FROM cargos c
-        WHERE c.status='active'
-          AND c.pickup_date GLOB '????-??-??*'
-          AND substr(c.pickup_date,1,10) < date('now')
+        WHERE (
+            (c.status='active' AND datetime(COALESCE(NULLIF(c.published_at,''), c.created_at), '+30 days') <= CURRENT_TIMESTAMP)
+            OR (c.status='expired' AND datetime(COALESCE(NULLIF(c.published_at,''), c.created_at), '+30 days') > CURRENT_TIMESTAMP)
+          )
           AND NOT EXISTS (
             SELECT 1 FROM deals d
             WHERE d.cargo_id=c.id AND d.status IN ({active_deals})
@@ -111,9 +112,10 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     trip_due = conn.execute(
         f"""
         SELECT 1 FROM trips t
-        WHERE t.status='active'
-          AND t.departure GLOB '????-??-??*'
-          AND substr(t.departure,1,10) < date('now')
+        WHERE (
+            (t.status='active' AND datetime(COALESCE(NULLIF(t.published_at,''), t.created_at), '+30 days') <= CURRENT_TIMESTAMP)
+            OR (t.status='expired' AND datetime(COALESCE(NULLIF(t.published_at,''), t.created_at), '+30 days') > CURRENT_TIMESTAMP)
+          )
           AND NOT EXISTS (
             SELECT 1 FROM deals d
             WHERE d.trip_id=t.id AND d.status IN ({active_deals})
