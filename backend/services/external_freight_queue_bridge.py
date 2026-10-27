@@ -331,11 +331,21 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
                                  (source_id, message_id, self.source_name.lower(), now-ACTIVE_SECONDS, now+300)).fetchone()
         if raw:
             try:
-                records = self.parse(dict(raw))
+                signature = tuple(raw)
+                key = (source_id, message_id)
+                cached = self._dedup_source_cache.get(key)
+                if cached is None or cached[0] != signature:
+                    records = self.parse(dict(raw))
+                    fingerprints = {(record['segment_id'], self.fingerprint(record))
+                                    for record in records if record['status'] == 'active'}
+                    if len(self._dedup_source_cache) >= MAX_SCAN:
+                        self._dedup_source_cache.clear()
+                    self._dedup_source_cache[key] = (signature, fingerprints)
+                else:
+                    fingerprints = cached[1]
             except (ValueError, TypeError, OverflowError):
-                records = []
-            if any(record["segment_id"] == segment_id and record["status"] == "active"
-                   and self.fingerprint(record) == fingerprint for record in records):
+                fingerprints = set()
+            if (segment_id, fingerprint) in fingerprints:
                 return duplicate
         with self.adapter._connect() as state:
             state.execute("DELETE FROM incoming_bridge_dedup WHERE fingerprint=? AND identity=?",
@@ -355,6 +365,9 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
             if foreign:
                 raise ValueError('owned_source_requires_separate_adapter_state')
         super().__init__(source_path, adapter)
+        # Проверка каждого блока по-прежнему читает актуальный исходник; повторный
+        # разбор нужен только при изменении содержимого, а не для каждого маршрута.
+        self._dedup_source_cache = {}
 
 
 def main():
