@@ -74,8 +74,15 @@ def map_owned_messages(raw):
                 item['contacts'] = [phone for phone in item['contacts'] if phone not in shared] or shared
     for item in result:
         item['origin_source'] = OWNED_SOURCE
-        # Минимум владельца для нового собственного потока: два конца + телефон.
-        if item['status'] == 'active' and not (item.get('origin') and item.get('destination') and item.get('contacts')):
-            item['status'] = item['classification_status'] = 'review'
+        # Владелец просит пропускать все посты своей группы: неполные поля
+        # маршрута/контакта или неоднозначный тип не должны блокировать карточку.
+        classification = classify_message(item.get('original_text') or text)
+        if item['status'] != 'closed' and classification.get('status') != 'closed':
+            item['status'] = 'active'
+            if item.get('kind') not in {'cargo', 'vehicle'}:
+                item['kind'] = classification.get('kind') or 'cargo'
+            item['classification_status'] = 'approved'
+        else:
+            item['status'] = item['classification_status'] = 'closed'
         item['source_revision'] = hashlib.sha256((text + '\n' + item['segment_id']).encode()).hexdigest()
     return result

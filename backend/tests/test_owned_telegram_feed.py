@@ -49,10 +49,19 @@ def test_ten_routes_footer_and_local_contact_priority():
     assert all(x['contacts'] == ['+998901234567'] for i, x in enumerate(items) if i != 1)
 
 
-def test_missing_contact_review_and_free_vehicle_has_correct_kind():
-    assert map_owned_messages(raw('Алматы → Москва\nГруз: товар'))[0]['status'] == 'review'
+def test_missing_contact_still_publishes_and_free_vehicle_has_correct_kind():
+    item = map_owned_messages(raw('Алматы → Москва\nГруз: товар'))[0]
+    assert item['status'] == 'active' and item['contacts'] == []
     item = map_owned_messages(raw('Есть свободная машина\nАлматы → Москва\n+77001234567'))[0]
     assert item['kind'] == 'vehicle' and item['status'] == 'active'
+
+
+def test_unrecognized_owned_post_is_preserved_in_feed_as_raw_text():
+    text = 'Пост из группы без распознанного маршрута или типа'
+    item = map_owned_messages(raw(text))[0]
+    assert item['status'] == 'active'
+    assert item['kind'] == 'cargo'
+    assert item['original_text'] == text
 
 
 def test_own_chat_capture_never_enters_publisher_and_keeps_forward_date(tmp_path, monkeypatch):
@@ -224,10 +233,11 @@ def test_common_closure_prefix_reaches_every_selection_block():
     assert all(x['status'] == 'closed' and 'Заявка закрыта' in x['original_text'] for x in items)
 
 
-def test_multiple_distinct_unloads_require_review():
+def test_multiple_distinct_unloads_are_kept_with_raw_text():
     item = map_owned_messages(raw('Погрузка: Алматы\nВыгрузка: Москва\nВыгрузка: Астана\n'
                                  'Груз: сыр\n+77001234567'))[0]
-    assert item['status'] == 'review'
+    assert item['status'] == 'active'
+    assert item['original_text'].startswith('Погрузка: Алматы')
 
 
 def owned_worker(tmp_path, monkeypatch):

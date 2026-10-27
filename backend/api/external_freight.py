@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from api.verification_gate import require_level, require_admin
 from database import external_freight_dal as dal
 from services.external_freight_classifier import classify_message
+from services.owned_telegram_feed import OWNED_SOURCE
 
 router = APIRouter(tags=["external-freight"])
+OWNED_TELEGRAM_SOURCE_ID = "4325478296"  # Telethon peer id; marked Telegram id is -1004325478296.
 
 
 def feature_enabled():
@@ -168,10 +170,16 @@ def import_external_batch(batch: ImportBatch, importer_key: str | None = Header(
     if not configured or not importer_key or not hmac.compare_digest(configured, importer_key):
         raise HTTPException(status_code=401, detail={"error": "importer_auth_required"})
     # Never trust a client-provided kind alone. Classify the preserved source
-    # text. Only explicitly approved, unambiguous records can become visible.
+    # text. The owner's confirmed group is the one explicit pass-through source;
+    # its imported posts remain visible even when route/type/contact parsing is
+    # incomplete. Other sources still require an unambiguous classification.
     for record in batch.records:
         classification = classify_message(record.get("original_text", ""))
-        record["classification_status"] = "approved" if (
+        owned_source = (
+            str(record.get("origin_source") or "").casefold() == OWNED_SOURCE.casefold()
+            and str(record.get("source_id") or "") == OWNED_TELEGRAM_SOURCE_ID
+        )
+        record["classification_status"] = "approved" if owned_source or (
             classification["status"] == "active" and classification["kind"] == record.get("kind")
         ) else "review"
         if classification["status"] == "closed":

@@ -29,6 +29,24 @@ def test_explicit_vehicle_intents_are_recognized(text):
     assert classify_message(text)['kind'] == 'vehicle'
 
 
+@pytest.mark.parametrize('offer', [
+    'Заберу груз',
+    'Заберу ваш груз',
+    'Доставлю товар',
+    'Перевезу груз',
+])
+def test_first_person_carrier_offers_are_vehicle_supply(offer):
+    result = classify_message(f'{offer}\nАлматы → Москва')
+    assert result['kind'] == 'vehicle'
+    assert result['status'] == 'active'
+
+
+def test_vehicle_ready_with_freight_service_description_is_vehicle_supply():
+    result = classify_message('Машина свободна, перевозка грузов\nАлматы → Москва')
+    assert result['kind'] == 'vehicle'
+    assert result['status'] == 'active'
+
+
 @pytest.mark.parametrize('text', [
     'Нужен перевозчик\nАлматы → Москва',
     'Груз: доски\nАлматы → Москва\nИщем свободные машины!',
@@ -131,6 +149,12 @@ def test_six_digit_footer_contact_requires_terminal_standalone_line():
     assert block_contacts('Есть машина\nАлматы\nТел: 123456')==['123456']
     assert block_contacts('Есть машина\n123456\nАлматы\nТент\nВес 10 тонн')==[]
     assert block_contacts('Есть машина\nНомер заявки: 123456')==[]
+
+
+@pytest.mark.parametrize('number', ['1234567', '12345678'])
+def test_standalone_seven_or_eight_digit_phone_is_kept_anywhere_in_post(number):
+    text = f'Нужен тент\nАлматы → Москва\n{number}\nУсловия оплаты\nЦена 9000 USD\nГруз готов\nСрочно'
+    assert block_contacts(text) == [number]
 
 
 def test_keycap_emoji_digits_with_phone_marker_are_extracted():

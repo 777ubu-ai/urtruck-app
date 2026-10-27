@@ -386,14 +386,15 @@ def block_contacts(text):
                              r'(?:[a-z]{3}|тг|[$€₽¥])?|\b(?:USD|EUR|RUB|KZT|CNY|JPY|тг)|[$€₽¥])\s*$', prefix)):
             continue
         phone_context = _PHONE_CONTEXT.search(prefix)
-        # Владелец подтвердил локальные 6–7-значные номера в нижней части
-        # объявления. Требуем отдельную строку либо явную подпись контакта;
-        # цифры в маршруте, количестве, цене и дате контактами не становятся.
-        footer_phone = (
-            6 <= len(digits) <= 9 and line_number in footer_lines
-            and (line.strip() == raw or bool(phone_context))
+        # Короткие местные номера: принимаем отдельную строку в любой части
+        # объявления, либо номер с явной подписью контакта. Числовые поля,
+        # даты и номера заявок выше уже исключены.
+        short_phone = (
+            (7 <= len(digits) <= 9 and line.strip() == raw)
+            or (6 <= len(digits) <= 9 and line_number in footer_lines
+                and (line.strip() == raw or bool(phone_context)))
         )
-        if (10 <= len(digits) <= 15 or footer_phone) and raw not in result:
+        if (10 <= len(digits) <= 15 or short_phone) and raw not in result:
             result.append(raw)
     # Many Telegram channels render digits as keycap emoji (9️⃣8️⃣...), which
     # the ordinary phone regex cannot see. A nearby phone label makes this
