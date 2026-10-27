@@ -8,7 +8,11 @@ on:
         required: true
         type: string
       source_sha:
-        description: Exact 40-character head SHA of PR 605 with all required checks green
+        description: Exact 40-character merge SHA of a reviewed PR on qa2/integration-candidate
+        required: true
+        type: string
+      merged_pr_number:
+        description: Number of the merged QA2 PR represented by source_sha
         required: true
         type: string
       last_verified_ios_build:
@@ -64,30 +68,37 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
+          MERGED_PR_NUMBER: ${{ inputs.merged_pr_number }}
         run: |
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF_NAME" = qa2/integration-candidate
           test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MERGED_PR_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]]
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           test "$GITHUB_SHA" = "$QA_SOURCE_SHA"
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
           [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
           test "$URTRUCK_MIN_IOS_BUILD" -ge 111
-          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
+          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
           test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"
           test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
           test "$(jq -r '.state' <<<"$PR_JSON")" = closed
           test "$(jq -r '.merged' <<<"$PR_JSON")" = true
           test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$QA_SOURCE_SHA"
           PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
+          BASE_PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
+          BASE_PR_SHA="$(jq -r '.merge_commit_sha' <<<"$BASE_PR_JSON")"
+          test "$(jq -r '.merged' <<<"$BASE_PR_JSON")" = true
+          git fetch origin "$BASE_PR_SHA" --depth=1
+          git merge-base --is-ancestor "$BASE_PR_SHA" "$QA_SOURCE_SHA"
           git fetch origin "$PR_HEAD_SHA" --depth=1
           git diff --quiet "$PR_HEAD_SHA" "$QA_SOURCE_SHA" -- || {
             echo '::error::Merged candidate tree differs from the reviewed PR head'
             exit 1
           }
-          # Владелец 25.10.2026 разрешил внутренний выпуск без независимого GitHub approval.
+          # Сверяем обязательные проверки PR, merge которого и есть точный source_sha.
           CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
           for CHECK_NAME in \
             'quality-gate / Backend tests' \
