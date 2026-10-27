@@ -119,6 +119,26 @@ def test_import_requires_secret_and_user_is_read_only():
     assert client.get("/api/v1/external-freight").status_code == 200
 
 
+def test_only_verified_owned_telegram_source_can_pass_through_incomplete_posts():
+    owned = _record(
+        source="4325478296", message="raw-owned-post", text="Пост без распознанного направления",
+        origin=None, destination=None,
+    )
+    owned.update(origin_source="UrTruck_obyavleniya", contacts=[])
+    response = _import(owned)
+    assert response.status_code == 200, response.text
+    assert response.json()["results"][0]["status"] == "active"
+
+    other = _record(
+        source="another-source", message="raw-other-post", text="Пост без распознанного направления",
+        origin=None, destination=None,
+    )
+    other.update(origin_source="UrTruck_obyavleniya", contacts=[])
+    response = _import(other)
+    assert response.status_code == 200, response.text
+    assert response.json()["results"][0]["status"] == "review"
+
+
 def test_roles_only_see_their_feed_kind_and_publications_are_not_transactions():
     cargo = _record(source="tg-cargo", text="Нужен тент, груз готов")
     vehicle = _record(source="tg-vehicle", kind="vehicle", text="Есть свободный тент, ищу груз")
