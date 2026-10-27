@@ -44,7 +44,9 @@ jobs:
       URTRUCK_BUILD_FLAVOR: qa2
       URTRUCK_SOURCE_SHA: ${{ inputs.source_sha }}
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
-      URTRUCK_VERSION_NAME: 1.0.12
+      # App Store Connect closed the 1.0.12 pre-release train after approval.
+      # Internal QA2 TestFlight candidates must use a new marketing version too.
+      URTRUCK_VERSION_NAME: 1.0.13
       URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
