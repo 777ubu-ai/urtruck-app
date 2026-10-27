@@ -213,10 +213,10 @@ class IncomingQueueBridge(PublishedQueueBridge):
             source.row_factory=sqlite3.Row
             source.create_function('bridge_vehicle_hint', 1, has_vehicle_supply_signal, deterministic=True)
             source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
-            query="""SELECT q.* FROM app_messages q
-                WHERE source_date>=? AND source_date<=?
-                AND NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
+            unseen="""NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
                   WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
+            query=f"""SELECT q.* FROM app_messages q
+                WHERE source_date>=? AND source_date<=? AND {unseen}"""
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
             # Историческая загрузка имеет новый updated_at, но не должна вытеснять
             # свежие исходные публикации. Правки/старый хвост обслуживаются ниже.
@@ -231,7 +231,12 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 arguments += (OWNED_SOURCE.lower(),)
             # Отдельный резерв кандидатов машин: большой грузовой хвост не
             # расходует всю квоту. Окончательный тип определяет общий парсер.
-            vehicles=source.execute(query+" AND bridge_vehicle_hint(q.text) ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
+            # SQLite может вызывать функцию до NOT EXISTS. CASE не позволяет
+            # повторно разбирать уже подтверждённые посты или чужой поток.
+            scope='lower(q.source)=?' if self.source_name else 'lower(q.source)<>?'
+            hint=f"CASE WHEN {scope} AND {unseen} THEN bridge_vehicle_hint(q.text) ELSE 0 END"
+            vehicles=source.execute(query+f" AND {hint} ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",
+                (*arguments,(self.source_name or OWNED_SOURCE).lower(),self.parser_revision)).fetchall()
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
             oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
