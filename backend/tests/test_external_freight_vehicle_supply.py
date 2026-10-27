@@ -52,6 +52,13 @@ def test_compact_route_and_source_contact_are_preserved():
     assert item['original_text'] == text
 
 
+def test_parsed_contact_list_is_completed_from_source_text_without_format_rewrite():
+    raw = message('Есть машина\nХоргос → Алматы\nТел: 8 705 174 35 67')
+    raw['phones'] = ['+7 700 000 00 01']
+    item = map_selected_message(raw)
+    assert item['contacts'] == ['+7 700 000 00 01', '8 705 174 35 67']
+
+
 @pytest.mark.parametrize('text,origin,destination,count', [
     ('🇨🇳Uluĝchatdan\n✅fura bor 5ta\n❔yuk kerak\n📞901234567', 'Uluĝchat',None,5),
     ('📍 QASHQADARYODAN\n📍 ANDIJONGA\n4 TA KATTA ISUZUGA\nYUK KERAK\n📞901234567', 'QASHQADARYO','ANDIJON',4),

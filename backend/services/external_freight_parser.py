@@ -279,8 +279,14 @@ def map_selected_message(raw: dict) -> dict:
     if not isinstance(phones, list):
         phones = []
     phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
-    if not phones:
-        phones = block_contacts(text)
+    # Источник может передать неполный список контактов. Дополняем его
+    # осторожным разбором текста объявления, сохраняя исходный формат номера.
+    known_phone_ids = {_phone_identity(phone) for phone in phones if _phone_identity(phone)}
+    for phone in block_contacts(text):
+        identity = _phone_identity(phone)
+        if identity and identity not in known_phone_ids and len(phones) < 20:
+            phones.append(phone)
+            known_phone_ids.add(identity)
     # Explicit numbered multi-request posts need segmentation first. A route
     # list that the parser cannot split remains one visible card with its full
     # source text rather than disappearing into review.

@@ -20,7 +20,7 @@ from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261025-owned-contact-recall-v8'
+PARSER_REVISION = '20261027-feed-contact-recall-v9'
 
 
 def validate_qa_target(api_url, *, state_path=None):

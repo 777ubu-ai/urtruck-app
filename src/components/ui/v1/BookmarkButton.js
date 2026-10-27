@@ -4,10 +4,10 @@ import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useV1Colors } from '../../../theme/designV1';
 
-export default function BookmarkButton({ saved, onPress, testID, accessibilityLabel }) {
+export default function BookmarkButton({ saved, onPress, testID, accessibilityLabel, disabled = false }) {
   const colors = useV1Colors();
   return (
-    <TouchableOpacity onPress={(event) => { event?.stopPropagation?.(); onPress?.(); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} style={[s.button, { borderColor: colors.border }]} testID={testID} accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected: Boolean(saved) }}>
+    <TouchableOpacity disabled={disabled} onPress={(event) => { event?.stopPropagation?.(); onPress?.(); }} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }} style={[s.button, { borderColor: colors.border, opacity: disabled ? 0.55 : 1 }]} testID={testID} accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected: Boolean(saved), disabled }}>
       {saved ? <FontAwesome5 name="bookmark" size={16} color={colors.driver} solid /> : <Feather name="bookmark" size={18} color={colors.textMuted} />}
     </TouchableOpacity>
   );
