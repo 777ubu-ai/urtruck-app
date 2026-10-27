@@ -41,6 +41,9 @@ function harness({ role = 'driver', fixtures = cards } = {}) {
   const native = Object.fromEntries(['ActivityIndicator', 'FlatList', 'Modal', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'TouchableOpacity', 'View'].map(name => [name, name]));
   native.Platform = { OS: 'android' }; native.StyleSheet = { create: x => x, hairlineWidth: 1 };
   native.AppState = { currentState: 'active', addEventListener: (_name, fn) => { appCallback = fn; return { remove() {} }; } };
+  native.BackHandler = { addEventListener: () => ({ remove() {} }) };
+  native.Keyboard = { dismiss() {} };
+  native.PanResponder = { create: config => ({ panHandlers: config }) };
   native.Alert = { alert() {} }; native.Linking = { openURL: async url => { opened.push(url); } };
   const mocks = {
     react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -123,7 +126,7 @@ test('offline polling: warning остаётся во время повторно
   h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
 });
 
-test('Сброс возвращает полосу к началу после длинных фильтров и горизонтальной прокрутки', async () => {
+test('сброс кузова сохраняет откуда, а отдельный общий сброс очищает всё', async () => {
   const h = harness(); await h.flush();
   h.node('external-feed-filter-origin').props.onPress(); await h.flush();
   h.node('external-feed-location-search').props.onChangeText('Toshkent'); await h.flush();
@@ -132,7 +135,28 @@ test('Сброс возвращает полосу к началу после д
   h.node('external-feed-filter-body').props.onPress(); await h.flush();
   h.pressLabel('Сброс'); await h.flush();
   assert.equal(h.filterOffset(), 0, 'полоса не должна оставаться за пределами уменьшенного содержимого');
+  assert.equal(h.queries.at(-1).origin, 'Toshkent');
+  h.node('external-feed-filter-body').props.onPress(); await h.flush();
+  h.node('external-feed-reset-all').props.onPress(); await h.flush();
   assert.equal(h.queries.at(-1).origin, undefined);
+});
+
+test('пустой фильтр закрывается крестиком/снаружи/найти и переключается без сброса', async () => {
+  const h = harness(); await h.flush();
+  for (const action of ['external-feed-filter-close', 'external-feed-filter-scrim', 'external-feed-apply-filters']) {
+    h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+    h.node(action).props.onPress(); await h.flush();
+    assert.equal(h.node('external-feed-filter-overlay'), undefined);
+  }
+  h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+  h.node('external-feed-location-search').props.onChangeText('Не применять'); await h.flush();
+  h.node('external-feed-filter-destination').props.onPress(); await h.flush();
+  assert.equal(h.node('external-feed-location-search').props.accessibilityLabel, 'Куда');
+  assert.equal(h.node('external-feed-location-search').props.value, '');
+  h.node('external-feed-filter-destination').props.onPress(); await h.flush();
+  assert.equal(h.node('external-feed-filter-overlay'), undefined);
+  h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+  assert.equal(h.node('external-feed-location-search').props.value, '');
 });
 
 function descendants(tree) {

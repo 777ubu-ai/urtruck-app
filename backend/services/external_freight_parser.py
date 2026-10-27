@@ -322,9 +322,12 @@ def map_selected_message(raw: dict) -> dict:
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,24}\d(?!\d)")
 _PHONE_CONTEXT = re.compile(
-    r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram)'
+    r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram|'
+    r'\bномер\b|\bсвязь\b|\bмоб(?:ильный)?\b|ватсап|телеграм)'
     r'\ufe0f?\s*[:=—–-]?\s*'
 )
+_NON_PHONE_ID_PREFIX = re.compile(
+    r'(?i)\b(?:ID|номер\s+(?:заявки|заказа|договора|сч[её]та|рейса|авто|машины|тс))\s*[:#=]?\s*$')
 
 
 def _unicode_phone_runs(value):
@@ -361,7 +364,18 @@ def _vehicle_count(text, kind):
 
 
 def block_contacts(text):
-    """Номера из блока без угадывания страны; короткие местные — только в контакте внизу."""
+    """Номера из блока без угадывания страны, включая Unicode и местный формат."""
+    # Нормализуем только копию для извлечения: полный исходник сохраняется
+    # буквально. Невидимые разделители и цифры-клавиши не разрывают телефон.
+    normalized = []
+    for char in text:
+        if unicodedata.category(char) == 'Cf' or char in '\ufe0f\u20e3':
+            continue
+        try:
+            normalized.append(str(unicodedata.digit(char)))
+        except (TypeError, ValueError):
+            normalized.append(' ' if unicodedata.category(char) == 'Zs' else char)
+    text = ''.join(normalized)
     result = []
     lines = text.splitlines()
     nonempty = [index for index, line in enumerate(lines) if line.strip()]
@@ -379,7 +393,7 @@ def block_contacts(text):
         prefix = text[start:match.start()]
         if re.search(r'(?i)\bуточняйте\b', prefix):
             continue
-        if re.search(r'(?i)\b(?:ID|номер\s+заявки|номер\s+заказа)\s*[:#=]?\s*$', prefix):
+        if _NON_PHONE_ID_PREFIX.search(prefix):
             continue
         if (any(match.start() < right and match.end() > left for left, right in numeric_fields)
                 or re.search(r'(?i)(?:\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*'
@@ -391,8 +405,8 @@ def block_contacts(text):
         # даты и номера заявок выше уже исключены.
         short_phone = (
             (7 <= len(digits) <= 9 and line.strip() == raw)
-            or (6 <= len(digits) <= 9 and line_number in footer_lines
-                and (line.strip() == raw or bool(phone_context)))
+            or (6 <= len(digits) <= 9 and (bool(phone_context)
+                or (line_number in footer_lines and line.strip() == raw)))
         )
         if (10 <= len(digits) <= 15 or short_phone) and raw not in result:
             result.append(raw)
@@ -411,6 +425,8 @@ def block_contacts(text):
             digits = re.sub(r'\D', '', candidate)
             candidate_start = line.find(candidate)
             prefix = line[:candidate_start] if candidate_start >= 0 else ""
+            if _NON_PHONE_ID_PREFIX.search(prefix):
+                continue
             price_markers = list(re.finditer(
                 r"(?i)\b(?:цена|стоимость|ставка|оплата|price)\b", line
             ))
@@ -434,7 +450,7 @@ def block_contacts(text):
 
 
 def _phone_identity(value):
-    digits = re.sub(r"\D", "", str(value or ""))
+    digits = ''.join(str(unicodedata.digit(char)) for char in str(value or '') if char.isdigit())
     if len(digits) == 11 and digits.startswith("8"):
         return "7" + digits[1:]
     return digits

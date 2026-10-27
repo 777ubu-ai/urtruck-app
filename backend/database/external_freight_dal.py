@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import re
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from database.external_freight_connection import get_conn, new_id
@@ -237,6 +238,12 @@ def import_records(records):
     return results
 
 
+@lru_cache(maxsize=512)
+def _source_contacts(text):
+    from services.external_freight_parser import block_contacts
+    return tuple(block_contacts(text or ""))
+
+
 def _serialize(row):
     item = dict(row)
     item.pop("origin_folded", None)
@@ -246,6 +253,12 @@ def _serialize(row):
             item[key] = json.loads(item[key] or "[]")
         except (TypeError, ValueError):
             item[key] = []
+    # Контакты других блоков не приписываем этому маршруту. Они доступны
+    # отдельно как контакты полного исходника, в том числе для старых строк БД.
+    from services.external_freight_parser import _phone_identity
+    assigned = {_phone_identity(value) for value in item["contacts"]}
+    item["source_contacts"] = [value for value in _source_contacts(item.get("original_text"))
+                               if _phone_identity(value) not in assigned]
     return item
 
 
@@ -255,6 +268,7 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
+    decoded = {}
     cursor_filters = {
         "owner_id": str(owner_id) if owner_id is not None else None, "saved_only": bool(saved_only),
         "origin": origin, "destination": destination, "body_type": body_type,
@@ -273,6 +287,10 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
             if decoded.get("filters") != cursor_filters:
                 raise ValueError
             snapshot_at, last_date, last_id = decoded["snapshot"], decoded["date"], decoded["id"]
+            if decoded.get("unpriced") and decoded.get("effective_sort", sort).startswith("price_"):
+                if not isinstance(decoded.get("publication"), str):
+                    raise ValueError
+                _utc(decoded["publication"])
         except Exception as exc:
             raise ValueError("invalid_cursor") from exc
     clauses = ["kind=?", "ingested_at<=?"]
@@ -331,19 +349,32 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         if sort.startswith("price_") and not currency and len(price_currencies) != 1:
             effective_sort = "newest"
             sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
-    if effective_sort.startswith("price_"):
-        clauses.append("amount IS NOT NULL")
-    if last_date is not None and last_id:
+    # Порядок фиксируется на весь курсор: новая валюта между страницами
+    # не должна превращать ценовой курсор в курсор даты.
+    if decoded.get("effective_sort") in {"newest", "price_asc", "price_desc"}:
+        effective_sort = decoded["effective_sort"]
+        sort_error = decoded.get("sort_error")
+    known = "(price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL)"
+    unknown = f"NOT {known}"
+    if last_id and effective_sort.startswith("price_") and decoded.get("unpriced"):
+        clauses.append(f"({unknown} AND (source_published_at<? OR (source_published_at=? AND id<?)))")
+        params.extend([decoded["publication"], decoded["publication"], last_id])
+    elif last_date is not None and last_id:
         if effective_sort == "price_asc":
-            clauses.append("(amount>? OR (amount=? AND id>?))")
+            clauses.append(f"({unknown} OR ({known} AND (amount>? OR (amount=? AND id>?))))")
             params.extend([float(last_date), float(last_date), last_id])
         elif effective_sort == "price_desc":
-            clauses.append("(amount<? OR (amount=? AND id<?))")
+            clauses.append(f"({unknown} OR ({known} AND (amount<? OR (amount=? AND id<?))))")
             params.extend([float(last_date), float(last_date), last_id])
         else:
             clauses.append("(source_published_at<? OR (source_published_at=? AND id<?))")
             params.extend([last_date, last_date, last_id])
-    order = "amount ASC, id ASC" if effective_sort == "price_asc" else "amount DESC, id DESC" if effective_sort == "price_desc" else "source_published_at DESC, id DESC"
+    order = "source_published_at DESC, id DESC"
+    if effective_sort.startswith("price_"):
+        direction = "ASC" if effective_sort == "price_asc" else "DESC"
+        order = (f"CASE WHEN {known} THEN 0 ELSE 1 END ASC, "
+                 f"CASE WHEN {known} THEN amount END {direction}, "
+                 f"CASE WHEN {known} THEN id END {direction}, source_published_at DESC,id DESC")
     with get_conn() as c:
         rows = c.execute(f"SELECT * FROM external_freight_items WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?", (*params, min(max(int(limit), 1), 100) + 1)).fetchall()
     has_more = len(rows) > min(max(int(limit), 1), 100)
@@ -353,7 +384,10 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         import base64
         final = rows[-1]
         cursor_value = final["amount"] if effective_sort.startswith("price_") else final["source_published_at"]
-        raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at, "date": cursor_value, "id": final["id"]}, separators=(",", ":")).encode()
+        unpriced = final["price_state"] != "known" or final["amount"] is None or final["currency"] is None
+        raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at,
+                          "date": cursor_value, "id": final["id"], "effective_sort": effective_sort,
+                          "sort_error": sort_error, "unpriced": unpriced, "publication": final["source_published_at"]}, separators=(",", ":")).encode()
         next_cursor = base64.urlsafe_b64encode(raw).decode().rstrip("=")
     saved_ids = set()
     if owner_id and rows:

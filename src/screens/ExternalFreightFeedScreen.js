@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, FlatList, Linking, Modal, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Linking, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -73,6 +73,17 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const followingRef = useRef(true);
   const followUpdateRef = useRef(false);
   const [modal, setModal] = useState(null);
+  const [filterBottom, setFilterBottom] = useState(110);
+  const closeFilter = useCallback(() => { Keyboard.dismiss(); setModal(null); }, []);
+  const sheetGesture = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => gesture.dy > 8 && Math.abs(gesture.dx) < 24,
+    onPanResponderRelease: (_event, gesture) => { if (gesture.dy > 40 || gesture.vy > 0.6) closeFilter(); },
+  }), [closeFilter]);
+  useEffect(() => {
+    if (!modal) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { closeFilter(); return true; });
+    return () => subscription.remove();
+  }, [modal, closeFilter]);
   const isLocationModal = modal === 'origin' || modal === 'destination';
   const [rows, setRows] = useState([]);
   const [rowsOwner, setRowsOwner] = useState(ownerKey);
@@ -87,6 +98,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const filterScrollRef = useRef(null);
   const viewportRef = useRef({ offset: 0, height: 0, contentHeight: 0 });
   const scrollToLatestRef = useRef(false);
+  const latestScrollTimerRef = useRef(null);
   const anchorRef = useRef(null);
   const cardRefs = useRef(new Map());
   const visibleAnchorRef = useRef(null);
@@ -175,6 +187,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   loadRef.current = load;
 
   useEffect(() => { setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => () => clearTimeout(latestScrollTimerRef.current), [ownerKey]);
   useEffect(() => {
     setSaving({});
     setShareTarget(null);
@@ -230,12 +243,18 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       return;
     }
     externalFreightAPI.event('filter_apply');
-    setModal(null); setFilters(next); setCursor(null); setRows([]);
+    closeFilter(); setFilters(next); setCursor(null); setRows([]);
   };
   const resetFilters = () => {
-    const empty = { ...emptyFilters };
+    const fields = { origin: ['origin', 'origin_country'], destination: ['destination', 'destination_country'], body: ['body_type', 'body_query'], date: ['published_from', 'published_to'], price: ['sort'] }[modal] || [];
+    const next = { ...filters };
     filterScrollRef.current?.scrollTo({ x: 0, animated: false });
-    setDraft(empty); setFilters(empty); setCursor(null); setRows([]); setModal(null);
+    fields.forEach(field => { next[field] = emptyFilters[field]; });
+    setDraft(next); setFilters(next); setCursor(null); setRows([]); closeFilter();
+  };
+  const resetAllFilters = () => {
+    filterScrollRef.current?.scrollTo({ x: 0, animated: false });
+    setDraft({ ...emptyFilters }); setFilters({ ...emptyFilters }); setCursor(null); setRows([]); closeFilter();
   };
   const choosePresetDate = (days) => {
     const d = new Date(); d.setDate(d.getDate() - days);
@@ -270,7 +289,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     ? `${filters[key]}${filters[`${key}_country`] ? `, ${filters[`${key}_country`]}` : ''}`
     : filters[`${key}_country`] ? getCountryName(filters[`${key}_country`], lang) : '';
   const filterButton = (name, label, value) => (
-    <TouchableOpacity key={name} style={[styles.filterButton, value ? styles.filterActive : null]} onPress={() => { setDraft(filters); setModal(name); }} accessibilityRole="button" accessibilityLabel={label} testID={`external-feed-filter-${name}`}>
+    <TouchableOpacity key={name} style={[styles.filterButton, value || modal === name ? styles.filterActive : null]} onPress={() => { Keyboard.dismiss(); setDraft(filters); setModal(current => current === name ? null : name); }} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: Boolean(value) }} testID={`external-feed-filter-${name}`}>
       <Text style={[styles.filterText, value ? styles.filterTextActive : null]}>{label}{value ? ` · ${value}` : ''}</Text><Feather name="chevron-down" size={13} color={value ? '#168759' : theme.textMuted} />
     </TouchableOpacity>
   );
@@ -310,7 +329,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           <Feather name="external-link" size={18} color="#168759" />
         </TouchableOpacity> : null}
       </View>)}
-      {(!Array.isArray(item.contacts) || !item.contacts.some(Boolean)) && item.status !== 'unavailable' ? <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{l.noContact}</Text> : null}
+      {item.source_contacts?.length ? <View testID={`external-feed-source-contacts-${item.id}`}>
+        <Text style={styles.meta}>{({ RU: 'Контакты исходного поста', KK: 'Бастапқы жазбаның байланыстары', ZH: '原始信息的联系方式', EN: 'Contacts from the original post' })[lang] || 'Contacts from the original post'}</Text>
+        {item.source_contacts.map((contact, index) => <TouchableOpacity key={`${item.id}-source-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-source-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color="#168759" /></TouchableOpacity>)}
+      </View> : null}
+      {(!Array.isArray(item.contacts) || !item.contacts.some(Boolean)) && !item.source_contacts?.length && item.status !== 'unavailable' ? <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{l.noContact}</Text> : null}
       {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.ourTelegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
@@ -326,6 +349,20 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   };
 
   const priceModal = modal === 'price';
+  const scrollToLatest = () => {
+    if (webTimeline) {
+      // FlatList.scrollToEnd оценивает высоты ещё не измеренных строк.
+      // Для web берём фактическую геометрию: иначе остаётся одна карточка снизу.
+      const node = listRef.current?.getScrollableNode?.();
+      const height = node?.scrollHeight ?? viewportRef.current.contentHeight;
+      const viewport = node?.clientHeight || viewportRef.current.height;
+      listRef.current?.scrollToOffset({ offset: Math.max(0, height - viewport), animated: false });
+    } else listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    clearTimeout(latestScrollTimerRef.current);
+    // Виртуализированные строки уточняют высоту после первого перехода.
+    // Сохраняем намерение до завершения перерасчётов, а не до первого scroll.
+    latestScrollTimerRef.current = setTimeout(() => { scrollToLatestRef.current = false; }, 200);
+  };
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']} testID="external-freight-feed-screen">
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back} accessibilityRole="button" accessibilityLabel={l.cancel} testID="external-feed-back"><Feather name="arrow-left" size={23} color={theme.text} /></TouchableOpacity>
@@ -334,13 +371,13 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         {savedOnly ? <FontAwesome5 name="bookmark" size={18} color={bookmarkColors.driver} solid /> : <Feather name="bookmark" size={20} color={bookmarkColors.textMuted} />}
       </TouchableOpacity>
     </View>
-    <ScrollView ref={filterScrollRef} horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={filterScrollRef} horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="always" onLayout={event => setFilterBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
       {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_query || (filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : ''))}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
     {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline && Platform.OS !== 'web'} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
-      onScroll={event => {
+      onScrollBeginDrag={() => { scrollToLatestRef.current = false; clearTimeout(latestScrollTimerRef.current); }} onScroll={event => {
         const offset = Math.max(0, event.nativeEvent.contentOffset.y);
         const { contentSize, layoutMeasurement } = event.nativeEvent;
         viewportRef.current.height = layoutMeasurement.height;
@@ -356,11 +393,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       onContentSizeChange={(_width, height) => {
         const anchor = anchorRef.current;
         viewportRef.current.contentHeight = height;
-        if (timeline && followingRef.current && (followUpdateRef.current || scrollToLatestRef.current)) {
+        if (timeline && (scrollToLatestRef.current || (followingRef.current && followUpdateRef.current))) {
           followUpdateRef.current = false;
-          scrollToLatestRef.current = false;
-          if (webTimeline) listRef.current?.scrollToOffset({ offset: Math.max(0, height - viewportRef.current.height), animated: true });
-          else listRef.current?.scrollToOffset({ offset: 0, animated: true });
+          scrollToLatest();
         }
         if (anchor) anchor.node.measureInWindow((_x, y) => {
           if (anchorRef.current !== anchor || !Number.isFinite(y)) return;
@@ -369,37 +404,43 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         });
       }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => { if (!webTimeline && !busy && cursor) load(); }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
-      onPress={() => { followingRef.current = true; setUnseenIds([]); if (webTimeline) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.contentHeight - viewportRef.current.height), animated: true }); else listRef.current?.scrollToOffset({ offset: 0, animated: true }); }}>
+      onPress={() => {
+        anchorRef.current = null;
+        followingRef.current = true;
+        scrollToLatestRef.current = true;
+        setUnseenIds([]);
+        scrollToLatest();
+      }}>
       <Feather name="arrow-down" size={16} color={theme.text} /><Text style={styles.newListingsText}>{l.newListings} · {unseenIds.length}</Text>
     </TouchableOpacity> : null}
     {shareTarget?.owner === ownerKey ? <ShareModal visible onClose={() => setShareTarget(null)}
       shareText={shareTarget.text} url={shareTarget.url} /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
-    <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
-    <View style={styles.modalOverlay} testID="external-feed-filter-overlay">
-      <Pressable style={styles.scrim} onPress={() => setModal(null)} />
+    {modal ? <View style={[styles.modalOverlay, { top: filterBottom }]} testID="external-feed-filter-overlay">
+      <Pressable style={styles.scrim} onPress={closeFilter} testID="external-feed-filter-scrim" accessible={false} />
       <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} pointerEvents="box-none">
       <Pressable style={styles.sheet} onPress={e => e.stopPropagation()} testID="external-feed-filter-sheet" accessibilityViewIsModal>
-        <View style={styles.sheetHandle} accessible={false} />
-        <Text style={styles.sheetTitle}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text>
+        <View {...sheetGesture.panHandlers} style={styles.handleArea} testID="external-feed-filter-handle"><View style={styles.sheetHandle} accessible={false} /></View>
+        <View style={styles.sheetHeading}><Text style={[styles.sheetTitle, { flex: 1 }]}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text><TouchableOpacity onPress={closeFilter} style={styles.callButton} accessibilityRole="button" accessibilityLabel={({ RU: 'Закрыть фильтр', KK: 'Сүзгіні жабу', ZH: '关闭筛选', EN: 'Close filter' })[lang] || 'Close filter'} testID="external-feed-filter-close"><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
         <View style={styles.actions}>
           <SecondaryButton label={l.reset} onPress={resetFilters} role={role} numberOfLines={null} style={styles.filterAction} />
-          <SecondaryButton label={l.cancel} onPress={() => setModal(null)} role={role} numberOfLines={null} style={styles.filterAction} />
+          <SecondaryButton label={l.cancel} onPress={closeFilter} role={role} numberOfLines={null} testID="external-feed-cancel-filters" style={styles.filterAction} />
           <SecondaryButton label={l.apply} onPress={applyFilters} role={role} numberOfLines={null} testID="external-feed-apply-filters" style={styles.filterAction} />
         </View>
         <ScrollView keyboardShouldPersistTaps="handled" style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
-        {isLocationModal ? <TextInput value={draft[modal] || (draft[`${modal}_country`] ? getCountryName(draft[`${modal}_country`], lang) : '')} onChangeText={text => setDraft(current => ({ ...current, [modal]: text, [`${modal}_country`]: '' }))} placeholder={modal === 'origin' ? l.from : l.to} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={120} autoFocus autoCorrect={false} autoCapitalize="words" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-location-search" accessibilityLabel={modal === 'origin' ? l.from : l.to} /> : null}
+        {isLocationModal ? <TextInput key={modal} value={draft[modal] || (draft[`${modal}_country`] ? getCountryName(draft[`${modal}_country`], lang) : '')} onChangeText={text => setDraft(current => ({ ...current, [modal]: text, [`${modal}_country`]: '' }))} placeholder={modal === 'origin' ? l.from : l.to} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={120} autoFocus autoCorrect={false} autoCapitalize="words" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-location-search" accessibilityLabel={modal === 'origin' ? l.from : l.to} /> : null}
         {modal === 'body' ? <View style={styles.bodyOptions}>
           <ScrollView style={{ maxHeight: 260 }} keyboardShouldPersistTaps="handled">{BODY_TYPES.map(body => <TouchableOpacity key={body} style={styles.option} onPress={() => setDraft(current => ({ ...current, body_type: current.body_type === body ? '' : body, body_query: '' }))}><Text style={styles.optionText}>{bodyLabels[lang]?.[body] || body}</Text><Text style={styles.optionText}>{draft.body_type === body && !draft.body_query ? '✓' : ''}</Text></TouchableOpacity>)}</ScrollView>
           <TextInput value={draft.body_query || ''} onChangeText={text => setDraft(current => ({ ...current, body_query: text.slice(0, 80), body_type: '' }))} placeholder={l.customBody} placeholderTextColor={theme.textMuted} style={styles.input} maxLength={80} autoCorrect={false} autoCapitalize="sentences" returnKeyType="search" onSubmitEditing={applyFilters} testID="external-feed-body-custom-search" accessibilityLabel={l.customBody} />
         </View> : null}
         {modal === 'date' ? <View><View style={styles.quickRow}><TouchableOpacity onPress={() => choosePresetDate(0)}><Text style={styles.link}>{l.today}</Text></TouchableOpacity><TouchableOpacity onPress={() => choosePresetDate(1)}><Text style={styles.link}>{l.yesterday}</Text></TouchableOpacity></View><Text style={styles.hint}>{l.dateFrom}</Text><DatePicker value={draft.published_from} onChange={value => setDraft(current => ({ ...current, published_from: value }))} allowPast /><Text style={styles.hint}>{l.dateTo}</Text><DatePicker value={draft.published_to} onChange={value => setDraft(current => ({ ...current, published_to: value }))} allowPast /></View> : null}
         {priceModal ? <View testID="external-feed-price-options">{[['newest', l.newest], ['price_asc', l.asc], ['price_desc', l.desc]].map(([value, label]) => <TouchableOpacity key={value} style={styles.option} onPress={() => setDraft(current => ({ ...current, sort: value }))}><Text style={styles.optionText}>{label}</Text><Text style={styles.optionText}>{draft.sort === value ? '✓' : ''}</Text></TouchableOpacity>)}</View> : null}
+        {modal === 'date' ? <Text style={styles.hint}>{l.published}</Text> : null}
+        <TouchableOpacity onPress={resetAllFilters} style={styles.textAction} testID="external-feed-reset-all" accessibilityRole="button"><Text style={styles.link}>{({ RU: 'Сбросить все фильтры', KK: 'Барлық сүзгілерді тазарту', ZH: '重置所有筛选', EN: 'Reset all filters' })[lang] || 'Reset all filters'}</Text></TouchableOpacity>
         </ScrollView>
       </Pressable>
       </KeyboardAvoidingView>
-    </View>
-    </Modal>
+    </View> : null}
   </SafeAreaView>;
 }
 
@@ -471,9 +512,10 @@ function makeStyles(theme, sp) {
     warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) },
     center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(14), lineHeight: sp(20) },
     retryButton: { alignSelf: 'stretch' },
-    modalOverlay: { flex: 1 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
     sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: theme.textMuted, shadowColor: '#000000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.24, shadowRadius: 16, elevation: 20, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
     sheetHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', backgroundColor: theme.textMuted, marginBottom: 4 },
+    handleArea: { minHeight: 20, justifyContent: 'center' }, sheetHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     sheetScroll: { flexShrink: 1 }, sheetContent: { gap: 10, paddingBottom: 4 }, sheetTitle: { color: theme.text, fontSize: sp(18), lineHeight: sp(23), fontWeight: '700' }, bodyOptions: { gap: 8 },
     hint: { color: theme.textMuted, fontSize: sp(13), marginVertical: 5 }, option: { minHeight: 45, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     optionText: { color: theme.text, fontSize: sp(14), flexShrink: 1, minWidth: 0 },
