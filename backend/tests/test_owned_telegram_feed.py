@@ -502,3 +502,29 @@ def test_malformed_dedup_owner_does_not_reject_valid_new_post(tmp_path, monkeypa
     assert result['duplicates'] == 0 and result['enqueued'] == 1 and result['rejected'] == 1
     with adapter._connect() as state:
         assert state.execute("SELECT count(*) FROM selected_outbox WHERE source_message_id='45'").fetchone()[0] == 1
+
+
+def test_multiroute_duplicate_checks_share_parse_but_notice_source_edit(tmp_path, monkeypatch):
+    m, db, adapter, worker = owned_worker(tmp_path, monkeypatch)
+    text = ('Погрузка: Алматы\nВыгрузка: Москва\nГруз: сыр\n'
+            'Погрузка: Астана\nВыгрузка: Бишкек\nГруз: шины\nОбщий телефон: +77001234567')
+    m.capture_for_app(db, OWNED_SOURCE, 123, 44, text, m.utcnow())
+    worker.run_once()
+    records = map_owned_messages(dict(db.execute('SELECT * FROM app_messages').fetchone()))
+    assert len(records) == 2
+    parse = worker.parse
+    calls = []
+    def counted(value):
+        calls.append(value['text'])
+        return parse(value)
+    monkeypatch.setattr(worker, 'parse', counted)
+    for record in records:
+        assert worker.find_duplicate(worker.fingerprint(record), adapter.clock())
+    assert len(calls) == 1
+    # Изменение фактического текста замечается даже при старом revision в БД.
+    with db:
+        db.execute('UPDATE app_messages SET text=? WHERE source_message=?',
+                   (text.replace('сыр', 'молоко').replace('шины', 'обувь'), 44))
+    for record in records:
+        assert worker.find_duplicate(worker.fingerprint(record), adapter.clock()) is None
+    assert len(calls) == 2
