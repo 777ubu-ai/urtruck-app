@@ -21,7 +21,7 @@ const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedSc
 const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness({ role = 'driver', fixtures = cards } = {}) {
+function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {}) {
   const opened = [], copied = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
@@ -39,7 +39,7 @@ function harness({ role = 'driver', fixtures = cards } = {}) {
   };
   const navigation = { isFocused: () => true, addListener: (name, fn) => { listeners.set(name, fn); return () => listeners.delete(name); }, goBack() {} };
   const native = Object.fromEntries(['ActivityIndicator', 'FlatList', 'Modal', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'TouchableOpacity', 'View'].map(name => [name, name]));
-  native.Platform = { OS: 'android' }; native.StyleSheet = { create: x => x, hairlineWidth: 1 };
+  native.Platform = { OS: platform }; native.StyleSheet = { create: x => x, hairlineWidth: 1 };
   native.AppState = { currentState: 'active', addEventListener: (_name, fn) => { appCallback = fn; return { remove() {} }; } };
   native.BackHandler = { addEventListener: () => ({ remove() {} }) };
   native.Keyboard = { dismiss() {} };
@@ -191,6 +191,11 @@ for (const role of ['driver', 'client']) test(`${role}: панель фильт�
   const h = harness({ role }); await h.flush();
   h.node('external-feed-filter-origin').props.onPress(); await h.flush();
   const sheet = h.node('external-feed-filter-sheet');
+  const overlay = h.node('external-feed-filter-overlay').props.style[0];
+  assert.equal(overlay.position, 'absolute', 'RN 0.86 не экспортирует absoluteFillObject: геометрия должна быть задана явно');
+  for (const edge of ['top', 'bottom', 'left', 'right']) assert.equal(overlay[edge], 0);
+  assert.equal(h.node('external-feed-filter-scrim').props.style.position, 'absolute');
+  assert.equal(h.node('external-feed-filter-keyboard-area').props.behavior, undefined, 'Android adjustResize уже поднимает панель');
   assert.equal(sheet.props.accessibilityViewIsModal, true);
   assert.equal(sheet.props.style.borderWidth, 1);
   assert.ok(sheet.props.style.shadowOpacity > 0);
@@ -202,6 +207,14 @@ for (const role of ['driver', 'client']) test(`${role}: панель фильт�
   assert.equal(h.node('external-feed-location-search').props.value, 'Алматы');
   h.pressLabel('Отмена'); await h.flush();
   assert.equal(h.node('external-feed-filter-sheet'), undefined);
+});
+
+test('iOS компенсирует положение панели под верхними фильтрами', async () => {
+  const h = harness({ platform: 'ios' }); await h.flush();
+  h.node('external-feed-filter-origin').props.onPress(); await h.flush();
+  const keyboard = h.node('external-feed-filter-keyboard-area');
+  assert.equal(keyboard.props.behavior, 'padding');
+  assert.equal(keyboard.props.keyboardVerticalOffset, h.node('external-feed-filter-overlay').props.style[1].top);
 });
 for (const role of ['driver', 'client']) test(`${role}: телефоны только копируются, звонилки нет`, async () => {
   const item = { id: 'phone', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',

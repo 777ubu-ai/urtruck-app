@@ -418,7 +418,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     {modal ? <View style={[styles.modalOverlay, { top: filterBottom }]} testID="external-feed-filter-overlay">
       <Pressable style={styles.scrim} onPress={closeFilter} testID="external-feed-filter-scrim" accessible={false} />
-      <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} pointerEvents="box-none">
+      <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? filterBottom : 0} pointerEvents="box-none" testID="external-feed-filter-keyboard-area">
       <Pressable style={styles.sheet} onPress={e => e.stopPropagation()} testID="external-feed-filter-sheet" accessibilityViewIsModal>
         <View {...sheetGesture.panHandlers} style={styles.handleArea} testID="external-feed-filter-handle"><View style={styles.sheetHandle} accessible={false} /></View>
         <View style={styles.sheetHeading}><Text style={[styles.sheetTitle, { flex: 1 }]}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text><TouchableOpacity onPress={closeFilter} style={styles.callButton} accessibilityRole="button" accessibilityLabel={({ RU: 'Закрыть фильтр', KK: 'Сүзгіні жабу', ZH: '关闭筛选', EN: 'Close filter' })[lang] || 'Close filter'} testID="external-feed-filter-close"><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
@@ -512,7 +512,7 @@ function makeStyles(theme, sp) {
     warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) },
     center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(14), lineHeight: sp(20) },
     retryButton: { alignSelf: 'stretch' },
-    modalOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 10 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,.62)' },
+    modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 10 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,.62)' },
     sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: theme.textMuted, shadowColor: '#000000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.24, shadowRadius: 16, elevation: 20, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
     sheetHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', backgroundColor: theme.textMuted, marginBottom: 4 },
     handleArea: { minHeight: 20, justifyContent: 'center' }, sheetHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },

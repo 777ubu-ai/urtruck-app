@@ -38,6 +38,10 @@ def test_explicit_vehicle_intents_are_recognized(text):
     'Ищу обратный груз',
     'Еду пустой',
     'Освободился',
+    'Порожний',
+    'Готов к загрузке',
+    'Тент свободен',
+    'Реф свободен',
 ])
 def test_first_person_carrier_offers_are_vehicle_supply(offer):
     result = classify_message(f'{offer}\nАлматы → Москва')
@@ -55,6 +59,7 @@ def test_vehicle_ready_with_freight_service_description_is_vehicle_supply():
     'Ищу груз\nМашина в ремонте', 'Машина не свободна, ищу груз',
     'Есть машина\nПродам фуру', 'Есть машина\nНужен водитель',
     'Не ищу груз', 'Не освободился\nАлматы',
+    'Реф не свободен\nИщу груз', 'Тент не свободен',
 ])
 def test_unavailable_or_sale_or_vacancy_is_not_available_vehicle(text):
     assert classify_message(text)['kind'] != 'vehicle'
@@ -82,6 +87,8 @@ def test_numbered_cargo_and_vehicle_blocks_have_separate_types_and_full_source()
     'Груз: доска\nАлматы → Москва\nУ кого есть машины — срочно звоните!',
     'Груз: овощи\nТашкент → Москва\nЕсть машины — звоните/пишите!',
     'Нужна фура\nАлматы → Москва\nЕсть машина — пишите сейчас!',
+    'Казахстан → Ташкент\nГруз кофе\nнадо 3 фурЫ\nготов груз',
+    'Ташкент → Москва\nНадо фуру\nГотов груз',
 ])
 def test_request_for_transport_is_not_vehicle_supply(text):
     assert classify_message(text)['kind'] == 'cargo'

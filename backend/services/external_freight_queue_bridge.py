@@ -20,7 +20,7 @@ from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261027-vehicle-lane-v11'
+PARSER_REVISION = '20261027-delivery-fair-v12'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261027-published-vehicle-lane-v6'
+    parser_revision = '20261027-published-delivery-fair-v7'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -163,6 +163,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 processed_at REAL NOT NULL, reason TEXT NOT NULL)""")
             state.execute("""CREATE TABLE IF NOT EXISTS incoming_bridge_dedup (
                 fingerprint TEXT PRIMARY KEY, identity TEXT NOT NULL, published_at REAL NOT NULL)""")
+            state.execute('CREATE TABLE IF NOT EXISTS incoming_bridge_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
 
     @staticmethod
     def fingerprint(record):
@@ -172,13 +173,25 @@ class IncomingQueueBridge(PublishedQueueBridge):
 
     def find_duplicate(self, fingerprint, now):
         with self.adapter._connect() as state:
-            return state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
-                                 (fingerprint, now-ACTIVE_SECONDS)).fetchone()
+            duplicate = state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
+                                      (fingerprint, now-ACTIVE_SECONDS)).fetchone()
+            if not duplicate:
+                return None
+            parts = duplicate[0].rsplit('/', 2)
+            row = state.execute('SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?', parts).fetchone() if len(parts) == 3 else None
+            record = json.loads(row['payload']) if row else None
+            if record and record.get('status') == 'active' and self.fingerprint(record) == fingerprint:
+                return duplicate
+            state.execute('DELETE FROM incoming_bridge_dedup WHERE fingerprint=? AND identity=?', (fingerprint, duplicate[0]))
+            return None
 
     def seed_dedup(self, now):
         # Учитываем durable outbox прежнего published-режима при переключении.
         with self.adapter._connect() as state:
-            for previous in state.execute("SELECT payload FROM selected_outbox WHERE quarantined_at IS NULL").fetchall():
+            key = 'dedup_seed_v1:'+self.parser_revision
+            if state.execute('SELECT 1 FROM incoming_bridge_meta WHERE key=?', (key,)).fetchone():
+                return
+            for previous in state.execute("SELECT payload FROM selected_outbox WHERE quarantined_at IS NULL AND json_extract(payload,'$.status')='active'").fetchall():
                 previous=json.loads(previous["payload"])
                 if previous.get("status")!="active":
                     continue
@@ -191,6 +204,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 identity="/".join((previous["source_id"],previous["source_message_id"],previous["segment_id"]))
                 fingerprint=self.fingerprint(previous)
                 state.execute("INSERT OR IGNORE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,published))
+            state.execute('INSERT INTO incoming_bridge_meta VALUES(?,?)', (key, 'complete'))
 
     def _run_locked(self):
         now=self.adapter.clock()
@@ -292,7 +306,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261027-owned-vehicle-lane-v11'
+    parser_revision = '20261027-owned-delivery-fair-v12'
     parse = staticmethod(map_owned_messages)
 
     @staticmethod
@@ -329,35 +343,17 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
         return None
 
     def seed_dedup(self, now):
-        # Rebuild only a derived index, never business rows/outbox. An edited but
-        # not-yet-processed source must not reserve its obsolete route, even when
-        # a newer post is processed before that edit in the same bounded batch.
-        with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
-            current = {(str(row[1]), str(row[2])): (row[0], row[3]+":"+self.parser_revision)
-                       for row in source.execute(
-                           "SELECT id,source_id,source_message,revision FROM app_messages "
-                           "WHERE lower(source)=? AND source_date>=? AND source_date<=?",
-                           (self.source_name.lower(), now-ACTIVE_SECONDS, now+300))}
-        with self.adapter._connect() as state:
-            seen = dict(state.execute("SELECT source_queue_id,source_revision FROM incoming_bridge_seen"))
-            state.execute("DELETE FROM incoming_bridge_dedup")
-            for row in state.execute("SELECT payload FROM selected_outbox WHERE quarantined_at IS NULL").fetchall():
-                record = json.loads(row["payload"])
-                version = current.get((record["source_id"], record["source_message_id"]))
-                if record.get("status") != "active" or not version or seen.get(version[0]) != version[1]:
-                    continue
-                published = datetime.fromisoformat(record["source_published_at"].replace("Z", "+00:00")).timestamp()
-                identity = "/".join((record["source_id"], record["source_message_id"], record["segment_id"]))
-                state.execute("INSERT OR IGNORE INTO incoming_bridge_dedup VALUES(?,?,?)",
-                              (self.fingerprint(record), identity, published))
+        # Существующий find_duplicate проверяет актуальный исходник владельца
+        # при каждом совпадении. Поэтому полный rebuild на каждом тике не нужен.
+        super().seed_dedup(now)
 
     def __init__(self, source_path, adapter):
         # Старый outbox может ещё содержать недоставленные чужие посты.
         # Не отправлять их под видом собственного потока и не удалять при переходе.
         with adapter._connect() as state:
-            for row in state.execute('SELECT payload FROM selected_outbox'):
-                if str(json.loads(row['payload']).get('origin_source', '')).lower() != OWNED_SOURCE.lower():
-                    raise ValueError('owned_source_requires_separate_adapter_state')
+            foreign = state.execute("SELECT 1 FROM selected_outbox WHERE COALESCE(lower(json_extract(payload,'$.origin_source')),'')<>? LIMIT 1", (OWNED_SOURCE.lower(),)).fetchone()
+            if foreign:
+                raise ValueError('owned_source_requires_separate_adapter_state')
         super().__init__(source_path, adapter)
 
 
