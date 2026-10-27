@@ -223,7 +223,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
     }
 

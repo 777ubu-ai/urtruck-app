@@ -174,6 +174,16 @@ def test_active_listing_expires_thirty_days_after_source_publication():
     assert expires == published + timedelta(days=30)
 
 
+def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
+    published = datetime.now(timezone.utc) - timedelta(days=31)
+    for status in ("closed", "hidden", "review"):
+        normalized = dal.normalize_record(
+            _record(source=f"old-{status}", status=status, published=published),
+            require_reviewed=False,
+        )
+        assert normalized["status"] == status
+
+
 def test_replaying_old_card_uses_source_based_thirty_day_expiry():
     published = datetime.now(timezone.utc) - timedelta(days=10)
     record = _record(source="replay-thirty-day-ttl", published=published)
