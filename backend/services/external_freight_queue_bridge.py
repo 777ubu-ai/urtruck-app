@@ -20,7 +20,7 @@ from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261027-feed-contact-recall-v9'
+PARSER_REVISION = '20261027-full-source-text-v10'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261026-broad-cargo-visible-contact-v4'
+    parser_revision = '20261027-published-full-source-text-v5'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -242,6 +242,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                             # post. Do not keep the old segment payload (which may
                             # contain a phone number and the full original text).
                             previous["original_text"] = "Исходное объявление удалено"
+                            previous.pop("source_text", None)
                             previous["contacts"] = []
                         enqueued+=bool(self.adapter.enqueue(previous))
                 for record in records:
@@ -280,7 +281,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261025-owned-contact-recall-v9'
+    parser_revision = '20261027-owned-full-source-text-v10'
     parse = staticmethod(map_owned_messages)
 
     @staticmethod

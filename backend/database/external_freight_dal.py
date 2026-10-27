@@ -98,9 +98,14 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         raise ValueError("record_must_be_object")
     if not isinstance(raw.get("original_text"), str):
         raise ValueError("invalid_original_text")
-    text = raw["original_text"]
-    if not text.strip() or len(text) > MAX_TEXT:
+    segment_text = raw["original_text"]
+    if not segment_text.strip() or len(segment_text) > MAX_TEXT:
         raise ValueError("invalid_original_text")
+    # Классификация уже проверила блок до DAL. Существующее поле БД хранит
+    # полный исходник для старых и новых клиентов, без новой схемы/миграции.
+    text = raw.get("source_text", segment_text)
+    if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
+        raise ValueError("invalid_source_text")
     kind = raw.get("kind")
     status = raw.get("status", "active")
     if kind not in {"cargo", "vehicle"}:

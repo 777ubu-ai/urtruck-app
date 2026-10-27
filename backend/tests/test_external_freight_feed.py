@@ -81,6 +81,66 @@ def _import(record, *, key="test-importer-key-only"):
     return client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": key}, json={"records": [record]})
 
 
+def test_split_post_survives_adapter_import_and_public_api_without_losing_footer(tmp_path, monkeypatch):
+    from services.external_freight_parser import map_selected_messages
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+
+    text = ('Самарканд → Москва\nНужен тент\nГруз: плитка\n4000 USD\n\n'
+            'Самарканд → Казань\nНужен тент\nГруз: плитка\n'
+            '📞 +998901234567\nTelegram, WhatsApp')
+    records = map_selected_messages({
+        'source_id': 'full-source-post', 'source_message_id': '42',
+        'source_published_at': datetime.now(timezone.utc).isoformat(), 'text': text,
+    })
+    assert len(records) == 2
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED', 'true')
+
+    def send(request, timeout):
+        response = client.post('/api/v1/external-freight/import',
+                               headers={'X-External-Importer-Key': 'test-importer-key-only'},
+                               json=json.loads(request.data))
+        assert response.status_code == 200, response.text
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self): return response.content
+        return Response()
+
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'full-post-outbox.db'),
+        api_url='https://qa2.urtruck.kz', importer_key='test-importer-key-only', opener=send)
+    for record in records:
+        adapter.enqueue(record)
+    assert adapter.flush_once()['sent'] == 2
+    global _actor
+    _actor = {'id': 'full-post-reader', 'role': 'driver'}
+    items = client.get('/api/v1/external-freight').json()['items']
+    assert len(items) == 2
+    assert all(item['original_text'] == text for item in items)
+    assert all(item['contacts'] == ['+998901234567'] for item in items)
+    assert {item['destination']: item['amount'] for item in items} == {'Москва': 4000, 'Казань': None}
+    assert all(item['status'] == 'active' for item in items)
+
+
+@pytest.mark.parametrize('source_text', [None, 123, '', 'x' * 20001])
+def test_invalid_full_source_text_does_not_replace_original(source_text):
+    record = _record()
+    record['source_text'] = source_text
+    response = _import(record)
+    assert response.status_code == 422
+
+
+def test_adapter_keeps_long_unicode_source_post_with_segment(tmp_path):
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    record = _record(text='Нужен тент, груз готов')
+    record['source_text'] = '🛻' * 20000
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'long-source.db'))
+    assert adapter.enqueue(record)
+    with adapter._connect() as db:
+        saved = json.loads(db.execute('SELECT payload FROM selected_outbox').fetchone()[0])
+    assert saved['source_text'] == record['source_text']
+
+
 def test_active_listing_expires_seven_days_after_source_publication():
     published = datetime.now(timezone.utc) - timedelta(days=6)
     record = _record(source="seven-day-ttl", published=published)
