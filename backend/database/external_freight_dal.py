@@ -10,7 +10,7 @@ from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_HOURS = 168
+ACTIVE_DAYS = 30
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 
 
@@ -83,6 +83,43 @@ def init_schema():
             c.execute("ALTER TABLE external_freight_items ADD COLUMN source_contacts TEXT NOT NULL DEFAULT '[]'")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_origin_route ON external_freight_items(kind,status,origin_folded,source_published_at DESC,id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_destination_route ON external_freight_items(kind,status,destination_folded,source_published_at DESC,id DESC)")
+        _extend_existing_publication_window(c)
+
+
+def _extend_existing_publication_window(c, now=None):
+    """Apply the 30-day policy to existing rows without reopening manual closures.
+
+    `expired` is only assigned by the publication TTL in this DAL. Explicit
+    owner/moderator closures use `closed`/`hidden` and are intentionally left
+    alone. Reviews are not promoted by a retention-policy change.
+    """
+    now = _utc(now)
+    cutoff = now - timedelta(days=ACTIVE_DAYS)
+    rows = c.execute(
+        "SELECT id,source_published_at,status,expires_at FROM external_freight_items "
+        "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL "
+        "AND julianday(source_published_at) >= julianday(?)",
+        (cutoff.isoformat(),),
+    ).fetchall()
+    for row in rows:
+        try:
+            published = _utc(row["source_published_at"])
+        except (TypeError, ValueError):
+            continue
+        expires = published + timedelta(days=ACTIVE_DAYS)
+        if expires <= now:
+            continue
+        expires_at = expires.isoformat()
+        if row["status"] == "expired":
+            c.execute(
+                "UPDATE external_freight_items SET status='active',expires_at=? WHERE id=? AND status='expired'",
+                (expires_at, row["id"]),
+            )
+        elif row["expires_at"] != expires_at:
+            c.execute(
+                "UPDATE external_freight_items SET expires_at=? WHERE id=? AND status='active'",
+                (expires_at, row["id"]),
+            )
 
 
 def count_active_items(kind: str) -> int:
@@ -176,7 +213,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published + timedelta(hours=ACTIVE_HOURS)).isoformat() if published else None,
+        "updated_at": now.isoformat(), "expires_at": (published + timedelta(days=ACTIVE_DAYS)).isoformat() if published else None,
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -186,7 +223,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if published and published + timedelta(hours=ACTIVE_HOURS) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
     }
 
@@ -217,7 +254,7 @@ def import_records(records):
                 if current["source_published_at"]:
                     values["source_published_at"] = current["source_published_at"]
                     values["expires_at"] = (_utc(current["source_published_at"])
-                                             + timedelta(hours=ACTIVE_HOURS)).isoformat()
+                                             + timedelta(days=ACTIVE_DAYS)).isoformat()
                 elif current["expires_at"]:
                     values["expires_at"] = current["expires_at"]
                 unchanged = all(values[key] == current[key] for key in columns

@@ -1,5 +1,6 @@
 {
-  "base_sha": "8ff9a280443438e3fce7584ed946239bbcd271f1",
+  "base_sha": "e396a097b7f47f8344634ff54b56ff1d144b4ab9",
+  "baseline_change": "PR633 intentionally changes only the public 30-day visibility policy in backend/api/marketplace.py",
   "sha256": {
     "src/utils/AuthContext.js": "d111f2a1431cded19d0a971ba7e9b2443490a820d5e1d4d036c8d869c74d814f",
     "src/utils/registration.js": "f7883448668de58fb59082b4b424ac6a3d939d323ec4b13705a2b1fedf0a3384",
@@ -15,7 +16,7 @@
     "src/components/ui/v1/RootHeader.js": "0457e8aacd94aa95c6e6160c03902231850720a8fa66da643a86be4da31ac344",
     "src/components/DatePicker.js": "4bcb1f40276873c27d4d37d0989152c3fe1e38bc40bd9be9a0d8aff3e282ee7f",
     "src/components/ui/v1/BottomNav.js": "1fee6542dbbf6b860abf5ae432a0acc0130aa2f624aa78a57b3b93877f800e51",
-    "backend/api/marketplace.py": "de0c8c5191cc24fba9001ab015a9667c97b28b5f90af4e62365a2dd17b65f420",
+    "backend/api/marketplace.py": "0b22b01be69d9f8485d101f756908545b7c398f2718b02b9807e4613df5005c0",
     "backend/api/driver_expenses.py": "a6787d6a9bbad2ac5f92e8887bec419102baa360d07cd5e37e3ee66be1b405e0",
     "backend/api/registration.py": "27c471060913da1cefe836f6fcea959dfbb6d322ad57e5625d22217b11b6b15a",
     "backend/api/profile.py": "ccaa85aa94ad4cfe6d2b76070b02d254c3b47694d76a7a67bd048b3cca671a30",

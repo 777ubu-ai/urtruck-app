@@ -118,7 +118,7 @@ def test_unpublish_republish_cycle():
     driver = "driver-pub-2"
     as_user(owner)
     cargo_id = client.post("/api/v1/market/cargos", json={
-        "from_city": "Almaty", "to_city": "Moscow", "cargo_desc": "Furniture load", "price": 2000,
+        "from_city": "RepublishCargoOrigin", "to_city": "Moscow", "cargo_desc": "Furniture load", "price": 2000,
     }).json()["id"]
 
     # Живая ставка на груз — после unpublish должна стать cancelled.
@@ -154,7 +154,7 @@ def test_unpublish_republish_cycle():
     expect(bid_status_after == "cancelled", f"old bid stays cancelled after republish (got {bid_status_after})")
 
     # Объект снова виден в публичной ленте.
-    r = client.get("/api/v1/market/cargos", params={"status": "active"})
+    r = client.get("/api/v1/market/cargos", params={"status": "active", "from_city": "RepublishCargoOrigin"})
     ids = [c["id"] for c in r.json()["cargos"]]
     expect(cargo_id in ids, "republished cargo visible again in public feed")
 
@@ -166,7 +166,7 @@ def test_trip_republish_sets_published_at():
     driver = "driver-pub-3"
     as_user(driver, role="driver")
     trip_id = client.post("/api/v1/market/trips", json={
-        "from_city": "Almaty", "to_city": "Astana", "truck_type": "tent", "price": 3000,
+        "from_city": "RepublishTripOrigin", "to_city": "Astana", "truck_type": "tent", "price": 3000,
     }).json()["id"]
     trip = get_trip(trip_id)
     expect(trip["published_at"] is not None, "trip published_at set on create")
@@ -182,9 +182,47 @@ def test_trip_republish_sets_published_at():
     trip = get_trip(trip_id)
     expect(trip["published_at"] > "2020-01-01 00:00:00", "trip published_at grew after republish")
 
-    r = client.get("/api/v1/market/trips", params={"status": "active"})
+    r = client.get("/api/v1/market/trips", params={"status": "active", "from_city": "RepublishTripOrigin"})
     ids = [t["id"] for t in r.json()["trips"]]
     expect(trip_id in ids, "republished trip visible again in public feed")
+
+
+def test_old_pickup_and_departure_remain_public_until_thirty_day_window_ends():
+    from datetime import datetime, timedelta
+    from database.db import get_conn
+
+    as_user("owner-pub-30d")
+    cargo_id = client.post("/api/v1/market/cargos", json={
+        "from_city": "ThirtyDayCargoOrigin", "to_city": "Москва", "cargo_desc": "Кирпич",
+        "price": 1000,
+    }).json()["id"]
+    with get_conn() as c:
+        c.execute("UPDATE cargos SET pickup_date='2020-01-01' WHERE id=?", (cargo_id,))
+    result = client.get("/api/v1/market/cargos", params={"status": "active", "from_city": "ThirtyDayCargoOrigin"}).json()
+    expect(cargo_id in [row["id"] for row in result["cargos"]],
+           "old cargo pickup date does not hide a listing published today")
+
+    as_user("driver-pub-30d", role="driver")
+    trip_id = client.post("/api/v1/market/trips", json={
+        "from_city": "ThirtyDayTripOrigin", "to_city": "Астана", "truck_type": "tent",
+        "price": 1000,
+    }).json()["id"]
+    with get_conn() as c:
+        c.execute("UPDATE trips SET departure='2020-01-01' WHERE id=?", (trip_id,))
+    result = client.get("/api/v1/market/trips", params={"status": "active", "from_city": "ThirtyDayTripOrigin"}).json()
+    expect(trip_id in [row["id"] for row in result["trips"]],
+           "old trip departure does not hide a listing published today")
+
+    old_publication = (datetime.utcnow().date() - timedelta(days=31)).isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE cargos SET published_at=? WHERE id=?", (old_publication, cargo_id))
+        c.execute("UPDATE trips SET published_at=? WHERE id=?", (old_publication, trip_id))
+    result = client.get("/api/v1/market/cargos", params={"status": "active", "from_city": "ThirtyDayCargoOrigin"}).json()
+    expect(cargo_id not in [row["id"] for row in result["cargos"]],
+           "cargo older than 30 published days is hidden")
+    result = client.get("/api/v1/market/trips", params={"status": "active", "from_city": "ThirtyDayTripOrigin"}).json()
+    expect(trip_id not in [row["id"] for row in result["trips"]],
+           "trip older than 30 published days is hidden")
 
 
 if __name__ == "__main__":
@@ -193,4 +231,5 @@ if __name__ == "__main__":
     test_create_sets_published_at()
     test_unpublish_republish_cycle()
     test_trip_republish_sets_published_at()
+    test_old_pickup_and_departure_remain_public_until_thirty_day_window_ends()
     print("\nAll published_at tests passed.")
