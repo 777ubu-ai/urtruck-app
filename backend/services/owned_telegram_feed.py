@@ -73,6 +73,9 @@ def map_owned_messages(raw):
             elif shared and len(item['contacts']) > len(shared):
                 item['contacts'] = [phone for phone in item['contacts'] if phone not in shared] or shared
     for item in result:
+        # Разбор использует очищенный блок, но пользователю нужен оригинал
+        # целиком: эмодзи, контакты в середине и общий телефон в конце.
+        item['source_text'] = text
         item['origin_source'] = OWNED_SOURCE
         # Владелец просит пропускать все посты своей группы: неполные поля
         # маршрута/контакта или неоднозначный тип не должны блокировать карточку.

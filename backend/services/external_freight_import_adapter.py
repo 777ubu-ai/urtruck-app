@@ -64,7 +64,7 @@ class ExternalFreightFeedAdapter:
         record = map_selected_message(source)
         contract_keys = {
             "kind", "source_id", "source_message_id", "segment_id", "source_published_at",
-            "original_text", "source_revision", "status", "classification_status", "origin", "destination",
+            "original_text", "source_text", "source_revision", "status", "classification_status", "origin", "destination",
             "origin_country", "destination_country", "cargo_name", "body_types", "weight", "volume",
             "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state",
             "contacts", "origin_source", "created_by",
@@ -75,7 +75,8 @@ class ExternalFreightFeedAdapter:
         record.update(explicit)
         identity = self._identity(record)
         encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-        if len(encoded.encode("utf-8")) > 30000:
+        # Контракт допускает блок и полный пост по 20 000 символов Unicode.
+        if len(encoded.encode("utf-8")) > 200000:
             raise ValueError("record_too_large")
         with self._connect() as db:
             existing = db.execute("SELECT payload,delivered_at FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?", identity).fetchone()

@@ -450,6 +450,11 @@ def _single_post_footer_contact(text):
     lines = [line for line in text.splitlines() if line.strip()]
     # A number at the end of an earlier route block is local to that request.
     # Only a contact on the final non-empty line is a post-level footer.
+    # После общего номера часто стоит строка «Telegram, WhatsApp».
+    # Она не превращает номер в локальный контакт последнего маршрута.
+    while lines and re.fullmatch(
+            r'(?i)[\s,:;/|]*(?:(?:telegram|whats?app|телеграм|ватсап)[\s,:;/|]*)+', lines[-1]):
+        lines.pop()
     footer = lines[-1] if lines else ""
     all_contacts = block_contacts(text)
     footer_contacts = block_contacts(footer)
@@ -543,6 +548,9 @@ def map_selected_messages(raw):
             "text","original_text","phones","contacts","origin","destination","amount","currency","kind","status"}}
         item_raw.update(text=block,contacts=block_contacts(block),segment_id=f"block-{i+1}")
         item=map_selected_message(item_raw)
+        # Поля маршрута/цены разбираются из блока; раскрытие карточки должно
+        # показывать весь неизменённый пост, включая общую шапку и контакты.
+        item["source_text"] = text
         # A single footer phone belongs to the whole published post. Reuse it
         # only among that post's route-split blocks; multiple post contacts or
         # phones outside the footer remain local to their own block.

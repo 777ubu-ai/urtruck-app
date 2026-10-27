@@ -38,6 +38,7 @@ def test_prepared_emoji_selection_shares_footer_but_not_price():
     assert [x['amount'] for x in items] == [10500, None, None]
     assert all(x['contacts'] == ['+998901234567'] and x['status'] == 'active' for x in items)
     assert all(x['origin_source'] == OWNED_SOURCE for x in items)
+    assert all(x['source_text'] == text for x in items)
 
 
 def test_ten_routes_footer_and_local_contact_priority():
