@@ -3,8 +3,9 @@ import { API_BASE } from '../config/env';
 import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/driver/vehicles`;
-const request = async (path = '', options = {}) => {
+const request = async (path = '', options = {}, { expectedToken = null, isCurrent = () => true } = {}) => {
   const token = await storage.get('ur_reg_token');
+  if (!isCurrent() || (expectedToken && token !== expectedToken)) return { ok: false, sessionChanged: true };
   try {
     const r = await fetch(`${BASE}${path}`, {
       ...options,
@@ -32,9 +33,10 @@ const request = async (path = '', options = {}) => {
 };
 export const vehicleAPI = {
   list: () => request(),
-  save: (vehicle, vehicleId) => request(
+  save: (vehicle, vehicleId, owner = {}) => request(
     vehicleId ? `?vehicle_id=${encodeURIComponent(vehicleId)}` : '',
     { method: 'PUT', body: JSON.stringify(vehicle) },
+    owner,
   ),
   remove: (vehicleId) => request(`/${encodeURIComponent(vehicleId)}`, { method: 'DELETE' }),
 };

@@ -748,10 +748,10 @@ export const regAPI = {
   // ТЗ §0.1 — авто-сохранение шага мастера. payload — любое подмножество
   // полей (бэкенд берёт только whitelisted). Fail-tolerant: возвращает
   // { ok:false } при сетевой ошибке, чтобы UI не вис.
-  async saveDriverDraft(payload = {}, { expectedToken = null } = {}) {
+  async saveDriverDraft(payload = {}, { expectedToken = null, isCurrent = () => true } = {}) {
     const token = await this.getToken();
     if (!token) return authRequiredResult();
-    if (expectedToken && token !== expectedToken) return { ok: false, sessionChanged: true };
+    if (!isCurrent() || (expectedToken && token !== expectedToken)) return { ok: false, sessionChanged: true };
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
         method: 'PATCH',
@@ -773,8 +773,9 @@ export const regAPI = {
     }
   },
 
-  async completeBasic() {
+  async completeBasic({ expectedToken = null, isCurrent = () => true } = {}) {
     const token = await this.getToken();
+    if (!isCurrent() || (expectedToken && token !== expectedToken)) return { ok: false, sessionChanged: true };
     if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {

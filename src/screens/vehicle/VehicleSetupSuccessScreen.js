@@ -53,22 +53,43 @@ export default function VehicleSetupSuccessScreen({ navigation, route }) {
   const [basicState, setBasicState] = useState(returnsToExistingFlow ? 'done' : 'loading');
   const [completionError, setCompletionError] = useState('');
   const completionStarted = useRef(false);
+  const mountedRef = useRef(true);
+  const busyRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const completeBasic = useCallback(async () => {
+    if (!mountedRef.current || busyRef.current) return;
+    busyRef.current = true;
+    const isCurrent = () => mountedRef.current;
     setBasicState('loading');
     setCompletionError('');
     try {
-      const result = await regAPI.completeBasic();
+      const ownerToken = await regAPI.getToken();
+      if (!isCurrent()) return;
+      if (!ownerToken) {
+        setCompletionError(c.saveErrorSub);
+        setBasicState('error');
+        return;
+      }
+      const result = await regAPI.completeBasic({ expectedToken: ownerToken, isCurrent });
+      if (!isCurrent() || await regAPI.getToken() !== ownerToken || !isCurrent() || result?.sessionChanged) return;
       if (result?.ok) {
-        setRole('driver');
+        const committed = await setRole('driver', { expectedToken: ownerToken, isCurrent });
+        if (!isCurrent() || !committed?.ok) return;
         setBasicState('done');
       } else {
         setCompletionError(completionMessage(result, c, lang));
         setBasicState('error');
       }
     } catch {
+      if (!isCurrent()) return;
       setCompletionError(c.saveErrorSub);
       setBasicState('error');
+    } finally {
+      busyRef.current = false;
     }
   }, [c, lang, setRole]);
 
