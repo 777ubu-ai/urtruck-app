@@ -37,6 +37,11 @@ on:
       - ".github/workflows/deploy-play.yml"
   workflow_dispatch:
     inputs:
+      inspect_only:
+        description: "Только сверить текущие номера и треки Play; без сборки и загрузки"
+        required: false
+        default: false
+        type: boolean
       download_generated_version_code:
         description: "Read-only download of existing Google-signed APK; skips build/upload"
         required: false
@@ -114,12 +119,12 @@ permissions:
 
 jobs:
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ !inputs.inspect_only && inputs.download_generated_version_code == '' }}
     uses: ./.github/workflows/quality-gate-reusable.yml
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ !inputs.inspect_only && inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
@@ -574,7 +579,7 @@ jobs:
 
   download-google-signed-apk:
     name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.inspect_only && inputs.download_generated_version_code != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -597,4 +602,30 @@ jobs:
           name: UrTruck-google-signed-apk-encrypted
           path: ${{ runner.temp }}/google-signed-apk/*
           retention-days: 2
+          if-no-files-found: error
+
+  inspect-current-play:
+    name: Сверить текущее состояние Play без публикации
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.inspect_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить зависимости официального Google API
+        run: python -m pip install google-auth requests
+      - name: Прочитать номера и удалить временный edit без commit
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/ops/inspect_play_store.py --output "$RUNNER_TEMP/play-current.json"
+      - name: Сохранить результат сверки магазина
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-Play-current-readonly
+          path: ${{ runner.temp }}/play-current.json
+          retention-days: 7
           if-no-files-found: error
