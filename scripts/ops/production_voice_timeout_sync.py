@@ -31,7 +31,7 @@ def patch_timeout(data):
 
 def check_override(rows):
     for name in rotation.NAMES:
-        if rows[name]['pm2_env']['env'].get(SETTING) not in (None, '', VALUE):
+        if rows[name]['pm2_env']['env'].get(SETTING) not in (None, VALUE):
             raise ValueError('incompatible_pm2_timeout_override')
 
 

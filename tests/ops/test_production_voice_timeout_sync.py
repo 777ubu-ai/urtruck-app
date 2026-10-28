@@ -51,8 +51,9 @@ def test_foreign_env_edit_after_write_is_not_overwritten(configured, monkeypatch
     assert configured['env'].read_text() == 'OWNER=changed\n'
 
 
-def test_pm2_override_refused_before_environment_write(configured):
-    configured['rows'][sync.rotation.NAMES[1]]['pm2_env']['env'][sync.SETTING] = '120'
+@pytest.mark.parametrize('value', ['', '120'])
+def test_pm2_override_refused_before_environment_write(configured, value):
+    configured['rows'][sync.rotation.NAMES[1]]['pm2_env']['env'][sync.SETTING] = value
     with pytest.raises(ValueError, match='incompatible_pm2_timeout_override'):
         sync.apply('123', 'a' * 40)
     assert configured['env'].read_bytes() == configured['files'][configured['env']]
