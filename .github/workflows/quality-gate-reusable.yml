@@ -117,7 +117,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Dependency security audit
-        run: npm run audit:node-forge-exception
+        run: npm run audit:dependencies-and-forge-regression
       - name: Vetted braces upstream release check
         run: npm run security:check-braces-upstream
       - name: Dependency security regressions

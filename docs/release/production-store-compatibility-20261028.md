@@ -20,3 +20,10 @@
 - Предыдущий manifest каталога сохранён как carrier-v1-manifest.json для регрессионной проверки старого bounded path. Повторный импорт и carrier activation для нового пакета запрещены manifest guard.
 - Перед первой записью:точные before hashes, runtime identity API+scheduler, место для двух online backups/restore probes, блокировка существующих bridge/flush lock-файлов. Перед записью повторная сверка, затем API/scheduler останавливаются на установку согласованного набора.
 - Установленный runtime остаётся смешанным:source SHA88e3495 относится только к перечисленным модулям; остальные production-файлы сохраняются по protected hashes.
+
+
+## Исправление обязательного CI-блокера
+
+Первый полный CI контроллера остановился на старом временном исключении node-forge1.4.0: официальный upstream1.4.2 опубликован27.10.2026. Изменена только запись node_modules/node-forge в lockfile; Expo/RN и прочие пакеты не обновлялись. Старые patch/exception удалены, вместо них использован уже принятый в кандидате строгий dependency-security-gate.mjs без исключений. Проверки оставлены: полный и production npm audit, exploit regression, все security tests и braces upstream monitor.
+
+Локально: audit clean, exploit PASS,20 security tests PASS, braces monitor PASS, lint422файла PASS. Источник: https://github.com/digitalbazaar/forge/releases/tag/v1.4.2 . Это инструменты контроллера, не изменение мобильного исходника88e3495 или production Python.
