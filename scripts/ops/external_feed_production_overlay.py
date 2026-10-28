@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from contextlib import ExitStack
 
 ROOT = Path('/home/ubuntu/urtruck/backend')
 RUNTIME = Path('/home/ubuntu/urtruck/runtime/external-feed')
@@ -32,6 +33,14 @@ FILES = frozenset({
 })
 ENV_KEYS = frozenset({'EXTERNAL_FREIGHT_FEED_ENABLED', 'EXTERNAL_FREIGHT_DB_PATH',
                       'EXTERNAL_FREIGHT_IMPORTER_KEY'})
+RELEASE_SOURCE = '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+RELEASE_FILES = frozenset({
+    'api/external_freight.py', 'api/marketplace.py', 'database/db.py',
+    'database/external_freight_connection.py', 'database/external_freight_dal.py',
+    'services/bid_expiry.py', 'services/external_freight_classifier.py',
+    'services/external_freight_import_adapter.py', 'services/external_freight_parser.py',
+    'services/external_freight_queue_bridge.py', 'services/owned_telegram_feed.py',
+})
 
 
 # Единственный разрешённый переход: уже принятый каталог PR589/596.
@@ -53,6 +62,26 @@ def carrier_manifest(manifest):
             or files[CARRIER_MODULE] != CARRIER_MODULE_SHA
             or files['main.py'] != CARRIER_MAIN_SHA):
         raise ValueError('invalid_carrier_transition_manifest')
+    return True
+
+
+def release_manifest(manifest):
+    if manifest.get('compatibility_activation') != 'reviewed-public-store-v1':
+        return False
+    before, after = manifest.get('production_before'), manifest.get('files')
+    if (manifest.get('app_source') != RELEASE_SOURCE
+            or not isinstance(before, dict) or set(before) != RELEASE_FILES
+            or not isinstance(after, dict) or set(after) != RELEASE_FILES
+            or manifest.get('catalog_import') is not False
+            or manifest.get('primary_database_replacement') is not False):
+        raise ValueError('invalid_release_compatibility_manifest')
+    for name in RELEASE_FILES:
+        if not isinstance(after[name], str) or not re.fullmatch('[0-9a-f]{64}', after[name]):
+            raise ValueError('invalid_release_payload_hash')
+        if before[name] is None and name == 'services/owned_telegram_feed.py':
+            continue
+        if not isinstance(before[name], str) or not re.fullmatch('[0-9a-f]{64}', before[name]):
+            raise ValueError('invalid_release_baseline_hash')
     return True
 
 
@@ -85,16 +114,22 @@ def unpack_verified(bundle, destination):
         members = archive.getmembers()
         names = {x.name for x in members}
         expected = FILES | {'main.patch', 'manifest.json'}
-        if len(members) != len(names) or names not in (expected, expected | {CARRIER_MODULE}):
+        allowed_shapes = (expected, expected | {CARRIER_MODULE}, RELEASE_FILES | {'manifest.json'})
+        if len(members) != len(names) or names not in allowed_shapes:
             raise ValueError('unexpected_overlay_members')
         for item in members:
             if not item.isfile() or item.size > 200_000:
                 raise ValueError('invalid_overlay_member')
         manifest = json.load(archive.extractfile('manifest.json'))
-        carrier = carrier_manifest(manifest)
-        allowed = FILES | ({CARRIER_MODULE} if carrier else set())
-        if set(manifest['files']) != allowed | {'main.py'} or names != allowed | {'main.patch', 'manifest.json'}:
-            raise ValueError('invalid_overlay_allowlist')
+        if release_manifest(manifest):
+            allowed = RELEASE_FILES
+            if names != allowed | {'manifest.json'}:
+                raise ValueError('invalid_overlay_allowlist')
+        else:
+            carrier = carrier_manifest(manifest)
+            allowed = FILES | ({CARRIER_MODULE} if carrier else set())
+            if set(manifest['files']) != allowed | {'main.py'} or names != allowed | {'main.patch', 'manifest.json'}:
+                raise ValueError('invalid_overlay_allowlist')
         for item in members:
             write_atomic(destination / item.name, archive.extractfile(item).read())
     for name in allowed:
@@ -599,6 +634,199 @@ def apply_carriers(staged, manifest, source_sha):
         raise
 
 
+def release_destination(root, name):
+    if name not in RELEASE_FILES or root.is_symlink() or root.resolve() != root:
+        raise ValueError('unsafe_release_destination')
+    current = root
+    for part in Path(name).parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError('release_destination_symlink')
+    if current.exists() and not current.is_file():
+        raise ValueError('release_destination_not_file')
+    return current
+
+
+def release_baseline(root, manifest):
+    """Проверяет весь заменяемый набор до backup, остановки и первой записи."""
+    originals = {}
+    for name, expected in manifest['production_before'].items():
+        path = release_destination(root, name)
+        actual = digest(path) if path.exists() else None
+        if actual != expected:
+            raise ValueError('release_baseline_changed: ' + name)
+        originals[name] = path.read_bytes() if path.exists() else None
+    return originals
+
+
+def release_protected_hashes(root):
+    excluded = {'venv', '.venv', '__pycache__', 'backups', 'tests', 'storage', 'models'}
+    result = {}
+    def scan_failed(error):
+        raise error
+    for directory, dirs, files in os.walk(root, followlinks=False, onerror=scan_failed):
+        parent = Path(directory)
+        dirs[:] = [name for name in dirs if name not in excluded]
+        if any((parent / name).is_symlink() for name in dirs):
+            raise ValueError('protected_directory_symlink')
+        for name in files:
+            path = parent / name
+            relative = path.relative_to(root).as_posix()
+            if path.suffix in {'.py', '.sql'} and relative not in RELEASE_FILES:
+                if path.is_symlink():
+                    raise ValueError('protected_file_symlink')
+                result[relative] = digest(path)
+    if (root / '.env').is_symlink():
+        raise ValueError('protected_environment_symlink')
+    result['.env'] = digest(root / '.env')
+    return result
+
+
+def release_scheduler(env, pm2, command_env):
+    values = json.loads(subprocess.check_output([str(pm2), 'jlist'], env=command_env, text=True))
+    matches = [p for p in values if p.get('name') == 'urtruck-security-scheduler']
+    if len(matches) != 1:
+        raise ValueError('release_scheduler_not_unique')
+    scheduler = matches[0]
+    config = scheduler.get('pm2_env', {})
+    pid = scheduler.get('pid')
+    if (config.get('status') != 'online' or not isinstance(pid, int) or pid <= 0
+            or Path(config.get('pm_cwd', '')).resolve() != ROOT
+            or Path(f'/proc/{pid}/cwd').resolve(strict=True) != ROOT
+            or Path(f'/proc/{pid}/exe').resolve(strict=True) != Path(env['pm_exec_path']).resolve(strict=True)):
+        raise ValueError('release_scheduler_identity_mismatch')
+    return str(scheduler['pm_id'])
+
+
+def apply_release_compatibility(staged, manifest, source_sha):
+    """Установить только проверенные модули, не меняя секреты и каталог."""
+    if not release_manifest(manifest) or not re.fullmatch('[0-9a-f]{40}', source_sha):
+        raise ValueError('release_identity_mismatch')
+    env, pm2 = runtime_identity(allow_feed_env=True)
+    command_env = dict(os.environ)
+    command_env['PATH'] = str(pm2.parent) + ':' + command_env.get('PATH', '')
+    command_env['PM2_HOME'] = env['PM2_HOME']
+    scheduler_id = release_scheduler(env, pm2, command_env)
+    catalog = RUNTIME / 'carrier-directory.sqlite3'
+    if catalog.is_symlink() or catalog.resolve() != catalog:
+        raise ValueError('release_catalog_path_mismatch')
+    catalog_hash, catalog_count = digest(catalog), validate_carrier_catalog(catalog)
+    protected = release_protected_hashes(ROOT)
+    if installed_overlay_matches(manifest):
+        if status('/health') != 200:
+            raise ValueError('release_existing_runtime_unhealthy')
+        print(json.dumps({'status': 'RELEASE_ALREADY_ACTIVE', 'app_source': RELEASE_SOURCE,
+                          'release_config_sha': source_sha, 'active_contacts': catalog_count}))
+        return
+    originals = release_baseline(ROOT, manifest)
+    for name in RELEASE_FILES:
+        if digest(staged / name) != manifest['files'][name]:
+            raise ValueError('release_staged_hash_mismatch')
+        compile((staged / name).read_bytes(), name, 'exec')
+    feed = RUNTIME / 'feed.sqlite3'
+    primary = Path(env['DB_PATH'])
+    if (feed.is_symlink() or feed.resolve() != feed or not primary.is_file()
+            or primary.is_symlink() or primary.resolve() != primary
+            or feed.samefile(primary) or feed.samefile(catalog)):
+        raise ValueError('release_database_identity_mismatch')
+    if BACKUP_ROOT.is_symlink() or BACKUP_ROOT.resolve() != BACKUP_ROOT or not BACKUP_ROOT.is_dir():
+        raise ValueError('release_backup_root_unsafe')
+    if shutil.disk_usage(BACKUP_ROOT).free < 2 * (primary.stat().st_size + feed.stat().st_size) + 128 * 1024 * 1024:
+        raise ValueError('release_backup_insufficient_space')
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    backup = BACKUP_ROOT / ('public-store-compatibility-' + stamp)
+    # Те же lock-файлы использует существующий production bridge. Очередь и
+    # collector продолжают сохранять сообщения; новый collector не создаётся.
+    with ExitStack() as locks:
+        for suffix in ('.bridge.lock', '.flush.lock'):
+            path = RUNTIME / ('adapter.sqlite3' + suffix)
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('release_bridge_lock_unavailable')
+            lock = locks.enter_context(path.open('r+'))
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        backup.mkdir(mode=0o700)
+        for name, data in originals.items():
+            if data is not None:
+                write_atomic(backup / 'code' / name, data)
+        for folder in ('primary', 'feed'):
+            (backup / folder).mkdir(mode=0o700)
+        proof = {'primary': online_backup(primary, backup / 'primary/snapshot.sqlite3'),
+                 'feed': online_backup(feed, backup / 'feed/snapshot.sqlite3')}
+        write_atomic(backup / 'manifest.json', json.dumps(manifest, indent=2).encode())
+        write_atomic(backup / 'backend.env', (ROOT / '.env').read_bytes())
+
+        def process(action, identity):
+            subprocess.run([str(pm2), action, identity], env=command_env,
+                           check=True, capture_output=True)
+
+        def check_protected():
+            if release_protected_hashes(ROOT) != protected or digest(catalog) != catalog_hash:
+                raise ValueError('release_protected_state_changed')
+
+        def start_and_verify():
+            process('restart', env['pm_id'])
+            wait_healthy(env, require_new_pid=True)
+            process('restart', scheduler_id)
+            release_scheduler(env, pm2, command_env)
+
+        # Чужое изменение во время backup — отказ без остановки процессов и
+        # без rollback: собственная установка ещё не начиналась.
+        release_baseline(ROOT, manifest)
+        check_protected()
+        try:
+            process('stop', scheduler_id)
+            process('stop', env['pm_id'])
+            for name in RELEASE_FILES:
+                write_atomic(release_destination(ROOT, name), (staged / name).read_bytes(), 0o644)
+            # Миграция только отдельной feed-БД: добавление совместимых полей
+            # и 30-дневный TTL. Основная БД и каталог не заменяются.
+            migration_env = {**command_env, **{k: v for k, v in env.items() if not k.startswith('_')}}
+            migration_env['EXTERNAL_FREIGHT_DB_PATH'] = str(feed)
+            subprocess.run([env['pm_exec_path'], '-c',
+                            'from database.external_freight_dal import init_schema; init_schema()'],
+                           env=migration_env, cwd=ROOT, check=True, capture_output=True, timeout=120)
+            check_protected()
+            start_and_verify()
+            if not installed_overlay_matches(manifest):
+                raise ValueError('release_installed_hash_mismatch')
+            for endpoint in ('/api/v1/external-freight/directory', '/api/v1/external-freight/count',
+                             '/api/v1/driver/expenses', '/api/v1/market/my/listings'):
+                if status(endpoint) != 401:
+                    raise ValueError('release_auth_guard_changed: ' + endpoint)
+            check_protected()
+            report = {'status': 'RELEASE_COMPATIBILITY_ACTIVE', 'app_source': RELEASE_SOURCE,
+                      'release_config_sha': source_sha, 'runtime_scope': 'limited_overlay',
+                      'files': manifest['files'], 'backup': proof,
+                      'protected_unchanged': True, 'active_contacts': catalog_count,
+                      'catalog_import_performed': False, 'database_replacement_performed': False,
+                      'store_upload_performed': False}
+            write_atomic(backup / 'result.json', json.dumps(report, ensure_ascii=False, indent=2).encode())
+            print(json.dumps(report, ensure_ascii=False))
+        except BaseException:
+            try:
+                # Восстановление касается только кода. Новые пользовательские
+                # записи и совместимая feed-миграция не откатываются снимком.
+                for identity in (scheduler_id, env['pm_id']):
+                    subprocess.run([str(pm2), 'stop', identity], env=command_env,
+                                   check=False, capture_output=True)
+                for name, data in originals.items():
+                    path = release_destination(ROOT, name)
+                    if data is None:
+                        if path.exists() and digest(path) == manifest['files'][name]:
+                            path.unlink()
+                    else:
+                        write_atomic(path, data, 0o644)
+                check_protected()
+                start_and_verify()
+                release_baseline(ROOT, manifest)
+                print(json.dumps({'status': 'RELEASE_CODE_ROLLED_BACK', 'backup': str(backup),
+                                  'database_replacement_performed': False}))
+            except BaseException:
+                print(json.dumps({'status': 'ROLLBACK_FAILED', 'backup': str(backup)}))
+                raise RuntimeError('release_compatibility_rollback_failed') from None
+            raise
+
+
 def apply(bundle, bundle_sha, source_sha):
     if not re.fullmatch('[0-9a-f]{40}', source_sha) or digest(bundle) != bundle_sha:
         raise ValueError('release_identity_mismatch')
@@ -607,6 +835,9 @@ def apply(bundle, bundle_sha, source_sha):
     with tempfile.TemporaryDirectory(prefix='carrier-feed-verify-') as name:
         staged = Path(name)
         manifest = unpack_verified(bundle, staged)
+        if release_manifest(manifest):
+            apply_release_compatibility(staged, manifest, source_sha)
+            return
         if carrier_manifest(manifest):
             apply_carriers(staged, manifest, source_sha)
             return

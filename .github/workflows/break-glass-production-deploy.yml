@@ -41,6 +41,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      app_source: ${{ steps.resolve.outputs.app_source }}
     steps:
       - name: Require typed confirmation
         # Hardening A final repair (2026-09-10), P0: `inputs.reason`/
@@ -93,6 +94,19 @@ jobs:
           DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
           SHA=$(git rev-parse HEAD)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          APP_SOURCE=''
+          if [ "$DEPLOY_SCOPE" = external_feed_overlay ]; then
+            APP_SOURCE="$(python3 - <<'PY'
+          import json,pathlib
+          manifest=json.loads(pathlib.Path('ops/external-feed-production/manifest.json').read_text())
+          if manifest.get('compatibility_activation')=='reviewed-public-store-v1':
+              source=manifest['app_source']
+              assert source=='88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+              print(source)
+          PY
+          )"
+          fi
+          echo "app_source=$APP_SOURCE" >> "$GITHUB_OUTPUT"
           # Defense in depth beyond the env:/$VAR fix above (which already
           # closes code-execution injection): a REASON_INPUT containing a
           # literal newline could still spoof a fake ::error::/::warning::
@@ -127,9 +141,16 @@ jobs:
     with:
       source_ref: ${{ needs.guard.outputs.sha }}
 
+  application-quality-gate:
+    needs: [guard]
+    if: ${{ inputs.deploy_scope == 'external_feed_overlay' && needs.guard.outputs.app_source != '' }}
+    uses: 777ubu-ai/urtruck-app/.github/workflows/quality-gate-reusable.yml@main
+    with:
+      source_ref: ${{ needs.guard.outputs.app_source }}
+
   deploy:
-    needs: [guard, overlay-quality-gate]
-    if: ${{ always() && needs.guard.result == 'success' && (inputs.deploy_scope == 'full' || needs.overlay-quality-gate.result == 'success') }}
+    needs: [guard, overlay-quality-gate, application-quality-gate]
+    if: ${{ always() && needs.guard.result == 'success' && (inputs.deploy_scope == 'full' || (needs.overlay-quality-gate.result == 'success' && (needs.guard.outputs.app_source == '' || needs.application-quality-gate.result == 'success'))) }}
     # Do not resolve this local reusable workflow from the ref chosen in the
     # Actions UI.  The immutable job definition must come from protected main.
     uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main
