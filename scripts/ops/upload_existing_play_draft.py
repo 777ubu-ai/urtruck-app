@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -40,13 +41,48 @@ def verify(root):
     return data
 
 
+def safe_provider_error(error, url, headers, data):
+    """Сохраняет причину отказа Google, исключая credentials и управляющие символы."""
+    try:
+        body = json.loads(error.read(16384))
+    except (ValueError, OSError):
+        body = {}
+    details = body.get('error') if isinstance(body, dict) else {}
+    details = details if isinstance(details, dict) else {}
+    secrets = []
+    auth = (headers or {}).get('Authorization', '')
+    if auth:
+        secrets.extend((auth, auth.removeprefix('Bearer ')))
+    if urllib.parse.urlsplit(url).hostname == 'oauth2.googleapis.com' and data:
+        try:
+            secrets.extend(urllib.parse.parse_qs(data.decode()).get('assertion', []))
+        except (UnicodeError, AttributeError):
+            pass
+    def redact(value, limit):
+        text = str(value or '')
+        for secret in secrets:
+            if secret:
+                text = text.replace(secret, '[redacted]')
+        text = re.sub(r'-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?(?:-----END[^-]*PRIVATE KEY-----|$)', '[redacted-key]', text)
+        text = re.sub(r'(?i)Bearer\s+[^\s"<>]+', 'Bearer [redacted]', text)
+        text = re.sub(r'sk-[A-Za-z0-9_-]+', '[redacted-key]', text)
+        text = re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[redacted-jwt]', text)
+        text = re.sub(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[redacted-email]', text)
+        return re.sub(r'[\x00-\x1f\x7f]', ' ', text)[:limit]
+    rows = details.get('errors') or []
+    reason = rows[0].get('reason') if rows and isinstance(rows[0], dict) else details.get('status')
+    return {'status': 'GOOGLE_PLAY_REQUEST_REJECTED', 'http_status': error.code,
+            'stage': urllib.parse.urlsplit(url).path.rsplit('/', 1)[-1],
+            'reason': redact(reason, 120), 'message': redact(details.get('message'), 1200)}
+
+
 def request_json(url, method='GET', data=None, headers=None):
     request = urllib.request.Request(url, data=data, method=method, headers=headers or {})
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
-        # Ответ может содержать сведения аккаунта; выводим только HTTP status.
+        print(json.dumps(safe_provider_error(error, url, headers, data), ensure_ascii=False))
         raise RuntimeError('play_http_' + str(error.code)) from None
 
 
