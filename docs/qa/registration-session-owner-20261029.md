@@ -11,3 +11,5 @@
 Старые IPA122/AAB215090229 не объявлять исправленными. После фикса нужны новые уникальные номера, свежая сверка ASC/EAS/Play, штатные guards точного app SHA и CI. Новые бинарники проверяются отдельно. Rollback — вернуть только этот frontend-патч; production runtime и пользовательские данные не меняются.
 
 Graphify AST-only завершён:13146 nodes/29428 edges/689 communities; generated output удалён. Whole AuthProvider+Success воспроизведение доfix — B.driver, послеfix — B.client.44 targeted frontend tests PASS; runtime registration88 tests PASS, frontend baseline67 PASS, isolated HTTP roundtrip обеихролей PASS. SMTP/SMS delivery не выдаётся за проверенную.
+
+Полный frontend unit:1626/1627 PASS, единственный отказ — ожидаемый hash защитного manifest registration.js после разрешённого адресного исправления. Обновлён только этот hash (AuthContext и все другие protected hashes сохранены) и явно записано основаниеPR643; test_external_freight_scope не ослаблен. Канонический node scripts/lint-source.mjs PASS593files; отдельный eslint не используется проектом.
