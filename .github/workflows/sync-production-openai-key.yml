@@ -2,6 +2,13 @@ name: Обновить production OpenAI ключ
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "Заменить ключ либо согласовать только STT timeout без изменения ключа"
+        type: choice
+        options: [sync_openai_key, sync_voice_timeout]
+        default: sync_openai_key
+        required: true
 
 permissions:
   contents: read
@@ -13,6 +20,7 @@ jobs:
       source_ref: ${{ github.sha }}
   sync:
     needs: [quality-gate]
+    if: ${{ inputs.operation != 'sync_voice_timeout' }}
     uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main
     with:
       deploy_sha: ${{ github.sha }}
@@ -23,3 +31,15 @@ jobs:
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  timeout:
+    needs: [quality-gate]
+    if: ${{ inputs.operation == 'sync_voice_timeout' }}
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main
+    with:
+      deploy_sha: ${{ github.sha }}
+      operation: sync_voice_timeout
+    secrets:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}

@@ -269,6 +269,6 @@ def test_workflow_remains_protected_and_uses_existing_executor():
     executor = yaml.safe_load((ROOT / '.github/workflows/production-deploy-execute.yml').read_text())
     assert executor['jobs']['sync-openai-key']['environment'] == 'production'
     validation = executor['jobs']['validate-scope']['steps'][0]['run']
-    assert 'sync_openai_key:full)' in validation
+    assert 'sync_openai_key:full' in validation
     assert 'test "$CALLER_REF" = refs/heads/main' in validation
     assert 'test "$CALLER_SHA" = "$DEPLOY_SHA"' in validation
