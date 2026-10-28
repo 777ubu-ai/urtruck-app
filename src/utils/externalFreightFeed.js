@@ -37,7 +37,7 @@ async function request(path, { signal, method = 'GET', body, isCurrent } = {}) {
 
 export const externalFreightAPI = {
   count(signal, isCurrent) {
-    return request('/count', { signal, isCurrent });
+    return request('/count?include_carriers=true', { signal, isCurrent });
   },
   list(filters = {}, signal) {
     const query = queryString({ ...filters, include_carriers: true });
