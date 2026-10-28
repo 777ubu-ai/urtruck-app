@@ -1,9 +1,9 @@
 {
   "base_sha": "e396a097b7f47f8344634ff54b56ff1d144b4ab9",
-  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged",
+  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged; owner-authorized PR643 registration session-owner guards only, behavioral whole-component regression PASS; all other protected hashes unchanged",
   "sha256": {
     "src/utils/AuthContext.js": "d111f2a1431cded19d0a971ba7e9b2443490a820d5e1d4d036c8d869c74d814f",
-    "src/utils/registration.js": "f7883448668de58fb59082b4b424ac6a3d939d323ec4b13705a2b1fedf0a3384",
+    "src/utils/registration.js": "b6efef77a15745d706c9418160c009df68859d03bfb6b8fce17df7db2d3f85b1",
     "src/utils/marketAPI.js": "01b601a5130a5b71258ea7718e8dcf57729c747f62d097550f75e94ee7e030ef",
     "src/utils/publicationSession.js": "02335055e5f5311f1ccbf0d67cfb6d849318268fb484b4aabfd67e0d7460289a",
     "src/hooks/usePublicationDraft.js": "426ca9815452984a56b1c0c57e533892d725b7ed5bb75ae8386638ee6f33ac86",

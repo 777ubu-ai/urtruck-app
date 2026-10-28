@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import BackButton from '../../components/ui/v1/BackButton';
@@ -14,7 +14,7 @@ import {
   useVehicleSetupStyles,
 } from '../../components/vehicle/VehicleSetupUI';
 import { useDriverCeramicColors } from '../../theme/designV1';
-import { useAuth } from '../../utils/AuthContext';
+import { notifyAuthExpired } from '../../utils/authEvents';
 import { regAPI } from '../../utils/registration';
 import { storage } from '../../utils/storage';
 import { useI18n } from '../../utils/useI18n';
@@ -70,12 +70,17 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const ceramic = useDriverCeramicColors();
   const { t } = useI18n();
-  const { signOut } = useAuth();
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [sheet, setSheet] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const mountedRef = useRef(true);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -135,16 +140,20 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
     || !(Number(draft.payload_tons) > 0)
     || !(Number(draft.cargo_volume_m3) > 0);
 
-  const handleAuthFailure = (result) => {
+  const handleAuthFailure = (result, ownerToken, isCurrent) => {
     if (!result?.authRequired) return false;
     const message = result.detail || t('session_expired');
     setError(message);
-    Alert.alert('', message, [{ text: 'OK', onPress: () => signOut() }]);
+    Alert.alert('', message, [{ text: 'OK', onPress: () => {
+      if (isCurrent()) notifyAuthExpired(ownerToken);
+    } }]);
     return true;
   };
 
   const save = async () => {
-    if (saving || incomplete) return;
+    if (savingRef.current || !mountedRef.current || incomplete) return;
+    savingRef.current = true;
+    const isCurrent = () => mountedRef.current;
     setSaving(true);
     setError('');
     const make = draft.make === 'Other' ? draft.make_custom.trim() : draft.make;
@@ -163,8 +172,12 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
       cargo_height_m: null,
     };
     try {
-      const result = await vehicleAPI.save(payload, route?.params?.vehicleId);
-      if (handleAuthFailure(result)) return;
+      const ownerToken = await regAPI.getToken();
+      if (!ownerToken || !isCurrent()) return;
+      const ownsSession = async () => isCurrent() && await regAPI.getToken() === ownerToken && isCurrent();
+      const result = await vehicleAPI.save(payload, route?.params?.vehicleId, { expectedToken: ownerToken, isCurrent });
+      if (!await ownsSession() || result?.sessionChanged) return;
+      if (handleAuthFailure(result, ownerToken, isCurrent)) return;
       if (!result?.ok) {
         setError(result?.detail || c.saveError);
         return;
@@ -182,8 +195,9 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
         vehicle_plate: payload.license_plate,
         capacity_tons: payload.payload_tons,
         volume_m3: payload.cargo_volume_m3,
-      });
-      if (handleAuthFailure(draftSaved)) return;
+      }, { expectedToken: ownerToken, isCurrent });
+      if (!await ownsSession() || draftSaved?.sessionChanged) return;
+      if (handleAuthFailure(draftSaved, ownerToken, isCurrent)) return;
       if (!draftSaved?.ok) {
         setError(draftSaved?.detail || c.saveError);
         return;
@@ -193,9 +207,11 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
         vehicle: result.vehicle,
       });
     } catch {
+      if (!isCurrent()) return;
       setError(c.saveErrorSub);
     } finally {
-      setSaving(false);
+      savingRef.current = false;
+      if (isCurrent()) setSaving(false);
     }
   };
 
