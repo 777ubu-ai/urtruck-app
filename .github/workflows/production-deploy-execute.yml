@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           case "$OPERATION:$DEPLOY_SCOPE" in
             deploy:full|sync_push_mode:full) ;;
-            deploy:external_feed_overlay)
+            deploy:external_feed_overlay|sync_openai_key:full)
               test "$CALLER_REF" = refs/heads/main
               test "$CALLER_SHA" = "$DEPLOY_SHA"
               ;;
@@ -429,6 +429,56 @@ jobs:
             "$SERVER_USER@$SERVER_HOST:/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh"
           bash scripts/deploy-ssh.sh ssh \
             "set -euo pipefail; trap 'rm -f /tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py /tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' EXIT; python3 '/tmp/urtruck-push-mode-preflight-${GITHUB_RUN_ID}.py' --root '/home/ubuntu/urtruck/backend' --api '$PM2_PROC' --scheduler '$PM2_SCHEDULER_PROC'; python3 '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py' create --root '/home/ubuntu/urtruck/backend' --run-id '$GITHUB_RUN_ID'; chmod 700 '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh'; bash '/tmp/urtruck-push-mode-health-${GITHUB_RUN_ID}.sh' '$PM2_PROC' '$PM2_SCHEDULER_PROC' '$GITHUB_RUN_ID' '/tmp/urtruck-push-mode-backup-${GITHUB_RUN_ID}.py'"
+
+  sync-openai-key:
+    needs: [validate-scope]
+    if: ${{ inputs.operation == 'sync_openai_key' && inputs.deploy_scope == 'full' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      DEPLOY_SHA: ${{ inputs.deploy_sha }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      URTRUCK_REQUIRE_KEY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deploy_sha }}
+          persist-credentials: false
+      - name: Проверить защищённый источник и подготовить закрытый ввод
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          python3 - <<'PY'
+          import os,pathlib,re
+          key=os.environ['OPENAI_API_KEY']
+          assert re.fullmatch(r'sk-[A-Za-z0-9_-]{20,1000}', key), 'Неверный формат секрета'
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'openai-key-input'
+          fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+          with os.fdopen(fd,'w') as stream: stream.write(key)
+          PY
+      - name: Применить только ключ и проверить production
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          target="/tmp/urtruck-openai-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'rm -f "$RUNNER_TEMP/openai-key-input"; bash scripts/deploy-ssh.sh ssh "rm -rf -- $target" >/dev/null 2>&1 || true' EXIT
+          bash scripts/deploy-ssh.sh ssh "umask 077; mkdir -m 700 '$target'"
+          bash scripts/deploy-ssh.sh scp scripts/ops/production_openai_key_rotation.py scripts/ops/external_feed_production_overlay.py "$RUNNER_TEMP/openai-key-input" "$SERVER_USER@$SERVER_HOST:$target/"
+          [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]
+          bash scripts/deploy-ssh.sh ssh "python3 '$target/production_openai_key_rotation.py' --key-file '$target/openai-key-input' --run-id '$GITHUB_RUN_ID' --source-sha '$DEPLOY_SHA'"
+      - name: Удалить локальный секрет после любого исхода
+        if: always()
+        run: rm -f "$RUNNER_TEMP/openai-key-input"
 
   external-feed-overlay:
     needs: [validate-scope]
