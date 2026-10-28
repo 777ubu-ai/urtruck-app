@@ -40,11 +40,11 @@ test('register/me exposes basic completion and the basic app has no document-rev
 });
 
 test('VehicleSetupSuccess completes basic onboarding before opening trip creation', () => {
-  assert.match(client, /async completeBasic\(\)/);
+  assert.match(client, /async completeBasic\(/);
   assert.match(client, /DRIVER_REG_BASE}\/complete-basic/);
-  assert.match(success, /regAPI\.completeBasic\(\)/);
+  assert.match(success, /regAPI\.completeBasic\(/);
   assert.match(success, /catch \{/);
-  assert.match(success, /setRole\('driver'\)/);
+  assert.match(success, /setRole\('driver', /);
   assert.match(success, /screen: 'Feed'/);
   assert.match(success, /basicState === 'done' \? </);
   assert.match(success, /basic-onboarding-loads/);

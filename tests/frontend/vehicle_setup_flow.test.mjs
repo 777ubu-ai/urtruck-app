@@ -63,7 +63,7 @@ test('dependent selectors, numeric validation, and localized body names remain i
 });
 
 test('vehicle is saved before the compact success page', () => {
-  assert.match(setup, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId\)/);
+  assert.match(setup, /vehicleAPI\.save\(payload, route\?\.params\?\.vehicleId, /);
   assert.match(setup, /regAPI\.saveDriverDraft/);
   assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
   assert.match(api, /driver\/vehicles/);
