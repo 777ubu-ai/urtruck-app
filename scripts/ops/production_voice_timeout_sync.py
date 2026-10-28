@@ -1,51 +1,82 @@
-"""Задаёт отсутствующий STT timeout; секреты и PM2 env не изменяет."""
+"""Передаёт только STT timeout scheduler; ключ и приложение не меняет."""
 import argparse
 import fcntl
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import time
 
 import production_openai_key_rotation as rotation
 
 SETTING = 'QA2_OPENAI_STT_TIMEOUT_SECONDS'
 VALUE = '8'
+NAME = 'urtruck-security-scheduler'
 
 
-def patch_timeout(data):
-    lines = data.splitlines(keepends=True)
-    indexes = [i for i, line in enumerate(lines)
-               if re.match(rb'^(?:export[ \t]+)?QA2_OPENAI_STT_TIMEOUT_SECONDS[ \t]*=', line)]
-    if len(indexes) > 1:
-        raise ValueError('timeout_setting_ambiguous')
-    replacement = (SETTING + '=' + VALUE + '\n').encode()
-    if indexes:
-        lines[indexes[0]] = replacement
-    else:
-        if lines and not lines[-1].endswith(b'\n'):
-            lines.append(b'\n')
-        lines.append(replacement)
-    return b''.join(lines)
+def stable(row):
+    result = rotation.stable_process(row)
+    if row['name'] == NAME:
+        result['env'].pop(SETTING, None)
+    return result
 
 
-def check_override(rows):
+def patch_dump(data, before):
+    rows = json.loads(data)
+    selected = [r for r in rows if r.get('name') == NAME]
+    if len(selected) != 1:
+        raise ValueError('dump_scheduler_not_unique')
+    row = selected[0]
+    if any(row.get(k) != before['pm2_env'].get(k) for k in rotation.LAUNCH):
+        raise ValueError('dump_scheduler_identity_changed')
+    row.setdefault('env', {})[SETTING] = VALUE
+    row[SETTING] = VALUE
+    return (json.dumps(rows, ensure_ascii=False, indent=2) + '\n').encode()
+
+
+def restart_timeout(before, value):
+    current = rotation.processes()[NAME]
+    if (not rotation.same_identity(current, before)
+            or current['pm2_env']['env'].get(SETTING) != before['pm2_env']['env'].get(SETTING)):
+        raise ValueError('scheduler_changed_before_rpc')
+    script = """
+const pm2 = require('/home/ubuntu/.nvm/versions/node/v22.15.0/lib/node_modules/pm2');
+let input = '';
+process.on('uncaughtException', () => process.exit(1));
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', part => { input += part; });
+process.stdin.on('end', () => {
+  const value = JSON.parse(input);
+  pm2.connect(error => {
+    if (error) return process.exit(1);
+    pm2.Client.executeRemote('restartProcessId', {
+      id: value.id, env: { QA2_OPENAI_STT_TIMEOUT_SECONDS: value.timeout }
+    }, error => {
+      if (!error) pm2.Client.notifyGod('restart', value.id);
+      pm2.disconnect(); process.exitCode = error ? 1 : 0;
+    });
+  });
+});
+"""
+    subprocess.run(['/usr/bin/node', '-e', script],
+                   input=json.dumps({'id': before['pm_id'], 'timeout': value}),
+                   env={'HOME': '/home/ubuntu', 'PM2_HOME': '/home/ubuntu/.pm2', 'PATH': '/usr/bin:/bin'},
+                   check=True, text=True, capture_output=True, timeout=40)
+
+
+def verify(before):
+    current = rotation.processes()
     for name in rotation.NAMES:
-        if rows[name]['pm2_env']['env'].get(SETTING) not in (None, VALUE):
-            raise ValueError('incompatible_pm2_timeout_override')
-
-
-def restart(before):
-    for name in rotation.NAMES:
-        current = rotation.processes()[name]
-        if not rotation.same_identity(current, before[name]):
-            raise ValueError('process_identity_changed')
-        # Без --update-env: никакие переменные вызывающего процесса не передаются.
-        rotation.pm2(['restart', str(before[name]['pm_id'])])
-    api = before[rotation.NAMES[0]]
-    rotation.runtime.wait_healthy({'pm_id': str(api['pm_id']),
-                                  'pm_exec_path': api['pm2_env']['pm_exec_path'],
-                                  '_pid': str(api['pid'])}, require_new_pid=True)
+        if (stable(current[name]) != stable(before[name])
+                or current[name]['pm2_env']['env'][rotation.KEY] != before[name]['pm2_env']['env'][rotation.KEY]):
+            raise ValueError('protected_process_settings_changed')
+    row = current[NAME]
+    if row['pid'] == before[NAME]['pid'] or row['pm2_env']['env'].get(SETTING) != VALUE:
+        raise ValueError('scheduler_timeout_not_active')
+    env = dict(x.split('=', 1) for x in Path('/proc/' + str(row['pid']) + '/environ').read_text().split('\0') if '=' in x)
+    if env.get(SETTING) != VALUE or rotation.runtime.status('/health') != 200:
+        raise ValueError('scheduler_effective_timeout_not_verified')
 
 
 def apply(run_id, source_sha):
@@ -59,51 +90,71 @@ def apply(run_id, source_sha):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         before = rotation.processes()
         runtime.runtime_identity(allow_feed_env=True)
-        check_override(before)
+        old_timeout = before[NAME]['pm2_env']['env'].get(SETTING)
+        if old_timeout not in (None, VALUE):
+            raise ValueError('unexpected_scheduler_timeout')
         code = rotation.source_hashes()
-        path = runtime.ROOT / '.env'
-        if path.resolve(strict=True) != path or not path.is_file():
-            raise ValueError('unsafe_environment')
-        original = path.read_bytes()
-        updated = patch_timeout(original)
+        env_hash = runtime.digest(runtime.ROOT / '.env')
+        files = rotation.DUMPS
+        if any(p.resolve(strict=True) != p or not p.is_file() for p in files):
+            raise ValueError('unsafe_pm2_dump')
+        originals = {p: p.read_bytes() for p in files}
+        updated = {p: patch_dump(originals[p], before[NAME]) for p in files}
         backup = runtime.BACKUP_ROOT / ('voice-timeout-' + run_id + '-' + str(time.time_ns()))
         backup.mkdir(mode=0o700)
-        runtime.write_atomic(backup / 'backend.env', original)
-        if (path.read_bytes() != original or rotation.source_hashes() != code
+        for i, p in enumerate(files):
+            runtime.write_atomic(backup / ('dump-' + str(i)), originals[p])
+        if (any(p.read_bytes() != originals[p] for p in files) or rotation.source_hashes() != code
+                or runtime.digest(runtime.ROOT / '.env') != env_hash
                 or not rotation.same_processes(rotation.processes(), before)):
             raise ValueError('production_changed_before_mutation')
-        wrote = False
+        written = []
+        attempted = False
         try:
-            runtime.write_atomic(path, updated)
-            wrote = True
-            restart(before)
-            after = rotation.processes()
-            if (any(rotation.stable_process(after[n]) != rotation.stable_process(before[n])
-                    or after[n]['pm2_env']['env'][rotation.KEY] != before[n]['pm2_env']['env'][rotation.KEY]
-                    or after[n]['pid'] == before[n]['pid'] for n in rotation.NAMES)
-                    or rotation.source_hashes() != code or path.read_bytes() != updated):
-                raise ValueError('protected_configuration_changed')
+            for path in files:
+                if path.read_bytes() != originals[path]:
+                    raise ValueError('dump_changed_before_write')
+                runtime.write_atomic(path, updated[path]); written.append(path)
+            attempted = True
+            restart_timeout(before[NAME], VALUE)
+            verify(before)
+            if (rotation.source_hashes() != code or any(p.read_bytes() != updated[p] for p in files)
+                    or runtime.digest(runtime.ROOT / '.env') != env_hash):
+                raise ValueError('protected_state_changed')
             result = {'status': 'VOICE_WORKER_TIMEOUT_CONFIGURED', 'timeout_seconds': 8,
                       'controller_sha': source_sha, 'run_id': run_id,
-                      'openai_key_unchanged': True, 'models_unchanged': True,
-                      'pm2_environment_unchanged': True, 'code_unchanged': True,
-                      'database_replacement_performed': False, 'catalog_import_performed': False}
+                      'scheduler_effective_timeout_verified': True, 'openai_key_unchanged': True,
+                      'models_unchanged': True, 'other_pm2_environment_unchanged': True,
+                      'code_and_backend_env_unchanged': True, 'database_replacement_performed': False,
+                      'catalog_import_performed': False}
             runtime.write_atomic(backup / 'result.json', json.dumps(result).encode())
             return result
         except BaseException:
             ok = True
-            if wrote:
-                if path.read_bytes() != updated:
+            for path in reversed(written):
+                if path.read_bytes() != updated[path]:
                     ok = False
                 else:
-                    runtime.write_atomic(path, original)
-            try:
-                fresh = rotation.processes()
-                if not all(rotation.same_identity(fresh[n], before[n]) for n in rotation.NAMES):
-                    raise ValueError('foreign_process_identity')
-                restart(fresh)
-            except BaseException:
-                ok = False
+                    runtime.write_atomic(path, originals[path])
+            if attempted:
+                try:
+                    fresh = rotation.processes()[NAME]
+                    if not rotation.same_identity(fresh, before[NAME]):
+                        raise ValueError('foreign_scheduler_identity')
+                    actual = fresh['pm2_env']['env'].get(SETTING)
+                    if actual == VALUE:
+                        # PM2 merge RPC не удаляет переменную. Пустая строка
+                        # семантически равна исходному отсутствию: service
+                        # отклоняет оба значения одним кодом до HTTP-запроса.
+                        restore = old_timeout if old_timeout is not None else ''
+                        restart_timeout(fresh, restore)
+                        after = rotation.processes()[NAME]
+                        if stable(after) != stable(fresh) or after['pm2_env']['env'].get(SETTING) != restore:
+                            raise ValueError('timeout_rollback_not_verified')
+                    elif actual != old_timeout:
+                        raise ValueError('foreign_timeout_preserved')
+                except BaseException:
+                    ok = False
             raise ValueError('timeout_sync_failed_rollback_' + ('verified' if ok else 'failed')) from None
 
 
