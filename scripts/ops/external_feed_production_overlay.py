@@ -118,7 +118,8 @@ def unpack_verified(bundle, destination):
         if len(members) != len(names) or names not in allowed_shapes:
             raise ValueError('unexpected_overlay_members')
         for item in members:
-            if not item.isfile() or item.size > 200_000:
+            limit = 300_000 if names == RELEASE_FILES | {'manifest.json'} and item.name == 'api/marketplace.py' else 200_000
+            if not item.isfile() or item.size > limit:
                 raise ValueError('invalid_overlay_member')
         manifest = json.load(archive.extractfile('manifest.json'))
         if release_manifest(manifest):

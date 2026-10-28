@@ -27,3 +27,9 @@
 Первый полный CI контроллера остановился на старом временном исключении node-forge1.4.0: официальный upstream1.4.2 опубликован27.10.2026. Изменена только запись node_modules/node-forge в lockfile; Expo/RN и прочие пакеты не обновлялись. Старые patch/exception удалены, вместо них использован уже принятый в кандидате строгий dependency-security-gate.mjs без исключений. Проверки оставлены: полный и production npm audit, exploit regression, все security tests и braces upstream monitor.
 
 Локально: audit clean, exploit PASS,20 security tests PASS, braces monitor PASS, lint422файла PASS. Источник: https://github.com/digitalbazaar/forge/releases/tag/v1.4.2 . Это инструменты контроллера, не изменение мобильного исходника88e3495 или production Python.
+
+## PRE-FLIGHT: лимит архива после первого защищённого запуска
+
+Branch fix/production-release-archive-limit-20261028; base main b4dfd488588665e84bb4c69418f56845182288cf. Run40729593036 прошёл полный quality-gate, затем отказал до любых runtime-записей: marketplace.py из точного источника имеет248074 байта, общий исторический лимит200000. Production marketplace сохранил before hash b53a884ab31ebffe41406f93f14f4f43250c587110d537b1bc641059840d4da4, health ok.
+
+Scope: только лимит api/marketplace.py внутри строго11-файлового release-пакета повышается до300000 байт. Остальные лимиты200000, allowlist, exact SHA256, backup, restart, каталог и БД сохраняются. Checks: реальный архив того же исходника, регрессии248074/300001/чужой большой файл/неверный hash, все writer tests и обязательный CI. Rollback: отменить запуск до приёмки; при runtime-ошибке действует прежний code-only rollback из этого журнала. Приложение и payload не меняются.

@@ -86,6 +86,36 @@ def test_accepts_only_bounded_release_archive(release, tmp_path):
     assert not {'main.py', 'api/chat.py', 'services/carrier_directory.py'} & module.RELEASE_FILES
 
 
+@pytest.mark.parametrize('name,size,error', [
+    ('api/marketplace.py', 248074, None),
+    ('api/marketplace.py', 300001, 'invalid_overlay_member'),
+    ('api/external_freight.py', 200001, 'invalid_overlay_member'),
+])
+def test_reviewed_marketplace_size_does_not_expand_other_file_limits(release, tmp_path, name, size, error):
+    _, stage, _, _, manifest, _ = release
+    data = b'#' + b'x' * (size - 2) + b'\n'
+    (stage / name).write_bytes(data)
+    manifest['files'][name] = hashlib.sha256(data).hexdigest()
+    archive = tmp_path / 'release.tar.gz'
+    make_bundle(archive, stage, manifest)
+    if error:
+        with pytest.raises(ValueError, match=error):
+            module.unpack_verified(archive, tmp_path / 'verified')
+        assert not (tmp_path / 'verified').exists()
+    else:
+        module.unpack_verified(archive, tmp_path / 'verified')
+        assert (tmp_path / 'verified' / name).read_bytes() == data
+
+
+def test_large_marketplace_still_requires_exact_reviewed_hash(release, tmp_path):
+    _, stage, _, _, manifest, _ = release
+    (stage / 'api/marketplace.py').write_bytes(b'x' * 248074)
+    archive = tmp_path / 'release.tar.gz'
+    make_bundle(archive, stage, manifest)
+    with pytest.raises(ValueError, match='overlay_checksum_mismatch'):
+        module.unpack_verified(archive, tmp_path / 'verified')
+
+
 @pytest.mark.parametrize('extra', ['../outside.py', 'api/chat.py', '.env', 'main.patch'])
 def test_rejects_extra_members_before_extraction(release, tmp_path, extra):
     _, stage, _, _, manifest, _ = release
