@@ -57,6 +57,9 @@ jobs:
       - name: Регрессии замены production OpenAI ключа
         if: ${{ hashFiles('tests/ops/test_production_openai_key_rotation.py') != '' }}
         run: python -m pytest tests/ops/test_production_openai_key_rotation.py -q
+      - name: Регрессии production STT timeout
+        if: ${{ hashFiles('tests/ops/test_production_voice_timeout_sync.py') != '' }}
+        run: python -m pytest tests/ops/test_production_voice_timeout_sync.py -q
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
