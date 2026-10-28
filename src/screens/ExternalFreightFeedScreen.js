@@ -236,7 +236,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           && bookmarkRequestsRef.current.size === 0) {
         loadRef.current?.({ reset: true, background: true });
       }
-    }, 2000);
+    }, 60000);
     return () => clearInterval(timer);
   }, [navigation, modal]);
 
