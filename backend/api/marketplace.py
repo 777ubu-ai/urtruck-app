@@ -1819,6 +1819,18 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 
 # ═══ Bids ═══
 
+def _require_current_bid_route_date(value):
+    """Keep 30-day visibility separate from permission to arrange a trip."""
+    from services.bid_expiry import parse_market_date
+
+    route_date = parse_market_date(value)
+    if route_date is not None and route_date < datetime.utcnow().date():
+        raise HTTPException(
+            status_code=409,
+            detail="Дата погрузки или выезда прошла. Владелец должен обновить дату объявления",
+        )
+
+
 # Символы валют для человеко-читаемых строк (push/уведомления). Зеркало
 # фронтового CURRENCY_SYMBOLS (src/utils/normalizers.js) — чтобы пуш про ставку
 # показывал «420000 ₸», а не хардкод «$420000». Сумма ставки = валюта груза/рейса.
@@ -1965,7 +1977,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
         # M1: нельзя ставить на уже занятый/истёкший груз или рейс. Пустой/
         # None status (legacy-строки) не блокируем — только явный не-active.
         if body.cargo_id:
-            cg = c.execute("SELECT status, owner_id FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            cg = c.execute("SELECT status, owner_id, pickup_date FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if cg and cg["status"] and cg["status"] != "active":
                 raise HTTPException(status_code=409, detail="Груз больше не доступен для ставок")
             # Предрелизный аудит 28.08.2026 (P1): ставка на СОБСТВЕННЫЙ груз
@@ -1978,8 +1990,10 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "error": "self_bid_forbidden",
                     "message": "Нельзя ставить на собственный груз",
                 })
+            if cg:
+                _require_current_bid_route_date(cg["pickup_date"])
         if body.trip_id:
-            tr = c.execute("SELECT status, driver_id FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            tr = c.execute("SELECT status, driver_id, departure FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if tr and tr["status"] and tr["status"] != "active":
                 raise HTTPException(status_code=409, detail="Рейс больше не доступен для ставок")
             # Симметрично: водитель не может ставить на собственный рейс.
@@ -1988,6 +2002,8 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "error": "self_bid_forbidden",
                     "message": "Нельзя ставить на собственный рейс",
                 })
+            if tr:
+                _require_current_bid_route_date(tr["departure"])
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
         # Возвращаем id/сумму/сообщение старой ставки в теле 409 — фронт
@@ -2762,10 +2778,11 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["cargo_id"]:
         cargo = c.execute(
-            "SELECT owner_id, from_city, to_city FROM cargos WHERE id = ?", (bid["cargo_id"],)
+            "SELECT owner_id, from_city, to_city, pickup_date FROM cargos WHERE id = ?", (bid["cargo_id"],)
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
+        _require_current_bid_route_date(cargo["pickup_date"])
         # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
         # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
         # rollback транзакции при его провале) в итоге откатит и эту запись
@@ -2789,7 +2806,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT driver_id, from_city, to_city, vehicle_id FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT driver_id, from_city, to_city, vehicle_id, departure FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
@@ -2802,6 +2819,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         driver_id = trip["driver_id"]
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
+        _require_current_bid_route_date(trip["departure"])
         # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
         cur = c.execute(
             "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",
