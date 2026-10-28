@@ -91,7 +91,7 @@ def apply(run_id, source_sha):
         before = rotation.processes()
         runtime.runtime_identity(allow_feed_env=True)
         old_timeout = before[NAME]['pm2_env']['env'].get(SETTING)
-        if old_timeout not in (None, VALUE):
+        if old_timeout not in (None, '', VALUE):
             raise ValueError('unexpected_scheduler_timeout')
         code = rotation.source_hashes()
         env_hash = runtime.digest(runtime.ROOT / '.env')

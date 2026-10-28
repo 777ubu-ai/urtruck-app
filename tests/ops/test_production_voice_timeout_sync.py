@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts/ops'))
 sync = importlib.import_module('production_voice_timeout_sync')
 REAL_RUN = sync.subprocess.run
+REAL_VERIFY = sync.verify
 
 
 @pytest.fixture
@@ -65,6 +66,16 @@ def test_failed_verification_restores_dumps_and_semantic_absence(configured, mon
     assert all(p.read_bytes()==b for p,b in configured['files'].items())
 
 
+def test_retry_after_verified_rollback_repairs_semantic_empty_setting(configured, monkeypatch):
+    monkeypatch.setattr(sync,'verify',Mock(side_effect=ValueError('temporary_health_failure')))
+    with pytest.raises(ValueError,match='timeout_sync_failed_rollback_verified'):
+        sync.apply('123','a'*40)
+    monkeypatch.setattr(sync,'verify',REAL_VERIFY)
+    result=sync.apply('124','a'*40)
+    assert result['scheduler_effective_timeout_verified']
+    assert configured['rows'][sync.NAME]['pm2_env']['env'][sync.SETTING]=='8'
+
+
 def test_foreign_timeout_preserved_after_first_rpc(configured,monkeypatch):
     def changed(before):
         configured['rows'][sync.NAME]['pm2_env']['env'][sync.SETTING]='5'
@@ -86,7 +97,7 @@ def test_foreign_other_setting_preserved_on_rollback(configured,monkeypatch):
     assert configured['rows'][sync.NAME]['pm2_env']['env']['OTHER']=='foreign'
 
 
-@pytest.mark.parametrize('value',['','120'])
+@pytest.mark.parametrize('value',['-1','120'])
 def test_unknown_live_override_blocks_before_write(configured,value):
     configured['rows'][sync.NAME]['pm2_env']['env'][sync.SETTING]=value
     with pytest.raises(ValueError,match='unexpected_scheduler_timeout'):
