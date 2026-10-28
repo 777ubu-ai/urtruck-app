@@ -10,6 +10,7 @@ SOURCE_HEAD = '4402b6ba42d9b1c4ffbc1b9fee4bf2abc220e13b'
 REPOSITORY = '777ubu-ai/urtruck-app'
 BRANCH = 'ops/public-store-preflight-20261028'
 ALLOWED = {
+    '.github/keys/device-qa-apk-encryption.pub',
     '.github/workflows/testflight-local.yml', '.github/workflows/deploy-play.yml',
     'scripts/ops/inspect_play_store.py', 'scripts/ops/verify_public_candidate_intent.py',
     'backend/tests/test_play_store_snapshot.py', 'backend/tests/test_public_candidate_intent.py',

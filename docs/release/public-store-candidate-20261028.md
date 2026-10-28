@@ -8,5 +8,7 @@ Checks: неверная ветка/repo/event/SHA/PR/tree/CI отклоняют
 
 Rollback: отменить новый run/не продвигать артефакты; текущие магазинные версии остаются. Runtime rollback отдельного PR637 не заменяет БД. Повторные сборки существующего точного кандидата не создавать; проверять run/artifacts перед dispatch.
 
+До первой сборки обновлён только публичный RSA-ключ передачи APK: прежний приватный ключ на машине не найден. Новый приватный ключ сохранён локально в ~/.config/urtruck-release/apk-device-qa-20261028.pem с правами 0600; в Git попадает только публичная часть. HMAC и SHA-256 проверяются перед расшифровкой и установкой. Это не ключ подписи Android; магазинная подпись и package остаются прежними. Допуск guard расширен ровно на этот публичный файл.
+
 
 Локальные проверки:43 tests общего source/PR/CI/counter guard и Play snapshot PASS;42 существующих release/counter tests PASS; YAML/bash-n PASS. Новый production Android lane принимает только production/draft, build_installable_apk=true, submit_to_play=false и feed=true; QA2 и старые lanes сохраняют ограничения. В новой ветке AAB и APK создаются за один запуск, versionCode native manifest и app.config сверяются. iOS проверяет privacy purpose/подпись/APNs/source/API/feed/version до сохранения артефакта; TestFlight upload выключен по умолчанию и не является App Review.
