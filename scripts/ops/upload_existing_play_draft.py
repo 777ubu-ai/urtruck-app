@@ -1,4 +1,4 @@
-"""Загрузка одного проверенного AAB в библиотеку; все releases остаются прежними."""
+"""Раздельные явные операции: сохранение AAB и отправка исправленного production-релиза."""
 import argparse
 import base64
 import hashlib
@@ -15,16 +15,17 @@ import urllib.request
 import zipfile
 
 PACKAGE = 'com.urtruck.app'
-VERSION = '215090229'
-SHA256 = '68a2fa53a4c5781cafdf5a38ea9157bd9d2fcedae0de12535f06ebd9f7f68a09'
-SOURCE = 'a25622c2987c6adec17fd35a8182947ecb0535a7'
+VERSION = '215090230'
+SHA256 = '2b77d67f7dff25815994af7df792f5695147dc9fa952ca2497991b4418b30a83'
+SOURCE = '23716b734d358383902bdb8ef3ddd63122bd4b42'
+APP_SOURCE = '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca'
 API = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' + PACKAGE
 UPLOAD = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/' + PACKAGE
 
 
 def verify(root):
     metadata = json.loads((root / 'aab-run.json').read_text())
-    required = {'id': 40731167085, 'head_sha': SOURCE, 'status': 'completed',
+    required = {'id': 40776684461, 'head_sha': SOURCE, 'status': 'completed',
                 'conclusion': 'success', 'event': 'workflow_dispatch',
                 'path': '.github/workflows/deploy-play.yml'}
     if (any(metadata.get(key) != value for key, value in required.items())
@@ -33,7 +34,7 @@ def verify(root):
     with zipfile.ZipFile(root / 'aab.zip') as archive:
         entries = archive.infolist()
         if (len(entries) != 1 or Path(entries[0].filename).name != 'app-release.aab'
-                or entries[0].file_size != 145331173):
+                or entries[0].file_size != 145333018):
             raise ValueError('unexpected_artifact_contents')
         data = archive.read(entries[0])
     if hashlib.sha256(data).hexdigest() != SHA256:
@@ -162,9 +163,80 @@ def upload(data, call):
             'review_submitted_by_this_operation': False, 'published_by_this_operation': False}
 
 
+def all_tracks(call, base):
+    rows = call(base + '/tracks').get('tracks', [])
+    tracks = {row['track']: row for row in rows}
+    if len(tracks) != len(rows) or 'production' not in tracks:
+        raise ValueError('unexpected_tracks_snapshot')
+    return tracks
+
+
+def submit_production(data, call):
+    """Явная отправка одного исправленного бинарника в основной магазин."""
+    if int(VERSION) <= 215090229:
+        raise ValueError('registration_fix_binary_required')
+    edit = call(API + '/edits', 'POST', {})['id']
+    base = API + '/edits/' + urllib.parse.quote(edit, safe='')
+    original = all_tracks(call, base)
+    bundles = call(base + '/bundles').get('bundles', [])
+    matching = [item for item in bundles if str(item.get('versionCode')) == VERSION]
+    if matching and (len(matching) != 1 or matching[0].get('sha256', '').lower() != SHA256):
+        raise ValueError('existing_version_checksum_mismatch')
+    release = {'name': '1.0.13', 'status': 'completed', 'versionCodes': [VERSION],
+               'releaseNotes': [{'language': 'ru-RU', 'text': 'Улучшены ленты, счётчики и каталог перевозчиков. Исправлены регистрация, сохранение роли и смена аккаунта. Повышена стабильность чата и перевода.'}]}
+    desired = {'track': 'production', 'releases': [release]}
+    for name, track in original.items():
+        for item in track.get('releases', []):
+            codes = [str(code) for code in item.get('versionCodes', [])]
+            if item.get('status') != 'completed':
+                raise ValueError('unfinished_existing_release')
+            if name != 'production' and VERSION in codes:
+                raise ValueError('candidate_assigned_to_another_track')
+    existing = original['production'].get('releases', [])
+    already = (len(existing) == 1 and existing[0].get('status') == 'completed'
+               and existing[0].get('name') == '1.0.13'
+               and [str(code) for code in existing[0].get('versionCodes', [])] == [VERSION])
+    if already:
+        if not matching:
+            raise ValueError('assigned_bundle_missing')
+        return {'status': 'PRODUCTION_ASSIGNMENT_ALREADY_PRESENT', 'versionCode': VERSION,
+                'sha256': SHA256, 'review_requested_by_this_operation': False,
+                'public_availability_confirmed': False}
+    if any(int(code) >= int(VERSION) for item in existing for code in item.get('versionCodes', [])):
+        raise ValueError('production_version_conflict')
+    if not matching:
+        result = call(UPLOAD + '/edits/' + urllib.parse.quote(edit, safe='') + '/bundles?uploadType=media', 'POST', data)
+        if str(result.get('versionCode')) != VERSION or result.get('sha256', '').lower() != SHA256:
+            raise ValueError('uploaded_bundle_identity_mismatch')
+    if all_tracks(call, base) != original:
+        raise ValueError('tracks_changed_before_assignment')
+    call(base + '/tracks/production', 'PUT', desired)
+    expected = {**original, 'production': desired}
+    if all_tracks(call, base) != expected:
+        raise ValueError('tracks_changed_before_commit')
+    call(base + ':validate', 'POST')
+    commit_state = 'COMMIT_CONFIRMED'
+    try:
+        call(base + ':commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW', 'POST')
+    except (urllib.error.URLError, TimeoutError):
+        commit_state = 'RESPONSE_LOST_READBACK_CONFIRMED'
+    readback_id = call(API + '/edits', 'POST', {})['id']
+    readback = API + '/edits/' + urllib.parse.quote(readback_id, safe='')
+    saved = [item for item in call(readback + '/bundles').get('bundles', [])
+             if str(item.get('versionCode')) == VERSION]
+    if len(saved) != 1 or saved[0].get('sha256', '').lower() != SHA256:
+        raise ValueError('production_bundle_readback_mismatch')
+    if all_tracks(call, readback) != expected:
+        raise ValueError('production_tracks_readback_mismatch')
+    return {'status': 'PRODUCTION_RELEASE_SUBMITTED', 'package': PACKAGE, 'versionCode': VERSION,
+            'sha256': SHA256, 'source_sha': SOURCE, 'app_source_sha': APP_SOURCE, 'edit_id': edit, 'commit_state': commit_state,
+            'production_status': 'completed', 'other_tracks_unchanged': True,
+            'review_requested_by_this_operation': True, 'public_availability_confirmed': False}
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('operation', choices=['verify', 'upload'])
+    parser.add_argument('operation', choices=['verify', 'upload', 'submit-production'])
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
     data = verify(args.root)
@@ -177,7 +249,8 @@ def main():
         body = payload if raw or payload is None else json.dumps(payload).encode()
         return request_json(url, method, body, {'Authorization': 'Bearer ' + token,
                             'Content-Type': 'application/octet-stream' if raw else 'application/json'})
-    print(json.dumps(upload(data, call)))
+    operation = submit_production if args.operation == 'submit-production' else upload
+    print(json.dumps(operation(data, call)))
 
 
 if __name__ == '__main__':

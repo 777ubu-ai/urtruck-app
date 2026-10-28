@@ -36,8 +36,8 @@ jobs:
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF" = refs/heads/main
-          gh api repos/777ubu-ai/urtruck-app/actions/runs/40731167085 > "$RUNNER_TEMP/aab-run.json"
-          gh api repos/777ubu-ai/urtruck-app/actions/artifacts/12836194179/zip > "$RUNNER_TEMP/aab.zip"
+          gh api repos/777ubu-ai/urtruck-app/actions/runs/40776684461 > "$RUNNER_TEMP/aab-run.json"
+          gh api repos/777ubu-ai/urtruck-app/actions/artifacts/12857270270/zip > "$RUNNER_TEMP/aab.zip"
           python3 scripts/ops/upload_existing_play_draft.py verify --root "$RUNNER_TEMP"
       - name: Save bundle in library without changing tracks
         env:
