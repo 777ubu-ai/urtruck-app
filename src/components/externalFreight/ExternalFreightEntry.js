@@ -58,7 +58,7 @@ export default function ExternalFreightEntry(props) {
     const removeFocus = navigation.addListener('focus', refresh);
     const removeBlur = navigation.addListener('blur', onBlur);
     const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
-    const interval = setInterval(refresh, 2000);
+    const interval = setInterval(refresh, 60000);
     refresh();
     return () => { alive = false; cancel(); clearInterval(interval); removeFocus(); removeBlur(); appListener.remove(); };
   }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);

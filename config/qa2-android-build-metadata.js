@@ -5,8 +5,8 @@
  * installed directly on physical test devices and never submitted to Play.
  */
 // Изолированная внешняя лента: локальные компоненты и перевод отключён.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494476;
-const QA2_ANDROID_VERSION_CODE = 214494477;
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494477;
+const QA2_ANDROID_VERSION_CODE = 214494478;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {
