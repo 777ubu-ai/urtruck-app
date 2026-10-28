@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const babel = require('@babel/core');
 
-test('клиент считает только объявления, каталог и его курсор остаются доступны в выдаче', async () => {
+test('счётчик машин включает каталог перевозчиков, список продолжает постранично показывать те же контакты', async () => {
   const requests = [];
   const code = babel.transformSync(readFileSync('src/utils/externalFreightFeed.js', 'utf8'), {
     babelrc: false, configFile: false, plugins: [require('@babel/plugin-transform-modules-commonjs')],
@@ -29,7 +29,7 @@ test('клиент считает только объявления, катал�
   for (const request of requests) {
     assert.equal(request.options.headers.Authorization, 'Bearer synthetic-session');
   }
-  assert.equal(new URL(requests[0].url).searchParams.has('include_carriers'), false);
+  assert.equal(new URL(requests[0].url).searchParams.get('include_carriers'), 'true');
   assert.equal(new URL(requests[1].url).searchParams.get('include_carriers'), 'true');
   assert.equal(new URL(requests[1].url).searchParams.get('cursor'), 'carrier:30');
   assert.equal(new URL(requests[1].url).searchParams.get('limit'), '30');
