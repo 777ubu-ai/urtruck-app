@@ -14,16 +14,16 @@ import urllib.request
 import zipfile
 
 PACKAGE = 'com.urtruck.app'
-VERSION = '214924807'
-SHA256 = '599d2670a6f5ff813947f59e3beadbeb9d1336fa770ab930e09565dd000a411a'
-SOURCE = 'b3823476b631519155d553595a1d0e8c58151363'
+VERSION = '215090229'
+SHA256 = '68a2fa53a4c5781cafdf5a38ea9157bd9d2fcedae0de12535f06ebd9f7f68a09'
+SOURCE = 'a25622c2987c6adec17fd35a8182947ecb0535a7'
 API = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/' + PACKAGE
 UPLOAD = 'https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/' + PACKAGE
 
 
 def verify(root):
     metadata = json.loads((root / 'aab-run.json').read_text())
-    required = {'id': 39959276862, 'head_sha': SOURCE, 'status': 'completed',
+    required = {'id': 40731167085, 'head_sha': SOURCE, 'status': 'completed',
                 'conclusion': 'success', 'event': 'workflow_dispatch',
                 'path': '.github/workflows/deploy-play.yml'}
     if (any(metadata.get(key) != value for key, value in required.items())
@@ -32,7 +32,7 @@ def verify(root):
     with zipfile.ZipFile(root / 'aab.zip') as archive:
         entries = archive.infolist()
         if (len(entries) != 1 or Path(entries[0].filename).name != 'app-release.aab'
-                or entries[0].file_size != 145323685):
+                or entries[0].file_size != 145331173):
             raise ValueError('unexpected_artifact_contents')
         data = archive.read(entries[0])
     if hashlib.sha256(data).hexdigest() != SHA256:
