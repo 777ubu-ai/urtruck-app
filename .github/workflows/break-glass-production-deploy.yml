@@ -144,9 +144,34 @@ jobs:
   application-quality-gate:
     needs: [guard]
     if: ${{ inputs.deploy_scope == 'external_feed_overlay' && needs.guard.outputs.app_source != '' }}
-    uses: 777ubu-ai/urtruck-app/.github/workflows/quality-gate-reusable.yml@main
-    with:
-      source_ref: ${{ needs.guard.outputs.app_source }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - name: Сверить полный CI и дерево точного проверенного исходника
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_SOURCE: ${{ needs.guard.outputs.app_source }}
+        run: |
+          set -euo pipefail
+          test "$APP_SOURCE" = 88e349531a3cc8777b95e09b65fb6ebfb8dc29cc
+          source_head=4402b6ba42d9b1c4ffbc1b9fee4bf2abc220e13b
+          source_pr="$(gh api repos/777ubu-ai/urtruck-app/pulls/635)"
+          test "$(jq -r '.merged' <<<"$source_pr")" = true
+          test "$(jq -r '.merge_commit_sha' <<<"$source_pr")" = "$APP_SOURCE"
+          test "$(jq -r '.head.sha' <<<"$source_pr")" = "$source_head"
+          test "$(jq -r '.base.ref' <<<"$source_pr")" = qa2/integration-candidate
+          merge_tree="$(gh api "repos/777ubu-ai/urtruck-app/commits/$APP_SOURCE" --jq .commit.tree.sha)"
+          head_tree="$(gh api "repos/777ubu-ai/urtruck-app/commits/$source_head" --jq .commit.tree.sha)"
+          test "$merge_tree" = "$head_tree"
+          checks="$(gh api "repos/777ubu-ai/urtruck-app/commits/$source_head/check-runs?per_page=100")"
+          for name in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
+            result="$(jq -r --arg name "$name" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$checks")"
+            test "$result" = success
+          done
+          echo 'APP_SOURCE_TREE_AND_FULL_CI=PASS'
 
   deploy:
     needs: [guard, overlay-quality-gate, application-quality-gate]

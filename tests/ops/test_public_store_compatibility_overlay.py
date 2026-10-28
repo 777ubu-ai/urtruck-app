@@ -3,12 +3,15 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
+import subprocess
 import tarfile
 
 import pytest
+import yaml
 
 SCRIPT = Path(__file__).resolve().parents[2] / 'scripts/ops/external_feed_production_overlay.py'
 spec = importlib.util.spec_from_file_location('public_store_overlay', SCRIPT)
@@ -186,3 +189,45 @@ def test_rejects_other_source_or_data_replacement(release, key, value):
     manifest[key] = value
     with pytest.raises(ValueError, match='invalid_release_compatibility_manifest'):
         module.release_manifest(manifest)
+
+
+@pytest.mark.parametrize('scenario', ['valid', 'wrong_source', 'unmerged', 'wrong_tree', 'failed_latest_check', 'missing_check'])
+def test_source_ci_gate_executes_its_real_shell_and_fails_closed(tmp_path, scenario):
+    root = SCRIPT.parents[2]
+    document = yaml.safe_load((root / '.github/workflows/break-glass-production-deploy.yml').read_text())
+    job = document['jobs']['application-quality-gate']
+    assert job['permissions'] == {'contents': 'read', 'checks': 'read', 'pull-requests': 'read'}
+    script = job['steps'][0]['run']
+    names = ['quality-gate / Backend tests', 'quality-gate / Frontend tests, lint, and build',
+             'quality-gate / Mandatory web E2E subset']
+    values = {'source': {'merged': scenario != 'unmerged', 'merge_commit_sha': module.RELEASE_SOURCE,
+                         'head': {'sha': '4402b6ba42d9b1c4ffbc1b9fee4bf2abc220e13b'},
+                         'base': {'ref': 'qa2/integration-candidate'}},
+              'checks': {'check_runs': [{'id': i + 1, 'name': name, 'conclusion': 'success'} for i, name in enumerate(names)]},
+              'wrong_tree': scenario == 'wrong_tree'}
+    if scenario == 'failed_latest_check':
+        values['checks']['check_runs'].append({'id': 99, 'name': names[0], 'conclusion': 'failure'})
+    if scenario == 'missing_check':
+        values['checks']['check_runs'].pop()
+    fixtures = tmp_path / 'fixtures.json'
+    fixtures.write_text(json.dumps(values))
+    binary = tmp_path / 'gh'
+    binary.write_text('''#!/usr/bin/env python3
+import json,os,sys
+from pathlib import Path
+v=json.loads(Path(os.environ['FAKE_FIXTURES']).read_text())
+with open(os.environ['FAKE_CALLS'],'a') as out:out.write('called\\n')
+path=sys.argv[2]
+if '/pulls/' in path:print(json.dumps(v['source']))
+elif 'check-runs' in path:print(json.dumps(v['checks']))
+else:print('a'*40 if not v['wrong_tree'] or path.endswith(''' + repr(module.RELEASE_SOURCE) + ''') else 'b'*40)
+''')
+    binary.chmod(0o755)
+    calls = tmp_path / 'calls'
+    result = subprocess.run(['bash', '-c', script], capture_output=True, text=True,
+                            env={**os.environ, 'PATH': str(tmp_path) + os.pathsep + os.environ['PATH'],
+                                 'APP_SOURCE': 'b' * 40 if scenario == 'wrong_source' else module.RELEASE_SOURCE,
+                                 'FAKE_FIXTURES': str(fixtures), 'FAKE_CALLS': str(calls)})
+    assert (result.returncode == 0) == (scenario == 'valid'), result.stderr
+    if scenario == 'wrong_source':
+        assert not calls.exists()
