@@ -163,7 +163,7 @@ def test_commit_loss_uses_readback_without_reupload_or_second_commit(failure):
                                          ('status', 'in_progress'), ('conclusion', 'failure'),
                                          ('path', '.github/workflows/other.yml'), ('repository', {})])
 def test_untrusted_run_refused_before_artifact_or_credential_access(tmp_path, field, value):
-    metadata = {'id': 40731167085, 'head_sha': module.SOURCE, 'event': 'workflow_dispatch',
+    metadata = {'id': 40776684461, 'head_sha': module.SOURCE, 'event': 'workflow_dispatch',
                 'status': 'completed', 'conclusion': 'success', 'path': '.github/workflows/deploy-play.yml',
                 'repository': {'full_name': '777ubu-ai/urtruck-app'}}
     metadata[field] = value
@@ -189,13 +189,13 @@ def test_workflow_secrets_only_upload_step_and_no_build_or_dependency_execution(
 
 @pytest.mark.parametrize('failure', [None, 'checksum', 'extra', 'size', 'filename'])
 def test_zip_metadata_and_actual_bytes_are_verified(tmp_path, monkeypatch, failure):
-    metadata = {'id': 40731167085, 'head_sha': module.SOURCE, 'event': 'workflow_dispatch',
+    metadata = {'id': 40776684461, 'head_sha': module.SOURCE, 'event': 'workflow_dispatch',
                 'status': 'completed', 'conclusion': 'success', 'path': '.github/workflows/deploy-play.yml',
                 'repository': {'full_name': '777ubu-ai/urtruck-app'}}
     (tmp_path / 'aab-run.json').write_text(json.dumps(metadata))
     data = b'synthetic-aab-content'
     monkeypatch.setattr(module, 'SHA256', hashlib.sha256(data).hexdigest())
-    entry = SimpleNamespace(filename='app-release.aab', file_size=145331173)
+    entry = SimpleNamespace(filename='app-release.aab', file_size=145333018)
     if failure == 'size':
         entry.file_size = 1
     if failure == 'filename':
