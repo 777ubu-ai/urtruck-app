@@ -219,9 +219,9 @@ jobs:
             test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
             python3 scripts/ops/verify_public_candidate_intent.py --platform android --verified-counter "$VERIFIED_PLAY_MAX_CODE"
             python3 scripts/prepare_store_candidate_version.py --platform android \
-              --version 1.0.13 --source-sha 88e349531a3cc8777b95e09b65fb6ebfb8dc29cc
+              --version 1.0.13 --source-sha 6aa6badf3ddfd8d124268c8cecf7c5e202c0baca
             echo "URTRUCK_VERSION_NAME=1.0.13" >> "$GITHUB_ENV"
-            echo "URTRUCK_SOURCE_SHA=88e349531a3cc8777b95e09b65fb6ebfb8dc29cc" >> "$GITHUB_ENV"
+            echo "URTRUCK_SOURCE_SHA=6aa6badf3ddfd8d124268c8cecf7c5e202c0baca" >> "$GITHUB_ENV"
             echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
             echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
@@ -342,6 +342,9 @@ jobs:
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
             version_code=$((installed_version_code + 1))
+            if [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ] && [ "$version_code" -le 215090229 ]; then
+              version_code=215090230
+            fi
           fi
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
@@ -437,7 +440,7 @@ jobs:
           const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
           const productionCandidate = process.env.GITHUB_REF_NAME === 'ops/public-store-preflight-20261028';
           const expectedVersion = productionCandidate ? '1.0.13' : '1.0.12';
-          const expectedSource = productionCandidate ? '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc' : process.env.GITHUB_SHA;
+          const expectedSource = productionCandidate ? '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca' : process.env.GITHUB_SHA;
           if (config.version !== expectedVersion || config.extra?.urtruckExternalFreightFeedEnabled !== true
               || config.extra?.urtruckSourceSha !== expectedSource) throw new Error('Candidate version/source/feed identity mismatch');
           if (productionCandidate && config.android?.versionCode !== Number(process.env.URTRUCK_VERSION_CODE)) throw new Error('Embedded AAB versionCode mismatch');
@@ -498,7 +501,7 @@ jobs:
             node - "$embedded_config" <<'NODEIDENTITY'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (config.version !== '1.0.13' || config.extra?.urtruckSourceSha !== '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+          if (config.version !== '1.0.13' || config.extra?.urtruckSourceSha !== '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca'
               || config.extra?.urtruckExternalFreightFeedEnabled !== true
               || config.android?.versionCode !== Number(process.env.URTRUCK_VERSION_CODE)) throw new Error('Production APK source/version/feed mismatch');
           NODEIDENTITY

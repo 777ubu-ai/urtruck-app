@@ -5,8 +5,8 @@ import os
 import re
 import subprocess
 
-SOURCE = '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
-SOURCE_HEAD = '4402b6ba42d9b1c4ffbc1b9fee4bf2abc220e13b'
+SOURCE = '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca'
+SOURCE_HEAD = '6bb350e76f145c7865c9d0fe3efe68da3a6bb5ae'
 REPOSITORY = '777ubu-ai/urtruck-app'
 BRANCH = 'ops/public-store-preflight-20261028'
 ALLOWED = {
@@ -37,7 +37,7 @@ def verify_context(environment, platform, counter):
         raise ValueError('Неверный release SHA')
     if not re.fullmatch('[1-9][0-9]{0,9}', counter):
         raise ValueError('Неверный проверенный магазинный номер')
-    floor, ceiling = (121, 999999999) if platform == 'ios' else (215090228, 2099999999)
+    floor, ceiling = (122, 999999999) if platform == 'ios' else (215090228, 2099999999)
     if platform not in ('ios', 'android') or not floor <= int(counter) < ceiling:
         raise ValueError('Проверенный магазинный номер вне диапазона')
     return sha
@@ -56,13 +56,13 @@ def verify_git(sha, execute=command):
 
 
 def verify_reviews(sha, api):
-    source = api(f'repos/{REPOSITORY}/pulls/635')
+    source = api(f'repos/{REPOSITORY}/pulls/643')
     if (source.get('state') != 'closed' or source.get('merged') is not True
             or source.get('merge_commit_sha') != SOURCE
             or source.get('base', {}).get('ref') != 'qa2/integration-candidate'
             or source.get('head', {}).get('sha') != SOURCE_HEAD
             or source.get('head', {}).get('repo', {}).get('full_name') != REPOSITORY):
-        raise ValueError('Не подтверждён точный исходник PR635')
+        raise ValueError('Не подтверждён точный исходник PR643')
     release = api(f'repos/{REPOSITORY}/pulls/636')
     if (release.get('head', {}).get('sha') != sha
             or release.get('head', {}).get('ref') != BRANCH

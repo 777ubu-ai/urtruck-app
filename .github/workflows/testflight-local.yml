@@ -41,7 +41,7 @@ jobs:
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
       EXPO_PUBLIC_IS_BETA: 'false'
       URTRUCK_BUILD_FLAVOR: production
-      URTRUCK_SOURCE_SHA: 88e349531a3cc8777b95e09b65fb6ebfb8dc29cc
+      URTRUCK_SOURCE_SHA: 6aa6badf3ddfd8d124268c8cecf7c5e202c0baca
       URTRUCK_RELEASE_COMMIT_SHA: ${{ github.sha }}
       URTRUCK_VERSION_NAME: 1.0.13
       URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}
@@ -102,7 +102,7 @@ jobs:
           if (config.ios?.bundleIdentifier !== 'com.urtruck.app') fail('iOS bundle ID mismatch');
           if (config.extra?.urtruckApiUrl !== 'https://urtruck.kz') fail('Production API mismatch');
           if (config.extra?.urtruckBuildFlavor !== 'production') fail('Production build flavor mismatch');
-          if (config.extra?.urtruckSourceSha !== '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc') fail('Base source SHA mismatch');
+          if (config.extra?.urtruckSourceSha !== '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca') fail('Base source SHA mismatch');
           if (config.extra?.urtruckExternalFreightFeedEnabled !== true) fail('External freight feed is not enabled in the production config');
           console.log('Production Expo config identity: PASS');
           NODE
@@ -182,7 +182,7 @@ jobs:
           extra = config['extra']
           assert extra['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'
           assert extra['urtruckBuildFlavor'] == 'production'
-          assert extra['urtruckSourceSha'] == '88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+          assert extra['urtruckSourceSha'] == '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca'
           assert extra['urtruckExternalFreightFeedEnabled'] is True
           entitlements = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL))
           assert entitlements['aps-environment'] == 'production'
@@ -192,7 +192,7 @@ jobs:
           mapkit = os.environ['EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY'].encode()
           assert mapkit and any(mapkit in path.read_bytes() for path in app.rglob('*') if path.is_file()), 'MapKit key not embedded'
           manifest = dict(
-              baseSourceSHA='88e349531a3cc8777b95e09b65fb6ebfb8dc29cc',
+              baseSourceSHA='6aa6badf3ddfd8d124268c8cecf7c5e202c0baca',
               releaseConfigSHA=os.environ['URTRUCK_RELEASE_COMMIT_SHA'],
               bundleIdentifier=info['CFBundleIdentifier'], versionName='1.0.13',
               buildNumber=str(number), apiHost='urtruck.kz', flavor='production',

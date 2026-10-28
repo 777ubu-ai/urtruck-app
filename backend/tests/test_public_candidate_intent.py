@@ -13,7 +13,7 @@ CONTEXT = {'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_REPOSITORY': module
            'GITHUB_REF_NAME': module.BRANCH, 'GITHUB_SHA': SHA}
 
 
-@pytest.mark.parametrize('platform,counter', [('ios', '121'), ('ios', '125'), ('android', '215090228')])
+@pytest.mark.parametrize('platform,counter', [('ios', '122'), ('ios', '125'), ('android', '215090228')])
 def test_accepts_current_counter_in_exact_context(platform, counter):
     assert module.verify_context(CONTEXT, platform, counter) == SHA
 
@@ -22,10 +22,10 @@ def test_accepts_current_counter_in_exact_context(platform, counter):
                                       ('GITHUB_REF_NAME', 'qa2/integration-candidate'), ('GITHUB_SHA', 'bad')])
 def test_rejects_wrong_execution_context(key, value):
     with pytest.raises(ValueError):
-        module.verify_context({**CONTEXT, key: value}, 'ios', '121')
+        module.verify_context({**CONTEXT, key: value}, 'ios', '122')
 
 
-@pytest.mark.parametrize('platform,counter', [('ios', '120'), ('ios', '0121'), ('ios', '121;exit 0'),
+@pytest.mark.parametrize('platform,counter', [('ios', '121'), ('ios', '0121'), ('ios', '121;exit 0'),
                                            ('android', '214494478'), ('android', '215090227'),
                                            ('android', '2100000000'), ('android', '')])
 def test_rejects_old_qa2_invalid_or_exhausted_counter(platform, counter):
@@ -69,7 +69,7 @@ def records():
 
 
 def api(values):
-    return lambda path: copy.deepcopy(values['source'] if path.endswith('/635') else
+    return lambda path: copy.deepcopy(values['source'] if path.endswith('/643') else
                                       values['release'] if path.endswith('/636') else values['checks'])
 
 
@@ -108,7 +108,7 @@ def test_missing_required_check_is_rejected():
         module.verify_reviews(SHA, api(values))
 
 
-def test_production_android_counter_is_exact_maximum_plus_one(tmp_path):
+def test_production_android_counter_skips_previous_unfixed_candidate(tmp_path):
     text = (Path(__file__).resolve().parents[2] / '.github/workflows/deploy-play.yml').read_text()
     section = text.split('- name: Compute collision-resistant versionCode\n')[1]
     script = section.split('        run: |\n')[1].split('\n      - name:')[0]
@@ -118,7 +118,7 @@ def test_production_android_counter_is_exact_maximum_plus_one(tmp_path):
     result = subprocess.run(['bash', '-c', script], env={**os.environ, 'GITHUB_REF_NAME': module.BRANCH,
                               'VERIFIED_PLAY_MAX_CODE': '215090228', 'GITHUB_ENV': str(target)}, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert target.read_text().strip() == 'URTRUCK_VERSION_CODE=215090229'
+    assert target.read_text().strip() == 'URTRUCK_VERSION_CODE=215090230'
 
 
 @pytest.mark.parametrize('field,value', [('API_ENVIRONMENT_INPUT', 'qa2'), ('TRACK_INPUT', 'internal'),
