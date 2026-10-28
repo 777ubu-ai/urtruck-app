@@ -131,6 +131,41 @@ def same_processes(left, right):
                for n in NAMES)
 
 
+def same_identity(left, right):
+    return (left['pm_id'] == right['pm_id'] and left['name'] == right['name']
+            and stable_process(left)['launch'] == stable_process(right)['launch'])
+
+
+def pm2_restart_key(identity, key):
+    # RPC установленного PM2 сливает только переданный env; CLI --update-env
+    # передаёт всё окружение вызывающей команды и может затереть чужие настройки.
+    script = """
+const pm2 = require('/home/ubuntu/.nvm/versions/node/v22.15.0/lib/node_modules/pm2');
+let input = '';
+process.on('uncaughtException', () => process.exit(1));
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', part => { input += part; });
+process.stdin.on('end', () => {
+  const value = JSON.parse(input);
+  pm2.connect(error => {
+    if (error) return process.exit(1);
+    pm2.Client.executeRemote('restartProcessId', {
+      id: value.id, env: { OPENAI_API_KEY: value.key }
+    }, error => {
+      if (!error) pm2.Client.notifyGod('restart', value.id);
+      pm2.disconnect();
+      process.exitCode = error ? 1 : 0;
+    });
+  });
+});
+"""
+    subprocess.run(['/usr/bin/node', '-e', script],
+                   input=json.dumps({'id': identity, 'key': key}),
+                   env={'HOME': '/home/ubuntu', 'PM2_HOME': '/home/ubuntu/.pm2',
+                        'PATH': '/usr/bin:/bin'},
+                   check=True, text=True, capture_output=True, timeout=40)
+
+
 def verify_processes(before, key, restarted):
     current = processes()
     for name in NAMES:
@@ -148,8 +183,10 @@ def verify_processes(before, key, restarted):
 
 def restart(before, keys):
     for name in NAMES:
-        env = {**before[name]['pm2_env']['env'], KEY: keys[name]}
-        pm2(['restart', str(before[name]['pm_id']), '--update-env'], env)
+        current = processes()[name]
+        if stable_process(current) != stable_process(before[name]):
+            raise ValueError('process_changed_before_restart')
+        pm2_restart_key(before[name]['pm_id'], keys[name])
     for _ in range(30):
         try:
             env, _ = runtime.runtime_identity(allow_feed_env=True)
@@ -223,10 +260,13 @@ def apply(key, run_id, source_sha):
             if attempted_restart:
                 try:
                     old_keys = {n: before[n]['pm2_env']['env'][KEY] for n in NAMES}
-                    restart(before, old_keys)
+                    rollback_baseline = processes()
+                    if not all(same_identity(rollback_baseline[n], before[n]) for n in NAMES):
+                        raise ValueError('process_identity_changed_before_rollback')
+                    restart(rollback_baseline, old_keys)
                     current = processes()
                     for name in NAMES:
-                        if (stable_process(current[name]) != stable_process(before[name])
+                        if (stable_process(current[name]) != stable_process(rollback_baseline[name])
                                 or current[name]['pm2_env']['env'][KEY] != old_keys[name]):
                             rollback_ok = False
                 except BaseException:

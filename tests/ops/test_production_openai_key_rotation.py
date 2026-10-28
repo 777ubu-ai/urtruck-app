@@ -2,7 +2,6 @@
 import copy
 import importlib
 import json
-import os
 from pathlib import Path
 import sys
 from unittest.mock import Mock
@@ -12,6 +11,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts/ops'))
 rotation = importlib.import_module('production_openai_key_rotation')
+REAL_RESTART = rotation.restart
+REAL_SUBPROCESS_RUN = rotation.subprocess.run
 OLD = 'sk-' + 'o' * 40
 NEW = 'sk-' + 'n' * 40
 
@@ -162,6 +163,61 @@ def test_volatile_pm2_metrics_do_not_invalidate_same_process(context):
     assert rotation.same_processes(before, after)
     after[rotation.NAMES[0]]['pm2_env']['env']['OTHER'] = 'different'
     assert not rotation.same_processes(before, after)
+
+
+def test_real_restart_and_rollback_preserve_concurrent_foreign_env(context, monkeypatch):
+    rows = context['rows']
+    calls = []
+
+    def rpc(identity, key):
+        name = next(n for n in rotation.NAMES if rows[n]['pm_id'] == identity)
+        rows[name]['pm2_env']['env'][rotation.KEY] = key
+        rows[name]['pm2_env'][rotation.KEY] = key
+        rows[name]['pid'] += 10
+        calls.append((name, key))
+        if len(calls) == 1:
+            rows[name]['pm2_env']['env']['OTHER'] = 'foreign-live-change'
+
+    def verify(before, key, restarted):
+        assert rows[rotation.NAMES[0]]['pm2_env']['env']['OTHER'] == 'foreign-live-change'
+        raise ValueError('process_configuration_not_preserved')
+
+    monkeypatch.setattr(rotation, 'restart', REAL_RESTART)
+    monkeypatch.setattr(rotation, 'pm2_restart_key', rpc)
+    monkeypatch.setattr(rotation, 'verify_processes', verify)
+    monkeypatch.setattr(rotation.runtime, 'status', lambda path: 200)
+    monkeypatch.setattr(rotation.runtime, 'runtime_identity',
+                        lambda **kwargs: ({rotation.KEY: rows[rotation.NAMES[0]]['pm2_env']['env'][rotation.KEY]}, None))
+    with pytest.raises(ValueError, match='rotation_failed_rollback_verified'):
+        rotation.apply(NEW, '123', 'a' * 40)
+    assert len(calls) == 4
+    assert rows[rotation.NAMES[0]]['pm2_env']['env']['OTHER'] == 'foreign-live-change'
+    assert all(rows[n]['pm2_env']['env'][rotation.KEY] == OLD for n in rotation.NAMES)
+
+
+def test_real_restart_refuses_foreign_launch_identity(context, monkeypatch):
+    before = copy.deepcopy(context['rows'])
+    context['rows'][rotation.NAMES[0]]['pm2_env']['pm_cwd'] = '/different'
+    rpc = Mock()
+    monkeypatch.setattr(rotation, 'pm2_restart_key', rpc)
+    with pytest.raises(ValueError, match='process_changed_before_restart'):
+        REAL_RESTART(before, {n: NEW for n in rotation.NAMES})
+    rpc.assert_not_called()
+
+
+def test_pm2_rpc_sends_only_key_and_keeps_secret_out_of_arguments(monkeypatch):
+    run = Mock()
+    monkeypatch.setattr(rotation.subprocess, 'run', run)
+    rotation.pm2_restart_key(3, NEW)
+    args, kwargs = run.call_args
+    assert NEW not in json.dumps(args)
+    assert NEW not in json.dumps(kwargs['env'])
+    assert json.loads(kwargs['input']) == {'id': 3, 'key': NEW}
+    script = args[0][2]
+    assert 'env: { OPENAI_API_KEY: value.key }' in script
+    assert 'process.env' not in script
+    # Проверяется настоящий JS, чтобы опечатка в RPC не попала на сервер.
+    REAL_SUBPROCESS_RUN(['node', '--check'], input=script, text=True, check=True, capture_output=True)
 
 
 def test_workflow_remains_protected_and_uses_existing_executor():
