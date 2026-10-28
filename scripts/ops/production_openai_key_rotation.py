@@ -184,7 +184,8 @@ def verify_processes(before, key, restarted):
 def restart(before, keys):
     for name in NAMES:
         current = processes()[name]
-        if stable_process(current) != stable_process(before[name]):
+        if (stable_process(current) != stable_process(before[name])
+                or current['pm2_env']['env'][KEY] != before[name]['pm2_env']['env'][KEY]):
             raise ValueError('process_changed_before_restart')
         pm2_restart_key(before[name]['pm_id'], keys[name])
     for _ in range(30):
@@ -263,6 +264,9 @@ def apply(key, run_id, source_sha):
                     rollback_baseline = processes()
                     if not all(same_identity(rollback_baseline[n], before[n]) for n in NAMES):
                         raise ValueError('process_identity_changed_before_rollback')
+                    if any(rollback_baseline[n]['pm2_env']['env'][KEY] not in (key, old_keys[n])
+                           for n in NAMES):
+                        raise ValueError('foreign_key_changed_before_rollback')
                     restart(rollback_baseline, old_keys)
                     current = processes()
                     for name in NAMES:

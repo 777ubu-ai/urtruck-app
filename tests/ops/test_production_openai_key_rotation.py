@@ -205,6 +205,45 @@ def test_real_restart_refuses_foreign_launch_identity(context, monkeypatch):
     rpc.assert_not_called()
 
 
+def test_real_restart_refuses_concurrent_third_key(context, monkeypatch):
+    before = copy.deepcopy(context['rows'])
+    context['rows'][rotation.NAMES[0]]['pm2_env']['env'][rotation.KEY] = 'sk-' + 'f' * 40
+    rpc = Mock()
+    monkeypatch.setattr(rotation, 'pm2_restart_key', rpc)
+    with pytest.raises(ValueError, match='process_changed_before_restart'):
+        REAL_RESTART(before, {n: NEW for n in rotation.NAMES})
+    rpc.assert_not_called()
+
+
+def test_real_rollback_preserves_foreign_third_key(context, monkeypatch):
+    rows = context['rows']
+    foreign = 'sk-' + 'f' * 40
+    calls = []
+
+    def rpc(identity, key):
+        name = next(n for n in rotation.NAMES if rows[n]['pm_id'] == identity)
+        rows[name]['pm2_env']['env'][rotation.KEY] = key
+        rows[name]['pm2_env'][rotation.KEY] = key
+        rows[name]['pid'] += 10
+        calls.append((name, key))
+        if len(calls) == 1:
+            rows[name]['pm2_env']['env'][rotation.KEY] = foreign
+            rows[name]['pm2_env'][rotation.KEY] = foreign
+
+    monkeypatch.setattr(rotation, 'restart', REAL_RESTART)
+    monkeypatch.setattr(rotation, 'pm2_restart_key', rpc)
+    # Реальная restart() останавливается после одной неуспешной health-проверки.
+    def identity(**kwargs):
+        if not calls:
+            return {}, None
+        raise RuntimeError('synthetic_health_failure')
+    monkeypatch.setattr(rotation.runtime, 'runtime_identity', identity)
+    with pytest.raises(ValueError, match='rotation_failed_rollback_failed'):
+        rotation.apply(NEW, '123', 'a' * 40)
+    assert len(calls) == 2
+    assert rows[rotation.NAMES[0]]['pm2_env']['env'][rotation.KEY] == foreign
+
+
 def test_pm2_rpc_sends_only_key_and_keeps_secret_out_of_arguments(monkeypatch):
     run = Mock()
     monkeypatch.setattr(rotation.subprocess, 'run', run)
