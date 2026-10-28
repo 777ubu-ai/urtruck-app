@@ -450,20 +450,43 @@ jobs:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
       - name: Проверить режим и собрать адресный пакет
+        id: payload-source
         run: |
           set -euo pipefail
           test "$(cat .production-deploy-mode)" = manual_external_feed_overlay
           python3 - <<'PY'
+          import json,os,pathlib
+          manifest=json.loads(pathlib.Path('ops/external-feed-production/manifest.json').read_text())
+          source=''
+          if manifest.get('compatibility_activation')=='reviewed-public-store-v1':
+              source=manifest['app_source']
+              assert source=='88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('app_source='+source+'\n')
+          PY
+      - name: Получить проверенный исходник приложения без исполнения его команд
+        if: ${{ steps.payload-source.outputs.app_source != '' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.payload-source.outputs.app_source }}
+          path: .release-source
+          persist-credentials: false
+      - name: Собрать пакет с проверкой каждого хеша
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
           import hashlib,json,os,pathlib,tarfile
           root=pathlib.Path('ops/external-feed-production')
           manifest=json.loads((root/'manifest.json').read_text())
+          compatibility=manifest.get('compatibility_activation')=='reviewed-public-store-v1'
+          source=pathlib.Path('.release-source/backend') if compatibility else pathlib.Path('backend')
           with tarfile.open(pathlib.Path(os.environ['RUNNER_TEMP'])/'external-feed.tar.gz','w:gz') as archive:
               for name, expected in manifest['files'].items():
                   if name=='main.py': continue
-                  path=pathlib.Path('backend')/name
+                  path=source/name
                   assert hashlib.sha256(path.read_bytes()).hexdigest()==expected, name
                   archive.add(path,arcname=name,recursive=False)
-              for name in ('main.patch','manifest.json'):
+              for name in (('manifest.json',) if compatibility else ('main.patch','manifest.json')):
                   archive.add(root/name,arcname=name,recursive=False)
           PY
       - name: Выполнить единственный узкий writer с backup и откатом

@@ -41,6 +41,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      app_source: ${{ steps.resolve.outputs.app_source }}
     steps:
       - name: Require typed confirmation
         # Hardening A final repair (2026-09-10), P0: `inputs.reason`/
@@ -93,6 +94,19 @@ jobs:
           DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
           SHA=$(git rev-parse HEAD)
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          APP_SOURCE=''
+          if [ "$DEPLOY_SCOPE" = external_feed_overlay ]; then
+            APP_SOURCE="$(python3 - <<'PY'
+          import json,pathlib
+          manifest=json.loads(pathlib.Path('ops/external-feed-production/manifest.json').read_text())
+          if manifest.get('compatibility_activation')=='reviewed-public-store-v1':
+              source=manifest['app_source']
+              assert source=='88e349531a3cc8777b95e09b65fb6ebfb8dc29cc'
+              print(source)
+          PY
+          )"
+          fi
+          echo "app_source=$APP_SOURCE" >> "$GITHUB_OUTPUT"
           # Defense in depth beyond the env:/$VAR fix above (which already
           # closes code-execution injection): a REASON_INPUT containing a
           # literal newline could still spoof a fake ::error::/::warning::
@@ -127,9 +141,41 @@ jobs:
     with:
       source_ref: ${{ needs.guard.outputs.sha }}
 
+  application-quality-gate:
+    needs: [guard]
+    if: ${{ inputs.deploy_scope == 'external_feed_overlay' && needs.guard.outputs.app_source != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - name: Сверить полный CI и дерево точного проверенного исходника
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_SOURCE: ${{ needs.guard.outputs.app_source }}
+        run: |
+          set -euo pipefail
+          test "$APP_SOURCE" = 88e349531a3cc8777b95e09b65fb6ebfb8dc29cc
+          source_head=4402b6ba42d9b1c4ffbc1b9fee4bf2abc220e13b
+          source_pr="$(gh api repos/777ubu-ai/urtruck-app/pulls/635)"
+          test "$(jq -r '.merged' <<<"$source_pr")" = true
+          test "$(jq -r '.merge_commit_sha' <<<"$source_pr")" = "$APP_SOURCE"
+          test "$(jq -r '.head.sha' <<<"$source_pr")" = "$source_head"
+          test "$(jq -r '.base.ref' <<<"$source_pr")" = qa2/integration-candidate
+          merge_tree="$(gh api "repos/777ubu-ai/urtruck-app/commits/$APP_SOURCE" --jq .commit.tree.sha)"
+          head_tree="$(gh api "repos/777ubu-ai/urtruck-app/commits/$source_head" --jq .commit.tree.sha)"
+          test "$merge_tree" = "$head_tree"
+          checks="$(gh api "repos/777ubu-ai/urtruck-app/commits/$source_head/check-runs?per_page=100")"
+          for name in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
+            result="$(jq -r --arg name "$name" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$checks")"
+            test "$result" = success
+          done
+          echo 'APP_SOURCE_TREE_AND_FULL_CI=PASS'
+
   deploy:
-    needs: [guard, overlay-quality-gate]
-    if: ${{ always() && needs.guard.result == 'success' && (inputs.deploy_scope == 'full' || needs.overlay-quality-gate.result == 'success') }}
+    needs: [guard, overlay-quality-gate, application-quality-gate]
+    if: ${{ always() && needs.guard.result == 'success' && (inputs.deploy_scope == 'full' || (needs.overlay-quality-gate.result == 'success' && (needs.guard.outputs.app_source == '' || needs.application-quality-gate.result == 'success'))) }}
     # Do not resolve this local reusable workflow from the ref chosen in the
     # Actions UI.  The immutable job definition must come from protected main.
     uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main

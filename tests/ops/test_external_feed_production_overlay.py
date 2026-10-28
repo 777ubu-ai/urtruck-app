@@ -608,14 +608,15 @@ def test_carrier_manifest_rejects_other_module_or_different_target_hash(carrier_
 
 def test_real_carrier_bundle_hashes_match_reviewed_repository(tmp_path):
     root = SCRIPT.parents[2]
-    manifest = json.loads((root / 'ops/external-feed-production/manifest.json').read_text())
+    manifest_path = root / 'ops/external-feed-production/carrier-v1-manifest.json'
+    manifest = json.loads(manifest_path.read_text())
     bundle = tmp_path / 'carrier.tar.gz'
     with tarfile.open(bundle, 'w:gz') as archive:
         for name in manifest['files']:
             if name != 'main.py':
                 archive.add(root / 'backend' / name, arcname=name, recursive=False)
-        for name in ['main.patch', 'manifest.json']:
-            archive.add(root / 'ops/external-feed-production' / name, arcname=name, recursive=False)
+        archive.add(root / 'ops/external-feed-production/main.patch', arcname='main.patch', recursive=False)
+        archive.add(manifest_path, arcname='manifest.json', recursive=False)
     result = module.unpack_verified(bundle, tmp_path / 'staged')
     assert module.carrier_manifest(result)
     assert result['files']['main.py'] == module.CARRIER_MAIN_SHA
