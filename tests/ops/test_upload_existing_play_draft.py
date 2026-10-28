@@ -15,6 +15,42 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+def test_google_rejection_keeps_reason_but_redacts_credentials(monkeypatch, capsys):
+    from io import BytesIO
+    token = 'synthetic-private-access-token'
+    key = 'sk-' + 'x' * 32
+    pem = '-----BEGIN PRIVATE KEY-----synthetic-private-material-----END PRIVATE KEY-----'
+    body = {'error': {'message': 'Upload rejected Bearer '+token+' '+key+' '+pem+' owner@example.com\n',
+                      'errors': [{'reason': 'badRequest'}]}}
+    error = module.urllib.error.HTTPError(module.UPLOAD+'/bundles',400,'bad',{},BytesIO(json.dumps(body).encode()))
+    def reject(*args, **kwargs): raise error
+    monkeypatch.setattr(module.urllib.request,'urlopen',reject)
+    with pytest.raises(RuntimeError,match='play_http_400'):
+        module.request_json(module.UPLOAD+'/bundles',headers={'Authorization':'Bearer '+token})
+    output = capsys.readouterr().out
+    assert not any(value in output for value in (token,key,'synthetic-private-material','owner@example.com'))
+    diagnostic=json.loads(output)
+    assert diagnostic['http_status']==400 and diagnostic['reason']=='badRequest'
+    assert diagnostic['stage']=='bundles' and 'Upload rejected' in diagnostic['message']
+
+
+def test_oauth_assertion_is_removed_from_provider_message():
+    from io import BytesIO
+    assertion='synthetic-assertion-private-value'
+    error=module.urllib.error.HTTPError('https://oauth2.googleapis.com/token',400,'bad',{},
+        BytesIO(json.dumps({'error':{'message':'Invalid '+assertion}}).encode()))
+    result=module.safe_provider_error(error,'https://oauth2.googleapis.com/token',{},
+        module.urllib.parse.urlencode({'assertion':assertion}).encode())
+    assert assertion not in json.dumps(result)
+
+
+def test_non_json_rejection_does_not_print_untrusted_body():
+    from io import BytesIO
+    error=module.urllib.error.HTTPError(module.API,400,'bad',{},BytesIO(b'private unstructured body'))
+    result=module.safe_provider_error(error,module.API,{},None)
+    assert result['message']=='' and 'private' not in json.dumps(result)
+
+
 class FakePlay:
     def __init__(self, *, existing=False, failure=None, empty_draft=False):
         self.failure, self.calls, self.edit, self.track_reads = failure, [], 0, 0
