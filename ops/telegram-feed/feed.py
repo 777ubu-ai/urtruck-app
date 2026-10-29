@@ -731,11 +731,17 @@ async def publish(reader, db, target):
         LOG.error("publication_uncertain id=%s type=%s; automatic publication halted",row['id'],type(exc).__name__)
 
 
+STALE_SEND_RECOVERY_SECONDS = 180
+
+
 async def reconcile(reader, db, target):
     rows = db.execute("SELECT * FROM queue WHERE status IN ('sending','uncertain')").fetchall()
     if not rows:
         return
-    messages = [m async for m in reader.iter_messages(target, limit=300)]
+    stale = any(row['published_at'] and time.time()-row['published_at'] >= STALE_SEND_RECOVERY_SECONDS
+                for row in rows)
+    history_limit = 1500 if stale else 300
+    messages = [m async for m in reader.iter_messages(target, limit=history_limit)]
     for row in rows:
         candidates = []
         for msg in messages:
@@ -749,6 +755,31 @@ async def reconcile(reader, db, target):
                 db.execute("UPDATE queue SET status='published',destination_message=?,reason=NULL WHERE id=?",(msg.id,row['id']))
                 db.execute("DELETE FROM prior WHERE message_id=?",(msg.id,))
             LOG.info("delivery_reconciled queue=%d message=%d",row['id'],msg.id)
+        elif candidates:
+            # A matching Telegram message proves delivery. Resolve the queue lock
+            # to the candidate nearest the original attempt and never forward it again.
+            msg = min(candidates, key=lambda candidate: abs(candidate.date.timestamp()-row['published_at']))
+            with db:
+                db.execute("UPDATE queue SET status='published',destination_message=?,reason=NULL WHERE id=?",
+                           (msg.id,row['id']))
+                db.execute("DELETE FROM prior WHERE message_id=?",(msg.id,))
+            LOG.warning("delivery_reconciled_multiple queue=%d matches=%d selected=%d",
+                        row['id'],len(candidates),msg.id)
+        elif row['published_at'] and time.time()-row['published_at'] >= STALE_SEND_RECOVERY_SECONDS:
+            # Retry only after the fetched destination history covers the attempt.
+            # Keep the same MTProto random_id to deduplicate a lost acknowledgement.
+            oldest = min((msg.date.timestamp() for msg in messages if msg.date), default=None)
+            history_covers_attempt = len(messages) < history_limit or (
+                oldest is not None and oldest <= row['published_at']-30)
+            if history_covers_attempt:
+                with db:
+                    db.execute("""UPDATE queue SET status='queued',destination_message=NULL,
+                      published_date=NULL,published_at=NULL,reason='recovered_absent_from_destination'
+                      WHERE id=? AND status IN ('sending','uncertain') AND published_at=?""",
+                      (row['id'],row['published_at']))
+                LOG.warning("delivery_retry_recovered queue=%d random_id_preserved=true",row['id'])
+            else:
+                LOG.error("delivery_requires_review queue=%d matches=0 history_coverage=insufficient",row['id'])
         else:
             LOG.error("delivery_requires_review queue=%d matches=%d; no resend",row['id'],len(candidates))
 

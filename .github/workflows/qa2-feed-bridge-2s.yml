@@ -60,16 +60,27 @@ jobs:
           fingerprint="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
           echo "PROD_VERSION_HASH_BEFORE=$fingerprint" >> "$GITHUB_ENV"
 
-      - name: Back up and set only the QA2 bridge interval
+      - name: Back up, deploy queue recovery, and start QA2 feeds
         shell: bash
         run: |
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_RUN_ID" <<'REMOTE'
+          feed_sha="$(sha256sum ops/telegram-feed/feed.py | awk '{print $1}')"
+          remote_feed="/tmp/urtruck-feed-recovery-$GITHUB_RUN_ID.py"
+          sshpass -e scp -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes \
+            ops/telegram-feed/feed.py "$SERVER_USER@$SERVER_HOST:$remote_feed"
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_RUN_ID" "$feed_sha" "$remote_feed" <<'REMOTE'
           set -euo pipefail
           run_id="$1"
+          feed_sha="$2"
+          staged_feed="$3"
           [[ "$run_id" =~ ^[0-9]+$ ]]
+          [[ "$feed_sha" =~ ^[a-f0-9]{64}$ ]]
+          test "$staged_feed" = "/tmp/urtruck-feed-recovery-$run_id.py"
           qa_root=/home/ubuntu/urtruck-qa2
+          collector_root=/home/ubuntu/urtruck-telegram-feed
+          collector_feed="$collector_root/feed.py"
           unit=/etc/systemd/system/urtruck-qa2-feed-bridge.timer
           dropin_dir=/etc/systemd/system/urtruck-qa2-feed-bridge.timer.d
           dropin="$dropin_dir/20-second-poll.conf"
@@ -79,14 +90,19 @@ jobs:
           state=/tmp/urtruck-qa2-feed-poll.state
           test -d "$qa_root" && test -f "$unit"
           test -f "$env_file"
-          test -f /home/ubuntu/urtruck-telegram-feed/feed.py
+          test -f "$collector_feed"
           test -f /home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3
+          test -f "$staged_feed"
+          test "$(sha256sum "$staged_feed" | awk '{print $1}')" = "$feed_sha"
+          python3 -m py_compile "$staged_feed"
           grep -q '^Unit=urtruck-qa2-feed-bridge.service$' "$unit"
           grep -q '^EnvironmentFile=/home/ubuntu/urtruck-qa2/external-feed-bridge.env$' /etc/systemd/system/urtruck-qa2-feed-bridge.service
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.service)" != active
           sudo -n install -d -o ubuntu -g ubuntu -m 0700 "$backup_dir"
+          sudo -n cp -p -- "$collector_feed" "$backup_dir/previous-feed.py"
+          sudo -n chmod 0600 "$backup_dir/previous-feed.py"
           sudo -n test "$(stat -c '%a' "$env_file")" = 600
           sudo -n test "$(stat -c '%U' "$env_file")" = ubuntu
           sudo -n grep -qx 'EXTERNAL_FREIGHT_API_URL=https://qa2.urtruck.kz' "$env_file"
@@ -142,8 +158,10 @@ jobs:
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
-          # Restart the long-running collector to clear a stale in-memory retry pause.
-          # Its startup reconciliation checks uncertain Telegram sends before resuming.
+          sudo -n install -o ubuntu -g ubuntu -m 0644 "$staged_feed" "$collector_feed"
+          test "$(sha256sum "$collector_feed" | awk '{print $1}')" = "$feed_sha"
+          python3 -m py_compile "$collector_feed"
+          # Reconcile uncertain Telegram sends on startup before resuming publication.
           sudo -n systemctl restart urtruck-telegram-feed.service
           test "$(systemctl is-active urtruck-telegram-feed.service)" = active
           sudo -n grep -qx 'OnUnitInactiveSec=2' "$dropin"
@@ -204,11 +222,12 @@ jobs:
           db.close()
           PY
           sudo -n journalctl -u urtruck-telegram-feed.service --since '-90 seconds' -n 60 --no-pager -o cat \
-            | grep -E 'delivery_requires_review|delivery_reconciled|publication_uncertain|telegram_destination_paused|worker_stopped' \
+            | grep -E 'delivery_requires_review|delivery_reconciled|delivery_retry_recovered|publication_uncertain|telegram_destination_paused|worker_stopped' \
             | tail -n 12 || true
           echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
           echo 'QA2_FEED_BRIDGE_ONESHOT=completed'
           echo 'QA2_TELEGRAM_COLLECTOR=active'
+          echo "QA2_TELEGRAM_FEED_SHA256=$feed_sha"
           REMOTE
 
       - name: Verify Production fingerprint unchanged
@@ -226,7 +245,7 @@ jobs:
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
           sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
-            'rm -f /tmp/urtruck-qa2-feed-poll.state'
+            "rm -f /tmp/urtruck-qa2-feed-poll.state /tmp/urtruck-feed-recovery-$GITHUB_RUN_ID.py"
 
       - name: Restore prior QA2 timer if configuration failed
         if: failure()
@@ -257,6 +276,9 @@ jobs:
           esac
           test -f "$BACKUP_DIR/previous.env" || { echo 'QA2_FEED_ENV_BACKUP_MISSING' >&2; exit 1; }
           sudo -n cp -p -- "$BACKUP_DIR/previous.env" /home/ubuntu/urtruck-qa2/external-feed-bridge.env
+          test -f "$BACKUP_DIR/previous-feed.py" || { echo 'QA2_FEED_COLLECTOR_BACKUP_MISSING' >&2; exit 1; }
+          sudo -n install -o ubuntu -g ubuntu -m 0644 "$BACKUP_DIR/previous-feed.py" /home/ubuntu/urtruck-telegram-feed/feed.py
+          sudo -n systemctl restart urtruck-telegram-feed.service
           sudo -n systemctl daemon-reload
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active

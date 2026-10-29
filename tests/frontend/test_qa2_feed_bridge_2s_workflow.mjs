@@ -41,4 +41,7 @@ test('workflow restarts the stuck Telegram publisher and verifies whether queue 
   assert.match(workflow, /telegram_publish_interval_seconds/);
   assert.match(workflow, /delivery_requires_review\|delivery_reconciled/);
   assert.match(workflow, /sleep 65/);
+  assert.match(workflow, /previous-feed\.py/);
+  assert.match(workflow, /QA2_TELEGRAM_FEED_SHA256/);
+  assert.match(workflow, /delivery_retry_recovered/);
 });
