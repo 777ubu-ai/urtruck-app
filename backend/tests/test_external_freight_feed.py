@@ -173,18 +173,18 @@ def test_adapter_keeps_long_unicode_source_post_with_segment(tmp_path):
     assert saved['source_text'] == record['source_text']
 
 
-def test_active_listing_expires_thirty_days_after_source_publication():
-    published = datetime.now(timezone.utc) - timedelta(days=29)
-    record = _record(source="thirty-day-ttl", published=published)
+def test_active_listing_expires_ten_days_after_source_publication():
+    published = datetime.now(timezone.utc) - timedelta(days=1)
+    record = _record(source="ten-day-ttl", published=published)
     response = _import(record)
     assert response.status_code == 200
     result = response.json()["results"][0]
     assert result["status"] == "active"
     with get_conn() as c:
         expires = datetime.fromisoformat(c.execute(
-            "SELECT expires_at FROM external_freight_items WHERE source_id='thirty-day-ttl'"
+            "SELECT expires_at FROM external_freight_items WHERE source_id='ten-day-ttl'"
         ).fetchone()[0])
-    assert expires == published + timedelta(days=30)
+    assert expires == published + timedelta(days=10)
 
 
 def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
@@ -197,9 +197,9 @@ def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
         assert normalized["status"] == status
 
 
-def test_replaying_old_card_uses_source_based_thirty_day_expiry():
-    published = datetime.now(timezone.utc) - timedelta(days=10)
-    record = _record(source="replay-thirty-day-ttl", published=published)
+def test_replaying_recent_card_uses_source_based_ten_day_expiry():
+    published = datetime.now(timezone.utc) - timedelta(days=3)
+    record = _record(source="replay-ten-day-ttl", published=published)
     with get_conn() as c:
         c.execute("INSERT INTO external_freight_items(id,source_id,source_message_id,segment_id,kind,source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,origin,destination,body_types,price_state,contacts,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             ("old-ttl", record["source_id"], record["source_message_id"], record["segment_id"], record["kind"], published.isoformat(), published.isoformat(), published.isoformat(), (published+timedelta(days=7)).isoformat(), record["original_text"], "old", record["origin"], record["destination"], "[]", "unknown", '["+7 777 000 00 00"]', "expired"))
@@ -208,11 +208,11 @@ def test_replaying_old_card_uses_source_based_thirty_day_expiry():
     assert response.json()["results"][0]["status"] == "active"
     with get_conn() as c:
         row = c.execute("SELECT expires_at FROM external_freight_items WHERE id='old-ttl'").fetchone()
-    assert datetime.fromisoformat(row[0]) == published + timedelta(days=30)
+    assert datetime.fromisoformat(row[0]) == published + timedelta(days=10)
 
 
-def test_schema_migration_extends_old_ttl_and_preserves_explicit_closures():
-    published = datetime.now(timezone.utc) - timedelta(days=10)
+def test_schema_migration_applies_ten_day_ttl_and_preserves_explicit_closures():
+    published = datetime.now(timezone.utc) - timedelta(days=3)
     ids = {}
     for status in ("active", "expired", "hidden", "closed", "review"):
         ids[status] = _import(_record(source=f"migration-{status}", published=published)).json()["results"][0]["id"]
@@ -230,12 +230,35 @@ def test_schema_migration_extends_old_ttl_and_preserves_explicit_closures():
             tuple(ids.values()),
         )}
     assert rows[ids["active"]]["status"] == "active"
-    assert datetime.fromisoformat(rows[ids["active"]]["expires_at"]) == published + timedelta(days=30)
+    assert datetime.fromisoformat(rows[ids["active"]]["expires_at"]) == published + timedelta(days=10)
     assert rows[ids["expired"]]["status"] == "active"
-    assert datetime.fromisoformat(rows[ids["expired"]]["expires_at"]) == published + timedelta(days=30)
+    assert datetime.fromisoformat(rows[ids["expired"]]["expires_at"]) == published + timedelta(days=10)
     assert rows[ids["hidden"]]["status"] == "hidden"
     assert rows[ids["closed"]]["status"] == "closed"
     assert rows[ids["review"]]["status"] == "review"
+
+
+def test_expired_external_item_is_physically_purged_and_replay_stays_purged():
+    record = _record(source="purge-after-ten-days", text="Нужен тент, груз готов")
+    item_id = _import(record).json()["results"][0]["id"]
+    old_publication = datetime.now(timezone.utc) - timedelta(days=11)
+    record["source_published_at"] = old_publication.isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET source_published_at=?,expires_at=?,status='expired' WHERE id=?",
+                  (old_publication.isoformat(), (old_publication + timedelta(days=10)).isoformat(), item_id))
+        c.execute("INSERT INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES('saved-driver',?,?)",
+                  (item_id, datetime.now(timezone.utc).isoformat()))
+    assert dal.purge_expired_items() == 1
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM external_freight_bookmarks WHERE item_id=?", (item_id,)).fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM external_freight_audit WHERE item_id=?", (item_id,)).fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM external_freight_expired_sources").fetchone()[0] == 1
+    replay = _import(record)
+    assert replay.status_code == 200
+    assert replay.json()["results"][0]["status"] == "expired"
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE source_id=?", (record["source_id"],)).fetchone()[0] == 0
 
 
 def test_import_requires_secret_and_user_is_read_only():

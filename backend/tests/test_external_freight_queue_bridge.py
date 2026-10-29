@@ -44,16 +44,17 @@ def add(bridge, ident=1, status="published", date=NOW, text=None, destination=No
              "[]", status, destination if destination is not None else ident))
 
 
-def test_only_published_and_fresh_without_source_mutation(bridge):
+def test_only_published_within_ten_day_window_without_source_mutation(bridge):
     worker, calls = bridge
     for i, status in enumerate(["published", "queued", "sending", "rejected", "uncertain"], 1):
         add(worker, i, status)
-    add(worker, 6, date=NOW - 168 * 3600 - 1)
+    add(worker, 6, date=NOW - 8 * 24 * 3600)
     add(worker, 7, date=NOW + 301)
+    add(worker, 8, date=NOW - 10 * 24 * 3600 - 1)
     before = hashlib.sha256(worker.source_path.read_bytes()).hexdigest()
     result = worker.run_once()
-    assert result["scanned"] == result["sent"] == 1
-    assert len(calls) == 1
+    assert result["scanned"] == result["sent"] == 2
+    assert len(calls) == 2
     assert hashlib.sha256(worker.source_path.read_bytes()).hexdigest() == before
 
 
