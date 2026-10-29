@@ -29,7 +29,7 @@ def test_full_original_repair_and_conditional_rollback(tmp_path, monkeypatch):
         entry = json.loads(journal.readline())
         assert rollback_original(db, entry)
         assert not rollback_original(db, entry)
-    assert dal.get_item(ident, owner_id='owner')['saved']
+    assert dal.list_items(kind='cargo', owner_id='owner', saved_only=True)['items'][0]['id'] == ident
 
 
 def test_changed_source_and_closed_card_are_not_overwritten():
