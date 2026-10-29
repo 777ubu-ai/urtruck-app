@@ -79,6 +79,8 @@ jobs:
           state=/tmp/urtruck-qa2-feed-poll.state
           test -d "$qa_root" && test -f "$unit"
           test -f "$env_file"
+          test -f /home/ubuntu/urtruck-telegram-feed/feed.py
+          test -f /home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3
           grep -q '^Unit=urtruck-qa2-feed-bridge.service$' "$unit"
           grep -q '^EnvironmentFile=/home/ubuntu/urtruck-qa2/external-feed-bridge.env$' /etc/systemd/system/urtruck-qa2-feed-bridge.service
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
@@ -140,6 +142,9 @@ jobs:
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
+          # Idempotent start recovers an inactive collector without interrupting a running one.
+          sudo -n systemctl start urtruck-telegram-feed.service
+          test "$(systemctl is-active urtruck-telegram-feed.service)" = active
           sudo -n grep -qx 'OnUnitInactiveSec=2' "$dropin"
           effective_timer="$(sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager)"
           sudo -n systemctl cat urtruck-qa2-feed-bridge.timer --no-pager
@@ -147,8 +152,26 @@ jobs:
           printf '%s\n' "$effective_timer" | grep -q 'OnUnitInactiveUSec=2s'
           sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
           sudo -n journalctl -u urtruck-qa2-feed-bridge.service --since '-3 minutes' -n 20 --no-pager -o cat
+          python3 - <<'PY'
+          import json, sqlite3, time
+          path='/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3'
+          db=sqlite3.connect('file:'+path+'?mode=ro',uri=True,timeout=3)
+          db.execute('PRAGMA query_only=ON')
+          tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          result={'intake_db_readable': True}
+          if 'app_messages' in tables:
+              now=time.time()
+              result['app_messages_last_10m']=db.execute('SELECT count(*) FROM app_messages WHERE received_at>=?',(now-600,)).fetchone()[0]
+              latest=db.execute('SELECT max(received_at) FROM app_messages').fetchone()[0]
+              result['latest_message_seconds_ago']=max(0,int(now-latest)) if latest is not None else None
+          if 'queue' in tables:
+              result['queue_by_status']={str(status):count for status,count in db.execute('SELECT status,count(*) FROM queue GROUP BY status')}
+          print('TELEGRAM_INTAKE='+json.dumps(result,sort_keys=True))
+          db.close()
+          PY
           echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
           echo 'QA2_FEED_BRIDGE_ONESHOT=completed'
+          echo 'QA2_TELEGRAM_COLLECTOR=active'
           REMOTE
 
       - name: Verify Production fingerprint unchanged
