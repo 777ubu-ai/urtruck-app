@@ -2934,6 +2934,22 @@ export default {
     "м": "m",
     "Осталось {_v0} д {_v1} ч": "{_v0} kun {_v1} soat qoldi",
     "Осталось {_v0} ч": "{_v0} soat qoldi",
-    "Осталось {_v0} мин": "{_v0} daqiqa qoldi"
+    "Осталось {_v0} мин": "{_v0} daqiqa qoldi",
+    "🤝 Сделка создана": "🤝 Bitim tuzildi",
+    "🚛 Рейс начался": "🚛 Reys boshlandi",
+    "🛂 На границе": "🛂 Chegarada",
+    "🛂 Груз на границе": "🛂 Yuk chegarada",
+    "✅ Доставлен — ожидается подтверждение получения": "✅ Yetkazib berildi — qabul qilinganini tasdiqlash kutilmoqda",
+    "✅ Груз доставлен": "✅ Yuk yetkazib berildi",
+    "✅ Груз доставлен — ожидается подтверждение получения": "✅ Yuk yetkazib berildi — qabul qilinganini tasdiqlash kutilmoqda",
+    "✅ Получение подтверждено": "✅ Qabul qilish tasdiqlandi",
+    "✅ Получение груза подтверждено": "✅ Yuk qabul qilingani tasdiqlandi",
+    "🤝 Сделка завершена": "🤝 Bitim yakunlandi",
+    "❌ Отменено": "❌ Bekor qilindi",
+    "❌ Сделка отменена": "❌ Bitim bekor qilindi",
+    "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.": "📍 Yuk jo‘natuvchi GPS kuzatuvini so‘radi. Haydovchi buni ilovada tasdiqlashi kerak.",
+    "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.": "✅ Haydovchi GPS kuzatuviga ruxsat berdi. Joylashuvni faqat ushbu bitim ishtirokchilari ko‘ra oladi.",
+    "ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.": "ℹ️ Haydovchi ushbu bitim uchun GPS kuzatuviga ruxsat bermadi.",
+    "🔒 Водитель отменил GPS-отслеживание до забора груза.": "🔒 Haydovchi yukni olib ketishdan oldin GPS kuzatuvini bekor qildi."
   }
 };

@@ -1,3 +1,4 @@
+import { localizeUiText } from './additionalLocales.js';
 // Централизованный словарь городов, погранпереходов и системных категорий.
 //
 // Legacy production-данные местами хранят точки маршрута свободным текстом
@@ -460,12 +461,16 @@ export function localizeSystemMessage(raw, lang) {
   if (l === 'ru') return raw;
   const value = String(raw).trim();
   const direct = SYSTEM_MESSAGE_DICT[value];
-  if (direct && direct[l]) return direct[l];
+  if (direct) {
+    const translated = direct[l] || localizeUiText(value, lang);
+    if (translated !== value) return translated;
+  }
 
   // Some old rows append an amount after the system phrase.
   for (const [prefix, variants] of Object.entries(SYSTEM_MESSAGE_DICT)) {
-    if (value.startsWith(`${prefix} ·`) && variants[l]) {
-      return `${variants[l]}${value.slice(prefix.length)}`;
+    if (value.startsWith(`${prefix} ·`)) {
+      const translated = variants[l] || localizeUiText(prefix, lang);
+      if (translated !== prefix) return `${translated}${value.slice(prefix.length)}`;
     }
   }
   // Never machine-translate arbitrary participant text here.

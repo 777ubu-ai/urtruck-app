@@ -131,3 +131,21 @@ test('турецкие и узбекские кнопки/подписи не с
   assert.match(picker, /aria-checked=\{active\}/);
   assert.match(picker, /minHeight: 44/);
 });
+
+test('известные системные сообщения сделки переводятся, текст участников остаётся исходным', async () => {
+  const { localizeSystemMessage } = await import('../../src/utils/places.js');
+  const source = fs.readFileSync('src/utils/places.js', 'utf8');
+  const start = source.indexOf('const SYSTEM_MESSAGE_DICT =');
+  const end = source.indexOf('\n};', start) + 3;
+  const context = {};
+  vm.runInNewContext(source.slice(start, end) + '\nthis.messages=SYSTEM_MESSAGE_DICT;', context);
+  for (const code of ADDITIONAL_LANGUAGE_CODES) {
+    for (const raw of Object.keys(context.messages)) {
+      assert.notEqual(localizeSystemMessage(raw, code), raw, `${code}: ${raw}`);
+      const withAmount = localizeSystemMessage(raw + ' · 1100 USD', code);
+      assert.ok(withAmount.endsWith(' · 1100 USD'), code);
+      assert.notEqual(withAmount, raw + ' · 1100 USD', code);
+    }
+    for (const raw of ['Мой груз: цемент, 20 тонн', 'Сохранить', 'Давайте завершим сделку завтра']) assert.equal(localizeSystemMessage(raw, code), raw, code);
+  }
+});

@@ -2934,6 +2934,22 @@ export default {
     "м": "m",
     "Осталось {_v0} д {_v1} ч": "{_v0} gün {_v1} sa kaldı",
     "Осталось {_v0} ч": "{_v0} sa kaldı",
-    "Осталось {_v0} мин": "{_v0} dk kaldı"
+    "Осталось {_v0} мин": "{_v0} dk kaldı",
+    "🤝 Сделка создана": "🤝 Anlaşma oluşturuldu",
+    "🚛 Рейс начался": "🚛 Sefer başladı",
+    "🛂 На границе": "🛂 Sınırda",
+    "🛂 Груз на границе": "🛂 Yük sınırda",
+    "✅ Доставлен — ожидается подтверждение получения": "✅ Teslim edildi — teslim alma onayı bekleniyor",
+    "✅ Груз доставлен": "✅ Yük teslim edildi",
+    "✅ Груз доставлен — ожидается подтверждение получения": "✅ Yük teslim edildi — teslim alma onayı bekleniyor",
+    "✅ Получение подтверждено": "✅ Teslim alma onaylandı",
+    "✅ Получение груза подтверждено": "✅ Yükün teslim alınması onaylandı",
+    "🤝 Сделка завершена": "🤝 Anlaşma tamamlandı",
+    "❌ Отменено": "❌ İptal edildi",
+    "❌ Сделка отменена": "❌ Anlaşma iptal edildi",
+    "📍 Грузоотправитель запросил GPS-отслеживание. Водитель должен подтвердить его в приложении.": "📍 Yük sahibi GPS takibi istedi. Sürücü bunu uygulamada onaylamalıdır.",
+    "✅ Водитель разрешил GPS-отслеживание. Местоположение будет видно только участникам этой сделки.": "✅ Sürücü GPS takibine izin verdi. Konum yalnızca bu anlaşmanın katılımcılarına görünür.",
+    "ℹ️ Водитель не разрешил GPS-отслеживание по этой сделке.": "ℹ️ Sürücü bu anlaşma için GPS takibine izin vermedi.",
+    "🔒 Водитель отменил GPS-отслеживание до забора груза.": "🔒 Sürücü yük alınmadan önce GPS takibini iptal etti."
   }
 };

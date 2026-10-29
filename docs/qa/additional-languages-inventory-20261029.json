@@ -1,7 +1,7 @@
 {
   "base_sha": "29e69d81dcbe3e58c4f61e64f0e8e3b5681d2e63",
   "common_keys_per_locale": 2048,
-  "phrases_per_new_locale": 885,
+  "phrases_per_new_locale": 901,
   "new_languages": [
     "TR",
     "UZ",
@@ -64,5 +64,17 @@
     "Turkish/Uzbek Cyrillic fragments and date/unit notation",
     "onboarding consent word order",
     "short welcome headlines for narrow screens"
+  ],
+  "known_system_phrases": 16,
+  "native_ios_locales": [
+    "ru",
+    "en",
+    "zh-Hans",
+    "kk",
+    "tr",
+    "uz",
+    "ky",
+    "tg",
+    "be"
   ]
 }

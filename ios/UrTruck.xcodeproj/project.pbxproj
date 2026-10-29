@@ -37,6 +37,11 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = UrTruck/AppDelegate.swift; sourceTree = "<group>"; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-UrTruck/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		3CA7ECE11C95EF1ABD6BD66A /* tr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = tr; path = "UrTruck/tr.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		00FE5071729E965350ACAFEF /* uz */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uz; path = "UrTruck/uz.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		CE2D26B73F118A129D6477C6 /* ky */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ky; path = "UrTruck/ky.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		2DA3C7BB74D93F1DF89C211A /* tg */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = tg; path = "UrTruck/tg.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		BE41E9FAC90C1FCDF221D0CD /* be */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = be; path = "UrTruck/be.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,6 +195,11 @@
 				ru,
 				"zh-Hans",
 				kk,
+				tr,
+				uz,
+				ky,
+				tg,
+				be,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -377,6 +387,11 @@
 				480BC46B97556CC44DD772B6 /* en */,
 				8FA82F266C5E15D704B66306 /* zh-Hans */,
 				7FFF7E94ACC77DAD37E41C4C /* kk */,
+				3CA7ECE11C95EF1ABD6BD66A /* tr */,
+				00FE5071729E965350ACAFEF /* uz */,
+				CE2D26B73F118A129D6477C6 /* ky */,
+				2DA3C7BB74D93F1DF89C211A /* tg */,
+				BE41E9FAC90C1FCDF221D0CD /* be */,
 			);
 			name = InfoPlist.strings;
 			sourceTree = "<group>";
