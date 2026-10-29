@@ -1,0 +1,12 @@
+[Unit]
+Description=UrTruck feed progress and bounded recovery
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/urtruck-telegram-feed
+ExecStart=/home/ubuntu/urtruck-telegram-feed/.venv/bin/python /home/ubuntu/urtruck-telegram-feed/health.py --recover
+UMask=0077
+TimeoutStartSec=60

@@ -104,3 +104,42 @@ def test_stale_sending_with_duplicate_matches_is_resolved_without_another_send(t
     assert row['destination_message'] == 77
     assert row['random_id'] == 987654321
     db.close()
+
+
+def test_recovered_retry_reserves_with_original_random_id(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    make_queue_row(db, m, time.time()-600)
+    asyncio.run(m.reconcile(Reader([]), db, 'destination'))
+    retried = m.reserve(db)
+    assert retried['status'] == 'sending'
+    assert retried['random_id'] == 987654321
+    db.close()
+
+
+def test_uncertain_item_does_not_block_independent_queued_message(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    make_queue_row(db, m, time.time()-600)
+    with db:
+        db.execute("""INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint,status)
+          SELECT source,source_id,source_message+1,source_date+1,'Другой груз +77001234567',phones,'different','queued'
+          FROM queue LIMIT 1""")
+    next_item = m.reserve(db)
+    assert next_item['source_message'] == 9002
+    assert db.execute("SELECT status FROM queue WHERE source_message=9001").fetchone()[0] == 'sending'
+    # Интервал отправки сохраняется и при наличии нескольких неопределённых результатов.
+    assert m.reserve(db) is None
+    db.close()
+
+
+def test_unconfirmed_copy_is_not_resent_as_a_different_queue_item(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    make_queue_row(db, m, time.time()-600)
+    with db:
+        db.execute("""INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint,status)
+          SELECT source,source_id,source_message+1,source_date+1,text,phones,fingerprint,'queued'
+          FROM queue LIMIT 1""")
+    assert m.reserve(db) is None
+    db.close()
