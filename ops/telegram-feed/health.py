@@ -28,10 +28,11 @@ def snapshot(root=ROOT, now=None):
         tick = datetime.fromisoformat(metadata['last_tick']).timestamp() if metadata.get('last_tick') else 0
         queue = dict(db.execute('SELECT status,count(*) FROM queue GROUP BY status'))
         latest = db.execute('SELECT max(received_at) FROM app_messages').fetchone()[0]
+        source_errors = db.execute('SELECT count(*) FROM source_health WHERE error IS NOT NULL').fetchone()[0]
         result = {'telegram': {'ready': queue.get('queued', 0),
                   'progress': queue.get('published', 0), 'paused_until': float(metadata.get('publish_after') or 0),
                   'uncertain': queue.get('sending', 0)+queue.get('uncertain', 0)},
-                  'heartbeat_age': max(0, now-tick),
+                  'source_errors': source_errors, 'heartbeat_age': max(0, now-tick),
                   'last_received_age': max(0, now-latest) if latest else None}
     for name, directory in [('incoming', 'external-feed'), ('owned', 'external-feed-owned')]:
         path = Path('/home/ubuntu/urtruck-qa2')/directory/'adapter.sqlite3'
@@ -54,6 +55,9 @@ def evaluate(current, previous, now):
     state = {'flows': {}, 'restarts': previous.get('restarts', []),
              'last_alert': previous.get('last_alert', 0), 'alerted': previous.get('alerted', [])}
     problems = []
+    state['snapshot'] = current
+    if current.get('source_errors'):
+        problems.append('source_scan_errors')
     if current.get('heartbeat_age', 0) > HEARTBEAT_SECONDS:
         problems.append('collector_heartbeat_stale')
     for name in ('telegram', 'incoming', 'owned'):
