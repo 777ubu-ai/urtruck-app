@@ -1,0 +1,131 @@
+name: Start QA2 Telegram feed services
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type START_QA2_TELEGRAM_FEED to start the QA2 collector and bridge
+        required: true
+        type: string
+      source_sha:
+        description: Exact reviewed QA2 candidate commit to record
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-qa2-telegram-feed-start
+  cancel-in-progress: false
+
+jobs:
+  start:
+    name: Start collector and feed bridge on QA2 only
+    if: github.ref_name == 'qa2/integration-candidate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: qa2
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify exact QA2 request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
+          test "$CONFIRMATION" = "START_QA2_TELEGRAM_FEED"
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS" && test -n "$SERVER_SSH_KNOWN_HOSTS"
+
+      - name: Install SSH client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Pin QA2 host and capture production fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          known_hosts_file="$RUNNER_TEMP/qa2-feed-known-hosts"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$known_hosts_file"
+          echo "QA2_SSH_KNOWN_HOSTS_FILE=$known_hosts_file" >> "$GITHUB_ENV"
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          fingerprint="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          echo "PROD_VERSION_HASH_BEFORE=$fingerprint" >> "$GITHUB_ENV"
+
+      - name: Start Telegram collector and bridge, then verify live intake
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SSHPASS="$SERVER_PASS"
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          collector=/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3
+          qa_env=/home/ubuntu/urtruck-qa2/external-feed-bridge.env
+          test -f "$collector" && test -f "$qa_env"
+          sudo -n grep -qx 'EXTERNAL_FREIGHT_API_URL=https://qa2.urtruck.kz' "$qa_env"
+          sudo -n grep -Eq '^EXTERNAL_FREIGHT_IMPORTER_KEY=.+$' "$qa_env"
+
+          metrics() {
+            python3 - "$collector" <<'PY'
+          import json, sqlite3, sys, time
+          path = sys.argv[1]
+          db = sqlite3.connect('file:' + path + '?mode=ro', uri=True, timeout=3)
+          db.execute('PRAGMA query_only=ON')
+          tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          result = {'intake_db_readable': True}
+          if 'app_messages' in tables:
+              now = time.time()
+              result['app_messages_last_10m'] = db.execute('SELECT count(*) FROM app_messages WHERE received_at>=?', (now-600,)).fetchone()[0]
+              latest = db.execute('SELECT max(received_at) FROM app_messages').fetchone()[0]
+              result['latest_message_seconds_ago'] = max(0, int(now-latest)) if latest is not None else None
+          if 'queue' in tables:
+              result['telegram_queue_by_status'] = {str(status): count for status, count in db.execute('SELECT status,count(*) FROM queue GROUP BY status')}
+          print('FEED_METRICS=' + json.dumps(result, sort_keys=True))
+          db.close()
+          PY
+          }
+
+          echo "COLLECTOR_BEFORE=$(systemctl is-active urtruck-telegram-feed.service || true)"
+          echo "BRIDGE_TIMER_BEFORE=$(systemctl is-active urtruck-qa2-feed-bridge.timer || true)"
+          # start is idempotent: running workers are not interrupted.
+          sudo -n systemctl start urtruck-telegram-feed.service
+          sudo -n systemctl start urtruck-qa2-feed-bridge.timer
+          sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
+          sleep 12
+          echo "COLLECTOR_AFTER=$(systemctl is-active urtruck-telegram-feed.service)"
+          echo "BRIDGE_TIMER_AFTER=$(systemctl is-active urtruck-qa2-feed-bridge.timer)"
+          echo "BRIDGE_AFTER=$(systemctl is-active urtruck-qa2-feed-bridge.service || true)"
+          metrics
+          sudo -n journalctl -u urtruck-qa2-feed-bridge.service --since '-30 seconds' -n 20 --no-pager -o cat \
+            | python3 -c 'import json,sys
+          for line in sys.stdin:
+              try:
+                  obj=json.loads(line)
+              except Exception:
+                  continue
+              allowed={k:obj[k] for k in ("status","scanned","enqueued","sent","pending","quarantined","rejected","review","duplicates","mode","vehicle_candidates","enqueued_active_by_kind") if k in obj}
+              if allowed: print("BRIDGE_CYCLE="+json.dumps(allowed,sort_keys=True))'
+          test "$(systemctl is-active urtruck-telegram-feed.service)" = active
+          test "$(systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
+          REMOTE
+
+      - name: Verify production fingerprint unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl -fsS --max-time 20 https://urtruck.kz/api/version)"
+          after="$(printf '%s' "$body" | sha256sum | awk '{print $1}')"
+          test "$after" = "$PROD_VERSION_HASH_BEFORE"
+          echo 'PRODUCTION_AFTER=healthy-unchanged'
