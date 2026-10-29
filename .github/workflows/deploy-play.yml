@@ -37,6 +37,11 @@ on:
       - ".github/workflows/deploy-play.yml"
   workflow_dispatch:
     inputs:
+      inspect_only:
+        description: "Только сверить текущие номера и треки Play; без сборки и загрузки"
+        required: false
+        default: false
+        type: boolean
       download_generated_version_code:
         description: "Read-only download of existing Google-signed APK; skips build/upload"
         required: false
@@ -114,12 +119,12 @@ permissions:
 
 jobs:
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ !inputs.inspect_only && inputs.download_generated_version_code == '' }}
     uses: ./.github/workflows/quality-gate-reusable.yml
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ !inputs.inspect_only && inputs.download_generated_version_code == '' }}
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
@@ -140,6 +145,9 @@ jobs:
           API_ENVIRONMENT_INPUT: ${{ inputs.api_environment || 'production' }}
           TRACK_INPUT: ${{ inputs.track || 'internal' }}
           VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
+          RELEASE_STATUS_INPUT: ${{ inputs.status || 'draft' }}
+          SUBMIT_TO_PLAY_INPUT: ${{ inputs.submit_to_play }}
+          BUILD_APK_INPUT: ${{ inputs.build_installable_apk }}
         run: |
           set -euo pipefail
           if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
@@ -200,6 +208,20 @@ jobs:
               test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
             done
             echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
+            echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
+            echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ]; then
+            test "$API_ENVIRONMENT_INPUT" = production
+            test "$TRACK_INPUT" = production
+            test "$RELEASE_STATUS_INPUT" = draft
+            test "$SUBMIT_TO_PLAY_INPUT" = false
+            test "$BUILD_APK_INPUT" = true
+            test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
+            python3 scripts/ops/verify_public_candidate_intent.py --platform android --verified-counter "$VERIFIED_PLAY_MAX_CODE"
+            python3 scripts/prepare_store_candidate_version.py --platform android \
+              --version 1.0.13 --source-sha 6aa6badf3ddfd8d124268c8cecf7c5e202c0baca
+            echo "URTRUCK_VERSION_NAME=1.0.13" >> "$GITHUB_ENV"
+            echo "URTRUCK_SOURCE_SHA=6aa6badf3ddfd8d124268c8cecf7c5e202c0baca" >> "$GITHUB_ENV"
             echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
             echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
@@ -279,9 +301,22 @@ jobs:
           python3 scripts/verify_android_firebase_config.py --check-source android/app/google-services.json
           python3 scripts/verify_android_firebase_config.py --check-plugin android
 
+      - name: Повторно сверить живой максимум Play перед сборкой
+        if: ${{ github.ref_name == 'ops/public-store-preflight-20261028' }}
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          VERIFIED_INPUT: ${{ inputs.last_verified_play_code }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install google-auth requests
+          python3 scripts/ops/inspect_play_store.py --output "$RUNNER_TEMP/play-before-build.json"
+          maximum="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["maximum_current_version_code"])' "$RUNNER_TEMP/play-before-build.json")"
+          test "$maximum" -ge "$VERIFIED_INPUT"
+          echo "PLAY_LIVE_MAX_CODE=$maximum" >> "$GITHUB_ENV"
+
       - name: Compute collision-resistant versionCode
         env:
-          VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
+          VERIFIED_PLAY_MAX_CODE: ${{ env.PLAY_LIVE_MAX_CODE || inputs.last_verified_play_code || '' }}
         # Старый `100 + GITHUB_RUN_NUMBER` столкнулся с уже использованным
         # versionCode=212. Run number локален конкретному workflow и может
         # пересечься с историческими/manual кодами или сброситься при замене
@@ -296,7 +331,7 @@ jobs:
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
           installed_version_code=213720253
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
+          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ] || [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ]; then
             case "$VERIFIED_PLAY_MAX_CODE" in
               ''|0*|*[!0-9]*)
                 echo '::error::Verified Play versionCode must be a positive decimal without leading zeroes'
@@ -307,6 +342,9 @@ jobs:
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             installed_version_code="$VERIFIED_PLAY_MAX_CODE"
             version_code=$((installed_version_code + 1))
+            if [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ] && [ "$version_code" -le 215090229 ]; then
+              version_code=215090230
+            fi
           fi
           if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
             echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
@@ -315,6 +353,18 @@ jobs:
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
           echo "Android versionCode=${version_code} (greater than verified baseline ${installed_version_code})"
 
+      - name: Согласовать versionCode встроенной конфигурации production-кандидата
+        if: ${{ github.ref_name == 'ops/public-store-preflight-20261028' }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+          const code = Number(process.env.URTRUCK_VERSION_CODE);
+          if (!Number.isInteger(code) || code <= 215090228 || code >= 2100000000) throw new Error('Неверный production versionCode');
+          app.expo.android.versionCode = code;
+          fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+          NODE
+
       - name: Validate Play release inputs
         env:
           RELEASE_STATUS: ${{ inputs.status || 'draft' }}
@@ -322,7 +372,7 @@ jobs:
         run: node scripts/validate-play-release-inputs.mjs
 
       - name: Build release AAB
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play || github.ref_name == 'ops/public-store-preflight-20261028' }}
         env:
           EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
           URTRUCK_QA2_INTERNAL_STORE: ${{ env.URTRUCK_QA2_INTERNAL_STORE }}
@@ -362,7 +412,7 @@ jobs:
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
 
       - name: Verify built AAB identity and versionCode
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play || github.ref_name == 'ops/public-store-preflight-20261028' }}
         run: |
           set -euo pipefail
           aab="android/app/build/outputs/bundle/release/app-release.aab"
@@ -384,12 +434,16 @@ jobs:
           printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           printf '%s\n' "$manifest_xml" | grep -q "android:versionName=\"${URTRUCK_VERSION_NAME}\""
           unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
+          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ] || [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ]; then
             node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (config.version !== '1.0.12' || config.extra?.urtruckExternalFreightFeedEnabled !== true
-              || config.extra?.urtruckSourceSha !== process.env.GITHUB_SHA) throw new Error('Candidate version/source/feed identity mismatch');
+          const productionCandidate = process.env.GITHUB_REF_NAME === 'ops/public-store-preflight-20261028';
+          const expectedVersion = productionCandidate ? '1.0.13' : '1.0.12';
+          const expectedSource = productionCandidate ? '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca' : process.env.GITHUB_SHA;
+          if (config.version !== expectedVersion || config.extra?.urtruckExternalFreightFeedEnabled !== true
+              || config.extra?.urtruckSourceSha !== expectedSource) throw new Error('Candidate version/source/feed identity mismatch');
+          if (productionCandidate && config.android?.versionCode !== Number(process.env.URTRUCK_VERSION_CODE)) throw new Error('Embedded AAB versionCode mismatch');
           NODEVERIFY
           fi
           if [ "$API_ENVIRONMENT" = qa2 ]; then
@@ -400,7 +454,7 @@ jobs:
           echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
 
       - name: Record AAB checksum and upload certificate
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play || github.ref_name == 'ops/public-store-preflight-20261028' }}
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -443,6 +497,15 @@ jobs:
           # occurrence of that domain in unrelated code as the configured API endpoint.
           embedded_config="$RUNNER_TEMP/urtruck-embedded-app-config.json"
           unzip -p "$apk" assets/app.config > "$embedded_config"
+          if [ "$GITHUB_REF_NAME" = ops/public-store-preflight-20261028 ]; then
+            node - "$embedded_config" <<'NODEIDENTITY'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (config.version !== '1.0.13' || config.extra?.urtruckSourceSha !== '6aa6badf3ddfd8d124268c8cecf7c5e202c0baca'
+              || config.extra?.urtruckExternalFreightFeedEnabled !== true
+              || config.android?.versionCode !== Number(process.env.URTRUCK_VERSION_CODE)) throw new Error('Production APK source/version/feed mismatch');
+          NODEIDENTITY
+          fi
           if [ "$API_ENVIRONMENT" = qa2 ]; then
             node scripts/qa2-internal-store-config.mjs "$embedded_config"
           else
@@ -480,6 +543,7 @@ jobs:
           cipher_sha="$(shasum -a 256 "$envelope/UrTruck.apk.enc" | awk '{print $1}')"
           jq -n \
             --arg source_sha "$GITHUB_SHA" \
+            --arg app_source_sha "$URTRUCK_SOURCE_SHA" \
             --arg apk_sha "$APK_SHA256" \
             --arg ciphertext_sha "$cipher_sha" \
             --arg iv "$iv" \
@@ -488,7 +552,7 @@ jobs:
             --arg version_name "$URTRUCK_VERSION_NAME" \
             --arg api_host "${EXPO_PUBLIC_API_URL#https://}" \
             --argjson version_code "$URTRUCK_VERSION_CODE" \
-            '{source_sha:$source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
+            '{source_sha:$source_sha, app_source_sha:$app_source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
             > "$envelope/manifest.json"
           rm -f "$envelope/key-material.bin" "$envelope/iv.bin" "$envelope/auth-tag.bin" "$envelope/authenticated-payload.bin"
           echo "Encrypted signed APK envelope created; plaintext APK is not uploaded"
@@ -498,7 +562,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
 
       - name: Upload AAB as workflow artifact
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play || github.ref_name == 'ops/public-store-preflight-20261028' }}
         uses: actions/upload-artifact@v4
         with:
           name: UrTruck-aab
@@ -545,7 +609,7 @@ jobs:
           artifact_kind=AAB
           if [[ "${BUILD_INSTALLABLE_APK:-false}" == "true" ]]; then
             artifact_kind="AAB + APK"
-            if [[ "${SUBMIT_TO_PLAY}" == "false" ]]; then artifact_kind=APK; fi
+            if [[ "${SUBMIT_TO_PLAY}" == "false" && "$GITHUB_REF_NAME" != ops/public-store-preflight-20261028 ]]; then artifact_kind=APK; fi
           fi
           body=$(cat <<EOF
           ### Android release artifact — ${RESULT^^}
@@ -574,7 +638,7 @@ jobs:
 
   download-google-signed-apk:
     name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.inspect_only && inputs.download_generated_version_code != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -597,4 +661,30 @@ jobs:
           name: UrTruck-google-signed-apk-encrypted
           path: ${{ runner.temp }}/google-signed-apk/*
           retention-days: 2
+          if-no-files-found: error
+
+  inspect-current-play:
+    name: Сверить текущее состояние Play без публикации
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.inspect_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Установить зависимости официального Google API
+        run: python -m pip install google-auth requests
+      - name: Прочитать номера и удалить временный edit без commit
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/ops/inspect_play_store.py --output "$RUNNER_TEMP/play-current.json"
+      - name: Сохранить результат сверки магазина
+        uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-Play-current-readonly
+          path: ${{ runner.temp }}/play-current.json
+          retention-days: 7
           if-no-files-found: error
