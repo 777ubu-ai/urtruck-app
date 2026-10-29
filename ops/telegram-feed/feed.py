@@ -938,7 +938,9 @@ async def run_cycles(reader, db, cfg, once=False):
                     await owned_task
                 print(json.dumps(status(db), ensure_ascii=False))
                 return
-            await asyncio.sleep(5)
+            # Частый локальный tick не обходит due()/FloodWait и не ускоряет
+            # обход источников. При интервале 3 с старый sleep(5) задерживал отправку.
+            await asyncio.sleep(min(5.0, max(1.0, publish_interval_seconds() / 3)))
     finally:
         for task in (scan_task, owned_task):
             if task is not None:
