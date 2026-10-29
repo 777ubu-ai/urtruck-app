@@ -142,8 +142,9 @@ jobs:
           sudo -n systemctl restart urtruck-qa2-feed-bridge.timer
           test "$(sudo -n systemctl is-enabled urtruck-qa2-feed-bridge.timer)" = enabled
           test "$(sudo -n systemctl is-active urtruck-qa2-feed-bridge.timer)" = active
-          # Idempotent start recovers an inactive collector without interrupting a running one.
-          sudo -n systemctl start urtruck-telegram-feed.service
+          # Restart the long-running collector to clear a stale in-memory retry pause.
+          # Its startup reconciliation checks uncertain Telegram sends before resuming.
+          sudo -n systemctl restart urtruck-telegram-feed.service
           test "$(systemctl is-active urtruck-telegram-feed.service)" = active
           sudo -n grep -qx 'OnUnitInactiveSec=2' "$dropin"
           effective_timer="$(sudo -n systemctl show urtruck-qa2-feed-bridge.timer -p TimersMonotonic --no-pager)"
@@ -152,6 +153,7 @@ jobs:
           printf '%s\n' "$effective_timer" | grep -q 'OnUnitInactiveUSec=2s'
           sudo -n systemctl start --wait urtruck-qa2-feed-bridge.service
           sudo -n journalctl -u urtruck-qa2-feed-bridge.service --since '-3 minutes' -n 20 --no-pager -o cat
+          echo 'TELEGRAM_PUBLISHER_AFTER_RESTART_INITIAL:'
           python3 - <<'PY'
           import json, sqlite3, time
           path='/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3'
@@ -166,9 +168,44 @@ jobs:
               result['latest_message_seconds_ago']=max(0,int(now-latest)) if latest is not None else None
           if 'queue' in tables:
               result['queue_by_status']={str(status):count for status,count in db.execute('SELECT status,count(*) FROM queue GROUP BY status')}
+              sending=db.execute("SELECT min(published_at),group_concat(DISTINCT reason) FROM queue WHERE status='sending'").fetchone()
+              result['sending_age_seconds']=max(0,int(now-sending[0])) if sending and sending[0] is not None else None
+              result['sending_error_types']=sending[1] if sending else None
+              result['published_last_10m']=db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_at>=?",(now-600,)).fetchone()[0]
+          if 'metadata' in tables:
+              result['last_publisher_tick']=db.execute("SELECT value FROM metadata WHERE key='last_tick'").fetchone()
+              result['publish_after']=db.execute("SELECT value FROM metadata WHERE key='publish_after'").fetchone()
+          env={}
+          try:
+              for line in open('/home/ubuntu/urtruck-telegram-feed/.env'):
+                  if '=' in line and not line.lstrip().startswith('#'):
+                      key,value=line.split('=',1); env[key.strip()]=value.strip().strip('\\"').strip("'")
+          except OSError:
+              pass
+          try: result['telegram_publish_interval_seconds']=max(1,float(env.get('TELEGRAM_PUBLISH_INTERVAL_SECONDS','15')))
+          except (ValueError,TypeError): result['telegram_publish_interval_seconds']='invalid'
           print('TELEGRAM_INTAKE='+json.dumps(result,sort_keys=True))
           db.close()
           PY
+          sleep 65
+          echo 'TELEGRAM_PUBLISHER_AFTER_RECOVERY:'
+          python3 - <<'PY'
+          import json, sqlite3, time
+          path='/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3'
+          db=sqlite3.connect('file:'+path+'?mode=ro',uri=True,timeout=3)
+          db.execute('PRAGMA query_only=ON')
+          now=time.time()
+          result={'published_last_10m':db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_at>=?",(now-600,)).fetchone()[0],
+                  'queue_by_status':{str(s):n for s,n in db.execute('SELECT status,count(*) FROM queue GROUP BY status')},
+                  'sending_age_seconds':None}
+          sending=db.execute("SELECT min(published_at) FROM queue WHERE status='sending'").fetchone()[0]
+          if sending is not None: result['sending_age_seconds']=max(0,int(now-sending))
+          print('TELEGRAM_PUBLISHER_RESULT='+json.dumps(result,sort_keys=True))
+          db.close()
+          PY
+          sudo -n journalctl -u urtruck-telegram-feed.service --since '-90 seconds' -n 60 --no-pager -o cat \
+            | grep -E 'delivery_requires_review|delivery_reconciled|publication_uncertain|telegram_destination_paused|worker_stopped' \
+            | tail -n 12 || true
           echo 'QA2_FEED_BRIDGE_INTERVAL=2s'
           echo 'QA2_FEED_BRIDGE_ONESHOT=completed'
           echo 'QA2_TELEGRAM_COLLECTOR=active'
