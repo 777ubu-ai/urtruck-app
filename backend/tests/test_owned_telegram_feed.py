@@ -51,10 +51,10 @@ def test_ten_routes_footer_and_local_contact_priority():
     assert all(x['contacts'] == ['+998901234567'] for i, x in enumerate(items) if i != 1)
 
 
-def test_unique_contact_in_long_owned_post_is_shared_across_routes():
+def test_footer_contact_in_long_owned_post_is_shared_across_routes():
     text = ('Погрузка: Самарканд\nВыгрузка: Москва\nГруз: плитка\n'
-            'Телефон: +998901234567\n'
-            'Погрузка: Самарканд\nВыгрузка: Казань\nГруз: плитка')
+            'Погрузка: Самарканд\nВыгрузка: Казань\nГруз: плитка\n'
+            'Общий телефон: +998901234567')
     items = map_owned_messages(raw(text))
     assert len(items) == 2
     assert all(item['contacts'] == ['+998901234567'] for item in items)

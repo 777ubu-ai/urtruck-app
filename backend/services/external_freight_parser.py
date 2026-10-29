@@ -528,24 +528,6 @@ def source_contact_values(raw):
     return result[:20]
 
 
-def _single_unambiguous_post_contact(text, source_contacts=()):
-    """Return the post's one unique phone, wherever it appears in the source."""
-    candidates = [*block_contacts(text), *(source_contacts or ())]
-    by_identity = {}
-    for candidate in candidates:
-        identity = _phone_identity(candidate)
-        if identity:
-            by_identity.setdefault(identity, candidate)
-    if len(by_identity) != 1:
-        return None
-    identity = next(iter(by_identity))
-    # Prefer the spelling from the last occurrence in the original message.
-    for candidate in reversed(block_contacts(text)):
-        if _phone_identity(candidate) == identity:
-            return candidate
-    return by_identity[identity]
-
-
 def _single_footer_contact(text):
     """Return one number from the terminal footer, even with local block phones."""
     lines = [line for line in str(text or "").splitlines() if line.strip()]
@@ -562,8 +544,7 @@ def map_selected_messages(raw):
     text = raw.get("original_text", raw.get("text", ""))
     if not isinstance(text,str) or len(text)>20000:
         raise ValueError("invalid_original_text")
-    shared_post_contact = (_single_unambiguous_post_contact(text)
-                           or _single_footer_contact(text))
+    shared_post_contact = _single_footer_contact(text)
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
     blocks = []
     route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]

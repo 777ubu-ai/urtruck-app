@@ -141,11 +141,12 @@ def test_split_post_survives_adapter_import_and_public_api_without_losing_footer
     assert all(item['status'] == 'active' for item in items)
 
 
-def test_unique_contact_found_mid_post_is_carried_to_each_route_block():
+def test_footer_contact_is_carried_to_each_route_block():
     from services.external_freight_parser import map_selected_messages
 
-    text = ('Самарканд → Москва\nНужен тент\nГруз: плитка\n📞 +998901234567\n'
-            'Самарканд → Казань\nНужен тент\nГруз: плитка\nДата: завтра')
+    text = ('Самарканд → Москва\nНужен тент\nГруз: плитка\n'
+            'Самарканд → Казань\nНужен тент\nГруз: плитка\nДата: завтра\n'
+            'Общий телефон: +998901234567')
     records = map_selected_messages({'source_id': 'shared-mid-post', 'source_message_id': '43', 'text': text})
 
     assert len(records) == 2

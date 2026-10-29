@@ -5,7 +5,6 @@ import unicodedata
 
 from services.external_freight_classifier import classify_message
 from services.external_freight_parser import (
-    _single_unambiguous_post_contact,
     _single_footer_contact,
     block_contacts,
     map_selected_message,
@@ -30,11 +29,9 @@ def map_owned_messages(raw):
         raise ValueError('invalid_original_text')
     clean = _clean(text)
     starts = list(_FROM.finditer(clean))
-    # Найти номер по всему исходному посту до разбиения на маршруты. Один
-    # уникальный телефон относится ко всем сегментам этого поста; несколько
-    # разных номеров остаются локальными для своих блоков.
-    shared_contact = (_single_unambiguous_post_contact(text)
-                      or _single_footer_contact(clean))
+    # Найти конечный телефон до разбиения на маршруты и сохранить его как
+    # общий контакт поста. Номера внутри маршрутов остаются локальными.
+    shared_contact = _single_footer_contact(clean)
     shared = [shared_contact] if shared_contact else []
     # Разные авторы в одном посте требуют явной принадлежности контактов.
     if re.search(r'(?im)^\s*(?:автор|отправитель)\s*:', clean):
