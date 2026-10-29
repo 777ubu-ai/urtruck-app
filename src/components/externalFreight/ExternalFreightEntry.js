@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -69,6 +70,7 @@ export default function ExternalFreightEntry(props) {
     ZH: role === 'driver' ? '货源信息' : '车辆信息',
     EN: role === 'driver' ? 'Cargo feed' : 'Truck feed',
   };
+Object.assign(labels, withAdditionalLanguageTree(labels));
   const palette = ceramic ? ceramicColors : colors;
   const count = result?.ownerKey === ownerKey ? result.count : null;
   const countText = count === null ? null : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');

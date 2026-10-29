@@ -17,7 +17,7 @@ const CONTACTS = [
 // Подписи — i18n-ключи, резолвятся через t() при рендере.
 const STATS = [
   { n: '6', lKey: 'about_stat_countries' },
-  { n: '4', lKey: 'about_stat_langs' },
+  { n: '9', lKey: 'about_stat_langs' },
   { n: '0%', lKey: 'about_stat_commission' },
   { n: 'Live', lKey: 'about_stat_queue' },
 ];

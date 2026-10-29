@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +23,7 @@ const COPY = {
   ZH: { title: '通知', driverTitle: '有新货源时通知我', shipperTitle: '有合适车辆时通知我', hint: '设置路线后，UrTruck 会通知您匹配的报价。', from: '出发地', to: '目的地', place: '选择国家、城市或口岸', period: '时间', weight: '最低重量', capacity: '最低载重', tons: '吨', body: '车身类型', bodyNote: '补充车身类型', keywords: '货物关键词', cargoHint: '例如：汽车配件', save: '保存通知', saving: '正在保存…', saved: '通知已保存', mine: '我的通知', empty: '您还没有通知', emptyHint: '创建路线后，出现合适货源或车辆时 UrTruck 会通知您。', create: '创建通知', enabled: '开启', disabled: '关闭', edit: '编辑', remove: '删除', cancel: '取消', update: '保存修改', required: '请选择出发地和目的地', failed: '无法保存通知', deleted: '通知已删除', deleteTitle: '删除通知？', deleteBody: '此路线将不再发送推送通知。', allBodies: '任何车身', chooseBody: '选择车身类型', clearPeriod: '清除日期', dateFrom: '开始日期', dateTo: '结束日期' },
   KK: { title: 'Хабарламалар', driverTitle: 'Жаңа жүк туралы хабарлау', shipperTitle: 'Сәйкес көлік туралы хабарлау', hint: 'Бағытты баптаңыз — UrTruck сәйкес ұсыныс туралы хабарлайды.', from: 'Қайдан', to: 'Қайда', place: 'Елді, қаланы немесе шекара өткелін таңдаңыз', period: 'Кезең', weight: 'Салмақ бастап', capacity: 'Жүк көтергіштік бастап', tons: 'т', body: 'Шанақ түрі', bodyNote: 'Шанақ түрін нақтылау', keywords: 'Жүк кілтсөздері', cargoHint: 'Мысалы, автокөлік бөлшектері', save: 'Хабарламаны сақтау', saving: 'Сақталуда…', saved: 'Хабарлама сақталды', mine: 'Менің хабарламаларым', empty: 'Әзірге хабарламалар жоқ', emptyHint: 'Бағыт жасаңыз, сәйкес жүк не көлік шыққанда UrTruck хабарлайды.', create: 'Хабарлама жасау', enabled: 'Қосулы', disabled: 'Өшірулі', edit: 'Өзгерту', remove: 'Жою', cancel: 'Бас тарту', update: 'Өзгерістерді сақтау', required: 'Қайдан және қайда екенін таңдаңыз', failed: 'Хабарламаны сақтау мүмкін болмады', deleted: 'Хабарлама жойылды', deleteTitle: 'Хабарламаны жою керек пе?', deleteBody: 'Бұл бағыт push-хабарлама жібермейді.', allBodies: 'Кез келген шанақ', chooseBody: 'Шанақты таңдаңыз', clearPeriod: 'Кезеңді тазалау', dateFrom: 'Басталу күні', dateTo: 'Аяқталу күні' },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const initialForm = () => {
   const saved = getPushSettings();

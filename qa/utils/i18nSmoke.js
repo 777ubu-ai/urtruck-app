@@ -1,7 +1,7 @@
 // i18n smoke check — verifies our enabled languages and fallback chain.
 //
 // Pass criteria:
-//  - Uzbek must NOT be in the enabled-languages list.
+//  - All nine owner-approved languages must have complete bundled dictionaries.
 //  - Every enabled language must be a real translations object.
 //  - Every key referenced from src/ via t('...') must exist in RU (the
 //    base fallback), or be an explicit alias to an existing translated key.
@@ -14,8 +14,8 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const I18N = path.join(ROOT, 'src', 'utils', 'i18n.js');
 const SRC = path.join(ROOT, 'src');
-const ENABLED = ['RU', 'EN', 'KK', 'ZH'];
-const FORBIDDEN = ['UZ', 'KG', 'DE', 'FR', 'TJ', 'GE', 'TM', 'KZ', 'CN'];
+const ENABLED = ['RU', 'EN', 'KK', 'ZH', 'TR', 'UZ', 'KY', 'TG', 'BE'];
+const FORBIDDEN = ['KG', 'DE', 'FR', 'TJ', 'GE', 'TM', 'KZ', 'CN', 'BY'];
 
 // RC1: confirmation prompts intentionally reuse existing translated action
 // copy through useI18n aliases. The smoke resolves those aliases instead of
@@ -31,7 +31,12 @@ function loadTranslations() {
   const m = src.match(/const translations = (\{[\s\S]*?\n\};)/);
   if (!m) throw new Error('i18n.js: translations object not found');
   // eslint-disable-next-line no-eval
-  return eval('(' + m[1].slice(0, -1) + ')');
+  const catalog = eval('(' + m[1].slice(0, -1) + ')');
+  for (const code of ENABLED.filter(c => !catalog[c])) {
+    const file = path.join(ROOT, 'src', 'utils', 'locales', code.toLowerCase() + '.js');
+    catalog[code] = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^export default /, '').replace(/;\s*$/, '')).common;
+  }
+  return catalog;
 }
 
 function walk(dir, out = []) {

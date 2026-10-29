@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import { getExpenseCopy } from '../utils/expenseCopy';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
@@ -220,6 +221,7 @@ const COPY = {
     dealNotFound: 'Мәміле табылмады немесе қолжетімсіз', backToDeals: 'Мәмілелерге',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const resolveAttachment = (value) =>
   value && typeof value === 'string' && value.startsWith('/') ? `${SERVER_URL}${value}` : value;
@@ -267,7 +269,7 @@ const compactDate = (raw, lang) => {
   const value = String(raw).trim();
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value.slice(0, 10);
-  const locale = lang === 'ZH' ? 'zh-CN' : lang === 'EN' ? 'en-GB' : lang === 'KK' ? 'kk-KZ' : 'ru-RU';
+  const locale = lang === 'ZH' ? localizeUiText('zh-CN', lang) : lang === 'EN' ? localizeUiText('en-GB', lang) : lang === 'KK' ? localizeUiText('kk-KZ', lang) : localizeUiText('ru-RU', lang);
   try {
     return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' }).format(new Date(`${match[1]}-${match[2]}-${match[3]}T12:00:00`));
   } catch { return `${match[3]}.${match[2]}`; }

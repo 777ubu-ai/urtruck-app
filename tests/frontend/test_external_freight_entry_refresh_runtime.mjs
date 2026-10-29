@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -25,6 +26,7 @@ function harness(role) {
     listeners.set(event, fn); return () => listeners.delete(event);
   } };
   const mocks = {
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: React,
     'react-native': { AppState, View: 'View', TouchableOpacity: 'TouchableOpacity', Text: 'Text', StyleSheet: { create: x => x } },
     '@expo/vector-icons/Feather': 'Feather',

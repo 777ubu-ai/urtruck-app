@@ -1,3 +1,4 @@
+import { localizeUiTemplate } from './additionalLocales.js';
 export const BID_TTL_MS = 48 * 60 * 60 * 1000;
 
 const OPEN_BID_STATUSES = new Set(['pending', 'countered']);
@@ -39,9 +40,9 @@ const leftCopy = (lang, days, hours, minutes) => {
     if (hours > 0) return `${hours} сағ қалды`;
     return `${minutes} мин қалды`;
   }
-  if (days > 0) return `Осталось ${days} д ${hours} ч`;
-  if (hours > 0) return `Осталось ${hours} ч`;
-  return `Осталось ${minutes} мин`;
+  if (days > 0) return localizeUiTemplate(['Осталось ', ' д ', ' ч'], [days, hours], lang);
+  if (hours > 0) return localizeUiTemplate(['Осталось ', ' ч'], [hours], lang);
+  return localizeUiTemplate(['Осталось ', ' мин'], [minutes], lang);
 };
 
 export const formatBidRemaining = (bid, lang = 'RU', now = Date.now()) => {

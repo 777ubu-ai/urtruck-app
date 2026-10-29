@@ -1,3 +1,4 @@
+import { withAdditionalLanguages } from '../../utils/additionalLocales.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -117,7 +118,7 @@ export default function VehicleSetupCountryScreen({ navigation, route }) {
   const bodyOptions = useMemo(() => options(BODIES[draft.vehicle_type] || [], c.bodies, 'box'), [c.bodies, draft.vehicle_type]);
   const makeOptions = useMemo(() => options(MAKES, c.makes, 'settings'), [c.makes]);
   const otherMake = c.otherMake || c.makes.Other;
-  const otherModel = c.otherModel || ({ RU: 'Другая модель', ZH: '其他型号', KK: 'Басқа модель', EN: 'Other model' }[lang] || 'Other model');
+  const otherModel = c.otherModel || (withAdditionalLanguages({ RU: 'Другая модель', ZH: '其他型号', KK: 'Басқа модель', EN: 'Other model' })[lang] || 'Other model');
   const modelOptions = useMemo(() => [
     ...(MODELS[draft.make] || []).map((value) => ({ value, label: value, icon: 'truck' })),
     ...(draft.make ? [{ value: 'Other', label: otherModel, icon: 'edit-3' }] : []),

@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from './additionalLocales.js';
 // Share-text builders.
 // Keep this module PURE: it is used by Node QA and must not import runtime
 // i18n/storage/React-Native. System geography/category localization is pure
@@ -22,6 +23,7 @@ const SHARE_COPY = {
   ZH: { trip: 'UrTruck 行程', cargo: 'UrTruck 货物', departure: '出发日期', date: '装货日期', price: '运费', viewCargo: '查看货物', negotiable: '面议', ton: '吨', volume: '立方米' },
   EN: { trip: 'UrTruck trip', cargo: 'UrTruck cargo', departure: 'Departure', date: 'Pickup date', price: 'Price', viewCargo: 'View cargo', negotiable: 'Negotiable', ton: 't', volume: 'm³' },
 };
+Object.assign(SHARE_COPY, withAdditionalLanguageTree(SHARE_COPY));
 
 const copyFor = (lang) => SHARE_COPY[String(lang || 'RU').toUpperCase()] || SHARE_COPY.EN;
 
@@ -105,6 +107,7 @@ const TRUCK_LABELS = {
   cont20: { RU: "Контейнер 20'", KK: "20' контейнер", ZH: '20尺集装箱', EN: "20' container" },
   cont40: { RU: "Контейнер 40'", KK: "40' контейнер", ZH: '40尺集装箱', EN: "40' container" },
 };
+Object.assign(TRUCK_LABELS, withAdditionalLanguageTree(TRUCK_LABELS));
 
 const LEGACY_TRUCK_ZH = {
   'Тент': '篷布车', 'Фура': '大型货车', 'Рефрижератор': '冷藏车', 'Изотерм': '保温车',

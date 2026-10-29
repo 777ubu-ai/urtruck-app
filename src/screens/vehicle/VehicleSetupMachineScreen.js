@@ -1,3 +1,4 @@
+import { withAdditionalLanguages } from '../../utils/additionalLocales.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +20,7 @@ export default function VehicleSetupMachineScreen({ navigation, route }) {
   const styles = useVehicleSetupStyles();
   const ceramic = useDriverCeramicColors();
   const otherMake = c.otherMake || c.makes.Other;
-  const otherModel = c.otherModel || ({ RU: 'Другая модель', ZH: '其他型号', KK: 'Басқа модель', EN: 'Other model' }[lang] || 'Other model');
+  const otherModel = c.otherModel || (withAdditionalLanguages({ RU: 'Другая модель', ZH: '其他型号', KK: 'Басқа модель', EN: 'Other model' })[lang] || 'Other model');
   const [draft, setDraft] = useState({});
   const [sheet, setSheet] = useState(null);
   const [error, setError] = useState('');

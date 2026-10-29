@@ -1,3 +1,4 @@
+import { localizeUiText } from '../../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,23 +22,23 @@ const completionMessage = (result, c, lang) => {
       vehicle_plate: c.plate,
       capacity_tons: c.payload,
       volume_m3: c.volume,
-      full_name: lang === 'ZH' ? '姓名' : lang === 'EN' ? 'Full name' : lang === 'KK' ? 'Аты-жөні' : 'ФИО',
-      birth_date: lang === 'ZH' ? '出生日期' : lang === 'EN' ? 'Date of birth' : lang === 'KK' ? 'Туған күні' : 'Дата рождения',
+      full_name: lang === 'ZH' ? localizeUiText('姓名', lang) : lang === 'EN' ? localizeUiText('Full name', lang) : lang === 'KK' ? localizeUiText('Аты-жөні', lang) : localizeUiText('ФИО', lang),
+      birth_date: lang === 'ZH' ? localizeUiText('出生日期', lang) : lang === 'EN' ? localizeUiText('Date of birth', lang) : lang === 'KK' ? localizeUiText('Туған күні', lang) : localizeUiText('Дата рождения', lang),
     };
     const labels = detail.fields.map((field) => fields[field]).filter(Boolean);
     if (labels.length) {
-      const prefix = lang === 'ZH' ? '请补充：' : lang === 'EN' ? 'Please complete: ' : lang === 'KK' ? 'Толтырыңыз: ' : 'Заполните: ';
+      const prefix = lang === 'ZH' ? localizeUiText('请补充：', lang) : lang === 'EN' ? localizeUiText('Please complete: ', lang) : lang === 'KK' ? localizeUiText('Толтырыңыз: ', lang) : localizeUiText('Заполните: ', lang);
       return `${prefix}${labels.join(', ')}`;
     }
   }
   if (detail?.error === 'ROLE_ALREADY_SET') {
     return lang === 'ZH'
-      ? '此帐户已选择其他角色。请使用司机帐户登录。'
+      ? localizeUiText('此帐户已选择其他角色。请使用司机帐户登录。', lang)
       : lang === 'EN'
-        ? 'This account already has another role. Sign in with a driver account.'
+        ? localizeUiText('This account already has another role. Sign in with a driver account.', lang)
         : lang === 'KK'
-          ? 'Бұл аккаунтта басқа рөл таңдалған. Жүргізуші аккаунтпен кіріңіз.'
-          : 'Для этого аккаунта уже выбрана другая роль. Войдите под аккаунтом перевозчика.';
+          ? localizeUiText('Бұл аккаунтта басқа рөл таңдалған. Жүргізуші аккаунтпен кіріңіз.', lang)
+          : localizeUiText('Для этого аккаунта уже выбрана другая роль. Войдите под аккаунтом перевозчика.', lang);
   }
   return c.saveErrorSub;
 };

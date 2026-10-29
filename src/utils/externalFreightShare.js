@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from './additionalLocales.js';
 // Только видимые краткие данные. Исходный текст и контакты не экспортируются.
 const COPY = {
   RU: { cargo: 'Груз', vehicle: 'Машина', download: 'Скачать UrTruck' },
@@ -5,6 +6,7 @@ const COPY = {
   ZH: { cargo: '货物', vehicle: '车辆', download: '下载 UrTruck' },
   EN: { cargo: 'Cargo', vehicle: 'Truck', download: 'Download UrTruck' },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 export const URTRUCK_ANDROID_STORE = 'https://play.google.com/store/apps/details?id=com.urtruck.app';
 export const URTRUCK_IOS_STORE = 'https://apps.apple.com/kz/app/urtruck/id6764504167';
 // Обе ссылки нужны получателю независимо от платформы отправителя.
@@ -35,6 +37,7 @@ const CARRIER_COPY = {
   ZH: { title: '承运商联系方式', availability: '请确认是否有空车', view: 'UrTruck 承运商' },
   EN: { title: 'Carrier contact', availability: 'Confirm truck availability', view: 'Carriers in UrTruck' },
 };
+Object.assign(CARRIER_COPY, withAdditionalLanguageTree(CARRIER_COPY));
 
 export function buildCarrierContactShare(item, { origin, lang = 'RU' } = {}) {
   if (item?.kind !== 'carrier_contact' || item.status !== 'active') return null;

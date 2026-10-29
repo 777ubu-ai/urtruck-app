@@ -315,8 +315,9 @@ test('UI · language selector lists only 4 enabled languages', async ({ page }) 
   await menu.click({ force: true }).catch(() => {});
   await page.waitForTimeout(1000);
 
-  const enabled = ['ru', 'en', 'kk', 'zh'];
-  const removed = ['uz', 'kg', 'de', 'fr'];
+  await page.getByTestId('profile-language-switcher').click();
+  const enabled = ['ru', 'en', 'kk', 'zh', 'tr', 'uz', 'ky', 'tg', 'be'];
+  const removed = ['kg', 'tj', 'by', 'de', 'fr'];
   const missing = [];
   for (const code of enabled) {
     if (!(await page.getByTestId(`profile-lang-${code}`).isVisible().catch(() => false))) missing.push(code);

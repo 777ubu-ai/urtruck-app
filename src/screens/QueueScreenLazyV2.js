@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, withAdditionalLanguages, localizeUiText } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -43,6 +44,7 @@ const COUNTRY = {
   TM: { RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
   CASPIAN: { RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
 };
+Object.assign(COUNTRY, withAdditionalLanguageTree(COUNTRY));
 
 const COPY = {
   RU: {
@@ -93,6 +95,7 @@ const COPY = {
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const ROLE_COPY = {
   RU: {
@@ -144,6 +147,7 @@ const ROLE_COPY = {
     recent: '最近查询', followStatus: '关注状态', following: '正在关注', openShipment: '打开运输',
   },
 };
+Object.assign(ROLE_COPY, withAdditionalLanguageTree(ROLE_COPY));
 
 // The plate lookup (/borders/lookup) returns `status_raw` scraped verbatim
 // from CGR's public registry HTML — always Russian, e.g. "В очереди", "Вызван".
@@ -163,6 +167,7 @@ const LOOKUP_STATUS = {
   review_failed: { RU: 'Проверка провалена', KK: 'Тексеру сәтсіз аяқталды', EN: 'Review failed', ZH: '审核未通过' },
   unknown: { RU: 'Статус уточняется', KK: 'Күйі нақтылануда', EN: 'Status pending', ZH: '状态待定' },
 };
+Object.assign(LOOKUP_STATUS, withAdditionalLanguageTree(LOOKUP_STATUS));
 function lookupStatusLabel(code, lang) {
   const entry = LOOKUP_STATUS[code] || LOOKUP_STATUS.unknown;
   return entry[lang] || entry.RU;
@@ -177,7 +182,7 @@ async function fetchJson(url) {
   if (!response.ok) throw new Error(body?.detail || `HTTP ${response.status}`);
   return body;
 }
-function localeFor(lang) { return lang === 'KK' ? 'kk-KZ' : lang === 'EN' ? 'en-GB' : lang === 'ZH' ? 'zh-CN' : 'ru-RU'; }
+function localeFor(lang) { return lang === 'KK' ? localizeUiText('kk-KZ', lang) : lang === 'EN' ? localizeUiText('en-GB', lang) : lang === 'ZH' ? localizeUiText('zh-CN', lang) : localizeUiText('ru-RU', lang); }
 function formatDate(iso, lang) {
   if (!iso) return '—';
   const date = new Date(`${iso}T12:00:00`);
@@ -202,7 +207,7 @@ function formatKztAmount(mci) {
 function formatDistance(distanceM, lang = 'RU') {
   const value = Number(distanceM);
   if (!Number.isFinite(value) || value <= 0) return null;
-  const units = lang === 'EN' ? { m: 'm', km: 'km' } : lang === 'ZH' ? { m: '米', km: '公里' } : { m: 'м', km: 'км' };
+  const units = lang === 'EN' ? { m: localizeUiText('m', lang), km: localizeUiText('km', lang) } : lang === 'ZH' ? { m: localizeUiText('米', lang), km: localizeUiText('公里', lang) } : { m: localizeUiText('м', lang), km: localizeUiText('км', lang) };
   return value < 1000 ? `${Math.round(value)} ${units.m}` : `${Math.round(value / 100) / 10} ${units.km}`;
 }
 function formatDuration(durationS, lang = 'RU') {
@@ -210,10 +215,10 @@ function formatDuration(durationS, lang = 'RU') {
   if (!Number.isFinite(minutes)) return null;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  const unit = {
+  const unit = withAdditionalLanguages({
     RU: { h: 'ч', m: 'мин' }, KK: { h: 'сағ', m: 'мин' },
     EN: { h: 'h', m: 'min' }, ZH: { h: '小时', m: '分钟' },
-  }[lang] || { h: 'ч', m: 'мин' };
+  })[lang] || { h: 'ч', m: 'мин' };
   return hours ? `${hours} ${unit.h}${rest ? ` ${rest} ${unit.m}` : ''}` : `${rest} ${unit.m}`;
 }
 function parseQueueWindowStart(value) {
@@ -318,7 +323,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const countryName = useCallback((code) => {
     const normalizedCode = String(code || '').trim().toUpperCase();
-    const meta = COUNTRY[normalizedCode] || { RU: normalizedCode, KK: normalizedCode, EN: normalizedCode, ZH: normalizedCode };
+    const meta = COUNTRY[normalizedCode] || withAdditionalLanguages({ RU: normalizedCode, KK: normalizedCode, EN: normalizedCode, ZH: normalizedCode });
     return meta[lang] || meta.RU || normalizedCode;
   }, [lang]);
 

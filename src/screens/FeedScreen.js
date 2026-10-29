@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -63,6 +64,7 @@ const COPY = {
     retry: 'Қайталау', perTrip: 'рейске', departure: 'Шығу', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const toIso = (value) => {
   const text = String(value || '').trim();

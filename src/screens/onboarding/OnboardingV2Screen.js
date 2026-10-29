@@ -19,9 +19,10 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
@@ -199,6 +200,7 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
+  const languageInsets = useSafeAreaInsets();
   const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
@@ -265,6 +267,7 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+      <View style={[s.languageBar, { top: languageInsets.top + 4 }]}><LanguageSwitcher compact testID="onboarding-language-switcher" /></View>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -360,6 +363,7 @@ export default function OnboardingV2Screen({ navigation }) {
 }
 
 const makeStyles = (brand) => StyleSheet.create({
+  languageBar: { position: 'absolute', right: 16, zIndex: 20, alignItems: 'flex-end' },
   safe: { flex: 1, backgroundColor: brand.bg },
   slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
   logoWrap: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },

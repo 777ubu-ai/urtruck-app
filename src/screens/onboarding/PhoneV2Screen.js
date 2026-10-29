@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 // PhoneV2Screen — the ONE canonical sign-in / registration entry (AuthV2).
 //
 // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): every guest
@@ -96,6 +97,7 @@ const SOCIAL_LABELS = {
     apple: 'Apple арқылы жалғастыру',
   },
 };
+Object.assign(SOCIAL_LABELS, withAdditionalLanguageTree(SOCIAL_LABELS));
 
 const openLegal = (path) => {
   const url = `${LEGAL_BASE}${path}`;

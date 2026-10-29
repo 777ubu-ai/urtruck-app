@@ -1,10 +1,7 @@
 import { localizeCargoName } from './places.js';
+import { ADDITIONAL_TRANSLATIONS } from './additionalLocales.js';
 
-// Переводы UrTruck — RU / EN / KZ / CN
-// Все остальные языки (UZ / KG / DE / FR / TJ / GE / TM …) убраны из
-// пользовательского интерфейса; старые `ur_lang` значения для удалённых
-// языков отбрасываются loader-ом через `translations[saved]` guard и
-// приложение fall-back-ает на RU.
+// Существующие четыре словаря сохранены; новые автономные словари подключены ниже.
 
 const translations = {
   RU: {
@@ -78,7 +75,7 @@ const translations = {
     stats_no_drivers: 'Пока нет одобренных водителей с оценками',
     stats_no_name: 'Без имени',
     about_stat_countries: 'Стран на маршрутах (KZ, RU, UZ, CN, KG, TJ)',
-    about_stat_langs: 'Языка интерфейса (RU · KK · EN · ZH)',
+    about_stat_langs: 'Языка интерфейса (RU · KK · EN · ZH · TR · UZ · KY · TG · BE)',
     about_stat_commission: 'Комиссия в бете',
     about_stat_queue: 'Очередь на границе КЗ',
     about_hero_sub: 'FTL Market · Международная логистика\nКитай ↔ Казахстан ↔ Россия ↔ Узбекистан ↔ Кыргызстан',
@@ -500,7 +497,7 @@ const translations = {
     howit_feature_browse_t: 'Быстрый просмотр',
     howit_feature_browse_d: 'Смотри ленту без регистрации. Регистрируйся только когда готов действовать.',
     howit_feature_geo_t: 'Китай ↔ СНГ',
-    howit_feature_geo_d: 'Международные FTL-перевозки между Китаем и странами СНГ. Интерфейс на 4 языках.',
+    howit_feature_geo_d: 'Международные FTL-перевозки между Китаем и странами СНГ. Интерфейс на 9 языках.',
     route_not_specified: 'Маршрут не указан',
     howit_header: 'Как это работает',
     howit_4_steps: '4 простых шага',
@@ -2350,7 +2347,7 @@ const translations = {
     stats_no_drivers: 'Бағасы бар мақұлданған жүргізушілер әзірге жоқ',
     stats_no_name: 'Атауы жоқ',
     about_stat_countries: 'Бағыттардағы елдер (KZ, RU, UZ, CN, KG, TJ)',
-    about_stat_langs: 'Интерфейс тілі (RU · KK · EN · ZH)',
+    about_stat_langs: 'Интерфейс тілі (RU · KK · EN · ZH · TR · UZ · KY · TG · BE)',
     about_stat_commission: 'Бетадағы комиссия',
     about_stat_queue: 'ҚР шекарасындағы кезек',
     about_hero_sub: 'FTL Market · Халықаралық логистика\nҚытай ↔ Қазақстан ↔ Ресей ↔ Өзбекстан ↔ Қырғызстан',
@@ -3010,7 +3007,7 @@ const translations = {
     howit_feature_browse_t: 'Жылдам шолу',
     howit_feature_browse_d: 'Тіркеусіз лентаны көріңіз. Әрекет ететін кезіңізде ғана тіркеліңіз.',
     howit_feature_geo_t: 'Қытай ↔ ТМД',
-    howit_feature_geo_d: 'Қытай мен ТМД елдері арасындағы халықаралық FTL тасымалдары. Интерфейс 4 тілде.',
+    howit_feature_geo_d: 'Қытай мен ТМД елдері арасындағы халықаралық FTL тасымалдары. Интерфейс 9 тілде.',
     route_not_specified: 'Бағыт көрсетілмеген',
     carrier_handle_prefix: 'UrTruck тасымалдаушысы',
     driver_profile_missing_title: 'Жүргізуші профилі толтырылмаған',
@@ -4254,7 +4251,7 @@ const translations = {
     stats_no_drivers: '暂无已通过审核的评分司机',
     stats_no_name: '未命名',
     about_stat_countries: '线路覆盖国家 (KZ, RU, UZ, CN, KG, TJ)',
-    about_stat_langs: '界面语言 (RU · KK · EN · ZH)',
+    about_stat_langs: '界面语言 (RU · KK · EN · ZH · TR · UZ · KY · TG · BE)',
     about_stat_commission: '公测期佣金',
     about_stat_queue: '哈萨克边境排队',
     about_hero_sub: 'FTL Market · 国际物流\n中国 ↔ 哈萨克斯坦 ↔ 俄罗斯 ↔ 乌兹别克斯坦 ↔ 吉尔吉斯斯坦',
@@ -4888,7 +4885,7 @@ const translations = {
     howit_feature_browse_t: '快速浏览',
     howit_feature_browse_d: '无需注册即可浏览。准备行动时再注册。',
     howit_feature_geo_t: '中国 ↔ 独联体',
-    howit_feature_geo_d: '提供中国与独联体国家之间的国际整车运输，界面支持4种语言。',
+    howit_feature_geo_d: '提供中国与独联体国家之间的国际整车运输，界面支持9种语言。',
     route_not_specified: '未指定路线',
     carrier_handle_prefix: 'UrTruck 承运人',
     driver_profile_missing_title: '司机资料未填写',
@@ -6143,7 +6140,7 @@ const translations = {
     stats_no_drivers: 'No approved drivers with ratings yet',
     stats_no_name: 'No name',
     about_stat_countries: 'Countries on routes (KZ, RU, UZ, CN, KG, TJ)',
-    about_stat_langs: 'Interface languages (RU · KK · EN · ZH)',
+    about_stat_langs: 'Interface languages (RU · KK · EN · ZH · TR · UZ · KY · TG · BE)',
     about_stat_commission: 'Commission in beta',
     about_stat_queue: 'KZ border queue',
     about_hero_sub: 'FTL Market · International logistics\nChina ↔ Kazakhstan ↔ Russia ↔ Uzbekistan ↔ Kyrgyzstan',
@@ -6448,7 +6445,7 @@ const translations = {
     howit_feature_browse_t: 'Quick browsing',
     howit_feature_browse_d: 'Browse the feed without signing up. Register only when you are ready to act.',
     howit_feature_geo_t: 'China ↔ CIS',
-    howit_feature_geo_d: 'International FTL transport between China and CIS countries. The interface supports 4 languages.',
+    howit_feature_geo_d: 'International FTL transport between China and CIS countries. The interface supports 9 languages.',
     route_not_specified: 'Route not specified',
     carrier_handle_prefix: 'UrTruck Carrier',
     driver_profile_missing_title: 'Driver profile not filled in',
@@ -7790,6 +7787,8 @@ mark_arrived: 'Delivered',
 },
 };
 
+Object.assign(translations, ADDITIONAL_TRANSLATIONS);
+
 // Track B / B4: `storage`/`react-native` used to be static top-level
 // imports. That's fine inside the app bundle, but it means nothing could
 // ever import this file's `translations` data from plain Node tooling
@@ -7825,8 +7824,7 @@ function getLocalization() {
 const listeners = new Set();
 const KEY = 'ur_lang';
 
-// Алиасы: системный код → наш код. Поддерживаем только 4 языка:
-// RU / EN / KK (Kazakh, ISO 639-1) / ZH (Chinese, ISO 639-1).
+// Алиасы системных кодов и исторических country-кодов → ISO-код языка.
 //
 // Stage 7 standardised the codes to ISO. Earlier the storage might
 // have written `'KZ'` (country code, not language) or `'CN'` (also
@@ -7838,6 +7836,8 @@ const LANG_ALIAS = {
   en: 'EN', eng: 'EN',
   kk: 'KK', kaz: 'KK', 'kk-kz': 'KK',
   zh: 'ZH', 'zh-cn': 'ZH', 'zh-hans': 'ZH', 'zh-hant': 'ZH', 'zh-tw': 'ZH',
+  tr: 'TR', tur: 'TR', uz: 'UZ', uzb: 'UZ', ky: 'KY', kir: 'KY', kg: 'KY',
+  tg: 'TG', tgk: 'TG', tj: 'TG', be: 'BE', bel: 'BE', by: 'BE',
 };
 
 // Legacy persisted-value fixups. Stage 5 narrowed the set to four
@@ -7846,6 +7846,9 @@ const LANG_ALIAS = {
 const LEGACY_LANG_FIX = {
   KZ: 'KK',
   CN: 'ZH',
+  KG: 'KY',
+  TJ: 'TG',
+  BY: 'BE',
 };
 
 // Sync detect at module load — best effort before async storage
@@ -7954,7 +7957,7 @@ function detectSystemLang() {
   }
 })();
 
-const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en' };
+const HTML_LANG = { RU: 'ru', KK: 'kk', ZH: 'zh-CN', EN: 'en', TR: 'tr', UZ: 'uz', KY: 'ky', TG: 'tg', BE: 'be' };
 
 const syncDocumentLanguage = (lang) => {
   // The browser translator was appearing above the Chinese UI because the

@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, withAdditionalLanguages } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Linking, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -34,18 +35,21 @@ const COPY = {
   ZH: { ourTelegram: 'UrTruck 的 Telegram', telegramContact: '打开 Telegram 联系方式', noContact: '未提供直接联系方式', newListings: '新信息', mixedCurrency: '仅当结果中只有一种货币时才能按价格排序。当前显示最新信息。', priceUnavailable: '筛选结果中没有可排序的价格。当前显示最新信息。', telegram: 'Telegram原始信息', direction: '路线见原文', cargoTitle: '货源信息', vehicleTitle: '车辆信息', from: '出发地', to: '目的地', body: '车厢类型', customBody: '或输入其他车厢类型', date: '日期', price: '价格', empty: '暂无公告', none: '没有符合筛选条件的结果', network: '网络不可用，已加载的信息已保留。', server: '信息服务暂时不可用。', retry: '重试', more: '更多', less: '收起', copied: '联系方式已复制', today: '今天', yesterday: '昨天', apply: '应用', choose: '从列表选择', reset: '重置', cancel: '取消', negotiable: '价格面议', unknown: '未提供价格', loading: '加载中…', published: '发布时间', weightUnit: '吨', volumeUnit: '立方米', dateFrom: '开始', dateTo: '结束', newest: '最新', asc: '↓ 更便宜', desc: '↑ 更贵', retryPage: '无法加载下一页', invalidDate: '请检查发布日期范围。' },
   EN: { ourTelegram: 'On UrTruck Telegram', telegramContact: 'Open Telegram contact', noContact: 'Direct contact not provided', newListings: 'New listings', mixedCurrency: 'Price sorting is available when results use one currency. Showing newest listings.', priceUnavailable: 'The filtered listings have no prices to sort. Showing newest listings.', telegram: 'Listing on Telegram', direction: 'See original text for direction', cargoTitle: 'Cargo feed', vehicleTitle: 'Truck feed', from: 'From', to: 'To', body: 'Body', customBody: 'Or enter another body type', date: 'Date', price: 'Price', empty: 'No listings yet', none: 'No results for these filters', network: 'No connection. Loaded listings are kept.', server: 'The feed service is temporarily unavailable.', retry: 'Retry', more: 'Show full text', less: 'Collapse', copied: 'Contact copied', today: 'Today', yesterday: 'Yesterday', apply: 'Apply', choose: 'Choose from list', reset: 'Reset', cancel: 'Cancel', negotiable: 'Negotiable', unknown: 'Price not provided', loading: 'Loading…', published: 'Published', weightUnit: 't', volumeUnit: 'm³', dateFrom: 'From', dateTo: 'To', newest: 'Newest', asc: '↓ Cheaper', desc: '↑ Higher', retryPage: 'Could not load the next page', invalidDate: 'Check the publication date range.' },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 const bodyLabels = {
   RU: { tent: 'Тент', ref: 'Рефрижератор', izoterm: 'Изотерм', board: 'Борт', tipper: 'Самосвал', lowboy: 'Трал' },
   KK: { tent: 'Тент', ref: 'Рефрижератор', izoterm: 'Изотерм', board: 'Бортты', tipper: 'Өзі аударғыш', lowboy: 'Трал' },
   ZH: { tent: '篷车', ref: '冷藏车', izoterm: '保温车', board: '平板车', tipper: '自卸车', lowboy: '低平板车' },
   EN: { tent: 'Tent', ref: 'Refrigerated', izoterm: 'Insulated', board: 'Flatbed', tipper: 'Tipper', lowboy: 'Lowboy' },
 };
+Object.assign(bodyLabels, withAdditionalLanguageTree(bodyLabels));
 const SAVED_COPY = {
   RU: { saved: 'Сохранённые', save: 'Сохранить', unsave: 'Убрать из сохранённых', expired: 'Устарело', closed: 'Закрыто', unavailable: 'Объявление недоступно' },
   KK: { saved: 'Сақталғандар', save: 'Сақтау', unsave: 'Сақталғаннан алып тастау', expired: 'Ескірген', closed: 'Жабық', unavailable: 'Хабарландыру қолжетімсіз' },
   ZH: { saved: '已收藏', save: '收藏', unsave: '取消收藏', expired: '已过期', closed: '已关闭', unavailable: '信息不可用' },
   EN: { saved: 'Saved', save: 'Save', unsave: 'Remove from saved', expired: 'Expired', closed: 'Closed', unavailable: 'Listing unavailable' },
 };
+Object.assign(SAVED_COPY, withAdditionalLanguageTree(SAVED_COPY));
 export default function ExternalFreightFeedScreen({ navigation }) {
   const { session } = useAuth();
   const role = sessionRole(session) || 'guest';
@@ -337,7 +341,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         </TouchableOpacity> : null}
       </View>)}
       {item.source_contacts?.length ? <View testID={`external-feed-source-contacts-${item.id}`}>
-        <Text style={styles.meta}>{({ RU: 'Контакты исходного поста', KK: 'Бастапқы жазбаның байланыстары', ZH: '原始信息的联系方式', EN: 'Contacts from the original post' })[lang] || 'Contacts from the original post'}</Text>
+        <Text style={styles.meta}>{(withAdditionalLanguages({ RU: 'Контакты исходного поста', KK: 'Бастапқы жазбаның байланыстары', ZH: '原始信息的联系方式', EN: 'Contacts from the original post' }))[lang] || 'Contacts from the original post'}</Text>
         {item.source_contacts.map((contact, index) => <TouchableOpacity key={`${item.id}-source-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-source-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color="#168759" /></TouchableOpacity>)}
       </View> : null}
       {(!Array.isArray(item.contacts) || !item.contacts.some(Boolean)) && !item.source_contacts?.length && item.status !== 'unavailable' ? <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{l.noContact}</Text> : null}
@@ -432,7 +436,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <KeyboardAvoidingView style={styles.keyboardAvoiding} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={filterBottom} pointerEvents="box-none" testID="external-feed-filter-keyboard-area">
       <Pressable style={styles.sheet} onPress={e => e.stopPropagation()} testID="external-feed-filter-sheet" accessibilityViewIsModal>
         <View {...sheetGesture.panHandlers} style={styles.handleArea} testID="external-feed-filter-handle"><View style={styles.sheetHandle} accessible={false} /></View>
-        <View style={styles.sheetHeading}><Text style={[styles.sheetTitle, { flex: 1 }]}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text><TouchableOpacity onPress={closeFilter} style={styles.callButton} accessibilityRole="button" accessibilityLabel={({ RU: 'Закрыть фильтр', KK: 'Сүзгіні жабу', ZH: '关闭筛选', EN: 'Close filter' })[lang] || 'Close filter'} testID="external-feed-filter-close"><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
+        <View style={styles.sheetHeading}><Text style={[styles.sheetTitle, { flex: 1 }]}>{modal === 'origin' ? l.from : modal === 'destination' ? l.to : modal === 'body' ? l.body : modal === 'date' ? l.date : l.price}</Text><TouchableOpacity onPress={closeFilter} style={styles.callButton} accessibilityRole="button" accessibilityLabel={(withAdditionalLanguages({ RU: 'Закрыть фильтр', KK: 'Сүзгіні жабу', ZH: '关闭筛选', EN: 'Close filter' }))[lang] || 'Close filter'} testID="external-feed-filter-close"><Feather name="x" size={24} color={theme.text} /></TouchableOpacity></View>
         <View style={styles.actions}>
           <SecondaryButton label={l.reset} onPress={resetFilters} role={role} numberOfLines={null} style={styles.filterAction} />
           <SecondaryButton label={l.cancel} onPress={closeFilter} role={role} numberOfLines={null} testID="external-feed-cancel-filters" style={styles.filterAction} />
@@ -447,7 +451,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         {modal === 'date' ? <View><View style={styles.quickRow}><TouchableOpacity onPress={() => choosePresetDate(0)}><Text style={styles.link}>{l.today}</Text></TouchableOpacity><TouchableOpacity onPress={() => choosePresetDate(1)}><Text style={styles.link}>{l.yesterday}</Text></TouchableOpacity></View><Text style={styles.hint}>{l.dateFrom}</Text><DatePicker value={draft.published_from} onChange={value => setDraft(current => ({ ...current, published_from: value }))} allowPast /><Text style={styles.hint}>{l.dateTo}</Text><DatePicker value={draft.published_to} onChange={value => setDraft(current => ({ ...current, published_to: value }))} allowPast /></View> : null}
         {priceModal ? <View testID="external-feed-price-options">{[['newest', l.newest], ['price_asc', l.asc], ['price_desc', l.desc]].map(([value, label]) => <TouchableOpacity key={value} style={styles.option} onPress={() => setDraft(current => ({ ...current, sort: value }))}><Text style={styles.optionText}>{label}</Text><Text style={styles.optionText}>{draft.sort === value ? '✓' : ''}</Text></TouchableOpacity>)}</View> : null}
         {modal === 'date' ? <Text style={styles.hint}>{l.published}</Text> : null}
-        <TouchableOpacity onPress={resetAllFilters} style={styles.textAction} testID="external-feed-reset-all" accessibilityRole="button"><Text style={styles.link}>{({ RU: 'Сбросить все фильтры', KK: 'Барлық сүзгілерді тазарту', ZH: '重置所有筛选', EN: 'Reset all filters' })[lang] || 'Reset all filters'}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={resetAllFilters} style={styles.textAction} testID="external-feed-reset-all" accessibilityRole="button"><Text style={styles.link}>{(withAdditionalLanguages({ RU: 'Сбросить все фильтры', KK: 'Барлық сүзгілерді тазарту', ZH: '重置所有筛选', EN: 'Reset all filters' }))[lang] || 'Reset all filters'}</Text></TouchableOpacity>
         </ScrollView>
       </Pressable>
       </KeyboardAvoidingView>
@@ -461,7 +465,7 @@ function vehicleCountLabel(value, lang, needed) {
     const noun = last === 1 && teen !== 11 ? 'машина' : last >= 2 && last <= 4 && (teen < 12 || teen > 14) ? 'машины' : 'машин';
     return `${value} ${noun}`;
   }
-  return `${value} ${needed ? ({ KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' }[lang] || 'trucks needed') : ({ KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' }[lang] || 'trucks available')}`;
+  return `${value} ${needed ? (withAdditionalLanguages({ KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' })[lang] || 'trucks needed') : (withAdditionalLanguages({ KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' })[lang] || 'trucks available')}`;
 }
 
 async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
@@ -479,7 +483,7 @@ async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
 }
 
 function formatNumber(value) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(value)); }
-function formatDate(value, lang) { if (!value) return ''; const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value); const date = dmy ? new Date(+dmy[3], +dmy[2] - 1, +dmy[1]) : new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' })[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
+function formatDate(value, lang) { if (!value) return ''; const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value); const date = dmy ? new Date(+dmy[3], +dmy[2] - 1, +dmy[1]) : new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat((withAdditionalLanguages({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' }))[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({

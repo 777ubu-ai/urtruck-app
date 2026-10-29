@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import { localizeSystemMessage } from '../utils/places';
 import Feather from '@expo/vector-icons/Feather';
 
 const NOTIF_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
+Object.assign(NOTIF_LOCALE, withAdditionalLanguageTree(NOTIF_LOCALE));
 function formatNotifTime(raw) {
   if (!raw) return "";
   let str = String(raw).trim();

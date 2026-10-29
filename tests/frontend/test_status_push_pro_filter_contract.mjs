@@ -103,7 +103,7 @@ test('help copy matches the current basic onboarding and deal completion flow', 
   assert.doesNotMatch(i18n, /11 языков/);
   assert.match(i18n, /Документы для повышения доверия можно загрузить позже/);
   assert.match(i18n, /После подтверждения получения сделка завершается/);
-  assert.match(i18n, /Интерфейс на 4 языках/);
+  assert.match(i18n, /Интерфейс на 9 языках/);
 });
 
 test('route filter can select a whole country without forcing a city', () => {
