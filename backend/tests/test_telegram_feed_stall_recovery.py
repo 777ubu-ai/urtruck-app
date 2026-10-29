@@ -143,3 +143,55 @@ def test_unconfirmed_copy_is_not_resent_as_a_different_queue_item(tmp_path):
           FROM queue LIMIT 1""")
     assert m.reserve(db) is None
     db.close()
+
+
+def test_configured_three_second_interval_and_external_pause_are_honored(tmp_path, monkeypatch):
+    m = collector()
+    monkeypatch.setattr(m, 'settings', lambda: {'TELEGRAM_PUBLISH_INTERVAL_SECONDS': '3'})
+    db = m.database(tmp_path/'feed.sqlite3')
+    at = time.time()
+    make_queue_row(db, m, at)
+    assert not m.due(db, datetime.fromtimestamp(at+2.9, timezone.utc))
+    assert m.due(db, datetime.fromtimestamp(at+3, timezone.utc))
+    with db:
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('publish_after',?)", (str(at+60),))
+    assert not m.due(db, datetime.fromtimestamp(at+59, timezone.utc))
+    assert m.due(db, datetime.fromtimestamp(at+60, timezone.utc))
+    db.close()
+
+
+def test_three_second_publication_progress_is_not_delayed_by_five_second_loop(tmp_path, monkeypatch):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    clock = [time.time()]
+    start = clock[0]
+    delivered = []
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(m, 'settings', lambda: {'TELEGRAM_PUBLISH_INTERVAL_SECONDS': '3'})
+    async def scan(*args):
+        await asyncio.Event().wait()
+    async def publish(reader, state, transient):
+        now = datetime.fromtimestamp(clock[0], timezone.utc)
+        if m.due(state, now):
+            if not delivered:
+                make_queue_row(state, m, clock[0])
+            else:
+                with state:
+                    state.execute('UPDATE queue SET published_at=?', (clock[0],))
+            delivered.append(clock[0]-start)
+    async def sleep(delay):
+        clock[0] += delay
+        await real_sleep(0)
+        if clock[0]-start >= 7:
+            raise asyncio.CancelledError()
+    monkeypatch.setattr(m, 'collect', scan)
+    monkeypatch.setattr(m, 'telegram_tick', publish)
+    monkeypatch.setattr(m.asyncio, 'sleep', sleep)
+    async def scenario():
+        try:
+            await m.run_cycles(None, db, {'PUBLISH_ENABLED': 'true'})
+        except asyncio.CancelledError:
+            pass
+    asyncio.run(scenario())
+    assert delivered == [0, 3, 6]
+    db.close()
