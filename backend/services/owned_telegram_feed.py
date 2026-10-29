@@ -4,7 +4,14 @@ import re
 import unicodedata
 
 from services.external_freight_classifier import classify_message
-from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages, source_contact_values
+from services.external_freight_parser import (
+    _single_unambiguous_post_contact,
+    _single_footer_contact,
+    block_contacts,
+    map_selected_message,
+    map_selected_messages,
+    source_contact_values,
+)
 
 OWNED_SOURCE = 'UrTruck_obyavleniya'
 _FROM = re.compile(r'(?im)^\s*(?:погрузка|загрузка|откуда)\s*[:：]\s*([^\n]+)')
@@ -23,14 +30,12 @@ def map_owned_messages(raw):
         raise ValueError('invalid_original_text')
     clean = _clean(text)
     starts = list(_FROM.finditer(clean))
-    # Общий телефон — отдельная последняя строка, а не число цены/веса.
-    tail = next((line for line in reversed(clean.splitlines()) if line.strip()), '')
-    footer = block_contacts(tail)
-    residual = tail
-    for phone in footer:
-        residual = residual.replace(phone, '')
-    residual = re.sub(r'(?i)(?:телефон|контакт|phone|tel|общий)', '', residual)
-    shared = footer if footer and not re.sub(r'[\s:：,;.+()\-]', '', residual) else []
+    # Найти номер по всему исходному посту до разбиения на маршруты. Один
+    # уникальный телефон относится ко всем сегментам этого поста; несколько
+    # разных номеров остаются локальными для своих блоков.
+    shared_contact = (_single_unambiguous_post_contact(text)
+                      or _single_footer_contact(clean))
+    shared = [shared_contact] if shared_contact else []
     # Разные авторы в одном посте требуют явной принадлежности контактов.
     if re.search(r'(?im)^\s*(?:автор|отправитель)\s*:', clean):
         shared = []

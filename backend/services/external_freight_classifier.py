@@ -135,9 +135,20 @@ _CLOSE_CONTEXT = re.compile(
     r"\bfound (?:a truck|cargo)\b|(?:订单|货源)已关闭)", re.I | re.M,
 )
 
+_GROUP_ADMIN_POST = re.compile(
+    r"(?i)\b(?:добро\s+пожаловать\s+в\s+(?:нашу\s+)?(?:группу|чат)|"
+    r"(?:данное|это|эта)\s+(?:сообщество|группа)\s+создано\s+для\s+размещени\w*\s+объявлени\w*|"
+    r"в\s+(?:нашей|этой)\s+группе\s+запрещено|правила\s+(?:нашей\s+)?группы)\b"
+)
+
 
 def classify_message(text: str) -> dict:
     value = str(text or "")[:20000]
+    # Welcome/rules posts often mention freight services and contain route
+    # examples, but are group administration rather than an actual listing.
+    if _GROUP_ADMIN_POST.search(value):
+        return {"kind": None, "status": "closed", "segments": [value],
+                "reason": "group_administration"}
     if _CLOSE_CONTEXT.search(value):
         return {"kind": None, "status": "closed", "segments": [value]}
     cargo, vehicle = _intents(value)
