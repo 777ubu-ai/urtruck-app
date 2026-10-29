@@ -18,7 +18,7 @@ from services.external_freight_parser import map_selected_messages
 from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
-ACTIVE_SECONDS = 168 * 3600
+ACTIVE_SECONDS = 10 * 24 * 3600
 MAX_SCAN = 50
 PARSER_REVISION = '20261029-contact-footer-v13'
 
