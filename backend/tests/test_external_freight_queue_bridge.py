@@ -232,6 +232,18 @@ def test_bad_source_record_does_not_block_following_record(bridge):
     assert worker.run_once()["scanned"] == 0
 
 
+def test_contact_footer_fix_advances_each_bridge_parser_revision():
+    from services.external_freight_queue_bridge import (
+        IncomingQueueBridge,
+        OwnedTelegramQueueBridge,
+        PARSER_REVISION,
+    )
+
+    assert PARSER_REVISION == IncomingQueueBridge.parser_revision == "20261029-contact-footer-v13"
+    assert OwnedTelegramQueueBridge.parser_revision == "20261029-contact-footer-v13"
+    assert PublishedQueueBridge.parser_revision == "20261029-contact-footer-v8"
+
+
 def test_delivered_source_edit_and_closure_are_replayed_after_restart(bridge):
     worker, calls = bridge
     add(worker)
