@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import translations from '../../src/utils/i18n.js';
 import { LANGUAGES, ADDITIONAL_LANGUAGE_CODES, localeForLanguage } from '../../src/utils/languages.js';
-import { ADDITIONAL_TRANSLATIONS, withAdditionalLanguages, localizeUiTemplate } from '../../src/utils/additionalLocales.js';
+import { ADDITIONAL_TRANSLATIONS, withAdditionalLanguages, localizeUiTemplate, localizeUiText } from '../../src/utils/additionalLocales.js';
 import { getVehicleCopy } from '../../src/utils/vehicleSetupCopy.js';
 import { getExpenseCopy } from '../../src/utils/expenseCopy.js';
 
@@ -148,4 +148,9 @@ test('известные системные сообщения сделки пе
     }
     for (const raw of ['Мой груз: цемент, 20 тонн', 'Сохранить', 'Давайте завершим сделку завтра']) assert.equal(localizeSystemMessage(raw, code), raw, code);
   }
+});
+
+
+test('неизвестные подписи с именами свойств Object остаются строками', () => {
+  for (const code of ADDITIONAL_LANGUAGE_CODES) for (const raw of ['constructor','toString','__proto__']) assert.equal(localizeUiText(raw, code), raw);
 });

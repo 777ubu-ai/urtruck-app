@@ -17,7 +17,7 @@ export function localizeUiText(value, language) {
   const catalog = catalogs[code];
   if (!catalog || typeof value !== 'string' || !value.trim()) return value;
   if (/^(?:ru|en|kk|zh)-(?:RU|US|GB|KZ|CN)$/.test(value)) return localeForLanguage(code);
-  return catalog.phrases[value] ?? value;
+  return Object.prototype.hasOwnProperty.call(catalog.phrases, value) ? catalog.phrases[value] : value;
 }
 
 export function localizeUiTemplate(parts, values, language) {
