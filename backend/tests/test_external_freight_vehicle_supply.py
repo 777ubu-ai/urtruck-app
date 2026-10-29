@@ -288,12 +288,12 @@ def collector():
     return module
 
 
-def test_history_captures_seven_days_in_bounded_restartable_pages(tmp_path):
+def test_history_captures_ten_days_in_bounded_restartable_pages(tmp_path):
     m=collector();m.APP_HISTORY_PAGE=2
     db=m.database(tmp_path/'source.sqlite3')
     now=m.utcnow()
     messages=[SimpleNamespace(id=i,date=now-timedelta(hours=h),raw_text='Есть машина\nХоргос-Алматы',noforwards=False)
-              for i,h in [(5,1),(4,80),(3,167),(2,169)]]
+              for i,h in [(5,1),(4,80),(3,239),(2,241)]]
     calls=[]
     class Reader:
         async def iter_messages(self,entity,**kwargs):
