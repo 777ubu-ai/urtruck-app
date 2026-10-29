@@ -61,6 +61,16 @@ def test_footer_contact_in_long_owned_post_is_shared_across_routes():
     assert all(item['source_text'] == text for item in items)
 
 
+def test_country_sections_keep_footer_contact_with_its_own_section():
+    text = ('РОССИЯ\nПогрузка: Алашанькоу\nВыгрузка: Пермь\nГруз: оборудование\n'
+            'КАЗАХСТАН\nПогрузка: Алашанькоу\nВыгрузка: Караганда\nГруз: шины\n'
+            '+77001234567')
+    items = map_owned_messages(raw(text))
+    assert len(items) == 2
+    assert items[0]['contacts'] == []
+    assert items[1]['contacts'] == ['+77001234567']
+
+
 def test_group_welcome_rules_post_is_not_published_as_a_cargo_listing():
     text = ('Добро пожаловать в группу Груз Китай\n'
             'Данное сообщество создано для размещения объявлений о поиске грузов и услуг водителей.\n'

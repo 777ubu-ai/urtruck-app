@@ -5,6 +5,7 @@ import unicodedata
 
 from services.external_freight_classifier import classify_message
 from services.external_freight_parser import (
+    _country_header_offsets,
     _single_footer_contact,
     block_contacts,
     map_selected_message,
@@ -31,7 +32,8 @@ def map_owned_messages(raw):
     starts = list(_FROM.finditer(clean))
     # Найти конечный телефон до разбиения на маршруты и сохранить его как
     # общий контакт поста. Номера внутри маршрутов остаются локальными.
-    shared_contact = _single_footer_contact(clean)
+    shared_contact = (None if _country_header_offsets(clean)
+                      else _single_footer_contact(clean))
     shared = [shared_contact] if shared_contact else []
     # Разные авторы в одном посте требуют явной принадлежности контактов.
     if re.search(r'(?im)^\s*(?:автор|отправитель)\s*:', clean):

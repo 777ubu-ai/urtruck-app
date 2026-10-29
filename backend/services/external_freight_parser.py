@@ -544,7 +544,8 @@ def map_selected_messages(raw):
     text = raw.get("original_text", raw.get("text", ""))
     if not isinstance(text,str) or len(text)>20000:
         raise ValueError("invalid_original_text")
-    shared_post_contact = _single_footer_contact(text)
+    shared_post_contact = (None if _country_header_offsets(text)
+                           else _single_footer_contact(text))
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
     blocks = []
     route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
