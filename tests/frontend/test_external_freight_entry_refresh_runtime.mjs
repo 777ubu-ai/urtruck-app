@@ -63,10 +63,9 @@ function harness(role) {
   };
 }
 
-for (const role of ['driver', 'client']) test(`${role}: счётчик обновляется через минуту и сразу при возврате`, async () => {
+for (const role of ['driver', 'client']) test(`${role}: счётчик загружается при входе и возврате без периодических запросов`, async () => {
   const h = harness(role); await h.flush(); assert.equal(h.calls(), 1);
-  h.advance(59999); await h.flush(); assert.equal(h.calls(), 1);
-  h.advance(1); await h.flush(); assert.equal(h.calls(), 2);
+  h.advance(600000); await h.flush(); assert.equal(h.calls(), 1);
   for (const state of ['background', 'inactive']) {
     h.app(state); const before = h.calls();
     h.advance(120000); await h.flush(); assert.equal(h.calls(), before);

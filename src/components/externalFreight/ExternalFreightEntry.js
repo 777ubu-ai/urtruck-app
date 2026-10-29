@@ -58,9 +58,8 @@ export default function ExternalFreightEntry(props) {
     const removeFocus = navigation.addListener('focus', refresh);
     const removeBlur = navigation.addListener('blur', onBlur);
     const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
-    const interval = setInterval(refresh, 60000);
     refresh();
-    return () => { alive = false; cancel(); clearInterval(interval); removeFocus(); removeBlur(); appListener.remove(); };
+    return () => { alive = false; cancel(); removeFocus(); removeBlur(); appListener.remove(); };
   }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);
   if (!EXTERNAL_FREIGHT_ENABLED || showBack || !['driver', 'client'].includes(role)) return children;
   const labels = {

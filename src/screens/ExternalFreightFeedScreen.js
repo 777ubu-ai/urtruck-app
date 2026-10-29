@@ -229,17 +229,6 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     return () => { blur(); focus(); app?.remove?.(); cancel(); };
   }, [navigation]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (AppState.currentState === 'active' && !blurredRef.current
-          && navigation.isFocused?.() && !busyRef.current && !modal
-          && bookmarkRequestsRef.current.size === 0) {
-        loadRef.current?.({ reset: true, background: true });
-      }
-    }, 60000);
-    return () => clearInterval(timer);
-  }, [navigation, modal]);
-
   const applyFilters = () => {
     const next = isLocationModal
       ? { ...draft, ...externalLocationTextSelection(modal, draft[modal] || getCountryName(draft[`${modal}_country`], lang) || '', ALL_COUNTRIES) }

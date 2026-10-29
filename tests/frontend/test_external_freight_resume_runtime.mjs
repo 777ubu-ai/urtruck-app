@@ -75,7 +75,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     async flush() { for (let i = 0; i < 12; i++) { if (dirty) render(); await tick(); } },
     list: () => nodes().find(n => n.type === 'FlatList'), warning: () => nodes().find(n => n.type === 'TouchableOpacity' && n.props.children.some(c => c?.type === 'Text' && c.props.children.some(s => typeof s === 'string' && s.includes('Нет соединения')))),
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
-    poll: () => intervals.forEach((_timer, fn) => fn()), intervals: () => [...intervals.values()].map(timer => timer.delay),
+    resume: () => { listeners.get('blur')?.(); listeners.get('focus')?.(); }, intervals: () => [...intervals.values()].map(timer => timer.delay),
     advance(ms) {
       const end = elapsed + ms;
       while (intervals.size) {
@@ -94,18 +94,16 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
   };
 }
 
-for (const role of ['driver', 'client']) for (const platform of ['android', 'ios', 'web']) test(`${role}/${platform}: автообновление через минуту, ручное обновление сразу`, async () => {
+for (const role of ['driver', 'client']) for (const platform of ['android', 'ios', 'web']) test(`${role}/${platform}: лента не опрашивает сервер по таймеру, ручное обновление сразу`, async () => {
   const h = harness({ role, platform }); await h.flush();
-  assert.deepEqual(h.intervals(), [60000]);
+  assert.deepEqual(h.intervals(), []);
   const initial = h.calls();
-  h.advance(59999); await h.flush();
-  assert.equal(h.calls(), initial, 'нет запросов каждые две секунды');
-  h.advance(1); await h.flush();
-  assert.equal(h.calls(), initial + 1);
+  h.advance(600000); await h.flush();
+  assert.equal(h.calls(), initial, 'за 10 минут простоя нет повторных запросов');
   h.list().props.onRefresh(); await h.flush();
-  assert.equal(h.calls(), initial + 2);
+  assert.equal(h.calls(), initial + 1);
 });
-test('минутный таймер не запрашивает скрытую ленту, возврат обновляет сразу', async () => {
+test('скрытая лента не запрашивает сервер, возврат обновляет сразу', async () => {
   const h = harness(); await h.flush();
   for (const state of ['background', 'inactive']) {
     h.app(state); const before = h.calls();
@@ -149,7 +147,7 @@ for (const mode of ['focus', 'AppState']) test(`сохранённые: ${mode} 
   assert.equal(h.queries.at(-1).cursor, 'older-page');
 });
 for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc', '↑ Дороже']]) {
-  for (const mode of ['poll', 'focus', 'AppState']) test(`${sort}: ${mode} обновляет все60, не обрезает хвост и продолжает cursor`, async () => {
+  for (const mode of ['focus', 'AppState']) test(`${sort}: ${mode} обновляет все60, не обрезает хвост и продолжает cursor`, async () => {
     const fixtures = cards.map(item => ({ ...item, amount: Number(item.id), currency: 'USD', price_state: 'known' }));
     const h = harness({ fixtures }); await h.flush();
     h.node('external-feed-filter-price').props.onPress(); await h.flush();
@@ -163,8 +161,7 @@ for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc',
     // Цена изменила положение записи: нужно освежить весь загруженный префикс,
     // сохранив порядок сервера и следующий cursor, а не склеивать старые цены.
     fixtures.reverse(); fixtures[0] = { ...fixtures[0], amount: 500 };
-    if (mode === 'poll') h.poll();
-    else if (mode === 'focus') { h.blur(); h.focus(); }
+    if (mode === 'focus') { h.blur(); h.focus(); }
     else { h.app('background'); h.app('active'); }
     await h.flush();
     assert.equal(h.list().props.data.length, 60);
@@ -175,16 +172,16 @@ for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc',
     assert.equal(h.queries.at(-1).cursor, 'older-page');
   });
 }
-test('offline polling: warning остаётся во время повторного запроса и исчезает только после успеха', async () => {
-  const h = harness(); await h.flush(); h.fail(true); h.poll(); await h.flush();
+test('offline: предупреждение остаётся при повторном входе и исчезает только после успеха', async () => {
+  const h = harness(); await h.flush(); h.fail(true); h.resume(); await h.flush();
   assert.ok(h.warning());
-  h.suspend(); h.poll(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
+  h.suspend(); h.resume(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
   h.release(); await h.flush(); assert.ok(h.warning());
-  h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
+  h.fail(false); h.resume(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
 });
 test('достижение конца во время фонового запроса не теряет следующую страницу', async () => {
   const h = harness(); await h.flush();
-  h.suspend(); h.poll(); await h.flush();
+  h.suspend(); h.resume(); await h.flush();
   h.list().props.onEndReached(); await h.flush();
   assert.equal(h.list().props.data.length, 30);
   h.release(); await h.flush();
