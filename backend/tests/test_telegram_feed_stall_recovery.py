@@ -149,7 +149,9 @@ def test_configured_three_second_interval_and_external_pause_are_honored(tmp_pat
     m = collector()
     monkeypatch.setattr(m, 'settings', lambda: {'TELEGRAM_PUBLISH_INTERVAL_SECONDS': '3'})
     db = m.database(tmp_path/'feed.sqlite3')
-    at = time.time()
+    with db:
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_started_at','0')")
+    at = 1793310000.0
     make_queue_row(db, m, at)
     assert not m.due(db, datetime.fromtimestamp(at+2.9, timezone.utc))
     assert m.due(db, datetime.fromtimestamp(at+3, timezone.utc))
@@ -163,7 +165,9 @@ def test_configured_three_second_interval_and_external_pause_are_honored(tmp_pat
 def test_three_second_publication_progress_is_not_delayed_by_five_second_loop(tmp_path, monkeypatch):
     m = collector()
     db = m.database(tmp_path/'feed.sqlite3')
-    clock = [time.time()]
+    with db:
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('destination_started_at','0')")
+    clock = [1793310000.0]
     start = clock[0]
     delivered = []
     real_sleep = asyncio.sleep
