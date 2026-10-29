@@ -321,7 +321,8 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   actions.props.onPress(); await h.flush();
   assert.equal(h.shareModal().props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
-  assert.equal(nodes.find(n => n.props.testID === 'external-feed-source-own'), undefined);
+  await nodes.find(n => n.props.testID === 'external-feed-source-own').props.onPress();
+  assert.equal(h.opened.at(-1), 'https://t.me/foreign_chat/44');
   assert.ok(nodes.find(n => n.type === 'Description').props.actions);
 });
 

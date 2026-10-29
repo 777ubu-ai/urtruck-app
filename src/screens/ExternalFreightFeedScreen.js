@@ -341,7 +341,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
       <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
       {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
-      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.ourTelegram}</Text></TouchableOpacity> : null}
+      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
