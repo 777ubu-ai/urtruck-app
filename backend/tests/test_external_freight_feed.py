@@ -141,6 +141,19 @@ def test_split_post_survives_adapter_import_and_public_api_without_losing_footer
     assert all(item['status'] == 'active' for item in items)
 
 
+def test_footer_contact_is_carried_to_each_route_block():
+    from services.external_freight_parser import map_selected_messages
+
+    text = ('Самарканд → Москва\nНужен тент\nГруз: плитка\n'
+            'Самарканд → Казань\nНужен тент\nГруз: плитка\nДата: завтра\n'
+            'Общий телефон: +998901234567')
+    records = map_selected_messages({'source_id': 'shared-mid-post', 'source_message_id': '43', 'text': text})
+
+    assert len(records) == 2
+    assert all(item['contacts'] == ['+998901234567'] for item in records)
+    assert all(item['source_text'] == text for item in records)
+
+
 @pytest.mark.parametrize('source_text', [None, 123, '', 'x' * 20001])
 def test_invalid_full_source_text_does_not_replace_original(source_text):
     record = _record()

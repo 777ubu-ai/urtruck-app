@@ -51,6 +51,35 @@ def test_ten_routes_footer_and_local_contact_priority():
     assert all(x['contacts'] == ['+998901234567'] for i, x in enumerate(items) if i != 1)
 
 
+def test_footer_contact_in_long_owned_post_is_shared_across_routes():
+    text = ('Погрузка: Самарканд\nВыгрузка: Москва\nГруз: плитка\n'
+            'Погрузка: Самарканд\nВыгрузка: Казань\nГруз: плитка\n'
+            'Общий телефон: +998901234567')
+    items = map_owned_messages(raw(text))
+    assert len(items) == 2
+    assert all(item['contacts'] == ['+998901234567'] for item in items)
+    assert all(item['source_text'] == text for item in items)
+
+
+def test_country_sections_keep_footer_contact_with_its_own_section():
+    text = ('РОССИЯ\nПогрузка: Алашанькоу\nВыгрузка: Пермь\nГруз: оборудование\n'
+            'КАЗАХСТАН\nПогрузка: Алашанькоу\nВыгрузка: Караганда\nГруз: шины\n'
+            '+77001234567')
+    items = map_owned_messages(raw(text))
+    assert len(items) == 2
+    assert items[0]['contacts'] == []
+    assert items[1]['contacts'] == ['+77001234567']
+
+
+def test_group_welcome_rules_post_is_not_published_as_a_cargo_listing():
+    text = ('Добро пожаловать в группу Груз Китай\n'
+            'Данное сообщество создано для размещения объявлений о поиске грузов и услуг водителей.\n'
+            'В НАШЕЙ ГРУППЕ ЗАПРЕЩЕНО: спам и реклама\nhttps://t.me/example')
+    item = map_owned_messages(raw(text))[0]
+    assert item['status'] == 'closed'
+    assert item['classification_status'] == 'closed'
+
+
 def test_missing_contact_still_publishes_and_free_vehicle_has_correct_kind():
     item = map_owned_messages(raw('Алматы → Москва\nГруз: товар'))[0]
     assert item['status'] == 'active' and item['contacts'] == []
