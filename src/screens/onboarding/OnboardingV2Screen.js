@@ -19,7 +19,7 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
@@ -84,7 +84,7 @@ const HeroWindow = ({ source, imageAspect, win }) => {
 };
 
 const BrandLogo = ({ s }) => (
-  <Text style={s.logo} accessibilityRole="header" testID="onb-v2-brand-logo">
+  <Text style={s.logo} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} accessibilityRole="header" testID="onb-v2-brand-logo">
     <Text style={{ color: brand.logoDark }}>Ur</Text>
     <Text style={{ color: brand.logoAccent }}>Truck</Text>
   </Text>
@@ -92,9 +92,6 @@ const BrandLogo = ({ s }) => (
 
 const Slide = ({ s, source, imageAspect, win, title }) => (
   <View style={s.slide}>
-    <View style={s.logoWrap}>
-      <BrandLogo s={s} />
-    </View>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
       <Text style={s.title} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.86}>{title}</Text>
@@ -200,7 +197,6 @@ const QaLoginHook = ({ s }) => {
 };
 
 export default function OnboardingV2Screen({ navigation }) {
-  const languageInsets = useSafeAreaInsets();
   const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
@@ -267,7 +263,10 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <View style={[s.languageBar, { top: languageInsets.top + 4 }]}><LanguageSwitcher compact testID="onboarding-language-switcher" /></View>
+      <View style={s.header}>
+        <View style={s.logoWrap}><BrandLogo s={s} /></View>
+        <View style={s.languageBar}><LanguageSwitcher compact testID="onboarding-language-switcher" /></View>
+      </View>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -363,11 +362,12 @@ export default function OnboardingV2Screen({ navigation }) {
 }
 
 const makeStyles = (brand) => StyleSheet.create({
-  languageBar: { position: 'absolute', right: 16, zIndex: 20, alignItems: 'flex-end' },
+  header: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  languageBar: { flexShrink: 0, alignItems: 'flex-end' },
   safe: { flex: 1, backgroundColor: brand.bg },
-  slide: { flex: 1, paddingHorizontal: 0, paddingTop: 6, alignItems: 'stretch' },
-  logoWrap: { height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1 },
+  slide: { flex: 1, paddingHorizontal: 0, alignItems: 'stretch' },
+  logoWrap: { flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'center' },
+  logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1, maxWidth: '100%' },
   captionBlock: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, alignItems: 'center' },
   title: { fontSize: 30, lineHeight: 36, fontWeight: '800', color: brand.textPrimary, textAlign: 'center', paddingHorizontal: 0 },
   dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginBottom: 20, zIndex: 5, elevation: 5 },
