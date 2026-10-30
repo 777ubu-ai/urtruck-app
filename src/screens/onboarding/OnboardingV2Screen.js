@@ -94,7 +94,7 @@ const Slide = ({ s, source, imageAspect, win, title }) => (
   <View style={s.slide}>
     <HeroWindow source={source} imageAspect={imageAspect} win={win} />
     <View style={s.captionBlock}>
-      <Text style={s.title} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.86}>{title}</Text>
+      <Text style={s.title} testID="onb-v2-slide-title">{title}</Text>
     </View>
   </View>
 );
@@ -263,6 +263,7 @@ export default function OnboardingV2Screen({ navigation }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+      <ScrollView style={s.content} contentContainerStyle={s.contentContainer} testID="onb-v2-scroll" keyboardShouldPersistTaps="handled">
       <View style={s.header}>
         <View style={s.logoWrap}><BrandLogo s={s} /></View>
         <View style={s.languageBar}><LanguageSwitcher compact testID="onboarding-language-switcher" /></View>
@@ -274,7 +275,7 @@ export default function OnboardingV2Screen({ navigation }) {
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={32}
-        style={{ flex: 1 }}
+        style={s.carousel}
       >
         <View style={{ width: SCREEN_W }}>
           <Slide
@@ -357,6 +358,7 @@ export default function OnboardingV2Screen({ navigation }) {
 
         {QA_HOOK_ALLOWED ? <QaLoginHook s={s} /> : null}
       </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -365,6 +367,9 @@ const makeStyles = (brand) => StyleSheet.create({
   header: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   languageBar: { flexShrink: 0, alignItems: 'flex-end' },
   safe: { flex: 1, backgroundColor: brand.bg },
+  content: { flex: 1 },
+  contentContainer: { flexGrow: 1 },
+  carousel: { flexGrow: 0, flexShrink: 0 },
   slide: { flex: 1, paddingHorizontal: 0, alignItems: 'stretch' },
   logoWrap: { flex: 1, minWidth: 0, alignItems: 'flex-start', justifyContent: 'center' },
   logo: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -1.1, maxWidth: '100%' },
@@ -374,7 +379,8 @@ const makeStyles = (brand) => StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   ctaWrap: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 10, backgroundColor: brand.bg, zIndex: 10, elevation: 10, alignItems: 'center' },
   ctaPrimary: {
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 6,
     width: '86%',
     maxWidth: 540,
     borderRadius: 26,
@@ -403,7 +409,7 @@ const makeStyles = (brand) => StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
   },
-  ctaOutline: { height: 48, width: '76%', maxWidth: 480, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 20, marginTop: 15, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
+  ctaOutline: { minHeight: 48, paddingVertical: 6, width: '76%', maxWidth: 480, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', paddingHorizontal: 20, marginTop: 15, borderWidth: 1, borderColor: brand.borderStrong, backgroundColor: brand.surface },
   ctaOutlineText: { ...typography.button, color: brand.textPrimary, flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 17 },
   consent: { fontSize: 12, color: brand.textSecondary, textAlign: 'center', marginTop: 20 },
   consentLink: { color: brand.textPrimary, textDecorationLine: 'underline', fontWeight: '600' },

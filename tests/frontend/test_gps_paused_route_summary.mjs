@@ -36,6 +36,6 @@ test('фон отменяет маршрут без автоматических
 for(const response of [{ok:false},{ok:true},{ok:true,distance_m:null},{ok:true,distance_m:-1},{ok:true,distance_m:'bad'}]) test('неподтверждённый километраж не подставляется: '+JSON.stringify(response),async()=>{
  const h=fixture(response);h.render();await tick();h.render();assert.equal(h.summaries.at(-1),null);h.unmount();
 });
-test('пауза включена по умолчанию; текст доступен на четырёх языках',async()=>{
- const policy=await import('../../src/utils/locationPolicy.js');assert.equal(policy.GPS_TRACKING_PAUSED,true);for(const lang of ['RU','KK','ZH','EN'])assert.ok(policy.pausedLocationCopy[lang]);
+test('пауза включена по умолчанию; текст доступен на девяти языках',async()=>{
+ const policy=await import('../../src/utils/locationPolicy.js');assert.equal(policy.GPS_TRACKING_PAUSED,true);for(const lang of ['RU','KK','ZH','EN','TR','UZ','KY','TG','BE'])assert.ok(policy.pausedLocationCopy[lang]);
 });

@@ -42,7 +42,7 @@ test('final onboarding uses the three approved vertical assets', () => {
   assert.match(onboarding, /resizeMode/);
   assert.equal((onboarding.match(/testID="onb-v2-brand-logo"/g) || []).length, 1, 'onboarding must render one brand logo');
   assert.match(onboarding, /const WINDOW_S[123] = \{ from: 0, to: 0\.59 \}/);
-  assert.match(onboarding, /numberOfLines=\{2\}/);
+  assert.match(onboarding, /style=\{s\.title\} testID="onb-v2-slide-title"/);
   assert.doesNotMatch(onboarding, /onb_v2_slide[123]_subtitle|style=\{s\.subtitle\}/, 'subtitle must not render in onboarding');
   assert.match(onboarding, /testID="onb-v2-cta-phone"/);
   assert.match(onboarding, /testID="onb-v2-cta-guest"/);
