@@ -25,3 +25,8 @@ Graphify AST-only13253nodes/29808edges/691communities. Scope: фиксирова
 QA2 фактическая конфигурация процесса: TRANSLATE_PROVIDER=local_ai; TRANSCRIBE_PROVIDER=openai/modelgpt-4o-mini-transcribe; fallbacklocal_ai. Локальный AI объявляет4языка, новые направления требуют отдельных фактических результатов. Ключ не выводился и не менялся. Интерфейс9языков не означает speech/translation support9.
 
 Xiaomi25078RA3EY/Android16 и HuaweiGRL-AL10/Android12 подключены. iPhone15ProMax(iPhoneBah2) подключён, установлен1.0.13(123); владелец освободил и разблокировал его. UI runner требует включить DevToolsSecurity наMac; для этого нужен локальный пароль администратора, действие запрошено владельцу. Новый native кандидат, полная водительская матрица обоих телефонов и полный CI этого изменения pending. Публичный выпуск новых языков не объявляется.
+
+
+Дополнение до native freeze: сохранён параллельный commit b30253ecb45a178b39203b0967ead23601683f66 (только оформление LanguageSwitcher). При искусственно увеличенном CTA32px обнаружен min-content overflow длинного слова BE: добавлены minWidth0/flexShrink1 у текста и фиксированная область стрелки. Новые18 web-сценариев проверяют также scrollWidth≤clientWidth кнопок и ожидают полного закрытия анимации модального списка перед снимком. Снимки обновлены после проверки.
+
+Фактическая runtime-матрица QA2 до deploy: RU↔TR/UZ/KY/TG/BE —10FAIL неподдерживаемого local_ai; RU→EN — timeout90s, RU→KK —API_SUCCESS67.7s(требует оценки качества), RU→ZH —TRANSLATION_QUALITY_FAILED. OpenAI key probe QA2 —401expired_secret_key, поэтому speech новых языков не считается проверенным. Это результаты существующей среды, её provider/key не менялись.
