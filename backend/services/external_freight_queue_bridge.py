@@ -147,7 +147,8 @@ class PublishedQueueBridge:
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
                 "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
-                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
+                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now)),
+                **({"error_type": delivery["error_type"]} if delivery.get("error_type") else {})}
 
 
 class IncomingQueueBridge(PublishedQueueBridge):
