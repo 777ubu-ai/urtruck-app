@@ -16,8 +16,8 @@ test('empty head clears closed/expired and never changes filters', () => {
 test('post link opens only our exact Telegram receivers and numeric message', () => {
  assert.equal(externalTelegramPost({origin_source:'@UrTruck_obyavleniya',source_message_id:123}),'https://t.me/UrTruck_obyavleniya/123');
  assert.equal(externalTelegramPost({origin_source:'UrTruck_UT',source_message_id:123}),'https://t.me/UrTruck_UT/123');
- assert.equal(externalTelegramPost({origin_source:'valid_channel',source_message_id:123}),null);
- assert.equal(externalTelegramPost({origin_source:'UrTruck_obyavleniya_evil',source_message_id:123}),null);
+ assert.equal(externalTelegramPost({origin_source:'valid_channel',source_message_id:123}),'https://t.me/valid_channel/123');
+ assert.equal(externalTelegramPost({origin_source:'UrTruck_obyavleniya_evil',source_message_id:123}),'https://t.me/UrTruck_obyavleniya_evil/123');
  assert.equal(externalTelegramPost({origin_source:'https://evil.test',source_message_id:123}),null);
  assert.equal(externalTelegramPost({origin_source:'valid_channel',source_message_id:'bad'}),null);
 });

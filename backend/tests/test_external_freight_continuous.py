@@ -130,10 +130,10 @@ def test_capture_without_phone_legacy_queue_unchanged_and_edit_ttl(tmp_path):
     assert db.execute('select source_date from app_messages').fetchone()[0]==published.timestamp()
 
 
-def test_app_capture_keeps_publications_for_seven_day_window(tmp_path):
+def test_app_capture_keeps_publications_for_ten_day_window(tmp_path):
     m=collector();db=m.database(tmp_path/'source.sqlite3')
     recent=m.utcnow()-timedelta(hours=167)
-    stale=m.utcnow()-timedelta(hours=169)
+    stale=m.utcnow()-timedelta(hours=241)
     assert m.capture_for_app(db,'public_channel',12345,88,'Тент',recent)
     assert not m.capture_for_app(db,'public_channel',12345,89,'Тент',stale)
     assert db.execute('select count(*) from app_messages').fetchone()[0]==1

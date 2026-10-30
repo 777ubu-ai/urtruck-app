@@ -1,0 +1,12 @@
+{
+  "sources": 60,
+  "cards": 126,
+  "original_preserved": 126,
+  "with_text_contacts": 45,
+  "with_metadata_contacts": 0,
+  "without_detected_contacts": 15,
+  "kinds": {
+    "cargo": 125,
+    "vehicle": 1
+  }
+}

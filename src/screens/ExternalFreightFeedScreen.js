@@ -329,10 +329,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         </View>
       </View>
       {['expired', 'closed'].includes(item.status) ? <Text style={styles.meta}>{sl[item.status]}</Text> : null}
-      {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
-      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
-      {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
-      {item.status !== 'unavailable' ? <Text style={styles.price}>{price}</Text> : null}
+      {item.status !== 'unavailable' ? <Text style={styles.price} testID={`external-feed-price-${item.id}`}>{price}</Text> : null}
       {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <View key={`${item.id}-contact-${index}`} style={styles.contactRow}>
         <TouchableOpacity onPress={() => copyContact(contact)} style={[styles.contact, styles.contactCopy]} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>
         {externalTelegramContactURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="link" accessibilityLabel={l.telegramContact}
@@ -345,7 +342,10 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         {item.source_contacts.map((contact, index) => <TouchableOpacity key={`${item.id}-source-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-source-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color="#168759" /></TouchableOpacity>)}
       </View> : null}
       {(!Array.isArray(item.contacts) || !item.contacts.some(Boolean)) && !item.source_contacts?.length && item.status !== 'unavailable' ? <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{l.noContact}</Text> : null}
-      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.ourTelegram}</Text></TouchableOpacity> : null}
+      {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
+      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
+      {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
+      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.telegram}</Text></TouchableOpacity> : null}
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}

@@ -17,7 +17,7 @@ _WEB_DOMAIN = re.compile(r"(?i)(?:https?://|www\.|(?<!\w)[\w-]+\.[^\W\d_]{2,63}(
 _LABELLED_ROUTE = re.compile(
     r"(?is)(?:откуда|загрузка|погрузка)\s*[:：-]\s*([^\n,;]{2,80})[\s,;]+(?:куда|выгрузка|доставка)\s*[:：-]\s*([^\n,;]{2,80})"
 )
-_WEIGHT = re.compile(r"(?i)(?<![\w.])(\d+(?:[ \u00a0]\d{3})*(?:[.,]\d+)?)\s*(т(?:онн(?:а|ы)?)?|тонн(?:а|ы)?|кг)\b")
+_WEIGHT = re.compile(r"(?i)(?<![\w.])(\d+(?:[ \u00a0]\d{3})*(?:[.,]\d+)?)[ \t\u00a0]*(т(?:онн(?:а|ы)?)?|тонн(?:а|ы)?|кг)\b")
 _VOLUME = re.compile(r"(?i)(?<![\w.])(\d+(?:[.,]\d+)?)\s*(м\s*[³3]|куб(?:ов|а)?)\b")
 _COUNT = re.compile(r"(?i)(?:нужно|требуется|требуются|нужны|количество)\s*[:：-]?\s*(\d{1,4})\s*(?:машин|авто|фур)")
 _CARGO = re.compile(r"(?im)^\s*(?:груз|наименование груза)\s*[:：-]\s*([^\n;]{2,120})")
@@ -158,8 +158,33 @@ def _first(pattern, text, group=1):
     return match.group(group).strip(" \t,.;") if match else None
 
 
+def _numeric_field_matches(pattern, text):
+    for match in pattern.finditer(text):
+        # «+998... тг» — явный международный контакт Telegram.
+        # Обычная цена «1000000 тг» остаётся числовым полем.
+        telegram_contact = (
+            pattern is _PRICE and match.group(2).casefold() == 'тг'
+            and match.start() > 0 and text[match.start()-1] == '+'
+            and re.fullmatch(r"[0-9 \t]+", match.group(1))
+            and 10 <= len(re.sub(r"\D", "", match.group(1))) <= 15
+        )
+        if not telegram_contact:
+            yield match
+
+
 def _amount(text):
-    match = _PRICE.search(text)
+    match = None
+    for candidate in _numeric_field_matches(_PRICE, text):
+        numeric = candidate.group(1).replace(" ", "").replace("\t", "").replace(",", ".")
+        try:
+            # Длинный номер перед «тг» означает контакт Telegram, не цену.
+            # Ограничение совпадает с контрактом API; исходник сохраняется.
+            if float(numeric) > 1_000_000_000:
+                continue
+        except ValueError:
+            pass  # Неоднозначные разделители проверяются ниже.
+        match = candidate
+        break
     if not match:
         return None, None, "negotiable" if _NEGOTIABLE.search(text) else "unknown"
     raw, currency_raw, yen_code = match.groups()
@@ -321,7 +346,7 @@ def map_selected_message(raw: dict) -> dict:
     }
 
 
-_PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,24}\d(?!\d)")
+_PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,}\d(?!\d)")
 _PHONE_CONTEXT = re.compile(
     r'(?i)(?:📞|📲|☎|\bтел(?:ефон)?\.?|\btel|контакт|whats?app|telegram|'
     r'\bномер\b|\bсвязь\b|\bмоб(?:ильный)?\b|ватсап|телеграм)'
@@ -364,6 +389,17 @@ def _vehicle_count(text, kind):
     return int(_first(_COUNT, text)) if _first(_COUNT, text) else None
 
 
+def _phone_matches(text):
+    """Два самостоятельных номера через пробел не склеиваются в один длинный."""
+    for match in _PHONE_BLOCK.finditer(text):
+        digits = re.sub(r"\D", "", match.group())
+        if len(digits) <= 15:
+            yield match
+        elif re.fullmatch(r"\d{7,15}(?:[ \t]+\d{7,15})+", match.group()):
+            for token in re.finditer(r"\d{7,15}", text[match.start():match.end()]):
+                yield re.compile(r"\d{7,15}").match(text, match.start()+token.start())
+
+
 def block_contacts(text):
     """Номера из блока без угадывания страны, включая Unicode и местный формат."""
     # Нормализуем только копию для извлечения: полный исходник сохраняется
@@ -383,8 +419,8 @@ def block_contacts(text):
     footer_lines = set(nonempty[-3:])
     # Числа цены/веса/объёма не становятся телефоном даже рядом со словом «телефон».
     numeric_fields = [match.span() for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
-                      for match in pattern.finditer(text)]
-    for match in _PHONE_BLOCK.finditer(text):
+                      for match in _numeric_field_matches(pattern, text)]
+    for match in _phone_matches(text):
         raw = match.group().strip()
         digits = re.sub(r"\D", "", raw)
         start = text.rfind('\n', 0, match.start()) + 1
@@ -405,7 +441,8 @@ def block_contacts(text):
         # объявления, либо номер с явной подписью контакта. Числовые поля,
         # даты и номера заявок выше уже исключены.
         short_phone = (
-            (7 <= len(digits) <= 9 and line.strip() == raw)
+            (7 <= len(digits) <= 9 and (line.strip() == raw
+                or re.fullmatch(r"\d{7,9}(?:[ \t]+\d{7,9})+", line.strip())))
             or (6 <= len(digits) <= 9 and (bool(phone_context)
                 or (line_number in footer_lines and line.strip() == raw)))
         )
@@ -440,7 +477,7 @@ def block_contacts(text):
             numeric_values = {
                 re.sub(r'\D', '', match.group())
                 for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE)
-                for match in pattern.finditer(line)
+                for match in _numeric_field_matches(pattern, line)
             }
             if digits and digits in numeric_values:
                 continue
@@ -525,6 +562,11 @@ def source_contact_values(raw):
             for value in values:
                 if isinstance(value, str) and value.strip() and value not in result:
                     result.append(value[:200])
+    text = raw.get('source_text', raw.get('original_text', raw.get('text', '')))
+    if isinstance(text, str):
+        for value in block_contacts(text):
+            if value not in result:
+                result.append(value)
     return result[:20]
 
 

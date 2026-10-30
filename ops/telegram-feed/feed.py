@@ -25,7 +25,7 @@ TZ = ZoneInfo("Asia/Almaty")
 DESTINATION = -1003711161303
 DESTINATION_NAME = "@UrTruck_UT"
 OWNED_FEED_SOURCE = 'UrTruck_obyavleniya'
-ACTIVE_HOURS = 168
+ACTIVE_HOURS = 240
 DOWNLOAD_TEXT = 'Скачать UrTruck — грузы и машины в приложении'
 DOWNLOAD_BUTTONS = {'inline_keyboard': [[
     {'text': 'Android — Google Play', 'url': 'https://play.google.com/store/apps/details?id=com.urtruck.app'},
@@ -504,15 +504,19 @@ def reserve(db, now=None):
     db.execute("BEGIN IMMEDIATE")
     try:
         started = destination_started_at(db)
-        if db.execute("SELECT 1 FROM queue WHERE status IN ('sending','uncertain') AND published_at>=?", (started,)).fetchone() or not due(db, now):
+        if not due(db, now):
             db.rollback()
             return None
         db.execute("UPDATE queue SET status='expired',reason='older_than_24_hours' WHERE status='queued' AND source_date<?", ((now - timedelta(hours=24)).timestamp(),))
-        row = db.execute("SELECT * FROM queue WHERE status='queued' ORDER BY source_date DESC,id DESC LIMIT 1").fetchone()
+        # Неопределённый результат изолирует только ту же публикацию.
+        row = db.execute("""SELECT q.* FROM queue q WHERE q.status='queued'
+          AND NOT EXISTS(SELECT 1 FROM queue pending WHERE pending.status IN ('sending','uncertain')
+                         AND pending.fingerprint=q.fingerprint)
+          ORDER BY q.source_date DESC,q.id DESC LIMIT 1""").fetchone()
         if row is None:
             db.commit()
             return None
-        rid = secrets.randbits(63)
+        rid = row["random_id"] or secrets.randbits(63)
         db.execute("UPDATE queue SET status='sending',random_id=?,published_date=?,published_at=? WHERE id=?",
                    (rid, now.astimezone(TZ).date().isoformat(), now.timestamp(), row['id']))
         db.commit()
@@ -728,7 +732,7 @@ async def publish(reader, db, target):
     except Exception as exc:
         with db:
             db.execute("UPDATE queue SET status='uncertain',reason=? WHERE id=?",(type(exc).__name__,row['id']))
-        LOG.error("publication_uncertain id=%s type=%s; automatic publication halted",row['id'],type(exc).__name__)
+        LOG.error("publication_uncertain id=%s type=%s; reconciliation_required",row['id'],type(exc).__name__)
 
 
 STALE_SEND_RECOVERY_SECONDS = 180
@@ -826,6 +830,10 @@ async def telegram_tick(reader, db, state):
         state.pop("target",None)
         delay=exc.seconds+1 if isinstance(exc,FloodWaitError) else 60
         state["retry_after"]=time.time()+delay
+        if isinstance(exc, FloodWaitError):
+            with db:
+                db.execute("INSERT OR REPLACE INTO metadata VALUES('publish_after',?)",
+                           (str(state["retry_after"]),))
         LOG.warning("telegram_destination_paused type=%s retry_after=%s; app_intake_continues",
                     type(exc).__name__,delay)
 
@@ -930,7 +938,9 @@ async def run_cycles(reader, db, cfg, once=False):
                     await owned_task
                 print(json.dumps(status(db), ensure_ascii=False))
                 return
-            await asyncio.sleep(5)
+            # Частый локальный tick не обходит due()/FloodWait и не ускоряет
+            # обход источников. При интервале 3 с старый sleep(5) задерживал отправку.
+            await asyncio.sleep(min(5.0, max(1.0, publish_interval_seconds() / 3)))
     finally:
         for task in (scan_task, owned_task):
             if task is not None:

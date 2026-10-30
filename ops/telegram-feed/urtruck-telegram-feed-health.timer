@@ -1,0 +1,11 @@
+[Unit]
+Description=UrTruck feed progress check every minute
+
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=60
+AccuracySec=1
+Unit=urtruck-telegram-feed-health.service
+
+[Install]
+WantedBy=timers.target
