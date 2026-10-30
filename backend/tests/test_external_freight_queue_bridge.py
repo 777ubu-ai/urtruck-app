@@ -111,9 +111,14 @@ def test_expired_outbox_record_is_retained_and_not_retried(bridge):
     })
     result = worker.run_once()
     assert result["status"] == "idle"
-    assert result["expired_pending"] == 1
-    assert result["pending"] == 1
-    assert worker.adapter.pending_count() == 1
+    assert result["expired_pending"] == 0
+    assert result["terminal_expired"] == 1
+    assert result["pending"] == 0
+    assert worker.adapter.pending_count() == 0
+    assert worker.adapter.terminal_expired_count() == 1
+    with worker.adapter._connect() as state:
+        row = state.execute("SELECT payload,terminal_reason FROM selected_outbox").fetchone()
+    assert row is not None and row["terminal_reason"] == "source_retention_expired"
     assert calls == []
 
 
@@ -133,6 +138,8 @@ def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
     result = worker.run_once()
     assert result['scanned'] == 1
     assert result['enqueued'] == result['sent'] == 2
+    assert result['segments'] == 2 and result['segments_created'] == 2
+    assert result['segments_updated'] == result['segments_unchanged'] == 0
     assert [(item['segment_id'], item['origin'], item['destination'], item['contacts'], item['status'])
             for item in calls] == [
         ('block-1', 'Хоргос', 'Астана', ['123456'], 'active'),
