@@ -1,0 +1,5 @@
+/* UrTruck — системные разрешения: tg. */
+"NSCameraUsageDescription" = "UrTruck барои гирифтани селфӣ ва аксҳои ҳуҷҷатҳо камераро истифода мебарад.";
+"NSMicrophoneUsageDescription" = "UrTruck барои сабти паёмҳои овозӣ дар чат микрофонро истифода мебарад.";
+"NSPhotoLibraryUsageDescription" = "UrTruck аксҳои шуморо барои расми профил, бор ва ҳуҷҷатҳо истифода мебарад.";
+"NSLocationWhenInUseUsageDescription" = "UrTruck бо дархости шумо ё ҳангоми кушодани харитаи сафари фаъол ҷойгиршавии шуморо муайян мекунад.";

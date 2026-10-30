@@ -81,11 +81,14 @@ test('actual plus-menu keeps seven shared actions and adds expenses only for a d
   const noop = () => {};
   for (const [role, dealId, expected] of [['driver','owned-deal',8],['client','owned-deal',7],['driver',null,7]]) {
     const navigations=[];
-    const env={ session:{user:{role}},dealId,lang:'RU', ui:{},locationSending:false,
+    const env={GPS_TRACKING_PAUSED:false, session:{user:{role}},dealId,lang:'RU', ui:{},locationSending:false,
       getExpenseCopy:()=>({tripTitle:'Расходы рейса'}),navigation:{navigate:(...args)=>navigations.push(args)},
       setAttachOpen:noop,sendGalleryPhoto:noop,sendCameraPhoto:noop,sendDealShare:noop,openStatusModal:noop,
       sendLocation:noop,pickAndSendDocument:noop,sendContactCard:noop };
     const items=vm.runInNewContext('['+block+']',env);
+    const pausedItems=vm.runInNewContext('['+block+']',{...env,GPS_TRACKING_PAUSED:true});
+    assert.equal(pausedItems.some(item=>item.key==='location'),false);
+    assert.equal(pausedItems.length,expected-1);
     assert.equal(items.length,expected);
     const expense=items.find(item=>item.key==='expenses');
     if(expected===8){ expense.onPress(); assert.equal(navigations[0][0],'DriverExpenses'); assert.equal(navigations[0][1].dealId,dealId); }

@@ -1,3 +1,4 @@
+import { GPS_TRACKING_PAUSED } from './locationPolicy';
 // Marketplace API — грузы, рейсы, ставки через сервер
 import { Platform } from 'react-native';
 import { storage } from './storage';
@@ -199,6 +200,7 @@ export const marketAPI = {
 
   // Задача B: гео-позиция машины по сделке.
   async sendDealLocation(dealId, coords) {
+    if (GPS_TRACKING_PAUSED) return { ok: false, reason: 'gps_paused' };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, {
         method: 'POST', headers: await headers(),
@@ -208,6 +210,7 @@ export const marketAPI = {
     } catch { return { ok: false }; }
   },
   async getDealLocation(dealId) {
+    if (GPS_TRACKING_PAUSED) return { ok: true, has_location: false, paused: true };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, { headers: await headers() });
       if (!r.ok) return { ok: false, has_location: false, status: r.status };
@@ -224,6 +227,7 @@ export const marketAPI = {
     } catch { return { ok: false, tracking: { status: 'not_requested' } }; }
   },
   async requestDealTracking(dealId) {
+    if (GPS_TRACKING_PAUSED) return { ok: false, reason: 'gps_paused' };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/tracking/request`, {
         method: 'POST', headers: await headers(),

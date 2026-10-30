@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -46,6 +47,7 @@ const COPY = {
     settings: 'Баптауларды ашу',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 export const getPushPermissionHost = () => (
   Platform.OS === 'web'

@@ -1,3 +1,4 @@
+import { localizeUiText } from '../utils/additionalLocales.js';
 // FavoritesScreen — сохранённые грузы, рейсы и перевозчики пользователя.
 // Данные персистятся на сервере (/api/v1/favorites) и переживают перезапуск.
 // cargo/trip сохраняются по ID конкретной публикации; driver — по ID профиля.
@@ -119,8 +120,8 @@ export default function FavoritesScreen({ navigation, route }) {
           priceMeta={dateText || null}
           meta={[[
             typeLabel ? t(typeLabel) : null,
-            isCargo && data.tons ? `${data.tons} ${lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т'}` : null,
-            isCargo && data.m3 ? `${data.m3} ${lang === 'ZH' ? '立方米' : 'м³'}` : null,
+            isCargo && data.tons ? `${data.tons} ${lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang)}` : null,
+            isCargo && data.m3 ? `${data.m3} ${lang === 'ZH' ? localizeUiText('立方米', lang) : localizeUiText('м³', lang)}` : null,
           ].filter(Boolean).join(' · ')]}
           description={isCargo && data.cargo ? data.cargo : null}
           bookmark={{

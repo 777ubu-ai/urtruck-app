@@ -27,7 +27,7 @@ test('проверка возможностей перед стартом не �
  const source=readFileSync('src/utils/backgroundLocation.js','utf8');const ast=parse(source,{sourceType:'module'});
  const node=ast.program.body.find(n=>n.type==='ExportNamedDeclaration'&&n.declaration?.id?.name==='getLocationHealth').declaration;
  let captures=0;const native={getForegroundPermissionsAsync:async()=>({status:'granted'}),getProviderStatusAsync:async()=>({locationServicesEnabled:true})};
- const health=new Function('resolveLocationModule','captureForegroundPosition','AppState','return ('+source.slice(node.start,node.end)+');')(async()=>native,async()=>{captures++;throw Error('must not capture');},{currentState:'active'});
+ const health=new Function('GPS_TRACKING_PAUSED','resolveLocationModule','captureForegroundPosition','AppState','return ('+source.slice(node.start,node.end)+');')(false,async()=>native,async()=>{captures++;throw Error('must not capture');},{currentState:'active'});
  assert.deepEqual(await health({requestPosition:false}),{state:'ready',point:null});assert.equal(captures,0);
  native.getProviderStatusAsync=async()=>({locationServicesEnabled:false});assert.equal((await health({requestPosition:false})).state,'system_disabled');assert.equal(captures,0);
  native.getForegroundPermissionsAsync=async()=>({status:'denied'});assert.equal((await health({requestPosition:false})).state,'permission_denied');assert.equal(captures,0);

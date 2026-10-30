@@ -563,3 +563,81 @@ test('logout cancels a scheduled retry and new account registers once', async ()
     ]);
   } finally { globalThis.fetch = old; shim.uninstall(); }
 });
+
+
+test('смена языка обновляет locale того же устройства без повторов и смены владельца', async () => {
+  await reset(); const shim = installNativeRequireShim(); const f = fetchMock();
+  const { setLanguage } = await import('../../src/utils/i18n.js');
+  try {
+    const push = await freshPush();
+    for (const locale of ['RU','KK','EN','ZH','TR','UZ','KY','TG','BE']) {
+      setLanguage(locale); await push.registerNative(); await push.registerNative();
+    }
+    const calls = f.calls.filter(x => x.url.includes('/register-native'));
+    assert.deepEqual(calls.map(x => x.body.locale), ['RU','KK','EN','ZH','TR','UZ','KY','TG','BE']);
+    assert.equal(new Set(calls.map(x => x.body.device_id)).size, 1);
+    assert.equal(new Set(calls.map(x => x.body.token)).size, 1);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal((await import('../../src/utils/i18n.js')).getLanguage(), 'BE');
+  } finally { setLanguage('RU'); f.restore(); shim.uninstall(); }
+});
+
+test('изменения языка во время регистрации объединяются до последнего выбора', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const { setLanguage } = await import('../../src/utils/i18n.js');
+  const calls = []; let release;
+  globalThis.fetch = async (url, opts) => {
+    calls.push(JSON.parse(opts.body));
+    if (calls.length === 1) await new Promise(resolve => { release = resolve; });
+    return {ok:true,status:200,json:async()=>({ok:true,user_id:'u-1'})};
+  };
+  try {
+    setLanguage('RU'); const push = await freshPush(); const pending = push.registerNative();
+    for (let i=0;i<100 && !release;i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typeof release, 'function');
+    for (const lang of ['TR','UZ','KY','BE']) { setLanguage(lang); push.registerNative(); }
+    release(); await pending;
+    for (let i=0;i<10;i++) await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(calls.map(x => x.locale), ['RU','BE']);
+    assert.equal(calls[1].token, calls[0].token);
+  } finally { setLanguage('RU'); globalThis.fetch=old; shim.uninstall(); }
+});
+
+test('смена языка после ротации сохраняет новый токен при отстающем getter ОС', async () => {
+  await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch;
+  const { setLanguage } = await import('../../src/utils/i18n.js');
+  shim.state.nativeDeviceToken = 'old-native-token';
+  const calls=[]; let release;
+  globalThis.fetch=async(url,opts)=>{
+    const body=JSON.parse(opts.body); calls.push({token:body.token,locale:body.locale});
+    if(body.token==='new-native-token' && body.locale==='RU') await new Promise(resolve=>{release=resolve;});
+    return {ok:true,status:200,json:async()=>({ok:true,user_id:'u-1'})};
+  };
+  try {
+    setLanguage('RU'); const push=await freshPush(); await push.registerNative();
+    for(const listener of shim.state.tokenListeners) listener({data:'new-native-token',type:'android'});
+    for(let i=0;i<100 && !release;i++) await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(typeof release,'function');
+    shim.state.emitTokenListenerOnDeviceTokenRead = true;
+    shim.state.tokenListenerEventToken = 'old-native-token';
+    setLanguage('UZ'); const pending=push.registerNative(); release(); await pending;
+    for(let i=0;i<10;i++) await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(calls,[{token:'old-native-token',locale:'RU'},{token:'new-native-token',locale:'RU'},{token:'new-native-token',locale:'UZ'}]);
+    assert.equal(await (await import('../../src/utils/storage.js')).storage.get('ur_push_native_token'), 'new-native-token');
+    for(const listener of shim.state.tokenListeners) listener({data:'future-native-token',type:'android'});
+    for(let i=0;i<10;i++) await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(calls.at(-1), {token:'future-native-token',locale:'UZ'});
+  } finally {setLanguage('RU');globalThis.fetch=old;shim.uninstall();}
+});
+
+
+test('смена языка без разрешения push не показывает системный prompt', async () => {
+  await reset(); const shim=installNativeRequireShim();const f=fetchMock();
+  try {
+    shim.state.permissionStatus='denied';
+    const push=await freshPush();
+    assert.equal((await push.refreshLocale()).reason,'permission_required');
+    assert.equal(shim.state.permissionRequestCalls,0);
+    assert.equal(f.calls.length,0);
+  } finally {f.restore();shim.uninstall();}
+});

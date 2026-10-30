@@ -1,0 +1,51 @@
+[
+  {
+    "code": "uz",
+    "htmlLang": "uz",
+    "restored": true,
+    "state": "Browser tab: 932487272, Title: \"OnboardingV2\", URL: \"http://127.0.0.1:4193/\".\n1 AXWebArea OnboardingV2, URL: 127.0.0.1:4193/\n\t2 container\n\t\t3 heading Til, Value: 1\n\t\t\t4 text Til\n\t\t5 button Yopish\n\t\t\t6 text \n\t\t7 container\n\t\t\t8 radio button Description: Русский, Value: 0\n\t\t\t\t9 container Русский\n\t\t\t\t10 text Русский\n\t\t\t\t11 text RU\n\t\t\t12 radio button Description: Қазақша, Value: 0\n\t\t\t\t13 container Қазақша\n\t\t\t\t14 text Қазақша\n\t\t\t\t15 text KZ\n\t\t\t16 radio button Description: English, Value: 0\n\t\t\t\t17 container English\n\t\t\t\t18 text English\n\t\t\t\t19 text EN\n\t\t\t20 radio button Description: 中文, Value: 0\n\t\t\t\t21 container 中文\n\t\t\t\t22 text 中文\n\t\t\t\t23 text CN\n\t\t\t24 radio button Description: Türkçe, Value: 0\n\t\t\t\t25 container Türkçe\n\t\t\t\t26 text Türkçe\n\t\t\t\t27 text TR\n\t\t\t28 radio button Description: O‘zbekcha, Value: 0\n\t\t\t\t29 container O‘zbekcha\n\t\t\t\t30 text O‘zbekcha\n\t\t\t\t31 text UZ\n\t\t\t\t32 text \n\t\t\t33 radio button Description: Кыргызча, Value: 0\n\t\t\t\t34 container Кыргызча\n\t\t\t\t35 text Кыргызча\n\t\t\t\t36 text KY\n\t\t\t37 radio button Description: Тоҷикӣ, Value: 0\n\t\t\t\t38 container Тоҷикӣ\n\t\t\t\t39 text Тоҷикӣ\n\t\t\t\t40 text TG\n\t\t\t41 radio button Description: Беларуская, Value: 0\n\t\t\t\t42 container Беларуская\n\t\t\t\t43 text Беларуская\n\t\t\t\t44 text BE\n\nThe focused UI element is 28 radio button Description: O‘zbekcha, Value: 0"
+  },
+  {
+    "code": "ky",
+    "htmlLang": "ky",
+    "restored": true,
+    "state": "Browser tab: 932487272, Title: \"OnboardingV2\", URL: \"http://127.0.0.1:4193/\".\n1 AXWebArea OnboardingV2, URL: 127.0.0.1:4193/\n\t2 container\n\t\t3 heading Тил, Value: 1\n\t\t\t4 text Тил\n\t\t5 button Жабуу\n\t\t\t6 text \n\t\t7 container\n\t\t\t8 radio button Description: Русский, Value: 0\n\t\t\t\t9 container Русский\n\t\t\t\t10 text Русский\n\t\t\t\t11 text RU\n\t\t\t12 radio button Description: Қазақша, Value: 0\n\t\t\t\t13 container Қазақша\n\t\t\t\t14 text Қазақша\n\t\t\t\t15 text KZ\n\t\t\t16 radio button Description: English, Value: 0\n\t\t\t\t17 container English\n\t\t\t\t18 text English\n\t\t\t\t19 text EN\n\t\t\t20 radio button Description: 中文, Value: 0\n\t\t\t\t21 container 中文\n\t\t\t\t22 text 中文\n\t\t\t\t23 text CN\n\t\t\t24 radio button Description: Türkçe, Value: 0\n\t\t\t\t25 container Türkçe\n\t\t\t\t26 text Türkçe\n\t\t\t\t27 text TR\n\t\t\t28 radio button Description: O‘zbekcha, Value: 0\n\t\t\t\t29 container O‘zbekcha\n\t\t\t\t30 text O‘zbekcha\n\t\t\t\t31 text UZ\n\t\t\t32 radio button Description: Кыргызча, Value: 0\n\t\t\t\t33 container Кыргызча\n\t\t\t\t34 text Кыргызча\n\t\t\t\t35 text KY\n\t\t\t\t36 text \n\t\t\t37 radio button Description: Тоҷикӣ, Value: 0\n\t\t\t\t38 container Тоҷикӣ\n\t\t\t\t39 text Тоҷикӣ\n\t\t\t\t40 text TG\n\t\t\t41 radio button Description: Беларуская, Value: 0\n\t\t\t\t42 container Беларуская\n\t\t\t\t43 text Беларуская\n\t\t\t\t44 text BE\n\nThe focused UI element is 32 radio button Description: Кыргызча, Value: 0"
+  },
+  {
+    "code": "tg",
+    "htmlLang": "tg",
+    "restored": true,
+    "state": "Browser tab: 932487272, Title: \"OnboardingV2\", URL: \"http://127.0.0.1:4193/\".\n1 AXWebArea OnboardingV2, URL: 127.0.0.1:4193/\n\t2 container\n\t\t3 heading Забон, Value: 1\n\t\t\t4 text Забон\n\t\t5 button Пӯшидан\n\t\t\t6 text \n\t\t7 container\n\t\t\t8 radio button Description: Русский, Value: 0\n\t\t\t\t9 container Русский\n\t\t\t\t10 text Русский\n\t\t\t\t11 text RU\n\t\t\t12 radio button Description: Қазақша, Value: 0\n\t\t\t\t13 container Қазақша\n\t\t\t\t14 text Қазақша\n\t\t\t\t15 text KZ\n\t\t\t16 radio button Description: English, Value: 0\n\t\t\t\t17 container English\n\t\t\t\t18 text English\n\t\t\t\t19 text EN\n\t\t\t20 radio button Description: 中文, Value: 0\n\t\t\t\t21 container 中文\n\t\t\t\t22 text 中文\n\t\t\t\t23 text CN\n\t\t\t24 radio button Description: Türkçe, Value: 0\n\t\t\t\t25 container Türkçe\n\t\t\t\t26 text Türkçe\n\t\t\t\t27 text TR\n\t\t\t28 radio button Description: O‘zbekcha, Value: 0\n\t\t\t\t29 container O‘zbekcha\n\t\t\t\t30 text O‘zbekcha\n\t\t\t\t31 text UZ\n\t\t\t32 radio button Description: Кыргызча, Value: 0\n\t\t\t\t33 container Кыргызча\n\t\t\t\t34 text Кыргызча\n\t\t\t\t35 text KY\n\t\t\t36 radio button Description: Тоҷикӣ, Value: 0\n\t\t\t\t37 container Тоҷикӣ\n\t\t\t\t38 text Тоҷикӣ\n\t\t\t\t39 text TG\n\t\t\t\t40 text \n\t\t\t41 radio button Description: Беларуская, Value: 0\n\t\t\t\t42 container Беларуская\n\t\t\t\t43 text Беларуская\n\t\t\t\t44 text BE\n\nThe focused UI element is 36 radio button Description: Тоҷикӣ, Value: 0"
+  },
+  {
+    "code": "be",
+    "htmlLang": "be",
+    "restored": true,
+    "state": "Browser tab: 932487272, Title: \"OnboardingV2\", URL: \"http://127.0.0.1:4193/\".\n1 AXWebArea OnboardingV2, URL: 127.0.0.1:4193/\n\t2 container\n\t\t3 heading Мова, Value: 1\n\t\t\t4 text Мова\n\t\t5 button Закрыць\n\t\t\t6 text \n\t\t7 container\n\t\t\t8 radio button Description: Русский, Value: 0\n\t\t\t\t9 container Русский\n\t\t\t\t10 text Русский\n\t\t\t\t11 text RU\n\t\t\t12 radio button Description: Қазақша, Value: 0\n\t\t\t\t13 container Қазақша\n\t\t\t\t14 text Қазақша\n\t\t\t\t15 text KZ\n\t\t\t16 radio button Description: English, Value: 0\n\t\t\t\t17 container English\n\t\t\t\t18 text English\n\t\t\t\t19 text EN\n\t\t\t20 radio button Description: 中文, Value: 0\n\t\t\t\t21 container 中文\n\t\t\t\t22 text 中文\n\t\t\t\t23 text CN\n\t\t\t24 radio button Description: Türkçe, Value: 0\n\t\t\t\t25 container Türkçe\n\t\t\t\t26 text Türkçe\n\t\t\t\t27 text TR\n\t\t\t28 radio button Description: O‘zbekcha, Value: 0\n\t\t\t\t29 container O‘zbekcha\n\t\t\t\t30 text O‘zbekcha\n\t\t\t\t31 text UZ\n\t\t\t32 radio button Description: Кыргызча, Value: 0\n\t\t\t\t33 container Кыргызча\n\t\t\t\t34 text Кыргызча\n\t\t\t\t35 text KY\n\t\t\t36 radio button Description: Тоҷикӣ, Value: 0\n\t\t\t\t37 container Тоҷикӣ\n\t\t\t\t38 text Тоҷикӣ\n\t\t\t\t39 text TG\n\t\t\t40 radio button Description: Беларуская, Value: 0\n\t\t\t\t41 container Беларуская\n\t\t\t\t42 text Беларуская\n\t\t\t\t43 text BE\n\t\t\t\t44 text \n\nThe focused UI element is 40 radio button Description: Беларуская, Value: 0"
+  },
+  {
+    "code": "ru",
+    "htmlLang": "ru",
+    "selected": "Русский"
+  },
+  {
+    "code": "kk",
+    "htmlLang": "kk",
+    "selected": "Қазақша"
+  },
+  {
+    "code": "en",
+    "htmlLang": "en",
+    "selected": "English"
+  },
+  {
+    "code": "zh-CN",
+    "htmlLang": "zh-CN",
+    "selected": "中文"
+  },
+  {
+    "code": "tr",
+    "htmlLang": "tr",
+    "selected": "Türkçe"
+  }
+]

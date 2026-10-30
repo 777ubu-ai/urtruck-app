@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -47,6 +48,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
   native.PanResponder = { create: config => ({ panHandlers: config }) };
   native.Alert = { alert() {} }; native.Linking = { openURL: async url => { opened.push(url); } };
   const mocks = {
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@expo/vector-icons/Feather': 'Feather', '@expo/vector-icons/FontAwesome5': 'FontAwesome5',
     '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },

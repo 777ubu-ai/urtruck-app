@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -14,6 +15,7 @@ const COPY = {
   ZH: { empty: '暂无运输记录', location: '地点', actor: '更新者', driver: '司机', shipper: '货主' },
   KK: { empty: 'Рейс тарихы әзірге бос', location: 'Орын', actor: 'Жаңартқан', driver: 'Жүргізуші', shipper: 'Жүк жөнелтуші' },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const ICON_BY_EVENT = {
   bid_accepted: 'check-circle',

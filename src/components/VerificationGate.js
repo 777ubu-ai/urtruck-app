@@ -1,3 +1,4 @@
+import { withAdditionalLanguages } from '../utils/additionalLocales.js';
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Easing,
@@ -15,12 +16,12 @@ const getCopy = () => ({
   default: { title: tGlobal('gate_login'), body: tGlobal('gate_login_desc') },
   contact: {
     title: tGlobal('gate_login'),
-    body: {
+    body: withAdditionalLanguages({
       RU: 'Войдите, чтобы открыть чат согласованной сделки. Общение доступно после принятия предложения.',
       EN: 'Sign in to open an agreed deal chat. Messaging is available after an offer is accepted.',
       KK: 'Келісілген мәміле чатын ашу үшін кіріңіз. Хабар алмасу ұсыныс қабылданғаннан кейін қолжетімді.',
       ZH: '请登录以打开已达成交易的聊天。报价被接受后即可沟通。',
-      }[getLanguage()] || tGlobal('gate_login_desc'),
+      })[getLanguage()] || tGlobal('gate_login_desc'),
   },
   publish_cargo: { title: tGlobal('gate_publish'), body: tGlobal('gate_publish_desc') },
   driver: { title: tGlobal('gate_driver'), body: tGlobal('gate_driver_desc') },

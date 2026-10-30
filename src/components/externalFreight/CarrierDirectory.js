@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -12,6 +13,7 @@ export const CARRIER_COPY = {
   ZH: { title: '承运商', open: '承运商联系方式', availability: '请确认车辆是否可用', type: '承运商联系方式', driver: '司机联系方式', unknownName: '承运商', search: '公司、城市或车型', find: '搜索', copy: '复制电话', copied: '电话已复制', source: '来源', total: '联系方式', empty: '没有符合条件的联系方式', error: '无法加载联系方式', retry: '重试', back: '返回信息列表', copyError: '无法复制电话', note: '承运商联系方式。请致电确认是否有空车。' },
   EN: { title: 'Carriers', open: 'Carrier contacts', availability: 'Confirm availability', type: 'Carrier contact', driver: 'Driver contact', unknownName: 'Carrier', search: 'Company, city or vehicle type', find: 'Search', copy: 'Copy phone', copied: 'Phone copied', source: 'Source', total: 'Contacts', empty: 'No matching contacts', error: 'Could not load contacts', retry: 'Retry', back: 'Back to listings', copyError: 'Could not copy the phone', note: 'Carrier contacts. Call to confirm whether a truck is available.' },
 };
+Object.assign(CARRIER_COPY, withAdditionalLanguageTree(CARRIER_COPY));
 
 export default function CarrierContactCard({ item, onShare, shareLabel }) {
   const { lang, sp } = useI18n();

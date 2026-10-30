@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 // PremiumProfileScreen — the minimum profile before entering UrTruck.
 // For a shipper this is intentionally non-skippable: every driver must know
 // who the customer is and from which country they are operating.
@@ -47,6 +48,7 @@ const COPY = {
     requiredHint: 'Жүк иесіне аты, елі, телефоны және компаниясы міндетті.',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const digits = (value) => String(value || '').replace(/\D/g, '');
 

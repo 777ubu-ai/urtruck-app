@@ -22,6 +22,11 @@
 		<string>en</string>
 		<string>zh-Hans</string>
 		<string>kk</string>
+		<string>tr</string>
+		<string>uz</string>
+		<string>ky</string>
+		<string>tg</string>
+		<string>be</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>

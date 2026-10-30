@@ -19,7 +19,7 @@ const ids=['photo','camera','share','status','location','document','contact','ex
 test('меню плюс: полные подписи, прокрутка, крупный шрифт,8 действий и их обработчики —48 комбинаций',()=>{
  for(const lang of ['RU','KK','ZH','EN'])for(const fontScale of [1,1.3,2])for(const dark of [false,true])for(const role of ['driver','client']){
   const calls=[];const spy=name=>()=>calls.push(name);
-  const env={session:{user:{role}},dealId:'own-test-deal',lang,ui:copy[lang],locationSending:false,getExpenseCopy,
+  const env={GPS_TRACKING_PAUSED:false,session:{user:{role}},dealId:'own-test-deal',lang,ui:copy[lang],locationSending:false,getExpenseCopy,
    navigation:{navigate:(name,params)=>calls.push([name,params.dealId])},setAttachOpen:spy('close'),sendGalleryPhoto:spy('photo'),sendCameraPhoto:spy('camera'),sendDealShare:spy('share'),openStatusModal:spy('status'),sendLocation:spy('location'),pickAndSendDocument:spy('document'),sendContactCard:spy('contact')};
   const items=vm.runInNewContext('['+block+']',env);
   const scope={React:{createElement:(type,props,...children)=>({type,props:{...props,children}})},ScrollView:'ScrollView',View:'View',TouchableOpacity:'TouchableOpacity',Text:'Text',ActivityIndicator:'ActivityIndicator',FontAwesome5:'Icon',Math};

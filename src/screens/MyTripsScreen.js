@@ -1,3 +1,4 @@
+import { localizeUiText } from '../utils/additionalLocales.js';
 import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Platform, Alert } from 'react-native';
@@ -119,8 +120,8 @@ export default function MyTripsScreen({ navigation, route }) {
   const accent = isDriver ? ceramic.active : '#FF8400';
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
-  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
-  const cubicMeterUnit = lang === 'ZH' ? '立方米' : 'м³';
+  const tonUnit = lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang);
+  const cubicMeterUnit = lang === 'ZH' ? localizeUiText('立方米', lang) : localizeUiText('м³', lang);
   const { toast } = useToast();
 
   // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — только управление

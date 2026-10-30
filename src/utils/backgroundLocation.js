@@ -1,3 +1,4 @@
+import { GPS_TRACKING_PAUSED } from './locationPolicy';
 // backgroundLocation — координаты водителя по активным сделкам.
 // Новый native-кандидат делает один foreground fix только на открытой карте;
 // старые continuous-клиенты сохраняют отдельный серверный режим и watchdog.
@@ -127,6 +128,7 @@ function sampleForDeal(dealId, coords) {
 }
 
 async function postLocationSample(sample, token) {
+  if (GPS_TRACKING_PAUSED) return false;
   if (FOREGROUND_LOCATION_ONLY && AppState.currentState !== 'active') return false;
   if (FOREGROUND_LOCATION_ONLY) {
     // An old backend silently ignores capture_mode and would emit gps_lost
@@ -259,6 +261,7 @@ async function pushLocationToDealsNow(coords, explicitDealIds = null, epoch = lo
 // are persisted and retried on the next callback/foreground tick; they are
 // never silently discarded as a successful-looking delivery.
 export function pushLocationToDeals(coords, explicitDealIds = null) {
+  if (GPS_TRACKING_PAUSED) return Promise.resolve({ ok: false, reason: 'gps_paused' });
   const epoch = locationSessionEpoch;
   const job = locationPushChain.then(() => pushLocationToDealsNow(coords, explicitDealIds, epoch));
   locationPushChain = job.catch(() => {});
@@ -377,6 +380,7 @@ export async function getBackgroundLocationPermissionState() {
 // explicit user tap. Android then continues to the system background-location
 // flow/settings for "Allow all the time".
 export async function requestForegroundLocationPermission() {
+  if (GPS_TRACKING_PAUSED) return { ok: false, reason: 'gps_paused' };
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { ok: false, reason: 'unsupported' };
   try {
@@ -463,6 +467,7 @@ export async function ensureBackgroundLocationPermission() {
 }
 
 export async function getCurrentLocationPayload(options = {}) {
+  if (GPS_TRACKING_PAUSED) return null;
   const locationModule = await resolveLocationModule();
   if (!locationModule) return null;
   try {
@@ -483,6 +488,7 @@ export async function getCurrentLocationPayload(options = {}) {
 // Read-only preflight for Start trip. It never requests permissions and keeps
 // GPS capability errors distinct for truthful UI messaging.
 export async function getLocationHealth({ requestPosition = true } = {}) {
+  if (GPS_TRACKING_PAUSED) return { state: 'paused', point: null };
   const locationModule = await resolveLocationModule();
   if (!locationModule) return { state: 'unsupported' };
   try {

@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -140,6 +141,7 @@ const COPY = {
     archiveEmpty: 'Мұрағат бос',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const normalizeNotifPath = (value) => {
   const raw = String(value || "").trim();
@@ -363,12 +365,12 @@ export default function DealsScreen({ navigation, route }) {
       if (Math.round(hours / 24) === 1) return t("time_yesterday");
       const locale =
         lang === "ZH"
-          ? "zh-CN"
+          ? localizeUiText("zh-CN", lang)
           : lang === "EN"
-            ? "en-GB"
+            ? localizeUiText("en-GB", lang)
             : lang === "KK"
-              ? "kk-KZ"
-              : "ru-RU";
+              ? localizeUiText("kk-KZ", lang)
+              : localizeUiText("ru-RU", lang);
       return date.toLocaleDateString(locale, {
         day: "2-digit",
         month: "2-digit",

@@ -17,7 +17,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const LOCALES = ['ru', 'en', 'zh-Hans', 'kk'];
+const LOCALES = ['ru', 'en', 'zh-Hans', 'kk', 'tr', 'uz', 'ky', 'tg', 'be'];
 const PERMISSION_KEYS = [
   'NSCameraUsageDescription',
   'NSMicrophoneUsageDescription',
@@ -51,7 +51,7 @@ for (const loc of LOCALES) {
   });
 }
 
-test('every permission key is localized in all four locales', () => {
+test('every permission key is localized in all nine locales', () => {
   for (const loc of LOCALES) {
     const { out } = parseStrings(`ios/UrTruck/${loc}.lproj/InfoPlist.strings`);
     for (const key of PERMISSION_KEYS) {
@@ -123,7 +123,7 @@ test('Xcode project bundles InfoPlist.strings as a localized resource', () => {
   // knownRegions must list them, otherwise Xcode ignores the .lproj dirs
   const known = pbx.match(/knownRegions = \(([\s\S]*?)\);/);
   assert.ok(known, 'knownRegions block missing');
-  for (const loc of ['ru', 'kk']) {
+  for (const loc of ['ru', 'en', 'kk', 'tr', 'uz', 'ky', 'tg', 'be']) {
     assert.match(known[1], new RegExp(`\\b${loc},`), `knownRegions missing ${loc}`);
   }
   assert.match(known[1], /"zh-Hans",/, 'knownRegions missing zh-Hans');
@@ -168,4 +168,14 @@ test('pbxproj has no dangling or duplicate UUIDs after the edit', () => {
 
   assert.equal(pbx.match(/\{/g).length, pbx.match(/\}/g).length, 'unbalanced braces');
   assert.equal(pbx.match(/\(/g).length, pbx.match(/\)/g).length, 'unbalanced parens');
+});
+
+
+test('Expo prebuild использует те же девять языков и purpose strings, что native проект', () => {
+  const config = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
+  assert.deepEqual(config.ios.infoPlist.CFBundleLocalizations, LOCALES);
+  for (const loc of LOCALES) {
+    const native = parseStrings(`ios/UrTruck/${loc}.lproj/InfoPlist.strings`).out;
+    for (const key of PERMISSION_KEYS) assert.equal(config.locales[loc].ios[key], native[key], `${loc}.${key}`);
+  }
 });

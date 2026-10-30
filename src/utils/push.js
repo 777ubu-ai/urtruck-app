@@ -3,7 +3,7 @@ import { Linking, Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
-import { t as tGlobal } from './i18n';
+import { t as tGlobal, getLanguage } from './i18n';
 import { claimPushEvent, clearPushEventDedup } from './pushEventDedup';
 import { decideForegroundPresentation } from './pushRuntime';
 
@@ -12,11 +12,8 @@ const BASE = `${API_BASE}/push`;
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
-// Push-closure track: same key src/utils/i18n.js persists the user's chosen
-// app language under (`const KEY = 'ur_lang'`). Read-only here — never
-// written — so backend system push text (services/push_i18n.py) can be
-// localized to the recipient without a second, independent language store.
-const LANG_KEY = 'ur_lang';
+// Язык берётся из общего i18n, который сохраняет выбор в ur_lang.
+// Синхронное значение не отстаёт от ещё выполняющегося сохранения в storage.
 export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
@@ -43,6 +40,8 @@ let nativeRegistrationQueued = false;
 let nativeRegistrationQueuedToken = null;
 let nativeRegistrationTokenInFlight = null;
 let nativeRegistrationTokenOverrideInFlight = null;
+let nativeRegistrationLocaleInFlight = null;
+let nativeRegistrationReplacedTokensInFlight = [];
 let nativeLatestTokenEvent = null;
 let nativeRegistrationLastAttempt = null;
 let nativeRegistrationRetryTimer = null;
@@ -350,7 +349,7 @@ export const push = {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
-  async registerNative({ forceRetry = false, tokenOverride = null } = {}) {
+  async registerNative({ forceRetry = false, tokenOverride = null, replacedTokens = [] } = {}) {
     if (nativeRegistrationSuspended) {
       const suspendedGeneration = nativeRegistrationGeneration;
       const logoutSessionFingerprint = nativeRegistrationLogoutSessionFingerprint;
@@ -374,12 +373,16 @@ export const push = {
       // register before an OS token lookup has settled, remember one replay.
       // Returning the stale promise alone would silently lose the new login's
       // registration because its auth snapshot belongs to the old generation.
-      if (nativeRegistrationFlightGeneration !== nativeRegistrationGeneration) {
+      if (nativeRegistrationFlightGeneration !== nativeRegistrationGeneration
+        || nativeRegistrationLocaleInFlight !== getLanguage()) {
         nativeRegistrationReplayGeneration = nativeRegistrationGeneration;
       }
       return nativeRegistrationInFlight;
     }
     nativeRegistrationTokenOverrideInFlight = tokenOverride || null;
+    nativeRegistrationReplacedTokensInFlight = [...new Set([...replacedTokens, nativeRegistrationLastAttempt?.token])]
+      .filter(token => token && token !== tokenOverride).slice(-4);
+    nativeRegistrationLocaleInFlight = getLanguage();
     nativeRegistrationTokenInFlight = tokenOverride || null;
     const flightGeneration = nativeRegistrationGeneration;
     nativeRegistrationFlightGeneration = flightGeneration;
@@ -387,16 +390,21 @@ export const push = {
       forceRetry,
       tokenOverride,
       generation: flightGeneration,
+      locale: nativeRegistrationLocaleInFlight,
     });
     nativeRegistrationInFlight = flight;
     try {
       return await flight;
     } finally {
       if (nativeRegistrationInFlight === flight) {
+        const completedToken = nativeRegistrationTokenInFlight;
+        const completedReplacedTokens = nativeRegistrationReplacedTokensInFlight;
         nativeRegistrationInFlight = null;
         nativeRegistrationFlightGeneration = null;
         nativeRegistrationTokenInFlight = null;
         nativeRegistrationTokenOverrideInFlight = null;
+        nativeRegistrationLocaleInFlight = null;
+        nativeRegistrationReplacedTokensInFlight = [];
         const replayGeneration = nativeRegistrationReplayGeneration;
         nativeRegistrationReplayGeneration = null;
         if (nativeRegistrationQueued) {
@@ -404,15 +412,19 @@ export const push = {
           nativeRegistrationQueued = false;
           nativeRegistrationQueuedToken = null;
           nativeLatestTokenEvent = null;
-          this.registerNative({ tokenOverride: nextToken }).catch(() => {});
+          this.registerNative({ tokenOverride: nextToken, replacedTokens: [...completedReplacedTokens, completedToken] }).catch(() => {});
         } else if (replayGeneration === nativeRegistrationGeneration && !nativeRegistrationSuspended) {
-          this.registerNative().catch(() => {});
+          // Смена языка сохраняет токен из listener: getter ОС может ещё отставать.
+          this.registerNative({
+            tokenOverride: flightGeneration === nativeRegistrationGeneration ? completedToken : null,
+            replacedTokens: flightGeneration === nativeRegistrationGeneration ? completedReplacedTokens : [],
+          }).catch(() => {});
         }
       }
     }
   },
 
-  async _registerNativeOnce({ forceRetry = false, tokenOverride = null, generation = nativeRegistrationGeneration } = {}) {
+  async _registerNativeOnce({ forceRetry = false, tokenOverride = null, generation = nativeRegistrationGeneration, locale = getLanguage() } = {}) {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -486,7 +498,6 @@ export const push = {
     // notification SDK; it is sent directly to UrTruck's native registry.
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
-    const locale = await storage.get(LANG_KEY);
 
     const registerToken = async ({ pushToken, provider }) => {
       if (nativeRegistrationSuspended || generation !== nativeRegistrationGeneration) {
@@ -568,7 +579,8 @@ export const push = {
             // token while getDevicePushTokenAsync() is still settling. Do not
             // replace the explicit rotated token with the last attempted one.
             if (nativeRegistrationTokenOverrideInFlight
-              && eventToken === nativeRegistrationLastAttempt?.token) return;
+              && (eventToken === nativeRegistrationLastAttempt?.token
+                || nativeRegistrationReplacedTokensInFlight.includes(eventToken))) return;
             nativeLatestTokenEvent = eventToken;
             nativeRegistrationQueued = true;
             nativeRegistrationQueuedToken = eventToken;
@@ -609,6 +621,7 @@ export const push = {
         const authFingerprint = authContextFingerprint(authToken || '');
         const sameContext = nativeRegistrationLastAttempt?.token === nativeToken
           && nativeRegistrationLastAttempt?.authFingerprint === authFingerprint
+          && nativeRegistrationLastAttempt?.locale === locale
           && nativeRegistrationLastAttempt?.provider === nativeProvider;
         if (sameContext && !forceRetry) {
           const lastAttempt = nativeRegistrationLastAttempt;
@@ -632,6 +645,7 @@ export const push = {
         nativeRegistrationLastAttempt = {
           token: nativeToken,
           authFingerprint,
+          locale,
           provider: nativeProvider,
           result: nativeResult,
           retries: previousRetries,
@@ -675,6 +689,14 @@ export const push = {
   },
 
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──
+  async refreshLocale() {
+    // Переключение языка не должно открывать новый системный запрос разрешения.
+    if (this.isNative() && await this.nativePermission() !== 'granted') {
+      return { ok: false, reason: 'permission_required' };
+    }
+    return this.autoRegister();
+  },
+
   async autoRegister() {
     if (this.isSupported()) return this.subscribe({ requestPermission: false });
     if (this.isNative()) return this.registerNative();

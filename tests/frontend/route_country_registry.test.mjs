@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -43,9 +44,10 @@ test('picker fallback uses shared localized names and keeps approved flag size',
 // Проверяем реальный bundled fallback: Intl.DisplayNames у части Hermes отсутствует.
 test('all 249 countries have four localized names and search without Intl.DisplayNames', () => {
   const source = fs.readFileSync('src/utils/countries.js', 'utf8')
+    .replace(/^import .*;$/gm, '')
     .replace(/^export default .*;$/gm, '')
     .replace(/\bexport (?=const |function )/g, '');
-  const context = { Intl: { DisplayNames: undefined } };
+  const context = { ...localeHelpers, Intl: { DisplayNames: undefined } };
   vm.runInNewContext(source + '\nthis.countries = { ALL_COUNTRIES, getCountryName, searchAllCountries };', context, { timeout: 1000 });
   const catalogue = context.countries;
   assert.equal(catalogue.ALL_COUNTRIES.length, 249);

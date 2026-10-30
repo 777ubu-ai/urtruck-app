@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, withAdditionalLanguages } from '../utils/additionalLocales.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
@@ -160,6 +161,7 @@ export default function BidModal({
     }
     if (!isCounter && !isEdit && cargoId && vehicles.length > 1 && !selectedVehicleId) {
       const msg = { RU: 'Выберите машину для перевозки', KK: 'Тасымалға көлікті таңдаңыз', EN: 'Choose a vehicle for this shipment', ZH: '请选择本次运输车辆' };
+Object.assign(msg, withAdditionalLanguageTree(msg));
       setError(msg[lang] || msg.RU);
       return;
     }
@@ -272,7 +274,7 @@ export default function BidModal({
 
           {!isPrefill && cargoId && vehicles.length > 1 ? (
             <View style={s.vehicleChooser} testID="bid-vehicle-chooser">
-              <Text style={[s.vehicleChooserLabel, { color: theme.text }]}>{({ RU: 'Машина для перевозки', KK: 'Тасымал көлігі', EN: 'Vehicle for shipment', ZH: '运输车辆' })[lang] || 'Машина для перевозки'}</Text>
+              <Text style={[s.vehicleChooserLabel, { color: theme.text }]}>{(withAdditionalLanguages({ RU: 'Машина для перевозки', KK: 'Тасымал көлігі', EN: 'Vehicle for shipment', ZH: '运输车辆' }))[lang] || 'Машина для перевозки'}</Text>
               <View style={s.vehicleChips}>
                 {vehicles.map((vehicle) => {
                   const activeVehicle = String(vehicle.id) === String(selectedVehicleId);

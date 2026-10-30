@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const root = process.env.GPS_TEST_SOURCE_ROOT || '.';
 const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
-function hookHarness(initial = 'active', foregroundOnly = false, snapshotSupported = true) {
+function hookHarness(initial = 'active', foregroundOnly = false, snapshotSupported = true, paused = false) {
   const values = [], effects = [], intervals = new Map(), listeners = new Set();
   const calls = { sample: 0, post: 0, refresh: 0, start: 0, stop: 0 };
   let cursor = 0, effectCursor = 0, nextId = 1, mapOpen = true, mapTargets = ['deal'];
@@ -19,7 +19,7 @@ function hookHarness(initial = 'active', foregroundOnly = false, snapshotSupport
       return { coords: { latitude: 43, longitude: 76 }, timestamp: Date.now() };
     },
   };
-  const scope = { FOREGROUND_LOCATION_ONLY: foregroundOnly, AbortController, getCurrentLocationPayload: async () => { const p = await native.getCurrentPositionAsync(); return { lat: p.coords.latitude, lng: p.coords.longitude, timestamp: p.timestamp }; }, Platform: { OS: 'ios' }, AppState: app,
+  const scope = { GPS_TRACKING_PAUSED: paused, FOREGROUND_LOCATION_ONLY: foregroundOnly, AbortController, getCurrentLocationPayload: async () => { const p = await native.getCurrentPositionAsync(); return { lat: p.coords.latitude, lng: p.coords.longitude, timestamp: p.timestamp }; }, Platform: { OS: 'ios' }, AppState: app,
     useRef: v => { const n = cursor++; return values[n] ??= { current: v }; },
     useState: v => { const n = cursor++; if (!(n in values)) values[n] = v;
       return [values[n], x => { values[n] = x; }]; },
@@ -81,7 +81,7 @@ function taskHarness(reply) {
   const native = { hasStartedLocationUpdatesAsync: async () => true,
     stopLocationUpdatesAsync: async () => { calls.stop++; } };
   const storage = { get: async k => data.get(k) ?? null, set: async (k, v) => { data.set(k, v); }, remove: async k => data.delete(k) };
-  const scope = { Platform: { OS: 'ios' }, storage, durableStorage: storage,
+  const scope = { GPS_TRACKING_PAUSED: false, Platform: { OS: 'ios' }, storage, durableStorage: storage,
     createLocationQueue: () => ({ migrate: async () => {}, append: async () => {}, drain: async () => { calls.post++; } }),
     locationSampleId: () => 'sample', API_BASE: 'https://test.invalid', t: k => k,
     AbortController, setTimeout, clearTimeout, console,
@@ -179,4 +179,11 @@ test('map-only: смена сделки немедленно отменяет fi
   h.render(); await flush(); h.render(); await flush(); assert.equal(h.calls.sample, 1);
   h.setTargets(['other']); resolve(); await flush(); assert.equal(h.calls.post, 0);
   h.render(); await flush(); assert.equal(h.calls.sample, 1);
+});
+
+test('приостановленный GPS: открытая карта, возврат и таймеры не запрашивают разрешённые сделки, fix или отправку', async () => {
+ const h = hookHarness('active', true, true, true); h.render(); await flush(); h.render(); await flush();
+ h.change('background'); h.change('active'); await flush(); h.render(); await flush();
+ for (const cb of h.intervals.values()) cb(); await flush();
+ assert.equal(h.intervals.size,0); assert.equal(h.calls.sample,0); assert.equal(h.calls.post,0); assert.equal(h.calls.refresh,0); assert.equal(h.calls.start,0);
 });

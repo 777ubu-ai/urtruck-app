@@ -1,0 +1,66 @@
+[
+  {
+    "width": 240,
+    "logo": {
+      "x": 16,
+      "y": 7,
+      "width": 113.859375,
+      "height": 38
+    },
+    "pill": {
+      "x": 154,
+      "y": 4,
+      "width": 70,
+      "height": 44
+    },
+    "pass": true
+  },
+  {
+    "width": 270,
+    "logo": {
+      "x": 16,
+      "y": 7,
+      "width": 113.859375,
+      "height": 38
+    },
+    "pill": {
+      "x": 184,
+      "y": 4,
+      "width": 70,
+      "height": 44
+    },
+    "pass": true
+  },
+  {
+    "width": 320,
+    "logo": {
+      "x": 16,
+      "y": 7,
+      "width": 113.859375,
+      "height": 38
+    },
+    "pill": {
+      "x": 234,
+      "y": 4,
+      "width": 70,
+      "height": 44
+    },
+    "pass": true
+  },
+  {
+    "width": 390,
+    "logo": {
+      "x": 16,
+      "y": 7,
+      "width": 113.859375,
+      "height": 38
+    },
+    "pill": {
+      "x": 304,
+      "y": 4,
+      "width": 70,
+      "height": 44
+    },
+    "pass": true
+  }
+]

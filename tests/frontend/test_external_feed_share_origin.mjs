@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 // Проверяем реальный resolver с явно заданным публичным release origin.
@@ -73,6 +74,7 @@ for (const lang of ['RU', 'KK', 'ZH', 'EN']) test(`${lang}: карточка п�
   const native = { Linking: { openURL: async url => { opened.push(url); } }, StyleSheet: { create: x => x } };
   for (const name of ['Text', 'TouchableOpacity', 'View']) native[name] = name;
   const mocks = {
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), useMemo: fn => fn() },
     'react-native': native, '@expo/vector-icons/Feather': 'Feather', 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },
     '../../utils/useI18n': { useI18n: () => ({ lang, sp: n => n }) },

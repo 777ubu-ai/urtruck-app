@@ -1,6 +1,6 @@
 {
   "base_sha": "e396a097b7f47f8344634ff54b56ff1d144b4ab9",
-  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged; owner-authorized PR643 registration session-owner guards only, behavioral whole-component regression PASS; all other protected hashes unchanged",
+  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged; owner-authorized PR643 registration session-owner guards only, behavioral whole-component regression PASS; all other protected hashes unchanged; owner29Oct authorized five complete UI locales and compact picker; only recorded locale-adapter/picker files updated, Auth/registration/network/FSM logic preserved",
   "sha256": {
     "src/utils/AuthContext.js": "d111f2a1431cded19d0a971ba7e9b2443490a820d5e1d4d036c8d869c74d814f",
     "src/utils/registration.js": "b6efef77a15745d706c9418160c009df68859d03bfb6b8fce17df7db2d3f85b1",
@@ -10,11 +10,11 @@
     "src/screens/CreateCargoScreen.js": "4567e526de3fac6befabafcfffcf360fc2e06f4d7eab9116f7d0fee0114d562c",
     "src/screens/CreateTripScreen.js": "10fcebfb7d47050b7e32007e36ee4fc0faaa6d7fe3a32b6498efa617d58cfd62",
     "src/screens/DriverExpensesScreen.js": "61f66917a59e3097a8f513810bf35840bdf8ae1339e874e4cf8a3f09d424328a",
-    "src/screens/ProfileScreen.js": "09505dabfd02d90c5e2de182a5f444f46eccb1b3be18dc3e260693a7770b5c97",
-    "src/screens/MyTripsScreen.js": "a8638a2ba56207db59774cefd41703e8f19956622ee911c15c0604b86e3675b6",
-    "src/screens/DealWorkspaceScreenV2.js": "27e0fd9e9a3c402fbd211aef816dd008a78f79cbb493c010124b453d83345ea8",
+    "src/screens/ProfileScreen.js": "583680b46e46ab6cef6b0177ab2331df267a4d111bdb7bd47d0326d30add0777",
+    "src/screens/MyTripsScreen.js": "ed52cece93a0eed5d036c8ac9d2712f53e944b9cc5140636273bc4da2d8d4fb7",
+    "src/screens/DealWorkspaceScreenV2.js": "7212e885489e219a7da533cd710cdec47760c7f3c090a07132e091041db41cd4",
     "src/components/ui/v1/RootHeader.js": "0457e8aacd94aa95c6e6160c03902231850720a8fa66da643a86be4da31ac344",
-    "src/components/DatePicker.js": "4bcb1f40276873c27d4d37d0989152c3fe1e38bc40bd9be9a0d8aff3e282ee7f",
+    "src/components/DatePicker.js": "c418c49d8dd2ff39360a7eca6b46d4cd19c0067540aa6f5e00931ec9d1b93d09",
     "src/components/ui/v1/BottomNav.js": "1fee6542dbbf6b860abf5ae432a0acc0130aa2f624aa78a57b3b93877f800e51",
     "backend/api/marketplace.py": "7b94adcde43684498c120e147594550c6504c3237f43983a19af7ae7b56323d8",
     "backend/api/driver_expenses.py": "a6787d6a9bbad2ac5f92e8887bec419102baa360d07cd5e37e3ee66be1b405e0",
@@ -28,8 +28,8 @@
     "backend/services/translate_service.py": "aa7e029d52050f58d6807e29ddfcd3442b329f5d9a3df2a2f40b651443b0dae6",
     "src/utils/backgroundLocation.js": "b4a320a78175c0c69285e4cf635965b89d7fc929218870b9c586255d642f9054",
     "src/navigation/AppNavigator.js": "2d7654f373e092cf9d0f9ef9d36aea3f51152d65ede00353e74d73036197dbd3",
-    "src/screens/CargoFeedScreen.js": "6fb8493ed3b3952288ad233a020593c8f6d273af99d4c95a220aca837042dd68",
-    "src/screens/FeedScreen.js": "219e35105b304982e43e0b6b09582136f4b1625ad7005982b2c55d775f2266cb",
+    "src/screens/CargoFeedScreen.js": "cc108286d997ceb4c98ec4c8f78173f24adde6c5f6759d3aba3b4f12db218cde",
+    "src/screens/FeedScreen.js": "d335ddeac01f1a6e2d1addd49f61d65f780a18ed1de20c48e5ea7847743b09a0",
     "backend/main.py": "4ab8b195bd7690c5b764c5a7082f3bd765e4f1a482c35d26feb83cc78e9cb264"
   }
 }

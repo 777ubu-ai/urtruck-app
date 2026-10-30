@@ -33,6 +33,17 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
+        ],
+        "CFBundleLocalizations": [
+          "ru",
+          "en",
+          "zh-Hans",
+          "kk",
+          "tr",
+          "uz",
+          "ky",
+          "tg",
+          "be"
         ]
       },
       "entitlements": {
@@ -135,6 +146,80 @@
     "extra": {
       "eas": {
         "projectId": "898bd902-ea62-49f6-96c3-b6e02219f828"
+      }
+    },
+    "locales": {
+      "ru": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck использует камеру для селфи и фото документов",
+          "NSMicrophoneUsageDescription": "UrTruck использует микрофон для записи голосовых сообщений",
+          "NSPhotoLibraryUsageDescription": "UrTruck использует фото для аватара, груза и документов",
+          "NSLocationWhenInUseUsageDescription": "UrTruck определяет местоположение по вашему запросу или при открытии карты активного рейса"
+        }
+      },
+      "en": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck uses the camera for your selfie and photos of documents",
+          "NSMicrophoneUsageDescription": "UrTruck uses the microphone to record voice messages in chat",
+          "NSPhotoLibraryUsageDescription": "UrTruck uses your photos for the avatar, cargo and documents",
+          "NSLocationWhenInUseUsageDescription": "UrTruck gets your location when you request it or open the active trip map"
+        }
+      },
+      "zh-Hans": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck 使用相机拍摄自拍和证件照片",
+          "NSMicrophoneUsageDescription": "UrTruck 使用麦克风在聊天中录制语音消息",
+          "NSPhotoLibraryUsageDescription": "UrTruck 使用您的照片作为头像、货物和证件照片",
+          "NSLocationWhenInUseUsageDescription": "UrTruck 会在您主动请求或打开进行中行程地图时获取您的位置"
+        }
+      },
+      "kk": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck селфи және құжат фотосуреттері үшін камераны пайдаланады",
+          "NSMicrophoneUsageDescription": "UrTruck чатта дауыстық хабар жазу үшін микрофонды пайдаланады",
+          "NSPhotoLibraryUsageDescription": "UrTruck аватар, жүк және құжаттар үшін фотосуреттерді пайдаланады",
+          "NSLocationWhenInUseUsageDescription": "UrTruck сіз сұрағанда немесе белсенді рейстің картасын ашқанда орналасқан жеріңізді анықтайды"
+        }
+      },
+      "tr": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck, selfie ve belge fotoğrafları çekmek için kameranızı kullanır.",
+          "NSMicrophoneUsageDescription": "UrTruck, sohbette sesli mesaj kaydetmek için mikrofonunuzu kullanır.",
+          "NSPhotoLibraryUsageDescription": "UrTruck, profiliniz, yükleriniz ve belgeleriniz için fotoğraflarınıza erişir.",
+          "NSLocationWhenInUseUsageDescription": "UrTruck, isteğiniz üzerine veya aktif sefer haritasını açtığınızda konumunuzu belirler."
+        }
+      },
+      "uz": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck selfi va hujjatlarni suratga olish uchun kameradan foydalanadi.",
+          "NSMicrophoneUsageDescription": "UrTruck chatda ovozli xabar yozish uchun mikrofondan foydalanadi.",
+          "NSPhotoLibraryUsageDescription": "UrTruck profil rasmi, yuk va hujjatlar uchun rasmlaringizdan foydalanadi.",
+          "NSLocationWhenInUseUsageDescription": "UrTruck so‘rovingizga ko‘ra yoki faol qatnov xaritasini ochganingizda joylashuvingizni aniqlaydi."
+        }
+      },
+      "ky": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck селфи жана документтерди сүрөткө тартуу үчүн камераны колдонот.",
+          "NSMicrophoneUsageDescription": "UrTruck чатта үн билдирүүлөрүн жазуу үчүн микрофонду колдонот.",
+          "NSPhotoLibraryUsageDescription": "UrTruck сүрөттөрдү аватар, жүк жана документтер үчүн колдонот.",
+          "NSLocationWhenInUseUsageDescription": "UrTruck сиздин суранычыңыз боюнча же активдүү рейстин картасын ачканда жайгашкан жериңизди аныктайт."
+        }
+      },
+      "tg": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck барои гирифтани селфӣ ва аксҳои ҳуҷҷатҳо камераро истифода мебарад.",
+          "NSMicrophoneUsageDescription": "UrTruck барои сабти паёмҳои овозӣ дар чат микрофонро истифода мебарад.",
+          "NSPhotoLibraryUsageDescription": "UrTruck аксҳои шуморо барои расми профил, бор ва ҳуҷҷатҳо истифода мебарад.",
+          "NSLocationWhenInUseUsageDescription": "UrTruck бо дархости шумо ё ҳангоми кушодани харитаи сафари фаъол ҷойгиршавии шуморо муайян мекунад."
+        }
+      },
+      "be": {
+        "ios": {
+          "NSCameraUsageDescription": "UrTruck выкарыстоўвае камеру для сэлфі і фатаграфавання дакументаў.",
+          "NSMicrophoneUsageDescription": "UrTruck выкарыстоўвае мікрафон для запісу галасавых паведамленняў у чаце.",
+          "NSPhotoLibraryUsageDescription": "UrTruck выкарыстоўвае вашы фота для аватара, грузу і дакументаў.",
+          "NSLocationWhenInUseUsageDescription": "UrTruck вызначае ваша месцазнаходжанне па вашым запыце або пры адкрыцці карты актыўнага рэйса."
+        }
       }
     }
   }
