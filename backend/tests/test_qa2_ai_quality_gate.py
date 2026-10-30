@@ -96,6 +96,16 @@ def test_control_phrase_repairs_weight_after_price_without_binding_price():
     assert translation_quality_ok(source, repaired, "ru", "zh") is True
 
 
+def test_october_31_urumqi_transport_quote_repairs_dropped_weight_unit():
+    source = "Алматы → Урумчи, загрузка 31 октября, 20 тонн, ставка 11 500 USD"
+    candidate = "阿拉木图到乌鲁木齐，10月31日装货，20，报价11,500美元。"
+    repaired = repair_logistics_translation(source, candidate, "ru", "zh")
+    assert "10月31日" in repaired
+    assert "20 吨" in repaired
+    assert "11,500美元" in repaired
+    assert translation_quality_ok(source, repaired, "ru", "zh") is True
+
+
 def test_control_phrase_repairs_truncated_astana_and_weight_ru_zh():
     source = "Алматы — Астана, груз, 10 тонн, тент."
     raw = "阿拉木图阿斯塔货物10, 篷布车."
