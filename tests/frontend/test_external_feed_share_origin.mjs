@@ -15,6 +15,7 @@ for (const lang of ['RU', 'KK', 'ZH', 'EN']) test(`${lang}: отправка г�
       const build = kind === 'carrier_contact' ? buildCarrierContactShare : buildExternalFreightShare;
       const result = build({ kind, status: 'active', origin: 'Buxoro', destination: 'Toshkent' }, { origin, lang });
       assert.equal(result.url, URTRUCK_IOS_STORE);
+      if (kind !== 'carrier_contact') assert.equal(result.copyLinkText, `${URTRUCK_ANDROID_STORE}\n${URTRUCK_IOS_STORE}`);
       assert.match(result.text, /Android: https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.urtruck\.app/);
       assert.ok(result.text.endsWith(`iPhone: ${URTRUCK_IOS_STORE}`));
       assert.equal(result.text.split(URTRUCK_ANDROID_STORE).length - 1, 1);

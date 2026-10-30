@@ -146,7 +146,8 @@ class PublishedQueueBridge:
         return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
-                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count())}
+                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
+                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
 
 
 class IncomingQueueBridge(PublishedQueueBridge):
@@ -238,7 +239,10 @@ class IncomingQueueBridge(PublishedQueueBridge):
             vehicles=source.execute(query+f" AND {hint} ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",
                 (*arguments,(self.source_name or OWNED_SOURCE).lower(),self.parser_revision)).fetchall()
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
-            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
+            # Backfill in publication order. app_messages_published covers
+            # source_date/updated_at/id; ordering by updated_at alone forced a
+            # temp sort over the entire active history on every short QA2 tick.
+            oldest=source.execute(query+" ORDER BY source_date ASC,updated_at ASC,id ASC LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
         enqueued=review=rejected=duplicates=0
@@ -304,7 +308,8 @@ class IncomingQueueBridge(PublishedQueueBridge):
         delivery=self.adapter.flush_once()
         return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
                 "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode,
-                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind}
+                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind,
+                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
 
 
 class OwnedTelegramQueueBridge(IncomingQueueBridge):

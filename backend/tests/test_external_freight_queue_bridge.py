@@ -88,7 +88,9 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     add(worker)
     original_opener = worker.adapter.opener
     worker.adapter.opener = lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))
-    assert worker.run_once()["status"] == "retry_scheduled"
+    failed = worker.run_once()
+    assert failed["status"] == "retry_scheduled"
+    assert failed["error_type"] == "OSError"
     assert worker.adapter.pending_count() == 1
     worker.adapter.opener = original_opener
     worker.adapter.clock = lambda: NOW + 61
@@ -98,6 +100,21 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     assert result["sent"] == 1
     assert worker.adapter.pending_count() == 0
     assert calls[0]["source_published_at"] == "2026-10-21T10:00:00+00:00"
+
+
+def test_expired_outbox_record_is_retained_and_not_retried(bridge):
+    worker, calls = bridge
+    worker.adapter.enqueue({
+        "source_id": "old-source", "source_message_id": "expired", "segment_id": "0",
+        "source_published_at": "2026-10-01T10:00:00+00:00", "kind": "cargo",
+        "status": "active", "original_text": "expired test fixture",
+    })
+    result = worker.run_once()
+    assert result["status"] == "idle"
+    assert result["expired_pending"] == 1
+    assert result["pending"] == 1
+    assert worker.adapter.pending_count() == 1
+    assert calls == []
 
 
 def test_missing_route_and_contact_are_still_visible(bridge):

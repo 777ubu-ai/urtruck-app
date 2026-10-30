@@ -16,7 +16,8 @@ import ExternalFeedDescription from '../components/externalFreight/ExternalFeedD
 import CarrierContactCard from '../components/externalFreight/CarrierDirectory';
 import ShareModal from '../components/ShareModal';
 import { PUBLIC_WEB_ORIGIN } from '../config/env';
-import { externalTelegramContactURL } from '../utils/externalFreightContact';
+import { externalTelegramContactURL, externalWhatsAppURL } from '../utils/externalFreightContact';
+import { externalFreightCardActions } from '../utils/externalFreightCardActions';
 import { buildCarrierContactShare, buildExternalFreightShare } from '../utils/externalFreightShare';
 // Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
@@ -320,6 +321,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       item.vehicle_count != null ? vehicleCountLabel(item.vehicle_count, lang, isDriver) : '',
     ].filter(Boolean).join(' · ');
     const share = buildExternalFreightShare(item, { origin: PUBLIC_WEB_ORIGIN, lang, summary, price });
+    const whatsappContact = share?.text ? (item.contacts || []).find(contact => externalWhatsAppURL(contact, share.text)) : null;
+    const whatsappURL = whatsappContact ? externalWhatsAppURL(whatsappContact, share?.text) : null;
+    const cardActions = externalFreightCardActions(lang);
     return <View ref={node => { if (node) cardRefs.current.set(String(item.id), node); else cardRefs.current.delete(String(item.id)); }} style={styles.card} testID={`external-feed-card-${item.id}`}>
       <View style={styles.cardHeading}>
         <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ') || l.direction}</Text>
@@ -349,12 +353,24 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
-        moreLabel={l.more} lessLabel={l.less} itemId={item.id}
+        moreLabel={cardActions.show} lessLabel={cardActions.less} itemId={item.id}
         onExpand={() => { followingRef.current = false; externalFreightAPI.event('card_expand'); }}
-        actions={share ? <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={t('share')}
-          testID={`external-feed-share-${item.id}`} onPress={() => setShareTarget({ ...share, owner: ownerKey })}>
-          <Feather name="share-2" size={14} color="#168759" /><Text style={[styles.link, styles.actionLabel]}>{t('share')}</Text>
-        </TouchableOpacity> : null}
+        actions={<>
+          {share ? <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={t('share')}
+            testID={`external-feed-share-${item.id}`} onPress={() => setShareTarget({ ...share, owner: ownerKey })}>
+            <Feather name="share-2" size={14} color="#168759" /><Text style={[styles.link, styles.actionLabel]}>{t('share')}</Text>
+          </TouchableOpacity> : null}
+          <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={whatsappURL ? cardActions.whatsapp : cardActions.unavailable}
+            accessibilityState={{ disabled: !whatsappURL }} disabled={!whatsappURL}
+            testID={`external-feed-whatsapp-${item.id}`} onPress={() => {
+              if (!whatsappURL) return;
+              externalFreightAPI.event('whatsapp_contact_open');
+              Linking.openURL(whatsappURL).catch(() => toast(l.retry, 'error'));
+            }}>
+            <FontAwesome5 name="whatsapp" size={14} color={whatsappURL ? '#168759' : '#98A19B'} />
+            <Text style={[styles.link, styles.actionLabel, { opacity: whatsappURL ? 1 : 0.5 }]}>WhatsApp</Text>
+          </TouchableOpacity>
+        </>}
       >{item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}</ExternalFeedDescription> : null}
     </View>;
   };
@@ -429,7 +445,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       <Feather name="arrow-down" size={16} color={theme.text} /><Text style={styles.newListingsText}>{l.newListings} · {unseenIds.length}</Text>
     </TouchableOpacity> : null}
     {shareTarget?.owner === ownerKey ? <ShareModal visible onClose={() => setShareTarget(null)}
-      shareText={shareTarget.text} url={shareTarget.url} /> : null}
+      shareText={shareTarget.text} url={shareTarget.url} copyLinkText={shareTarget.copyLinkText} /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
     {modal ? <View style={[styles.modalOverlay, { top: filterBottom }]} testID="external-feed-filter-overlay">
       <Pressable style={styles.scrim} onPress={closeFilter} testID="external-feed-filter-scrim" accessible={false} />

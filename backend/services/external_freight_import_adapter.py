@@ -15,6 +15,7 @@ from pathlib import Path
 
 MAX_BATCH = 50
 MAX_BACKOFF_SECONDS = 900
+RETENTION_SECONDS = 10 * 24 * 3600
 
 
 class ExternalFreightFeedAdapter:
@@ -96,6 +97,15 @@ class ExternalFreightFeedAdapter:
         with self._connect() as db:
             return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL").fetchone()[0]
 
+    def expired_pending_count(self, now=None):
+        cutoff = datetime.fromtimestamp((now or self.clock()) - RETENTION_SECONDS, timezone.utc).isoformat()
+        with self._connect() as db:
+            return db.execute("""SELECT COUNT(*) FROM selected_outbox
+                WHERE delivered_at IS NULL AND quarantined_at IS NULL
+                AND json_extract(payload,'$.source_published_at') IS NOT NULL
+                AND julianday(json_extract(payload,'$.source_published_at')) < julianday(?)""",
+                (cutoff,)).fetchone()[0]
+
     def flush_once(self):
         # Один отправитель на durable outbox, включая разные процессы.
         # enqueue не блокируется: новая версия останется pending до своего ACK.
@@ -136,7 +146,7 @@ class ExternalFreightFeedAdapter:
                     (datetime.fromtimestamp(now, timezone.utc).isoformat(), status,
                      row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
 
-    def _retry(self, rows, now, status):
+    def _retry(self, rows, now, status, error_type=None):
         delay = 0
         with self._connect() as db:
             for row in rows:
@@ -148,8 +158,14 @@ class ExternalFreightFeedAdapter:
                     AND delivered_at IS NULL AND generation=?""",
                     (attempts, now + row_delay, status, row["source_id"], row["source_message_id"],
                      row["segment_id"], row["generation"]))
-        return {"status": "retry_scheduled", "sent": 0, "pending": self.pending_count(),
-                "quarantined": self.quarantined_count(), "retry_after_seconds": delay, "http_status": status}
+        result = {"status": "retry_scheduled", "sent": 0, "pending": self.pending_count(),
+                  "quarantined": self.quarantined_count(), "expired_pending": self.expired_pending_count(now),
+                  "retry_after_seconds": delay, "http_status": status}
+        if error_type:
+            # Log only the exception class; never include payload, contact, or
+            # exception text in the service journal.
+            result["error_type"] = error_type
+        return result
 
     def _isolate_validation_errors(self, rows, now, deadline):
         sent = 0
@@ -166,7 +182,7 @@ class ExternalFreightFeedAdapter:
             except Exception as exc:
                 status = getattr(exc, "code", None)
                 if status != 422:
-                    result = self._retry(rows[index:], now, status)
+                    result = self._retry(rows[index:], now, status, type(exc).__name__)
                     result["sent"] = sent
                     return result
                 # Только одиночный 422 доказывает неисправимость этой версии.
@@ -187,17 +203,22 @@ class ExternalFreightFeedAdapter:
             return {"status": "not_configured", "sent": 0, "pending": self.pending_count()}
         now = self.clock()
         deadline = time.monotonic() + 25
+        cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
         with self._connect() as db:
             rows = db.execute("""SELECT * FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
-                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, MAX_BATCH+1)).fetchall()
+                AND (json_extract(payload,'$.source_published_at') IS NULL
+                    OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))
+                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, cutoff, MAX_BATCH+1)).fetchall()
             if len(rows) > MAX_BATCH:
-                due = 'delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?'
+                due = '''delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
+                    AND (json_extract(payload,'$.source_published_at') IS NULL
+                        OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))'''
                 newest = "json_extract(payload,'$.source_published_at') DESC,source_id,source_message_id,segment_id"
-                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
-                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
-                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now,)).fetchall()
-                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now,)).fetchall()
+                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now, cutoff)).fetchall()
+                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now, cutoff)).fetchall()
+                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now, cutoff)).fetchall()
+                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now, cutoff)).fetchall()
                 # Квоты не вытесняют весь хвост: оставшиеся места берут старую
                 # выдачу. Пакет по-прежнему не больше 50, ACK привязан к generation.
                 selected = {}
@@ -207,14 +228,16 @@ class ExternalFreightFeedAdapter:
                 rows = list(selected.values())[:MAX_BATCH]
         if not rows:
             return {"status": "idle", "sent": 0, "pending": self.pending_count(),
-                    "quarantined": self.quarantined_count()}
+                    "quarantined": self.quarantined_count(),
+                    "expired_pending": self.expired_pending_count(now)}
         try:
             status = self._send(rows)
             self._ack(rows, self.clock(), status)
             return {"status": "delivered", "sent": len(rows), "pending": self.pending_count(),
-                    "quarantined": self.quarantined_count(), "http_status": status}
+                    "quarantined": self.quarantined_count(), "expired_pending": self.expired_pending_count(now),
+                    "http_status": status}
         except Exception as exc:
             status = getattr(exc, "code", None)
             if status == 422:
                 return self._isolate_validation_errors(rows, now, deadline)
-            return self._retry(rows, now, status)
+            return self._retry(rows, now, status, type(exc).__name__)
