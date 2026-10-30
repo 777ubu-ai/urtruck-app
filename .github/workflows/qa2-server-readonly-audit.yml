@@ -8,10 +8,11 @@ on:
         required: true
         type: string
   push:
-    branches: [fix/voice-stt-translation-20260925]
+    branches: [fix/feed-on-open-battery-20261029]
     paths:
       - .github/workflows/qa2-server-readonly-audit.yml
       - scripts/sanitize_qa2_audit.py
+      - scripts/sanitize_qa2_reason_codes.py
       - tests/frontend/test_qa2_server_readonly_audit_workflow.mjs
 
 concurrency:
@@ -48,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "fix/voice-stt-translation-20260925"
+          test "$GITHUB_REF_NAME" = "fix/feed-on-open-battery-20261029"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           [[ "$AUDIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           git cat-file -e "$AUDIT_SOURCE_SHA^{commit}"
@@ -214,7 +215,7 @@ jobs:
             local source="$2"
             local target="$3"
             local text="$4"
-            local payload response
+            local payload response response_body response_meta
             payload="$(python3 - "$text" "$source" "$target" <<'PY'
           import json
           import sys
@@ -225,15 +226,18 @@ jobs:
             swap_snapshot "${label}_BEFORE"
             psi_snapshot "${label}_BEFORE"
             ai_snapshot "${label}_BEFORE"
-            response="$(curl --silent --output /dev/null --write-out '%{http_code} %{time_total}' --max-time 90 --header 'content-type: application/json' --data "$payload" http://127.0.0.1:8003/translate 2>/dev/null || true)"
-            echo "SYNTHETIC_${label}_RESULT=$response"
+            response="$(curl --silent --write-out $'\n%{http_code} %{time_total}' --max-time 90 --header 'content-type: application/json' --data "$payload" http://127.0.0.1:8003/translate 2>/dev/null || true)"
+            response_meta="${response##*$'\n'}"
+            response_body="${response%$'\n'*}"
+            echo "SYNTHETIC_${label}_RESULT=$response_meta"
+            printf '%s' "$response_body" | python3 scripts/sanitize_qa2_reason_codes.py "$label"
             ai_snapshot "${label}_AFTER"
             psi_snapshot "${label}_AFTER"
             swap_snapshot "${label}_AFTER"
           }
 
           echo 'SECTION=synthetic-translation-observation'
-          synthetic_translation RU_TO_ZH ru zh 'Груз готов. Алматы — Астана, 10 тонн, тент.'
+          synthetic_translation RU_TO_ZH ru zh 'Алматы → Урумчи, загрузка 31 октября, 20 тонн, ставка 11 500 USD'
           synthetic_translation ZH_TO_RU zh ru '货物已准备好。阿拉木图到阿斯塔纳，10吨，篷布车。'
           synthetic_translation EN_TO_ZH en zh 'Cargo is ready. Almaty to Astana, 10 tonnes, tent truck.'
           echo 'SYNTHETIC_INTERPRETATION=swap alone is not causal; use pswpin/pswpout deltas together with PSI memory and IO.'
