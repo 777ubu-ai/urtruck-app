@@ -176,3 +176,29 @@ test('QA2 server audit rejects server-mutating commands', () => {
   ];
   for (const pattern of forbidden) assert.doesNotMatch(workflow, pattern);
 });
+
+test('remote reason extractor runs without a server checkout', () => {
+  const extractor = fs.readFileSync('scripts/sanitize_qa2_reason_codes.py').toString('base64');
+  assert.ok(workflow.includes('reason_extractor_b64="$(base64 -w0 scripts/sanitize_qa2_reason_codes.py)"'));
+  assert.ok(workflow.includes('"bash -s -- \'$reason_extractor_b64\'"'));
+  assert.ok(workflow.includes('reason_extractor="$(printf \'%s\' "$1" | base64 --decode)"'));
+  assert.doesNotMatch(workflow, /python3 scripts\/sanitize_qa2_reason_codes\.py "\$label"/);
+  const remoteStart = workflow.indexOf('          set -euo pipefail\n          export LC_ALL=C');
+  const functionStart = workflow.indexOf('          synthetic_translation() {', remoteStart);
+  const functionEnd = workflow.indexOf("\n          echo 'SECTION=synthetic-translation-observation'", functionStart);
+  assert.ok(remoteStart > 0 && functionStart > remoteStart && functionEnd > functionStart);
+  const remotePrefix = workflow.slice(remoteStart, workflow.indexOf("\n          echo 'AUDIT_MODE", remoteStart));
+  const fn = workflow.slice(functionStart, functionEnd);
+  // Execute the actual remote function from an empty cwd with a synthetic curl response.
+  const script = remotePrefix + '\n' + `
+psi_snapshot() { :; }
+swap_snapshot() { :; }
+ai_snapshot() { :; }
+curl() { printf '%s\\n' '{"detail":{"reason_codes":["weight_value_changed","private response"]}}' '422 0.012345'; }
+` + fn + '\nsynthetic_translation RU_TO_ZH ru zh "test"\n';
+  const result = spawnSync('bash', ['-s', '--', extractor], { cwd: os.tmpdir(), input: script.replace(/^ {10}/gm, ''), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_RESULT=422 0\.012345/);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed/);
+  assert.doesNotMatch(result.stdout, /private response/);
+});
