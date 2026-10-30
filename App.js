@@ -35,6 +35,7 @@ if (Platform.OS !== 'web') {
 }
 import { chatAPI } from './src/utils/chatAPI';
 import { push } from './src/utils/push';
+import { subscribeToLanguage } from './src/utils/i18n';
 import { claimPushEvent } from './src/utils/pushEventDedup';
 import { handlePushTap } from './src/utils/pushRuntime';
 import { clearAppIconBadge, refreshAppIconBadge } from './src/utils/appBadge';
@@ -407,10 +408,13 @@ function AppInner() {
       push.autoRegister?.().catch(() => {});
     };
     refreshPushBinding();
+    const unsubscribeLanguage = subscribeToLanguage(() => {
+      push.refreshLocale?.().catch(() => {});
+    });
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refreshPushBinding();
     });
-    return () => sub?.remove?.();
+    return () => { sub?.remove?.(); unsubscribeLanguage(); };
   }, [hasToken]);
 
   // Reconcile the server-owned badge at login and every foreground return.

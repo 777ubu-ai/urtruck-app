@@ -60,8 +60,8 @@ test('deal top tabs fit narrow phones and show counts as badges', () => {
 });
 
 test('existing bid action names the edited price, not a vague edit action', () => {
-  assert.match(cargoDetail, /const editBidLabel = \(\{/);
-  assert.match(tripDetail, /const editBidLabel = \(\{/);
+  assert.match(cargoDetail, /const editBidLabel = \(withAdditionalLanguages\(\{/);
+  assert.match(tripDetail, /const editBidLabel = \(withAdditionalLanguages\(\{/);
   assert.match(cargoDetail, /RU:\s*'Изменить цену'/);
   assert.match(tripDetail, /RU:\s*'Изменить цену'/);
   assert.match(cargoDetail, /label=\{editBidLabel\}/);

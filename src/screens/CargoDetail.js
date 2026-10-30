@@ -1,3 +1,4 @@
+import { withAdditionalLanguages } from '../utils/additionalLocales.js';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Image, Platform } from 'react-native';
@@ -153,12 +154,12 @@ export default function CargoDetail({ navigation, route }) {
   const { cargo: paramCargo, cargoId, role, dealId: routeDealId, readOnly = false } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
-  const editBidLabel = ({
+  const editBidLabel = (withAdditionalLanguages({
     RU: 'Изменить цену',
     EN: 'Edit price',
     KK: 'Бағаны өзгерту',
     ZH: '修改价格',
-  }[lang]) || t('edit_bid');
+  })[lang]) || t('edit_bid');
   const cargo = normalizeCargo(paramCargo, lang) || {};
   const { theme } = useTheme();
   const { toast } = useToast();

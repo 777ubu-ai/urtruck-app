@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import { sessionRole } from '../../src/utils/publicationSession.js';
 import test from 'node:test';
 import { createRequire } from 'node:module';
@@ -13,13 +14,14 @@ test('карточка расходов: четыре языка, обе тем�
  for(const lang of ['RU','EN','KK','ZH'])for(const dark of [false,true])for(const role of ['driver','client'])for(const accountRole of ['driver','client',null]){
   const colors=dark?DARK:LIGHT;const navigations=[];
   const React={createElement:(type,props,...children)=>({type,props:{...props,children}}),Fragment:Symbol('Fragment'),useState:v=>[typeof v==='function'?v():v,()=>{}],useEffect:()=>{},useCallback:f=>f};
-  const mocks={ '../utils/publicationSession':{sessionRole},
+  const mocks={
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers, '../utils/publicationSession':{sessionRole},
    react:React,'react-native':{View:'View',Text:'Text',TouchableOpacity:'TouchableOpacity',StyleSheet:{create:x=>x,hairlineWidth:0.5},ScrollView:'ScrollView',Alert:{alert:()=>{}},Platform:{OS:'android'},Image:'Image'},
    'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'@react-navigation/native':{useFocusEffect:()=>{}},'@expo/vector-icons/Feather':'Feather',
    '../utils/i18n':{setLanguage:()=>{},getLanguage:()=>lang},'../utils/useI18n':{useI18n:()=>({t:k=>k,lang})},'../utils/ThemeContext':{useTheme:()=>({isDark:dark,toggleTheme:()=>{}})},
    '../theme/designV1':{useV1Colors:()=>colors,useShipperCeramicColors:()=>({...colors,active:colors.driver})},'../utils/AuthContext':{useAuth:()=>({session:{user:{id:'test-driver',phone:'',role:accountRole}},signOut:()=>{},verificationLevel:0})},
    '../utils/store':{getProfile:()=>({}),saveProfile:()=>{}},'../utils/storage':{storage:{}},'../utils/registration':{regAPI:{}},'../utils/security':{driverTier:()=>({color:colors.driver,emoji:'',key:'driver',pct:0}),countCompletedTrips:()=>0,isDocsConfirmed:()=>false},'../utils/marketAPI':{marketAPI:{}},
-   '../components/GradientText':'GradientText','../components/HelpButton':'HelpButton','../config/env':{API_BASE:'https://qa2.urtruck.kz/api/v1'},'../config/supabase':{IS_BETA:true},'../components/ui/AppConfirmModal':'AppConfirmModal','../components/ui/v1/Button':'Button','../components/ui/v1/CountryFlag':'CountryFlag','../utils/places':{localizePlace:()=>''},'../utils/appVersionLabel':{appVersionLabel:()=>''},'../utils/vehicleSetupCopy':{getVehicleCopy:()=>({myVehicles:'Мои машины'})},'../utils/expenseCopy':{getExpenseCopy}
+   '../components/GradientText':'GradientText','../components/HelpButton':'HelpButton','../config/env':{API_BASE:'https://qa2.urtruck.kz/api/v1'},'../config/supabase':{IS_BETA:true},'../components/ui/AppConfirmModal':'AppConfirmModal','../components/ui/v1/Button':'Button','../components/ui/v1/CountryFlag':'CountryFlag','../components/LanguageSwitcher':'LanguageSwitcher','../utils/places':{localizePlace:()=>''},'../utils/appVersionLabel':{appVersionLabel:()=>''},'../utils/vehicleSetupCopy':{getVehicleCopy:()=>({myVehicles:'Мои машины'})},'../utils/expenseCopy':{getExpenseCopy}
   };
   const module={exports:{}};
   vm.runInNewContext(source,{exports:module.exports,module,require:name=>{if(!(name in mocks))throw Error('Неожиданный импорт: '+name);return mocks[name]},process:{env:{}},console});

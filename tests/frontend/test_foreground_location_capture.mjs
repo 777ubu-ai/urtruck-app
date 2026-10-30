@@ -37,7 +37,7 @@ test('измерение не стартует в фоне или после abo
   const h = setup(); h.background(); assert.equal(await capture(h.location, { appState: h.appState }), null); assert.equal(h.watched(), 0);
 });
 
-function policyHarness() {
+function policyHarness(paused = false) {
   const data = new Map([['ur_reg_token', 'A'], ['ur_session', '{"user":{"id":"driver"}}'], ['ur_bg_deal_ids', '["deal"]']]);
   const calls = { start: 0, stop: 0, fetch: 0, bgPermission: 0, append: 0 }; let task;
   const appState = { currentState: 'active' };
@@ -47,7 +47,7 @@ function policyHarness() {
     getForegroundPermissionsAsync: async () => ({ status: 'granted', canAskAgain: true }),
     getBackgroundPermissionsAsync: async () => { calls.bgPermission++; return { status: 'denied' }; },
   };
-  const scope = { Platform: { OS: 'ios' }, AppState: appState, captureForegroundPosition: capture, storage, durableStorage: storage,
+  const scope = { GPS_TRACKING_PAUSED: paused, Platform: { OS: 'ios' }, AppState: appState, captureForegroundPosition: capture, storage, durableStorage: storage,
     createLocationQueue: () => ({ migrate: async () => {}, append: async () => { calls.append++; }, drain: async () => {} }),
     locationSampleId: () => 'sample', API_BASE: 'https://test.invalid', t: k => k, AbortController, setTimeout, clearTimeout, console,
     require: name => name === 'expo-task-manager' ? { defineTask: (_, cb) => { task = cb; } } : native,
@@ -55,7 +55,7 @@ function policyHarness() {
   };
   const code = fs.readFileSync('src/utils/backgroundLocation.js', 'utf8')
     .replace(/^import .*;\s*$/gm, '').replace(/^export .* from .*;\s*$/gm, '').replace(/^export /gm, '');
-  const api = vm.runInNewContext(code + '\n({FOREGROUND_LOCATION_ONLY,startBackgroundTracking,getBackgroundLocationPermissionState,restoreBackgroundTrackingForLogoutFailure,pushLocationToDeals})', scope);
+  const api = vm.runInNewContext(code + '\n({getCurrentLocationPayload,getLocationHealth,requestForegroundLocationPermission,FOREGROUND_LOCATION_ONLY,startBackgroundTracking,getBackgroundLocationPermissionState,restoreBackgroundTrackingForLogoutFailure,pushLocationToDeals})', scope);
   return { api, task, calls, appState, data };
 }
 test('текущий режим по умолчанию не запускает native background и убирает старую регистрацию', async () => {
@@ -83,4 +83,14 @@ test('ошибка native remove не оставляет ожидающий за
   h.location.watchPositionAsync = async (_, cb) => { setImmediate(() => cb({ coords: { latitude: 43, longitude: 76 }, timestamp: Date.now() })); return { remove: () => { throw Error('native cleanup failed'); } }; };
   assert.equal((await capture(h.location, { appState: h.appState })).coords.latitude, 43);
   assert.equal(h.listeners(), 0);
+});
+
+test('пауза до native API: нет разрешений, измерений, очереди или сети; старый сервис остановлен', async () => {
+ const h = policyHarness(true);
+ assert.equal(await h.api.getCurrentLocationPayload(),null);
+ assert.equal((await h.api.getLocationHealth()).state,'paused');
+ assert.equal((await h.api.requestForegroundLocationPermission()).reason,'gps_paused');
+ assert.equal((await h.api.pushLocationToDeals({lat:43,lng:76,timestamp:Date.now()},['deal'])).reason,'gps_paused');
+ await h.api.startBackgroundTracking();
+ assert.equal(h.calls.start,0); assert.equal(h.calls.fetch,0); assert.equal(h.calls.append,0); assert.equal(h.calls.bgPermission,0); assert.ok(h.calls.stop>0);
 });

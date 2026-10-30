@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -47,6 +48,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
   native.PanResponder = { create: config => ({ panHandlers: config }) };
   native.Alert = { alert() {} }; native.Linking = { openURL: async url => { opened.push(url); } };
   const mocks = {
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@expo/vector-icons/Feather': 'Feather', '@expo/vector-icons/FontAwesome5': 'FontAwesome5',
     '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },
@@ -318,6 +320,24 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   actions.props.onPress(); await h.flush();
   assert.equal(h.shareModal().props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
-  assert.equal(nodes.find(n => n.props.testID === 'external-feed-source-own'), undefined);
+  await nodes.find(n => n.props.testID === 'external-feed-source-own').props.onPress();
+  assert.equal(h.opened.at(-1), 'https://t.me/foreign_chat/44');
   assert.ok(nodes.find(n => n.type === 'Description').props.actions);
+});
+
+for (const role of ['driver', 'client']) test(`${role}: цена и контакты перед параметрами, оригинал передан полностью`, async () => {
+  const original = '🚚 Алматы → Москва\n' + 'Условия перевозки\n'.repeat(400) + '\nТелефон +998901234567\n  ';
+  const item = { id: 'full', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
+    origin: 'Алматы', destination: 'Москва', amount: 7500, currency: 'USD', price_state: 'known',
+    contacts: ['+77001234567'], source_contacts: ['+998901234567'], original_text: original, body_types: ['tent'] };
+  const h = harness({ role, fixtures: [item] }); await h.flush();
+  const nodes = descendants(h.renderItem(item));
+  const position = id => nodes.findIndex(n => n.props.testID === id);
+  assert.ok(position('external-feed-price-full') < position('external-feed-copy-full-0'));
+  assert.ok(position('external-feed-copy-full-0') < position('external-feed-source-contacts-full'));
+  assert.ok(position('external-feed-source-contacts-full') < position('external-feed-summary-full'));
+  assert.equal(nodes.find(n => n.type === 'Description').props.text, original);
+  assert.equal(nodes.find(n => n.props.testID === 'external-feed-no-contact-full'), undefined);
+  await nodes.find(n => n.props.testID === 'external-feed-copy-source-full-0').props.onPress();
+  assert.deepEqual(h.copied, ['+998901234567']);
 });

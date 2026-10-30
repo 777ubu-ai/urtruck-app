@@ -29,3 +29,6 @@
 
 - После удаления двух интервалов: 173 связанные frontend/unit-проверки PASS (0 FAIL). Включены обе роли, Android/iOS/web в JS harness, 10 минут виртуального простоя без повторных запросов ленты/count, возврат и ручное обновление, сортировка/пагинация/offline, protected baseline, foreground polling idle, map-only entry, native capture cleanup и location queue.
 - `npm run lint` и `git diff --check`: PASS. Полный новый GitHub CI на момент подготовки журнала ещё требуется; автоматические тесты не заменяют измерения энергии и физическую приёмку.
+
+## Объединение30.10
+PRE-FLIGHT: PR651 поверх a0af68b7743469f7f163ebaa41c4a40ac5e464a4; новые девять языков и GPS pause сохраняются. Known-good base: CI5037db2c PASS3/3, исходник кандидата a0af. Исторические173PASS исходного PR651 не переносятся на merge. Scope четыре исходных файла PR651 и документация; БД/backend/store metadata не меняются. Риск: середина непрерывного чтения не обновляется до действия пользователя. Откат отдельного merge-коммита. Перед публикацией проверены синтаксис4файлов, отсутствие setInterval в обоих компонентах и сохранение language adapters. Runtime/fullCI нового merge pending. Устройство479/124 не принимает новый merge автоматически. Задачи Mac: docs/qa/release-handoff-20261030.md.

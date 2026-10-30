@@ -1,3 +1,5 @@
+import { ADDITIONAL_TRANSLATIONS } from '../utils/additionalLocales.js';
+import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React from 'react';
 import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -39,6 +41,7 @@ const COPY = {
     weatherUnavailable: '暂无数据', ratesUnavailable: '暂无数据', cached: '缓存', gpsPending: '行程开始后可用',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const dedupePoints = (points) => {
   const seen = new Set();
@@ -55,8 +58,8 @@ const formatDistance = (meters, lang) => {
   if (!Number.isFinite(value) || value < 0) return null;
   const km = value / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
-  const text = String(rounded).replace('.', lang === 'EN' ? '.' : ',');
-  return `${text} ${lang === 'ZH' ? '公里' : 'км'}`;
+  const text = String(rounded).replace('.', lang === 'EN' ? localizeUiText('.', lang) : localizeUiText(',', lang));
+  return `${text} ${lang === 'ZH' ? localizeUiText('公里', lang) : localizeUiText('км', lang)}`;
 };
 
 const formatDuration = (seconds, lang) => {
@@ -68,6 +71,11 @@ const formatDuration = (seconds, lang) => {
   const mins = minutes % 60;
   if (lang === 'ZH') return days ? `${days}天 ${hours}小时` : hours ? `${hours}小时 ${mins}分` : `${mins}分`;
   if (lang === 'EN') return days ? `${days} d ${hours} h` : hours ? `${hours} h ${mins} min` : `${mins} min`;
+  const extra = ADDITIONAL_TRANSLATIONS[lang];
+  if (extra) {
+    const units = { TR: 'g', UZ: 'kun', KY: 'күн', TG: 'рӯз', BE: 'д' };
+    return days ? `${days} ${units[lang]} ${hours} ${extra.time_hour}` : hours ? `${hours} ${extra.time_hour} ${mins} ${extra.time_min}` : `${mins} ${extra.time_min}`;
+  }
   return days ? `${days} д. ${hours} ч.` : hours ? `${hours} ч. ${mins} мин.` : `${mins} мин.`;
 };
 
@@ -77,6 +85,7 @@ const WEATHER_LABELS = {
   KK: ['Ашық', 'Бұлтты', 'Тұман', 'Жаңбыр', 'Қар', 'Найзағай'],
   ZH: ['晴', '多云', '雾', '雨', '雪', '雷暴'],
 };
+Object.assign(WEATHER_LABELS, withAdditionalLanguageTree(WEATHER_LABELS));
 const weatherLabel = (code, lang) => {
   const labels = WEATHER_LABELS[lang] || WEATHER_LABELS.RU;
   const value = Number(code);

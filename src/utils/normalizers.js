@@ -1,3 +1,4 @@
+import { localizeUiText } from './additionalLocales.js';
 // Canonical shape mappers for marketplace objects. Keep this module PURE:
 // frontend Node regression tests import it without React Native. Locale is an
 // explicit optional argument; runtime language/storage must not leak here.
@@ -52,7 +53,7 @@ const displayUnits = (lang = 'RU') => {
   const locale = String(lang || 'RU').toUpperCase();
   if (locale === 'ZH') return { ton: '吨', volume: '立方米' };
   if (locale === 'EN') return { ton: 't', volume: 'm³' };
-  return { ton: 'т', volume: 'м³' };
+  return { ton: localizeUiText('т', locale), volume: localizeUiText('м³', locale) };
 };
 
 // Cargo weights are stored and transported in tonnes. Group only numeric

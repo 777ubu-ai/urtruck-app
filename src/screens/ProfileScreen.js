@@ -1,10 +1,11 @@
+import { localizeUiText } from '../utils/additionalLocales.js';
 import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
-import { setLanguage, getLanguage } from '../utils/i18n';
+import { getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
@@ -20,18 +21,11 @@ import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
-import CountryFlag from '../components/ui/v1/CountryFlag';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import { localizePlace } from '../utils/places';
 import { appVersionLabel } from '../utils/appVersionLabel';
 import { getVehicleCopy } from '../utils/vehicleSetupCopy';
 import { getExpenseCopy } from '../utils/expenseCopy';
-
-const LANGS = [
-  { code: 'RU', country: 'RU' },
-  { code: 'EN', country: 'GB' },
-  { code: 'KK', country: 'KZ' },
-  { code: 'ZH', country: 'CN' },
-];
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -75,11 +69,10 @@ export default function ProfileScreen({ navigation, route }) {
   };
   const { t, lang: uiLang } = useI18n();
   const expenseCopy = getExpenseCopy(uiLang);
-  const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
-  const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
+  const tonUnit = uiLang === 'ZH' ? localizeUiText('吨', uiLang) : uiLang === 'EN' ? localizeUiText('t', uiLang) : localizeUiText('т', uiLang);
+  const cubicMeterUnit = uiLang === 'ZH' ? localizeUiText('立方米', uiLang) : localizeUiText('м³', uiLang);
 
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
-  const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => {
     setConfirmDialog({ title, message, confirmLabel, resolve });
@@ -342,16 +335,9 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           </View>
 
-          <View style={[s.settingsRow, { marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}><Feather name="globe" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text></View>
-            <View style={s.langGrid}>
-              {LANGS.map(l => (
-                <TouchableOpacity key={l.code} testID={`profile-lang-${l.code.toLowerCase()}`} accessibilityRole="button" accessibilityLabel={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
-                  <CountryFlag code={l.country} width={22} />
-                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <View style={[s.settingsRow, s.languageSetting]}>
+            <View style={s.languageLabel}><Feather name="globe" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text></View>
+            <LanguageSwitcher testID="profile-language-switcher" optionTestIDPrefix="profile-lang" />
           </View>
 
         </View>
@@ -448,9 +434,8 @@ const s = StyleSheet.create({
   settingLabel: { fontSize: 13, fontWeight: '600' },
   themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   themeBtnText: { fontSize: 12, fontWeight: '700' },
-  langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  langCard: { width: '23.5%', minWidth: 68, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },
-  langCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  languageSetting: { marginTop: 12, gap: 12, flexWrap: 'wrap' },
+  languageLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
   versionRow: { alignItems: 'center', paddingVertical: 10, marginBottom: 6 },

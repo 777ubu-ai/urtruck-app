@@ -64,7 +64,7 @@ function backgroundHarness(reply, store = memoryStore(), postReply = null) {
     .replace(/^import .*;\n/gm, '').replace(/^export \{.*\} from .*;\n/gm, '')
     .replace(/export /g, '');
   source += '\nglobalThis.api = {pushLocationToDeals, setActiveDealIds};';
-  const sandbox = { Platform: { OS: 'android' }, storage: store, durableStorage: store,
+  const sandbox = { GPS_TRACKING_PAUSED: false, Platform: { OS: 'android' }, storage: store, durableStorage: store,
     createLocationQueue, locationSampleId, API_BASE: 'https://test.invalid', t: k => k,
     AbortController, setTimeout, clearTimeout, console,
     require: name => name === 'expo-task-manager' ? { defineTask: (_, cb) => { task = cb; } } : {},

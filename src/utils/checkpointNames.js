@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, withAdditionalLanguages } from './additionalLocales.js';
 // checkpointNames — canonical, COMPLETE localization of CGR border checkpoints.
 //
 // Why this exists (PR #255 review, 2026-08-20):
@@ -160,6 +161,7 @@ const PART = {
   яллама: { KK: 'Яллама', EN: 'Yallama', ZH: 'Yallama' },
   маштаково: { KK: 'Маштаково', EN: 'Mashtakovo', ZH: 'Mashtakovo' },
 };
+Object.assign(PART, withAdditionalLanguageTree(PART));
 
 // Whole-name overrides keyed by the stable slug the backend generates
 // (`cgr_dal.slugify_checkpoint`). Use this when a crossing is known by a
@@ -170,6 +172,7 @@ const CANONICAL_BY_CODE = {
   dostyk_alashankou: { RU: 'Достык - Алашанькоу', KK: 'Достық - Алашанькөу', EN: 'Dostyk - Alashankou', ZH: '多斯特克 - 阿拉山口' },
   bahty_pokitu: { RU: 'Бахты - Покиту', KK: 'Бақты - Покиту', EN: 'Bakhty - Bakhtu', ZH: '巴克图口岸' },
 };
+Object.assign(CANONICAL_BY_CODE, withAdditionalLanguageTree(CANONICAL_BY_CODE));
 
 const SEPARATORS = [' — ', ' – ', ' - '];
 
@@ -192,17 +195,17 @@ function localizePart(part, lang) {
  * @returns {string} display name guaranteed free of Cyrillic for EN and ZH
  */
 export function localizeCheckpointName(checkpoint, lang = 'RU') {
-  const language = ['RU', 'KK', 'ZH', 'EN'].includes(lang) ? lang : 'RU';
+  const language = ['RU', 'KK', 'ZH', 'EN', 'TR', 'UZ', 'KY', 'TG', 'BE'].includes(lang) ? lang : 'RU';
   const cp = (checkpoint && typeof checkpoint === 'object') ? checkpoint : { name: checkpoint };
   const rawName = String(cp.name ?? cp.name_ru ?? '').trim();
 
   // 1) authoritative server-supplied locale field
-  const serverField = {
+  const serverField = withAdditionalLanguages({
     RU: cp.name_ru ?? cp.name,
     KK: cp.name_kk ?? cp.name_kz,
     EN: cp.name_en,
     ZH: cp.name_zh ?? cp.name_cn,
-  }[language];
+  })[language];
   if (serverField && String(serverField).trim()) {
     const value = String(serverField).trim();
     // Never trust a "translation" that is still Cyrillic for EN/ZH.

@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -85,12 +86,14 @@ const COPY = {
     empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const MONTHS = {
   RU: ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'],
   EN: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   KK: ['қаң', 'ақп', 'нау', 'сәу', 'мам', 'мау', 'шіл', 'там', 'қыр', 'қаз', 'қар', 'жел'],
 };
+Object.assign(MONTHS, withAdditionalLanguageTree(MONTHS));
 
 const FLAG_PAIR_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
 
@@ -184,8 +187,8 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
   const fromFlag = item.fromCountry || flagCode(item.fromEmbeddedFlag) || null;
   const toFlag = item.toCountry || flagCode(item.toEmbeddedFlag) || null;
   const units = {
-    volume: lang === 'ZH' ? '立方米' : 'м³',
-    tons: lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т',
+    volume: lang === 'ZH' ? localizeUiText('立方米', lang) : localizeUiText('м³', lang),
+    tons: lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang),
   };
   const specs = [
     formatTruckType(item.type),

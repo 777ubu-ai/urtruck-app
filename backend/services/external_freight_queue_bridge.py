@@ -20,7 +20,7 @@ from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 10 * 24 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261029-contact-footer-v13'
+PARSER_REVISION = '20261030-phone-numeric-fields-v15'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -45,7 +45,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261029-contact-footer-v8'
+    parser_revision = '20261030-phone-numeric-fields-v10'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -311,7 +311,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261029-contact-footer-v13'
+    parser_revision = '20261030-phone-numeric-fields-v15'
     parse = staticmethod(map_owned_messages)
 
     @staticmethod

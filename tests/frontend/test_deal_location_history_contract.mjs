@@ -8,7 +8,7 @@ assert.match(backend, /SELECT lat, lng, heading, speed, captured_at_ms, updated_
 assert.match(backend, /tracking_status.*deal_status/);
 assert.doesNotMatch(backend, /if \(tracking\.get\("status"\) != "active"\):\n\s+return \{"ok": True, "has_location": False/);
 assert.match(screen, /const LOCATION_HISTORY_STATUSES = \[\.\.\.LIVE_TRACKING_STATUSES, 'delivered', 'received', 'completed'\]/);
-assert.match(screen, /const locationReadable = Boolean\(dealId && LOCATION_HISTORY_STATUSES\.includes\(deal\?\.status\)\)/);
+assert.match(screen, /const locationReadable = !GPS_TRACKING_PAUSED && Boolean\(dealId && LOCATION_HISTORY_STATUSES\.includes\(deal\?\.status\)\)/);
 assert.match(screen, /const hasLivePoint = trackingActive && hasCoordinates/);
 assert.match(screen, /if \(!trackingActive\) return undefined;/);
 

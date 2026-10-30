@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from './additionalLocales.js';
 const RU = {
   searchDeals: 'Поиск рейса по маршруту или ID', search: 'Найти', noDealsFound: 'Рейсы не найдены',
   title: 'Мои расходы', tripTitle: 'Расходы рейса', add: 'Добавить расход', edit: 'Изменить расход', save: 'Сохранить расход',
@@ -47,4 +48,5 @@ const ZH = {
   driverOnly: '请登录司机账号以使用支出功能。', fuel: '燃料', food: '餐饮', parking: '停车', daily: '每日补贴', repair: '维修', other: '其他',
 };
 export const EXPENSE_COPY = { RU, EN, KK, ZH };
+Object.assign(EXPENSE_COPY, withAdditionalLanguageTree(EXPENSE_COPY));
 export const getExpenseCopy = (lang) => EXPENSE_COPY[String(lang).toUpperCase()] || EN;

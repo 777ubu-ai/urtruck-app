@@ -1,3 +1,4 @@
+import { localizeUiText } from '../../utils/additionalLocales.js';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,8 +14,8 @@ const DRAFT_KEY = 'ur_vehicle_setup_draft';
 
 export default function VehicleChooserScreen({ navigation, route }) {
   const { lang, c } = useVehicleCopy();
-  const tonUnit = lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т';
-  const cubicMeterUnit = lang === 'ZH' ? '立方米' : lang === 'EN' ? 'm³' : 'м³';
+  const tonUnit = lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang);
+  const cubicMeterUnit = lang === 'ZH' ? localizeUiText('立方米', lang) : lang === 'EN' ? localizeUiText('m³', lang) : localizeUiText('м³', lang);
   const styles = useVehicleSetupStyles();
   const ceramic = useDriverCeramicColors();
   const [vehicles, setVehicles] = useState(null);

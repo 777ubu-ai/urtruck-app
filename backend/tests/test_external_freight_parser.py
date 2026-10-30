@@ -225,3 +225,28 @@ def test_compact_route_with_unpunctuated_partial_label_stays_visible_unattribute
     assert item["kind"] == "vehicle"
     assert item["status"] == "active"
     assert item["origin"] is None and item["destination"] is None
+
+
+def test_telegram_contact_is_not_a_price_and_does_not_hide_real_price():
+    text = "Москва → Ташкент\nГруз готов\n+998901234567 тг\n23 т\n7500 USD"
+    item = map_selected_message(_queue(text, phones='[]'))
+    assert item['amount'] == 7500
+    assert item['currency'] == 'USD'
+    assert '+998901234567' in item['contacts']
+    assert item['original_text'] == text
+
+
+def test_phone_before_next_route_initial_is_not_a_weight():
+    text = "Груз готов\nМосква → Ташкент\n+998901234567\n\n Т А М Б О В\n22 т"
+    item = map_selected_message(_queue(text, phones='[]'))
+    assert item['weight'] == 22
+    assert item['original_text'] == text
+    assert '+998901234567' in item['contacts']
+
+
+def test_telegram_contact_without_price_keeps_unknown_price():
+    text = "Москва → Ташкент\nГруз готов, 23 т\n+998901234567 тг"
+    item = map_selected_message(_queue(text, phones='[]'))
+    assert item['amount'] is None
+    assert item['price_state'] == 'unknown'
+    assert item['weight'] == 23

@@ -1,3 +1,4 @@
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,6 +15,7 @@ test('real denied web banner renders and its retry button refreshes permission',
     useState: () => [states++ === 0 ? 'denied' : false, () => {}],
   };
   const imports = {
+    '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: React,
     'react-native': { AppState: {}, Platform: { OS: 'web' }, StyleSheet: { create: (s) => s },
       Text: 'Text', TouchableOpacity: 'TouchableOpacity', View: 'View' },

@@ -31,11 +31,17 @@ test('QA2 bridge timer is set to two seconds and stays isolated', () => {
   assert.doesNotMatch(workflow, /urtruck\.kz\/api\/version[^\n]*POST/);
 });
 
-test('workflow starts the Telegram collector without restarting it and reports intake counts', () => {
-  assert.match(workflow, /systemctl start urtruck-telegram-feed\.service/);
+test('workflow restarts the stuck Telegram publisher and verifies whether queue advances', () => {
+  assert.match(workflow, /systemctl restart urtruck-telegram-feed\.service/);
   assert.match(workflow, /systemctl is-active urtruck-telegram-feed\.service/);
-  assert.doesNotMatch(workflow, /systemctl restart urtruck-telegram-feed\.service/);
   assert.match(workflow, /app_messages_last_10m/);
   assert.match(workflow, /latest_message_seconds_ago/);
   assert.match(workflow, /queue_by_status/);
+  assert.match(workflow, /sending_age_seconds/);
+  assert.match(workflow, /telegram_publish_interval_seconds/);
+  assert.match(workflow, /delivery_requires_review\|delivery_reconciled/);
+  assert.match(workflow, /sleep 65/);
+  assert.match(workflow, /previous-feed\.py/);
+  assert.match(workflow, /QA2_TELEGRAM_FEED_SHA256/);
+  assert.match(workflow, /delivery_retry_recovered/);
 });

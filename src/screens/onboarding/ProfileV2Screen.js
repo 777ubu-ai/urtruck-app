@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 // ProfileV2Screen — личные данные после выбора роли.
 // Водитель после этого шага обязательно добавляет машину на одной странице.
 // Компания, страна/город и preferred messenger — необязательные контактные данные.
@@ -167,6 +168,7 @@ const COPY = {
     save: 'Сақтау және кіру',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const MESSENGERS = [
   { key: 'whatsapp', label: 'WhatsApp', icon: 'message-circle' },

@@ -1,3 +1,4 @@
+import { withAdditionalLanguages } from './additionalLocales.js';
 export const EXPENSE_CATEGORIES = ['fuel', 'food', 'parking', 'daily', 'repair', 'other'];
 export const EXPENSE_CURRENCIES = ['KZT', 'USD', 'RUB', 'CNY', 'EUR', 'KGS', 'UZS', 'BYN'];
 export const localExpenseDate = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -24,6 +25,6 @@ export function makeExpenseBody(form, clientId) {
     ...(form.version ? { version: form.version } : {}) };
 }
 export function formatExpenseMoney(amount, currency, lang = 'RU') {
-  const locale = { RU: 'ru-RU', EN: 'en-US', KK: 'kk-KZ', ZH: 'zh-CN' }[lang] || 'en-US';
+  const locale = withAdditionalLanguages({ RU: 'ru-RU', EN: 'en-US', KK: 'kk-KZ', ZH: 'zh-CN' })[lang] || 'en-US';
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(amount))} ${currency}`;
 }

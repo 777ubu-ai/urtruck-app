@@ -2,6 +2,7 @@
 // Регрессия запускается каноническим frontend test runner из корня репозитория.
 import fs from 'node:fs';
 import vm from 'node:vm';
+import * as localeHelpers from '../../src/utils/additionalLocales.js';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const requireLocal = createRequire(process.cwd() + '/package.json');
@@ -54,6 +55,7 @@ const generic = { __esModule: true, default: 'Component' };
 const screenReq = name => name === 'react' ? { __esModule: true, default: screenReact, ...screenReact }
   : name === 'react-native' ? { ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', Text: 'Text', View: 'View' }
   : name === 'react-native-safe-area-context' ? { SafeAreaView: 'SafeAreaView' }
+  : name.endsWith('/additionalLocales.js') ? localeHelpers
   : name.endsWith('/AuthContext') ? { useAuth: () => auth }
   : name.endsWith('/registration') ? { regAPI }
   : name.endsWith('/useI18n') ? { useI18n: () => ({ lang: 'RU' }) }

@@ -25,7 +25,7 @@ TZ = ZoneInfo("Asia/Almaty")
 DESTINATION = -1003711161303
 DESTINATION_NAME = "@UrTruck_UT"
 OWNED_FEED_SOURCE = 'UrTruck_obyavleniya'
-ACTIVE_HOURS = 168
+ACTIVE_HOURS = 240
 DOWNLOAD_TEXT = 'Скачать UrTruck — грузы и машины в приложении'
 DOWNLOAD_BUTTONS = {'inline_keyboard': [[
     {'text': 'Android — Google Play', 'url': 'https://play.google.com/store/apps/details?id=com.urtruck.app'},
@@ -504,15 +504,19 @@ def reserve(db, now=None):
     db.execute("BEGIN IMMEDIATE")
     try:
         started = destination_started_at(db)
-        if db.execute("SELECT 1 FROM queue WHERE status IN ('sending','uncertain') AND published_at>=?", (started,)).fetchone() or not due(db, now):
+        if not due(db, now):
             db.rollback()
             return None
         db.execute("UPDATE queue SET status='expired',reason='older_than_24_hours' WHERE status='queued' AND source_date<?", ((now - timedelta(hours=24)).timestamp(),))
-        row = db.execute("SELECT * FROM queue WHERE status='queued' ORDER BY source_date DESC,id DESC LIMIT 1").fetchone()
+        # Неопределённый результат изолирует только ту же публикацию.
+        row = db.execute("""SELECT q.* FROM queue q WHERE q.status='queued'
+          AND NOT EXISTS(SELECT 1 FROM queue pending WHERE pending.status IN ('sending','uncertain')
+                         AND pending.fingerprint=q.fingerprint)
+          ORDER BY q.source_date DESC,q.id DESC LIMIT 1""").fetchone()
         if row is None:
             db.commit()
             return None
-        rid = secrets.randbits(63)
+        rid = row["random_id"] or secrets.randbits(63)
         db.execute("UPDATE queue SET status='sending',random_id=?,published_date=?,published_at=? WHERE id=?",
                    (rid, now.astimezone(TZ).date().isoformat(), now.timestamp(), row['id']))
         db.commit()
@@ -728,14 +732,20 @@ async def publish(reader, db, target):
     except Exception as exc:
         with db:
             db.execute("UPDATE queue SET status='uncertain',reason=? WHERE id=?",(type(exc).__name__,row['id']))
-        LOG.error("publication_uncertain id=%s type=%s; automatic publication halted",row['id'],type(exc).__name__)
+        LOG.error("publication_uncertain id=%s type=%s; reconciliation_required",row['id'],type(exc).__name__)
+
+
+STALE_SEND_RECOVERY_SECONDS = 180
 
 
 async def reconcile(reader, db, target):
     rows = db.execute("SELECT * FROM queue WHERE status IN ('sending','uncertain')").fetchall()
     if not rows:
         return
-    messages = [m async for m in reader.iter_messages(target, limit=300)]
+    stale = any(row['published_at'] and time.time()-row['published_at'] >= STALE_SEND_RECOVERY_SECONDS
+                for row in rows)
+    history_limit = 1500 if stale else 300
+    messages = [m async for m in reader.iter_messages(target, limit=history_limit)]
     for row in rows:
         candidates = []
         for msg in messages:
@@ -749,6 +759,31 @@ async def reconcile(reader, db, target):
                 db.execute("UPDATE queue SET status='published',destination_message=?,reason=NULL WHERE id=?",(msg.id,row['id']))
                 db.execute("DELETE FROM prior WHERE message_id=?",(msg.id,))
             LOG.info("delivery_reconciled queue=%d message=%d",row['id'],msg.id)
+        elif candidates:
+            # A matching Telegram message proves delivery. Resolve the queue lock
+            # to the candidate nearest the original attempt and never forward it again.
+            msg = min(candidates, key=lambda candidate: abs(candidate.date.timestamp()-row['published_at']))
+            with db:
+                db.execute("UPDATE queue SET status='published',destination_message=?,reason=NULL WHERE id=?",
+                           (msg.id,row['id']))
+                db.execute("DELETE FROM prior WHERE message_id=?",(msg.id,))
+            LOG.warning("delivery_reconciled_multiple queue=%d matches=%d selected=%d",
+                        row['id'],len(candidates),msg.id)
+        elif row['published_at'] and time.time()-row['published_at'] >= STALE_SEND_RECOVERY_SECONDS:
+            # Retry only after the fetched destination history covers the attempt.
+            # Keep the same MTProto random_id to deduplicate a lost acknowledgement.
+            oldest = min((msg.date.timestamp() for msg in messages if msg.date), default=None)
+            history_covers_attempt = len(messages) < history_limit or (
+                oldest is not None and oldest <= row['published_at']-30)
+            if history_covers_attempt:
+                with db:
+                    db.execute("""UPDATE queue SET status='queued',destination_message=NULL,
+                      published_date=NULL,published_at=NULL,reason='recovered_absent_from_destination'
+                      WHERE id=? AND status IN ('sending','uncertain') AND published_at=?""",
+                      (row['id'],row['published_at']))
+                LOG.warning("delivery_retry_recovered queue=%d random_id_preserved=true",row['id'])
+            else:
+                LOG.error("delivery_requires_review queue=%d matches=0 history_coverage=insufficient",row['id'])
         else:
             LOG.error("delivery_requires_review queue=%d matches=%d; no resend",row['id'],len(candidates))
 
@@ -795,6 +830,10 @@ async def telegram_tick(reader, db, state):
         state.pop("target",None)
         delay=exc.seconds+1 if isinstance(exc,FloodWaitError) else 60
         state["retry_after"]=time.time()+delay
+        if isinstance(exc, FloodWaitError):
+            with db:
+                db.execute("INSERT OR REPLACE INTO metadata VALUES('publish_after',?)",
+                           (str(state["retry_after"]),))
         LOG.warning("telegram_destination_paused type=%s retry_after=%s; app_intake_continues",
                     type(exc).__name__,delay)
 
@@ -899,7 +938,9 @@ async def run_cycles(reader, db, cfg, once=False):
                     await owned_task
                 print(json.dumps(status(db), ensure_ascii=False))
                 return
-            await asyncio.sleep(5)
+            # Частый локальный tick не обходит due()/FloodWait и не ускоряет
+            # обход источников. При интервале 3 с старый sleep(5) задерживал отправку.
+            await asyncio.sleep(min(5.0, max(1.0, publish_interval_seconds() / 3)))
     finally:
         for task in (scan_task, owned_task):
             if task is not None:

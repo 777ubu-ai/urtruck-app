@@ -22,13 +22,13 @@ test('approved RU onboarding titles remain separate two-line UI copy', () => {
   assert.match(i18n, /onb_v2_slide1_title: 'Всё для перевозки —\\nв одном приложении'/);
   assert.match(i18n, /onb_v2_slide2_title: 'Найди груз и\\nпредложи ставку'/);
   assert.match(i18n, /onb_v2_slide3_title: 'Договорились —\\nи поехали'/);
-  assert.match(screen, /<Text style=\{s\.title\} numberOfLines=\{2\}/);
+  assert.match(screen, /<Text style=\{s\.title\} testID="onb-v2-slide-title"/);
 });
 
 test('onboarding CTAs use compact asymmetric approved sizing', () => {
-  assert.match(screen, /ctaPrimary:[\s\S]*height: 52,[\s\S]*width: '86%'[\s\S]*maxWidth: 540[\s\S]*borderRadius: 26/);
+  assert.match(screen, /ctaPrimary:[\s\S]*minHeight: 52,[\s\S]*width: '86%'[\s\S]*maxWidth: 540[\s\S]*borderRadius: 26/);
   assert.match(screen, /ctaArrowBubble:[\s\S]*width: 38,[\s\S]*height: 38,[\s\S]*borderRadius: 19/);
-  assert.match(screen, /ctaOutline: \{ height: 48, width: '76%', maxWidth: 480, borderRadius: 24/);
+  assert.match(screen, /ctaOutline: \{ minHeight: 48, paddingVertical: 6, width: '76%', maxWidth: 480, borderRadius: 24/);
 });
 
 test('the complete unauthenticated onboarding flow stays light regardless of app theme', () => {

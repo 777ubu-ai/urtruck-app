@@ -1,0 +1,5 @@
+/* UrTruck — системные разрешения: uz. */
+"NSCameraUsageDescription" = "UrTruck selfi va hujjatlarni suratga olish uchun kameradan foydalanadi.";
+"NSMicrophoneUsageDescription" = "UrTruck chatda ovozli xabar yozish uchun mikrofondan foydalanadi.";
+"NSPhotoLibraryUsageDescription" = "UrTruck profil rasmi, yuk va hujjatlar uchun rasmlaringizdan foydalanadi.";
+"NSLocationWhenInUseUsageDescription" = "UrTruck so‘rovingizga ko‘ra yoki faol qatnov xaritasini ochganingizda joylashuvingizni aniqlaydi.";

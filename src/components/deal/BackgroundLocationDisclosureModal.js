@@ -1,3 +1,4 @@
+import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React from 'react';
 import { Modal, ScrollView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -82,6 +83,7 @@ const COPY = {
     checkAgain: 'Қайта тексеру',
   },
 };
+Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 function InfoRow({ icon, iconColor, iconBackground, children }) {
   return (

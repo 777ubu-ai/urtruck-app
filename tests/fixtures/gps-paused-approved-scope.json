@@ -1,0 +1,8 @@
+{
+  "reason": "Решение владельца 29.10.2026: временно приостановить GPS, сохранить плановый маршрут и статусы; прочие protected baseline не меняются. Решение владельца30.10: объединить сPR653; единственный обновлённый hash DealWorkspace включает оба утверждённых изменения (GPS652+адаптер9языков), исходный hash652 предварительно сверен.",
+  "sha256": {
+    "src/utils/marketAPI.js": "582dd59eafb0128b796e8233c90cecfbb6b374a8e39228781337b4273a33ab3a",
+    "src/screens/DealWorkspaceScreenV2.js": "c1d8a0d6fc798ef8502b8c947e984e7748e3f9148f47efb7f4eb9c13e4cb43f2",
+    "src/utils/backgroundLocation.js": "138e50969b4be15b8169022b7bf7c560acff5342b6bae7a98483e9edb8063dfb"
+  }
+}
