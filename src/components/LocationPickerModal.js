@@ -1,3 +1,4 @@
+import { GPS_TRACKING_PAUSED } from '../utils/locationPolicy';
 // LocationPickerModal — полноэкранный выбор города/погранперехода в стиле
 // inDrive (Вариант 1). Поиск во главе (автофокус), до ввода — геолокация,
 // «Избранное», «Недавние», «Популярные» и «Погранпереходы». Выбор — один
@@ -115,7 +116,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   };
 
   const useGeo = async () => {
-    if (geoLoading) return;
+    if (GPS_TRACKING_PAUSED || geoLoading) return;
     setGeoLoading(true);
     const controller = new AbortController();
     geoRequest.current = controller;
@@ -344,7 +345,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
             </>
           ) : (
             <>
-              {showGeo ? (
+              {showGeo && !GPS_TRACKING_PAUSED ? (
                 <TouchableOpacity style={s.row} onPress={useGeo} testID="loc-geo" activeOpacity={0.7}>
                   <View style={[s.lead, s.geoLead]}>
                     {geoLoading ? <ActivityIndicator color={v1.driver} /> : <Feather name="map-pin" size={18} color={v1.driver} />}

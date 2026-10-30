@@ -1,0 +1,8 @@
+{
+  "reason": "Решение владельца 29.10.2026: временно приостановить GPS, сохранить плановый маршрут и статусы; прочие protected baseline не меняются.",
+  "sha256": {
+    "src/utils/marketAPI.js": "582dd59eafb0128b796e8233c90cecfbb6b374a8e39228781337b4273a33ab3a",
+    "src/screens/DealWorkspaceScreenV2.js": "4d75addaab7e2103fdf66005955a28dde51b053f99022eedebc51f81244b53d5",
+    "src/utils/backgroundLocation.js": "138e50969b4be15b8169022b7bf7c560acff5342b6bae7a98483e9edb8063dfb"
+  }
+}

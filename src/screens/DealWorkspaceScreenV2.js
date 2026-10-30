@@ -1,4 +1,5 @@
 import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
+import { GPS_TRACKING_PAUSED, pausedLocationCopy } from '../utils/locationPolicy';
 import { getExpenseCopy } from '../utils/expenseCopy';
 import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
@@ -33,7 +34,9 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
-import TruckMap from '../components/TruckMap';
+import LiveTruckMap from '../components/TruckMap';
+import PlannedRouteSummary from '../components/PlannedRouteSummary';
+const TruckMap = GPS_TRACKING_PAUSED ? PlannedRouteSummary : LiveTruckMap;
 import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import DealSystemEventCard from '../components/deal/DealSystemEventCard';
@@ -419,6 +422,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [routeSummary, setRouteSummary] = React.useState(null);
   const [gpsClock, setGpsClock] = React.useState(Date.now);
   React.useEffect(() => {
+    if (GPS_TRACKING_PAUSED) return undefined;
     const timer = setInterval(() => setGpsClock(Date.now()), 15000);
     return () => clearInterval(timer);
   }, []);
@@ -883,8 +887,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     await voiceText.retry(item, lang);
   }, [voiceText, voiceScope, lang]);
 
-  const trackingActive = Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
-  const locationReadable = Boolean(dealId && LOCATION_HISTORY_STATUSES.includes(deal?.status));
+  const trackingActive = !GPS_TRACKING_PAUSED && Boolean(dealId && LIVE_TRACKING_STATUSES.includes(deal?.status));
+  const locationReadable = !GPS_TRACKING_PAUSED && Boolean(dealId && LOCATION_HISTORY_STATUSES.includes(deal?.status));
   useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && viewMode === VIEW_MAP && role === 'driver' && trackingActive });
   const refreshLocation = React.useCallback(async () => {
     if (!locationReadable || !dealId) {
@@ -971,6 +975,17 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     tripStartBusy.current = true;
     setTrackingLoading(true);
     try {
+      if (GPS_TRACKING_PAUSED) {
+        // Старый backend не должен молча включить continuous/watchdog.
+        const capability = await marketAPI.activeTrackingDeals();
+        if (!isCurrent()) return;
+        if (capability?.snapshot_location_supported !== true) {
+          toast(t('gps_snapshot_server_unavailable'), 'error');
+          return;
+        }
+        await changeDealStatus('in_progress', 'snapshot');
+        return;
+      }
       const permission = await ensureBackgroundLocationPermission();
       if (!isCurrent()) return;
       if (!permission.ok) { toast(t('track_permission_needed'), 'error'); return; }
@@ -1165,7 +1180,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const sendLocation = React.useCallback(async () => {
     setAttachOpen(false);
-    if (locationSending) return;
+    if (GPS_TRACKING_PAUSED || locationSending) return;
     setLocationSending(true);
     try {
       const permission = await requestForegroundLocationPermission();
@@ -1801,7 +1816,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     { key: 'camera', icon: 'camera', label: ui.attachCamera, onPress: sendCameraPhoto, testID: 'deal-chat-attach-camera' },
     { key: 'share', icon: 'share', label: ui.attachShare, onPress: sendDealShare, testID: 'deal-chat-attach-share' },
     { key: 'status', icon: 'tasks', label: ui.statuses, onPress: () => { setAttachOpen(false); openStatusModal(); }, testID: 'deal-chat-attach-status' },
-    { key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' },
+    ...(!GPS_TRACKING_PAUSED ? [{ key: 'location', icon: 'map-marker-alt', label: ui.attachLocation, onPress: sendLocation, busy: locationSending, testID: 'deal-chat-attach-location' }] : []),
     { key: 'document', icon: 'file-alt', label: ui.attachDocument, onPress: pickAndSendDocument, testID: 'deal-chat-attach-document' },
     { key: 'contact', icon: 'user-alt', label: ui.attachContact, onPress: sendContactCard, testID: 'deal-chat-attach-contact' },
     ...(session?.user?.role === 'driver' && dealId ? [{ key: 'expenses', icon: 'receipt', label: getExpenseCopy(lang).tripTitle, onPress: () => { setAttachOpen(false); navigation.navigate('DriverExpenses', { dealId }); }, testID: 'deal-chat-attach-expenses' }] : []),
@@ -2188,6 +2203,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             <View style={[s.mapArea, { backgroundColor: colors.driverSoft, flex: mapExpanded ? 1 : 0.42 }]} testID="deal-map-first-area">
               {showLiveMap ? (
                 <TruckMap
+                  enabled={isFocused && viewMode === VIEW_MAP}
                   lat={hasLivePoint ? lat : undefined}
                   lng={hasLivePoint ? lng : undefined}
                   title={partnerName || t('track_truck_marker')}
@@ -2240,7 +2256,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
                 />
               ) : null}
             </View>
-            {FOREGROUND_LOCATION_ONLY ? <Text style={[s.finishedGpsHint, { color: colors.textMuted }]} testID="deal-gps-foreground-only-notice">{(foregroundLocationCopy[language] || foregroundLocationCopy.RU).background}</Text> : null}
+            {FOREGROUND_LOCATION_ONLY ? <Text style={[s.finishedGpsHint, { color: colors.textMuted }]} testID="deal-gps-foreground-only-notice">{GPS_TRACKING_PAUSED ? (pausedLocationCopy[language] || pausedLocationCopy.RU) : (foregroundLocationCopy[language] || foregroundLocationCopy.RU).background}</Text> : null}
             {!mapExpanded ? (
               <TripMapInfoSheet
                 copy={ui}

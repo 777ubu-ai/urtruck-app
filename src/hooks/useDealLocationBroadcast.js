@@ -1,3 +1,4 @@
+import { GPS_TRACKING_PAUSED } from '../utils/locationPolicy';
 // Map-owned one-shot capture: explicit enabled visibility is required.
 // Root tabs/login never request coordinates. Leaving the focused map aborts
 // capture; the server still authorizes every active deal before sampling.
@@ -15,6 +16,7 @@ import { pushLocationToDeals, setActiveDealIds, startBackgroundTracking, stopBac
 const INTERVAL_MS = 25000;
 
 export function useDealLocationBroadcast(activeDealIds, { enabled = false } = {}) {
+  enabled = enabled && !GPS_TRACKING_PAUSED;
   const idsRef = useRef([]);
   const [permittedIds, setPermittedIds] = useState(null);
   const [foreground, setForeground] = useState(AppState.currentState === 'active');

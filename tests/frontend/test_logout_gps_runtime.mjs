@@ -23,7 +23,7 @@ function harness() {
     remove: async k => { calls.push('remove:'+k); data.delete(k); },
   };
   const queue = { migrate: async()=>{}, append: async()=>{}, drain: async()=>{} };
-  const scope = { Platform: {OS:'android'}, storage, durableStorage:storage,
+  const scope = { GPS_TRACKING_PAUSED: false, Platform: {OS:'android'}, storage, durableStorage:storage,
     createLocationQueue:()=>queue, locationSampleId:()=> 'sample', API_BASE:'http://127.0.0.1',
     t:x=>x, console, setTimeout,clearTimeout,AbortController, fetch: async()=>({ok:true,json:async()=>({ok:true,deal_ids:[]})}),
     require: name => name==='expo-task-manager' ? {defineTask:()=>{}} : native };
