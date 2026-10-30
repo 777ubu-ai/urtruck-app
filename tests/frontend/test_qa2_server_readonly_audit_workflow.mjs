@@ -9,10 +9,20 @@ const workflow = fs.readFileSync('.github/workflows/qa2-server-readonly-audit.ym
 
 test('QA2 server audit is manual, exact-source and protected', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:\n\s+branches: \[fix\/voice-stt-translation-20260925\]/);
+  assert.doesNotMatch(workflow, /push:/);
   assert.match(workflow, /AUDIT_SOURCE_SHA/);
   assert.match(workflow, /GITHUB_REF_NAME" = "fix\/voice-stt-translation-20260925/);
-  assert.match(workflow, /git rev-parse HEAD\)" = "\$AUDIT_SOURCE_SHA/);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(workflow, /ref: \$\{\{ env\.AUDIT_SOURCE_SHA \}\}/);
+  assert.match(workflow, /git rev-parse HEAD\)" = "\$GITHUB_SHA/);
+  assert.match(workflow, /\[\[ "\$AUDIT_SOURCE_SHA" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
+  assert.match(workflow, /pulls\/651/);
+  assert.match(workflow, /"\$AUDIT_SOURCE_SHA" = "\$pr_head_sha"/);
+  const sourceGate = workflow.indexOf('- name: Require the exact branch and source');
+  const workflowTest = workflow.indexOf('- name: Verify the read-only workflow contract');
+  const sshAudit = workflow.indexOf('- name: Collect QA2 technical evidence without server mutation');
+  assert.ok(sourceGate >= 0 && workflowTest > sourceGate && sshAudit > workflowTest,
+    'trusted SHA gate must run before workflow test and any QA2 SSH step');
   assert.ok(workflow.includes('environment:\n      name: qa2'));
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /retention-days: 7/);
@@ -26,17 +36,29 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
     'FragmentPath', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
     'docker builder du', 'technical-directory-sizes', 'source_sha',
     'synthetic_translation RU_TO_ZH', 'synthetic_translation ZH_TO_RU',
-    'synthetic_translation EN_TO_ZH', 'pswpin', 'pswpout',
+    'synthetic_translation EN_TO_ZH', 'sanitize_qa2_reason_codes.py', 'pswpin', 'pswpout',
+    'Алматы → Урумчи, загрузка 31 октября, 20 тонн, ставка 11 500 USD',
   ]) {
     assert.ok(workflow.includes(required), `missing required read-only evidence: ${required}`);
   }
   assert.match(workflow, /allowed = \('status', 'source_sha', 'version', 'private', 'translation_model', 'speech_model', 'languages'\)/);
   assert.match(workflow, /sanitize_qa2_audit\.py/);
+  assert.match(workflow, /sanitize_qa2_reason_codes\.py/);
   assert.doesNotMatch(workflow, /PROCESS_8002_CMD/);
   assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS/);
   assert.match(workflow, /StrictHostKeyChecking=yes/);
   assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
   assert.doesNotMatch(workflow, /printenv|env\s*\||\.env|Authorization:|Bearer\s+/i);
+});
+
+test('synthetic translation reason extractor emits only allowlisted codes', () => {
+  const input = JSON.stringify({ detail: { reason_codes: ['weight_value_changed', 'city_missing:almaty', 'private message', 'secret_123'] } });
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'SYNTHETIC_RU_TO_ZH_REASONS=city_missing:almaty,weight_value_changed');
+  const malformed = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: 'not json', encoding: 'utf8' });
+  assert.equal(malformed.status, 0, malformed.stderr);
+  assert.equal(malformed.stdout.trim(), 'SYNTHETIC_RU_TO_ZH_REASONS=none_or_unavailable');
 });
 
 test('allowlist artifact sanitizer removes command-line and header secrets from every output', () => {
@@ -81,6 +103,7 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   assert.equal(payload.sanitized, true);
   assert.ok(payload.sections.listeners.includes('PORT_8002_PID=12345'));
   assert.ok(payload.sections['synthetic-translation-observation'].includes('SYNTHETIC_RU_TO_ZH_RESULT=200 8.420123'));
+  assert.ok(payload.sections['synthetic-translation-observation'].includes('SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed'));
   assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('SWAP_')));
   assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('PSI_')));
   assert.match(published, /PORT_8002_PID=12345/);
@@ -89,6 +112,24 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   assert.match(published, /5\.6G \/home\/ubuntu\/urtruck-qa2/);
   assert.match(published, /1\.56G \/var\/lib\/docker/);
   assert.doesNotMatch(published, /example-secret|password|token|Authorization|postgres:/i);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('synthetic translation reason sanitizer drops arbitrary or candidate text', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-reasons-'));
+  const input = path.join(dir, 'input.txt');
+  const json = path.join(dir, 'audit.json');
+  const markdown = path.join(dir, 'summary.md');
+  fs.writeFileSync(input, [
+    'SECTION=synthetic-translation-observation',
+    'SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed,private message',
+    'SYNTHETIC_ZH_TO_RU_REASONS=city_missing:almaty',
+  ].join('\n'));
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_audit.py', input, json, markdown], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const published = `${fs.readFileSync(json, 'utf8')}\n${fs.readFileSync(markdown, 'utf8')}`;
+  assert.match(published, /SYNTHETIC_ZH_TO_RU_REASONS=city_missing:almaty/);
+  assert.doesNotMatch(published, /private message|weight_value_changed/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
