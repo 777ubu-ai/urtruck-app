@@ -21,6 +21,7 @@ export default function ShareModal({
   visible, onClose,
   shareText = 'UrTruck',
   url,                          // explicit deep-link; overrides driverId fallback
+  copyLinkText,
   phone,
   driverId,
 }) {
@@ -120,9 +121,10 @@ export default function ShareModal({
 
   const copyLink = async () => {
     if (!requirePublicUrl()) return;
-    const ok = await copyToClipboard(finalUrl);
+    const copyValue = copyLinkText || finalUrl;
+    const ok = await copyToClipboard(copyValue);
     if (ok) toast('✅ ' + t('share_link_copied'), 'success');
-    else toast(finalUrl, 'info', 5000);
+    else toast(copyValue, 'info', 5000);
     onClose();
   };
 
@@ -139,7 +141,7 @@ export default function ShareModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity testID="share-modal-sheet" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{t('share')}</Text>
 
@@ -155,6 +157,7 @@ export default function ShareModal({
             {CHANNELS.map((ch) => (
               <TouchableOpacity
                 key={ch.name}
+                testID={`share-channel-${ch.icon}`}
                 style={[s.channelBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
                 onPress={ch.onPress}
                 activeOpacity={0.7}

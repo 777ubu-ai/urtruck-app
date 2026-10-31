@@ -13,6 +13,7 @@ if (previousPublicOrigin === undefined) delete process.env.EXPO_PUBLIC_WEB_URL;
 else process.env.EXPO_PUBLIC_WEB_URL = previousPublicOrigin;
 import * as share from '../../src/utils/externalFreightShare.js';
 import * as contact from '../../src/utils/externalFreightContact.js';
+import * as cardActions from '../../src/utils/externalFreightCardActions.js';
 const require = createRequire(import.meta.url);
 const babel = require('@babel/core');
 const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedScreen.js', 'utf8'), {
@@ -55,7 +56,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     '../components/externalFreight/ExternalFeedDatePicker': 'DatePicker', '../components/ui/v1/BookmarkButton': 'BookmarkButton',
     '../components/ui/v1/PrimaryButton': 'PrimaryButton', '../components/ui/actions/SecondaryButton': 'SecondaryButton',
     '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
-    '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact,
+    '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact, '../utils/externalFreightCardActions': cardActions,
     '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
     '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-' + role, role } } }) },
     '../utils/externalFreightSession': { sessionRole: () => role }, '../utils/truckConstants': { BODY_TYPES: [] },
@@ -232,7 +233,7 @@ function descendants(tree) {
   function walk(node) {
     if (Array.isArray(node)) return node.forEach(walk);
     if (!node?.props) return;
-    all.push(node); walk(node.props.children);
+    all.push(node); walk(node.props.children); walk(node.props.actions);
   }
   walk(tree); return all;
 }
@@ -241,12 +242,17 @@ for (const role of ['driver', 'client']) test(`${role}: реальный env и 
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
   const description = nodes.find(n => n.type === 'Description');
-  assert.equal(description.props.actions.props.testID, 'external-feed-share-minimal');
+  const shareButton = nodes.find(n => n.props.testID === 'external-feed-share-minimal');
+  const whatsappButton = nodes.find(n => n.props.testID === 'external-feed-whatsapp-minimal');
+  assert.ok(shareButton);
+  assert.ok(whatsappButton);
+  assert.equal(whatsappButton.props.disabled, true);
   assert.ok(nodes.find(n => n.props.testID === 'external-feed-no-contact-minimal'));
-  description.props.actions.props.onPress(); await h.flush();
+  shareButton.props.onPress(); await h.flush();
   // Проверяем настоящее состояние экрана после нажатия, а не mock payload.
   const shareModal = h.shareModal();
   assert.equal(shareModal.props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
+  assert.equal(shareModal.props.copyLinkText, 'https://play.google.com/store/apps/details?id=com.urtruck.app\nhttps://apps.apple.com/kz/app/urtruck/id6764504167');
   assert.match(shareModal.props.shareText, /Android: https:\/\/play\.google\.com/);
   assert.match(shareModal.props.shareText, /iPhone: https:\/\/apps\.apple\.com/);
   assert.ok(!shareModal.props.shareText.includes('https://urtruck.kz/'));
@@ -319,8 +325,8 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   assert.ok(source);
   await source.props.onPress();
   assert.deepEqual(h.opened, ['https://t.me/UrTruck_obyavleniya/44']);
-  const actions = nodes.find(n => n.type === 'Description').props.actions;
-  actions.props.onPress(); await h.flush();
+  const shareAction = nodes.find(n => n.props.testID === 'external-feed-share-own');
+  shareAction.props.onPress(); await h.flush();
   assert.equal(h.shareModal().props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
   await nodes.find(n => n.props.testID === 'external-feed-source-own').props.onPress();
