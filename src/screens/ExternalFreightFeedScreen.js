@@ -590,11 +590,11 @@ function makeStyles(theme, sp) {
     details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 3, paddingTop: 6, minWidth: 0 },
     descriptionBox: { minWidth: 0 },
     original: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 1 },
-    actionLabel: { fontSize: sp(12), lineHeight: sp(17) },
-    cardActions: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'stretch', gap: 6, minWidth: 0 },
+    actionLabel: { fontSize: sp(12), lineHeight: sp(17), flexShrink: 0 },
+    cardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: 'flex-end', gap: 6, minWidth: 0 },
     textAction: { minHeight: 44, minWidth: 0, paddingVertical: 7, paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', borderWidth: 1, borderColor: '#168759', borderRadius: 14 },
-    expandAction: { flex: 1, flexBasis: 0 },
-    shareAction: { flex: 1, flexBasis: 0 },
+    expandAction: { flexGrow: 1, flexShrink: 0, flexBasis: 'auto' },
+    shareAction: { flexGrow: 1, flexShrink: 0, flexBasis: 'auto' },
     whatsappAction: { width: 44, minWidth: 44, minHeight: 44, flexShrink: 0, paddingHorizontal: 0, alignItems: 'center' },
     link: { color: '#168759', fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', flexShrink: 1, minWidth: 0 },
     newListings: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, borderWidth: 1, borderColor: '#168759', backgroundColor: theme.surface },
@@ -616,8 +616,8 @@ function makeStyles(theme, sp) {
     optionText: { color: theme.text, fontSize: sp(14), flexShrink: 1, minWidth: 0 },
     input: { minHeight: 46, borderWidth: 2, borderColor: '#168759', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: theme.text, fontSize: sp(14), backgroundColor: theme.bg, minWidth: 0 },
     quickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginVertical: 5 },
-    actions: { flexDirection: 'row', alignItems: 'stretch', gap: 6, flexShrink: 0 },
-    filterAction: { flexGrow: 1, flexShrink: 1, flexBasis: 0, alignSelf: 'stretch', width: 'auto', minWidth: 0, maxWidth: '100%', height: 'auto', minHeight: 48, paddingHorizontal: 0, paddingVertical: 8 },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 6, flexShrink: 0 },
+    filterAction: { flexGrow: 1, flexShrink: 1, flexBasis: 110, alignSelf: 'stretch', width: 'auto', minWidth: 110, maxWidth: '100%', height: 'auto', minHeight: 48, paddingHorizontal: 0, paddingVertical: 8 },
   });
 }
 

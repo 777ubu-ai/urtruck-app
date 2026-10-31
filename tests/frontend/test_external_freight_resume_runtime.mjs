@@ -293,14 +293,21 @@ for (const role of ['driver', 'client']) test(`${role}: телефоны тол�
     contacts: ['+7 (700) 000-00-01', '998500014250', '@source_user'], body_types: [] };
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
+  const primary = nodes.find(n => n.props.testID === 'external-feed-copy-phone-0');
+  assert.ok(primary, 'основной телефон доступен в компактной карточке');
+  await primary.props.onPress();
+  const additional = nodes.find(n => n.props.testID === 'external-feed-additional-contacts-phone');
+  assert.ok(additional, 'остальные контакты сохранены в раскрываемом описании');
   for (let index = 0; index < 2; index++) {
-    await nodes.find(n => n.props.testID === `external-feed-copy-phone-${index}`).props.onPress();
+    const copy = descendants(additional).find(n => n.props.testID === `external-feed-copy-additional-phone-${index}`);
+    assert.ok(copy, 'дополнительный контакт можно скопировать');
+    await copy.props.onPress();
   }
-  assert.deepEqual(h.copied, item.contacts.slice(0, 2));
+  assert.deepEqual(h.copied, item.contacts);
   assert.deepEqual(h.opened, [], 'копирование не открывает внешние приложения');
   assert.ok(!nodes.some(n => n.props.testID?.startsWith('external-feed-call-')));
   assert.ok(!nodes.some(n => n.type === 'Feather' && n.props.name === 'phone'));
-  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-2').props.onPress();
+  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-1').props.onPress();
   assert.deepEqual(h.opened, ['https://t.me/source_user']);
 });
 test('контакт перевозчика открывает тот же modal без фиктивного объявления', async () => {
@@ -331,7 +338,7 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   assert.ok(nodes.find(n => n.type === 'Description').props.actions);
 });
 
-for (const role of ['driver', 'client']) test(`${role}: цена и контакты перед параметрами, оригинал передан полностью`, async () => {
+for (const role of ['driver', 'client']) test(`${role}: компактные параметры, цена и телефон; исходник и дополнительные контакты сохранены`, async () => {
   const original = '🚚 Алматы → Москва\n' + 'Условия перевозки\n'.repeat(400) + '\nТелефон +998901234567\n  ';
   const item = { id: 'full', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
     origin: 'Алматы', destination: 'Москва', amount: 7500, currency: 'USD', price_state: 'known',
@@ -339,12 +346,13 @@ for (const role of ['driver', 'client']) test(`${role}: цена и контак
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
   const position = id => nodes.findIndex(n => n.props.testID === id);
-  assert.ok(position('external-feed-price-full') < position('external-feed-copy-full-0'));
-  assert.ok(position('external-feed-copy-full-0') < position('external-feed-source-contacts-full'));
-  assert.ok(position('external-feed-source-contacts-full') < position('external-feed-summary-full'));
+  const order = ['external-feed-summary-full', 'external-feed-price-full',
+    'external-feed-copy-full-0', 'external-feed-additional-contacts-full'];
+  for (const id of order) assert.ok(position(id) >= 0, `${id} должен присутствовать`);
+  for (let i = 1; i < order.length; i++) assert.ok(position(order[i - 1]) < position(order[i]));
   assert.equal(nodes.find(n => n.type === 'Description').props.text, original);
   assert.equal(nodes.find(n => n.props.testID === 'external-feed-no-contact-full'), undefined);
-  await nodes.find(n => n.props.testID === 'external-feed-copy-source-full-0').props.onPress();
+  await nodes.find(n => n.props.testID === 'external-feed-copy-additional-full-0').props.onPress();
   assert.deepEqual(h.copied, ['+998901234567']);
 });
 

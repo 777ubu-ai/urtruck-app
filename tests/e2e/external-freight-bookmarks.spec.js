@@ -88,6 +88,17 @@ async function boot(page, role = 'driver', options = {}) {
   return box;
 }
 
+// React Native Web maps visibility changes to the real AppState listener.
+// Feed refreshes on return, not on a minute timer (battery contract).
+async function resumeFeed(page) {
+  for (const state of ['hidden', 'visible']) {
+    await page.evaluate(value => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, state);
+  }
+}
+
 test('first authenticated visit opens feed once and returns to the main section', async ({ page }) => {
   const box = await boot(page, 'driver', { firstVisit: true });
   await expect(page.getByTestId('bottom-nav')).not.toBeVisible();
@@ -419,6 +430,12 @@ for (const role of ['driver', 'client']) {
     expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     const card = page.getByTestId('external-feed-card-external-fixture');
     expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    for (const id of ['external-feed-expand-external-fixture', 'external-feed-share-external-fixture']) {
+      const button = page.getByTestId(id);
+      const label = button.getByText(id.includes('-expand-') ? 'Показать' : 'Поделиться', { exact: true });
+      expect(await label.evaluate(el => el.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight) + 1), 'card action label stays whole at large text').toBe(true);
+      expect(await button.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    }
     await page.screenshot({ path: `test-results/external-compact-${role}-large-text.png`, fullPage: true });
     await page.getByTestId('external-feed-filter-origin').click();
     await enlarge();
@@ -569,7 +586,7 @@ test('compact action row stays on one line at 320px with 44px targets', async ({
 });
 
 
-test('continuous refresh adds a real UI card while preserving chosen filters and source link', async ({ page }) => {
+test('resume refresh adds a real UI card without minute polling and preserves filters and source link', async ({ page }) => {
   await page.clock.install();
   const box = await boot(page, 'driver', { item: { origin_source: 'UrTruck_obyavleniya', source_message_id: '123' } });
   await page.getByTestId('external-feed-filter-origin').click();
@@ -583,6 +600,9 @@ test('continuous refresh adds a real UI card while preserving chosen filters and
     source_published_at:'2026-10-22T10:00:00Z', origin_source:'UrTruck_obyavleniya',source_message_id:'124'
   }];
   await page.clock.runFor(61000);
+  expect(box.feedQueries.length).toBe(requests);
+  await expect(page.getByTestId('external-feed-card-auto-new')).toHaveCount(0);
+  await resumeFeed(page);
   await expect(page.getByTestId('external-feed-card-auto-new')).toBeVisible({timeout:10000});
   expect(box.feedQueries.length).toBeGreaterThan(requests);
   expect(box.feedQueries.at(-1).origin).toBe('Алматы');
@@ -596,7 +616,7 @@ test('continuous refresh adds a real UI card while preserving chosen filters and
   expect(box.businessWrites).toEqual([]);
 });
 
-test('continuous head insertion preserves the scrolled card position', async ({ page }) => {
+test('resume insertion preserves the scrolled card position and marks new listings', async ({ page }) => {
   await page.clock.install();
   const box = await boot(page);
   const now = new Date().toISOString();
@@ -606,7 +626,7 @@ test('continuous head insertion preserves the scrolled card position', async ({ 
     source_published_at:new Date(Date.now()-i*60000).toISOString()
   }));
   box.liveItems=rows;
-  await page.clock.runFor(61000);
+  await resumeFeed(page);
   await expect(page.getByTestId('external-feed-card-scroll-21')).toBeAttached();
   await page.getByTestId('external-feed-card-scroll-21').evaluate(el=>{
     let parent=el.parentElement;
@@ -619,7 +639,10 @@ test('continuous head insertion preserves the scrolled card position', async ({ 
   const anchor=page.getByTestId('external-feed-card-scroll-21');
   const before=(await anchor.boundingBox()).y;
   box.liveItems=[{...rows[0],id:'head-new',source_published_at:now},...rows];
+  const requests = box.feedQueries.length;
   await page.clock.runFor(61000);
+  expect(box.feedQueries.length).toBe(requests);
+  await resumeFeed(page);
   await expect.poll(async()=>Math.abs((await anchor.boundingBox()).y-before)).toBeLessThan(4);
   await expect(page.getByTestId('external-feed-new-listings')).toContainText('1');
   await page.screenshot({path:'test-results/external-feed-continuous-scroll.png'});
@@ -631,7 +654,7 @@ test('continuous head insertion preserves the scrolled card position', async ({ 
 });
 
 for (const role of ['driver', 'client']) {
-  test(role + ': timeline receives new listings at bottom without duplicates', async ({ page }) => {
+  test(role + ': timeline receives listings on resume at bottom without duplicates or idle polling', async ({ page }) => {
     await page.clock.install();
     const box = await boot(page, role);
     const kind = role === 'driver' ? 'cargo' : 'vehicle';
@@ -639,15 +662,19 @@ for (const role of ['driver', 'client']) {
       original_text: 'Готов к погрузке', price_state: 'unknown', contacts: [], source_published_at: '2026-10-22T10:00:00Z' };
     const newer = { ...older, id: 'timeline-new', source_published_at: '2026-10-22T10:01:00Z' };
     box.liveItems = [older];
-    await page.clock.runFor(61000);
+    await resumeFeed(page);
     await expect(page.getByTestId('external-feed-card-timeline-old')).toBeVisible();
     box.liveItems = [newer, older];
-    await page.clock.runFor(61000);
+    await resumeFeed(page);
     const newestCard = page.getByTestId('external-feed-card-timeline-new');
     const olderCard = page.getByTestId('external-feed-card-timeline-old');
     await expect(newestCard).toBeInViewport();
     expect((await newestCard.boundingBox()).y).toBeGreaterThan((await olderCard.boundingBox()).y);
+    const requests = box.feedQueries.length;
     await page.clock.runFor(61000);
+    expect(box.feedQueries.length).toBe(requests);
+    await resumeFeed(page);
+    await expect.poll(() => box.feedQueries.length).toBeGreaterThan(requests);
     await expect(newestCard).toHaveCount(1);
     await expect(page.getByTestId('external-feed-new-listings')).toHaveCount(0);
     expect(box.errors).toEqual([]);
