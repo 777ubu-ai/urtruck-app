@@ -60,6 +60,19 @@ test('synthetic translation reason extractor emits only allowlisted codes', () =
   assert.equal(malformed.stdout.trim(), 'SYNTHETIC_RU_TO_ZH_REASONS=none_or_unavailable');
 });
 
+test('synthetic RU-to-ZH audit exposes only a bounded Chinese candidate for model diagnosis', () => {
+  const allowed = JSON.stringify({ detail: { candidate: '阿拉木图到乌鲁木齐，31日装载20吨，运费11500美元', gate_failure_reasons: ['logistics_term_missing:loading'] } });
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: allowed, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^SYNTHETIC_RU_TO_ZH_CANDIDATE=阿拉木图到乌鲁木齐，31日装载20吨，运费11500美元\n/);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_REASONS=logistics_term_missing:loading/);
+
+  const unsafe = JSON.stringify({ detail: { candidate: 'private customer name', gate_failure_reasons: [] } });
+  const rejected = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: unsafe, encoding: 'utf8' });
+  assert.equal(rejected.status, 0, rejected.stderr);
+  assert.equal(rejected.stdout.includes('private customer name'), false);
+});
+
 test('allowlist artifact sanitizer removes command-line and header secrets from every output', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-'));
   const input = path.join(dir, 'input.txt');

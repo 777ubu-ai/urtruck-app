@@ -42,7 +42,7 @@ FIELD_PATTERNS = {
     "docker-mount-links": re.compile(r"^DOCKER_MOUNT=[A-Za-z0-9._-]+\|(bind|volume|tmpfs)->/[A-Za-z0-9._/-]+$"),
     "technical-directory-sizes": re.compile(rf"^{SIZE}\s+/(?:home/ubuntu/(?:urtruck(?:-rollback|-releases|-backups|-qa2(?:-ai)?)?)|var/lib/docker|var/log|tmp)$"),
     "health": re.compile(r"^HEALTH_(qa2-8002|ai-8003)=\{.*\}$"),
-    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=\d{3}\s+\d+\.\d+|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_REASONS=(?:none_or_unavailable|[a-z_]+(?::[a-z_]+)?(?:,[a-z_]+(?::[a-z_]+)?)*)|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
+    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=\d{3}\s+\d+\.\d+|SYNTHETIC_RU_TO_ZH_CANDIDATE=[\u3400-\u9fff0-9\s，。；：、,.!?！？→—-]{1,300}|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_REASONS=(?:none_or_unavailable|[a-z_]+(?::[a-z_]+)?(?:,[a-z_]+(?::[a-z_]+)?)*)|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
 }
 SECRET_PATTERNS = (
     (re.compile(r"(--password(?:=|\s+))[^\s]+", re.I), r"\1REDACTED"),
