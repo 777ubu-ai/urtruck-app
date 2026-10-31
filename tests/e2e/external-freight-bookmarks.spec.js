@@ -27,6 +27,8 @@ async function boot(page, role = 'driver', options = {}) {
     original_text: options.text ?? Array.from({ length: 16 }, (_, i) => `Условие ${i + 1}: нужен тент, груз готов, документы на погрузке.`).join('\n'), source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'], ...options.item };
   page.on('pageerror', error => box.errors.push(error.message));
   await page.addInitScript(({ user, firstVisit }) => {
+    // Push permission is outside feed acceptance; keep the visual fixture deterministic.
+    Object.defineProperty(window, 'Notification', { configurable: true, value: undefined });
     localStorage.setItem('ur_reg_token', 'synthetic-feed-token');
     localStorage.setItem('ur_session', JSON.stringify({ user }));
     localStorage.setItem('ur_verification_level', '3'); localStorage.setItem('ur_lang', 'RU');
