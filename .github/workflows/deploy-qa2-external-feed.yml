@@ -76,8 +76,7 @@ jobs:
           python -m py_compile backend/scheduler/jobs.py \
             backend/services/external_freight_classifier.py \
             backend/services/external_freight_import_adapter.py \
-            backend/services/external_freight_queue_bridge.py \
-            ops/telegram-feed/feed.py ops/telegram-feed/health.py
+            backend/services/external_freight_queue_bridge.py
       - name: Verify deployment safety contract
         run: node --test tests/frontend/test_qa2_external_feed_deploy_workflow.mjs
 

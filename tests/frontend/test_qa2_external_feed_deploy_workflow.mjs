@@ -20,11 +20,11 @@ test('deployment script is scoped to feed components, online backups, and code-o
     'external_freight_classifier.py', 'external_freight_import_adapter.py',
     'external_freight_queue_bridge.py', 'external-feed-owned/adapter.sqlite3',
     'src.backup(dst)', 'PRAGMA quick_check', 'EXTERNAL_FREIGHT_DEPLOYMENT_TARGET',
-    'external-feed-component-manifest', 'flock -n 9',
+    'external-feed-component-manifest', 'flock -n 9', 'GITHUB_RUN_ATTEMPT',
   ]) assert.ok(script.includes(marker), `missing deploy invariant: ${marker}`);
   assert.match(script, /urtruck-qa2-feed-bridge\.service/);
   assert.match(script, /urtruck-qa2-owned-feed-bridge\.service/);
-  assert.match(script, /urtruck-telegram-feed\.service/);
-  assert.doesNotMatch(script, /systemctl restart[^\n]*production/i);
+  assert.doesNotMatch(script, /urtruck-telegram-feed\.service|collector\/(?:feed|health)\.py/);
+  assert.doesNotMatch(script, /systemctl restart[^\n]*(?:production|telegram-feed)/i);
   assert.match(script, /# Code backup and consistent online snapshots; database snapshots are never restored over newer live state\./);
 });
