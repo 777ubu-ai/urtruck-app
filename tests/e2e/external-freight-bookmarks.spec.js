@@ -628,6 +628,8 @@ test('resume insertion preserves the scrolled card position and marks new listin
   box.liveItems=rows;
   await resumeFeed(page);
   await expect(page.getByTestId('external-feed-card-scroll-21')).toBeAttached();
+  // Finish the initial virtual-list placement before the user starts reading.
+  await page.clock.runFor(500);
   await page.getByTestId('external-feed-card-scroll-21').evaluate(el=>{
     let parent=el.parentElement;
     while(parent && parent.scrollHeight<=parent.clientHeight+10) parent=parent.parentElement;
@@ -642,6 +644,7 @@ test('resume insertion preserves the scrolled card position and marks new listin
   const requests = box.feedQueries.length;
   await page.clock.runFor(61000);
   expect(box.feedQueries.length).toBe(requests);
+  expect(Math.abs((await anchor.boundingBox()).y-before)).toBeLessThan(4);
   await resumeFeed(page);
   await expect.poll(async()=>Math.abs((await anchor.boundingBox()).y-before)).toBeLessThan(4);
   await expect(page.getByTestId('external-feed-new-listings')).toContainText('1');

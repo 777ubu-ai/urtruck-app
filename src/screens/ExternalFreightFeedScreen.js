@@ -444,7 +444,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         if (anchor) anchor.node.measureInWindow((_x, y) => {
           if (anchorRef.current !== anchor || !Number.isFinite(y)) return;
           const delta = y - anchor.y;
-          if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + (timeline ? -delta : delta)), animated: false });
+          // Web timeline reverses the data, not the scroll container. Its
+          // offset grows downwards, so both sort modes compensate by +delta.
+          if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + delta), animated: false });
         });
       }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => {
         if (webTimeline || !cursor) return;

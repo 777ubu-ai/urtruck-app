@@ -24,7 +24,7 @@ const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {}) {
-  const opened = [], copied = [];
+  const opened = [], copied = [], scrollOffsets = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
   let elapsed = 0;
@@ -32,6 +32,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
   const React = {
     createElement: (type, props, ...children) => {
       if (type === 'ScrollView' && props?.horizontal && props.ref) props.ref.current = { scrollTo: ({ x }) => { filterOffset = x; } };
+      if (type === 'FlatList' && props?.ref) props.ref.current = { scrollToOffset: value => scrollOffsets.push(value) };
       return { type, props: { ...props, children } };
     },
     useState(initial) { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, value => { const next = typeof value === 'function' ? value(slots[i].value) : value; if (!Object.is(next, slots[i].value)) { slots[i].value = next; dirty = true; } }]; },
@@ -92,10 +93,24 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
     node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
     shareModal: () => nodes().find(n => n.type === 'ShareModal'),
-    opened, copied, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
+    opened, copied, scrollOffsets, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
+
+for (const delta of [-50, 50]) test(`web resume: смещение якоря ${delta}px компенсируется в обычной, не инвертированной ленте`, async () => {
+  const h = harness({ platform: 'web' });
+  await h.flush();
+  h.list().props.onScrollBeginDrag();
+  h.list().props.onScroll({ nativeEvent: { contentOffset: { y: 1200 }, contentSize: { height: 6000 }, layoutMeasurement: { height: 700 } } });
+  h.list().props.onViewableItemsChanged({ viewableItems: [{ key: cards[10].id }] });
+  let y = 180;
+  h.renderItem(cards[10]).props.ref({ measureInWindow: callback => callback(0, y) });
+  h.resume(); await h.flush();
+  y += delta;
+  h.list().props.onContentSizeChange(390, 6100);
+  assert.equal(h.scrollOffsets.at(-1).offset, 1200 + delta);
+});
 
 for (const role of ['driver', 'client']) for (const platform of ['android', 'ios', 'web']) test(`${role}/${platform}: лента не опрашивает сервер по таймеру, ручное обновление сразу`, async () => {
   const h = harness({ role, platform }); await h.flush();
