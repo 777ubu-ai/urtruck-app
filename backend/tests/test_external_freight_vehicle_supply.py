@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import pytest
 
-from services.external_freight_classifier import classify_message
+from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages
 
 
@@ -27,6 +27,26 @@ def message(text):
 ])
 def test_explicit_vehicle_intents_are_recognized(text):
     assert classify_message(text)['kind'] == 'vehicle'
+
+
+@pytest.mark.parametrize('text', [
+    'Бос фура\nТошкент',
+    'Фура бўш\nСамарканд',
+    'Bo\'sh fura\nToshkent',
+    'Fura bo‘sh\nSamarqand',
+])
+def test_uzbek_empty_vehicle_phrases_are_visible_and_prioritized(text):
+    result = classify_message(text)
+    assert (result['kind'], result['status']) == ('vehicle', 'active')
+    assert has_vehicle_supply_signal(text)
+
+
+@pytest.mark.parametrize('text', [
+    'Фура бўш эмас\nТошкент',
+    'Fura bo\'sh emas\nToshkent',
+])
+def test_uzbek_unavailable_vehicle_is_not_published_as_free(text):
+    assert classify_message(text)['kind'] != 'vehicle'
 
 
 @pytest.mark.parametrize('offer', [

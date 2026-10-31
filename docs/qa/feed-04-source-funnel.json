@@ -1,0 +1,82 @@
+{
+  "schema": "urtruck.feed04.source-funnel.v1",
+  "environment": "QA2 read-only snapshot",
+  "measured_at": "2026-10-31T09:31:23Z",
+  "timezone": "UTC",
+  "source_publication_window": {
+    "days": 10,
+    "unit": "source message publication date",
+    "note": "The snapshot is a single point-in-time aggregate, not a throughput interval."
+  },
+  "component_versions": {
+    "qa2_backend": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+    "candidate_source_before_feed04_changes": "5ac38cbd4ac19ad94768a6e44bbc53a84560fa23",
+    "candidate_installed_on_qa2": false,
+    "adapter_and_bridge": "See prior FEED-03/backlog report; not re-hashed in this snapshot."
+  },
+  "collector_messages": {
+    "saved_total": 126638,
+    "sources": 17,
+    "incoming": {
+      "saved_messages": 120019,
+      "sources": 16,
+      "processing_decisions": {
+        "exact_content_duplicate": 35071,
+        "unrecognized_intent": 34257,
+        "unresolved_direction": 8868,
+        "unprocessed": 29927,
+        "accepted": 10413,
+        "ambiguous_kind": 1007,
+        "mixed_intents": 465,
+        "promotional_content": 11
+      },
+      "decision_unit": "unique incoming source messages in the source-date window",
+      "decisions_sum": 120019
+    },
+    "owned": {
+      "saved_messages": 6619,
+      "sources": 1,
+      "processing_decisions": {
+        "accepted": 5199,
+        "exact_content_duplicate": 1420
+      },
+      "decision_unit": "unique owned source messages in the source-date window",
+      "decisions_sum": 6619
+    }
+  },
+  "segments_and_api_state": {
+    "incoming_outbox_segments": {
+      "total": 115210,
+      "active": 18427,
+      "review": 89753,
+      "closed": 7030,
+      "pending_within_10_day_window": 8972,
+      "unit": "outbox segment; status at snapshot"
+    },
+    "owned_outbox_segments": {
+      "total": 10432,
+      "active": 9803,
+      "closed": 629,
+      "pending": 0,
+      "unit": "outbox segment; status at snapshot"
+    },
+    "api_active_items": {
+      "cargo": 27335,
+      "vehicle": 88,
+      "unit": "active API item at snapshot",
+      "visibility_note": "API aggregate is not proof each item was rendered in a client session."
+    },
+    "expired_pending": {
+      "count": 219,
+      "unit": "older pending outbox segments outside the current 10-day source window",
+      "note": "This earlier global reading must not be added to the 8972 in-window pending count."
+    }
+  },
+  "limitations": [
+    "Collector fetched-before-persistence and pre-filter discard counters are unavailable historically.",
+    "Messages, extracted segments, API items and HTTP attempts are different units and are not added together.",
+    "API active counts can include items not represented by this exact collector window.",
+    "No client-side visibility or two consecutive hourly rate measurements are included.",
+    "No per-source labels, text, phone numbers, or raw payloads are included."
+  ]
+}

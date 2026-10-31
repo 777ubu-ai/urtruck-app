@@ -653,6 +653,9 @@ def test_agent_adapter_maps_private_queue_shape_without_forwarding_queue_fields(
     adapter = ExternalFreightFeedAdapter(
         db_path=str(tmp_path / "queue-adapter.db"), api_url="https://isolated.invalid",
         importer_key="local-test-only", opener=opener,
+        # Keep this contract fixture inside its 10-day retention window regardless
+        # of the wall clock when the suite is run.
+        clock=lambda: datetime(2026, 10, 30, tzinfo=timezone.utc).timestamp(),
     )
     queue_row = {
         "id": 901, "source": "reviewed-channel", "source_id": 44,
