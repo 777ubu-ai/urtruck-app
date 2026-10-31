@@ -10,9 +10,14 @@
   },
   "component_versions": {
     "qa2_backend": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
-    "candidate_source_before_feed04_changes": "5ac38cbd4ac19ad94768a6e44bbc53a84560fa23",
+    "candidate_head_current": "2673443f3391ce54c0cfa89e2ace50045ddf10fc",
     "candidate_installed_on_qa2": false,
-    "adapter_and_bridge": "See prior FEED-03/backlog report; not re-hashed in this snapshot."
+    "qa2_incoming_bridge_sha256": "99147c562d8c89faedc1d718b5c152bb437635cfc729e01d7f723751021d6433",
+    "qa2_import_adapter_sha256": "960eda356758c2191507b2b565e0841834fb1bd0189f1641c99d639d366642f8",
+    "qa2_collector_service": "active",
+    "qa2_incoming_bridge_service": "activating at snapshot; timer enabled",
+    "qa2_owned_bridge_service": "oneshot exited successfully; timer enabled",
+    "health_timer": "oneshot exited successfully; timer enabled"
   },
   "collector_messages": {
     "saved_total": 126638,
@@ -78,5 +83,44 @@
     "API active counts can include items not represented by this exact collector window.",
     "No client-side visibility or two consecutive hourly rate measurements are included.",
     "No per-source labels, text, phone numbers, or raw payloads are included."
-  ]
+  ],
+  "follow_up_read_only_snapshot": {
+    "measured_at": "2026-10-31T09:48:30Z",
+    "window_since": "2026-10-31T08:48:00Z",
+    "telegram_collector": {
+      "progress_counter": 7238,
+      "ready_to_publish": 1,
+      "last_tick": "2026-10-31T09:48:09.554572Z",
+      "received_messages_last_hour": 687,
+      "health_heartbeat_age_seconds_at_prior_read": 10.6,
+      "source_errors": 0
+    },
+    "incoming": {
+      "ready_nonexpired": 9152,
+      "backoff_nonexpired": 9,
+      "expired_pending": 219,
+      "quarantine": 0,
+      "confirmed_segments_last_hour": 2200,
+      "latest_confirmed_delivery": "2026-10-31T09:45:55.581913Z",
+      "oldest_ready_source_age_seconds": 860339,
+      "previous_ready_plus_backoff_at_2026_10_31T09_31_23Z": 9170,
+      "current_ready_plus_backoff": 9161,
+      "delta_over_17_minutes": -9,
+      "note": "Queue count is nearly flat; 219 expired pending are excluded from eligible ready/backoff and have not been delivered."
+    },
+    "owned": {
+      "pending": 0,
+      "quarantine": 0,
+      "confirmed_segments_last_hour": 66,
+      "latest_confirmed_delivery": "2026-10-31T09:46:56.525783Z"
+    },
+    "database_file_bytes": {
+      "collector_main": 233283584,
+      "collector_wal": 321726712,
+      "incoming_adapter_main": 331235328,
+      "owned_adapter_main": 43294720,
+      "api_external_feed_main": 388988928
+    },
+    "trend_limit": "One 17-minute queue comparison plus one hourly delivered counter is not the required two consecutive hourly measurements. Same-SHA long-window stability remains unverified."
+  }
 }
