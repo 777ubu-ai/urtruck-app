@@ -1,0 +1,47 @@
+{
+  "schema": "urtruck-feed-03-qa2-checkpoint-v1",
+  "observed_at_utc": "2026-10-31T08:23:28.604372Z",
+  "interval_seconds_from_previous_report": 3057,
+  "candidate_sha": "a36d475653650e61946cab27e0f6594f18e62bd7",
+  "qa2_sha": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+  "collector": {
+    "active": true,
+    "restart_count": 0,
+    "heartbeat_age_seconds": 7,
+    "published_total": 7188,
+    "ready": 0,
+    "source_scan_errors": 0,
+    "health_problems": []
+  },
+  "incoming": {
+    "pending": 8650,
+    "ready_unexpired": 8434,
+    "expired_pending": 213,
+    "quarantine": 0,
+    "latest_confirmed_delivery_utc": "2026-10-31T08:22:13.909122Z",
+    "bridge_timer_active": true
+  },
+  "owned": {
+    "pending": 0,
+    "ready_unexpired": 0,
+    "expired_pending": 0,
+    "quarantine": 0,
+    "latest_confirmed_delivery_utc": "2026-10-31T08:23:03.975398Z",
+    "bridge_timer_active": true
+  },
+  "previous_full_interval_ending_utc": "2026-10-31T07:32:31Z",
+  "comparison_to_previous_full_interval": {
+    "incoming_pending_previous_end": 8030,
+    "incoming_pending_current": 8650,
+    "pending_delta_since_previous_end": 620,
+    "ready_previous_end": 7812,
+    "ready_current": 8434,
+    "ready_delta_since_previous_end": 622,
+    "expired_previous_end": 213,
+    "expired_current": 213,
+    "assessment": "Backlog continues to grow. This checkpoint is shorter than 60 minutes and is not a substitute for the required hourly measurement."
+  },
+  "production_modified": false,
+  "queue_mutated": false,
+  "personal_data_in_report": false
+}

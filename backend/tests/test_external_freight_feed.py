@@ -510,6 +510,129 @@ def test_agent_adapter_durable_retry_and_edit_are_independent_of_telegram(tmp_pa
     assert restarted.pending_count() == 1
 
 
+def test_import_ack_expires_only_the_expired_segment_and_keeps_row(tmp_path, monkeypatch):
+    import json
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self):
+            return json.dumps({"results": [
+                {"id": "visible-item", "result": "created", "status": "active"},
+                {"id": "expired-item", "result": "expired", "status": "expired"},
+            ]}).encode()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "expired-ack.db"),
+        api_url="https://qa.example", importer_key="test-only", opener=lambda *_a, **_k: Response())
+    live = _record(source="ack", message="live")
+    old = _record(source="ack", message="old")
+    adapter.enqueue(live); adapter.enqueue(old)
+    result = adapter.flush_once()
+    assert result["status"] == "delivered" and result["sent"] == 1
+    assert result["outcomes"] == {"created": 1, "updated": 0, "replayed": 0, "expired": 1, "stale_ack": 0}
+    assert adapter.pending_count() == 0 and adapter.ready_pending_count() == 0
+    assert adapter.terminal_expired_count() == 1
+    with adapter._connect() as db:
+        rows = {row["source_message_id"]: row for row in db.execute(
+            "SELECT source_message_id,delivered_at,terminal_at,terminal_reason FROM selected_outbox")}
+    assert rows["live"]["delivered_at"] is not None and rows["live"]["terminal_at"] is None
+    assert rows["old"]["delivered_at"] is None
+    assert rows["old"]["terminal_reason"] == "api_expired"
+
+
+def test_real_importer_expired_replay_is_terminal_not_a_batch_retry(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    now = datetime.now(timezone.utc)
+    source = _record(source="expired-replay", message="stable-id", published=now-timedelta(days=11))
+    assert _import(source).json()["results"][0]["result"] == "expired"
+    fresh_revision = {**source, "source_published_at": now.isoformat(), "original_text": "Обновленная заявка"}
+    requests = []
+    def send(request, timeout):
+        requests.append(1)
+        response = client.post("/api/v1/external-freight/import",
+            headers={"X-External-Importer-Key": "test-importer-key-only", "Content-Type": "application/json"},
+            content=request.data)
+        assert response.status_code == 200
+        class Response:
+            status = response.status_code
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self): return response.content
+        return Response()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "real-expired-replay.db"),
+        api_url="https://qa.example", importer_key="test-importer-key-only", opener=send)
+    adapter.enqueue(fresh_revision)
+    result = adapter.flush_once()
+    assert result["status"] == "terminalized" and result["sent"] == 0
+    assert result["http_status"] == 200 and result["outcomes"]["expired"] == 1
+    assert result["pending"] == result["ready_pending"] == 0
+    assert adapter.terminal_expired_count() == 1 and requests == [1]
+
+
+def test_source_expired_rows_become_terminal_but_are_not_deleted(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    now = datetime(2026, 10, 31, tzinfo=timezone.utc).timestamp()
+    calls = []
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "source-expired.db"),
+        api_url="https://qa.example", importer_key="test-only",
+        opener=lambda *a, **k: calls.append(a), clock=lambda: now)
+    old = _record(source="retention", message="kept", published=datetime.fromtimestamp(now, timezone.utc)-timedelta(days=11))
+    adapter.enqueue(old)
+    result = adapter.flush_once()
+    assert result["status"] == "idle" and result["sent"] == 0
+    assert result["terminalized_expired"] == 1
+    assert adapter.pending_count() == adapter.ready_pending_count(now) == adapter.expired_pending_count(now) == 0
+    assert adapter.terminal_expired_count() == 1 and calls == []
+    with adapter._connect() as db:
+        row = db.execute("SELECT payload,terminal_reason FROM selected_outbox WHERE source_message_id='kept'").fetchone()
+    assert row is not None and row["terminal_reason"] == "source_retention_expired"
+    assert "original_text" in row["payload"]
+
+
+def test_retry_result_has_private_identifier_and_operational_metrics(tmp_path, monkeypatch):
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    def fail(*_args, **_kwargs):
+        raise TimeoutError("request timeout")
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "retry-metrics.db"),
+        api_url="https://qa.example", importer_key="test-secret", opener=fail, clock=lambda: 1000)
+    adapter.enqueue(_record(source="private-source", message="private-message"))
+    result = adapter.flush_once()
+    assert result["status"] == "retry_scheduled"
+    assert result["http_status"] is None and result["error_type"] == "TimeoutError"
+    assert result["retry_after_seconds"] == 5 and result["ready_pending"] == 0
+    assert result["duration_ms"] >= 0 and result["pending"] == 1
+    assert len(result["retry_id"]) == 12
+    assert result["retry_rows"][0]["attempt"] == 1
+    assert result["retry_rows"][0]["delay_seconds"] == 5
+    assert "private-message" not in str(result) and "private-source" not in str(result)
+
+
+def test_invalid_200_ack_is_classified_with_http_status_and_duration(tmp_path, monkeypatch):
+    import json
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self): return json.dumps({"results": []}).encode()
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "invalid-ack.db"),
+        api_url="https://qa.example", importer_key="test-only", opener=lambda *_a, **_k: Response())
+    adapter.enqueue(_record(source="invalid-ack", message="record"))
+    result = adapter.flush_once()
+    assert result["status"] == "retry_scheduled"
+    assert result["http_status"] == 200 and result["error_type"] == "ImportAckError"
+    assert result["duration_ms"] >= 0 and result["attempted_records"] == 1
+
+
 def test_agent_adapter_maps_private_queue_shape_without_forwarding_queue_fields(tmp_path, monkeypatch):
     import json
     from services.external_freight_import_adapter import ExternalFreightFeedAdapter
@@ -530,6 +653,9 @@ def test_agent_adapter_maps_private_queue_shape_without_forwarding_queue_fields(
     adapter = ExternalFreightFeedAdapter(
         db_path=str(tmp_path / "queue-adapter.db"), api_url="https://isolated.invalid",
         importer_key="local-test-only", opener=opener,
+        # Keep this contract fixture inside its 10-day retention window regardless
+        # of the wall clock when the suite is run.
+        clock=lambda: datetime(2026, 10, 30, tzinfo=timezone.utc).timestamp(),
     )
     queue_row = {
         "id": 901, "source": "reviewed-channel", "source_id": 44,

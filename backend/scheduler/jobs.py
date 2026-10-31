@@ -93,6 +93,22 @@ def gps_heartbeat_check_job():
         print(f"[gps-heartbeat] check failed (continuing): {e}", flush=True)
 
 
+def external_freight_retention_job():
+    """Удаляет ограниченную партию истёкших карточек внешней ленты.
+
+    API продолжает скрывать истёкшие записи сразу по TTL. Эта плановая
+    уборка лишь физически удаляет до 500 старых карточек за запуск и
+    сохраняет отпечатки источника для защиты от повторного импорта.
+    """
+    try:
+        from database.external_freight_dal import purge_expired_items
+        removed = purge_expired_items()
+        if removed:
+            print(f"[external-feed-retention] purged={removed} batch_limit=500", flush=True)
+    except Exception as e:
+        print(f"[external-feed-retention] cleanup failed (continuing): {type(e).__name__}", flush=True)
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -446,9 +462,12 @@ def start_scheduler():
     # быть busy-loop, достаточно часто, чтобы задержка обнаружения была мала
     # относительно самого порога.
     sched.add_job(gps_heartbeat_check_job, IntervalTrigger(minutes=5), id="gps_heartbeat_check")
+    # Истёкшие записи скрываются при запросе; пакетная задача выполняет
+    # физическую очистку независимо от открытия ленты пользователями.
+    sched.add_job(external_freight_retention_job, IntervalTrigger(minutes=5), id="external_freight_retention")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, external-feed-retention 5m")
     return sched
 
 

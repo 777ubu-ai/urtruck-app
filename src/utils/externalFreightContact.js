@@ -13,3 +13,14 @@ export function externalTelegramContactURL(value) {
   const match = /^(?:@|https:\/\/t\.me\/)([A-Za-z][A-Za-z0-9_]{4,31})$/.exec(text);
   return match ? `https://t.me/${match[1]}` : null;
 }
+
+// WhatsApp chat links require an explicitly international number. Never infer
+// a country code from a local number or from the user's locale.
+export function externalWhatsAppURL(value, message = '') {
+  const text = String(value ?? '').trim();
+  if (!/^\+[1-9][0-9 ()-]*$/.test(text)) return null;
+  const digits = text.replace(/\D/g, '');
+  if (digits.length < 8 || digits.length > 15) return null;
+  const body = String(message ?? '').trim();
+  return `https://wa.me/${digits}${body ? `?text=${encodeURIComponent(body)}` : ''}`;
+}

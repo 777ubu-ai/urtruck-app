@@ -1,0 +1,6 @@
+Команда:
+node --experimental-loader ./tests/frontend/loader.mjs --test tests/frontend/test_external_freight_phone.mjs tests/frontend/test_external_feed_card_actions_locale.mjs tests/frontend/test_external_feed_share_origin.mjs
+
+Результат: 18 passed, 0 failed. Проверены контакты/WhatsApp, девять подписей
+действий, Share-поля и обе ссылки магазинов. Это контрактные Node-тесты
+текущего клиентского исходника, а не визуальный E2E или физическая проверка.

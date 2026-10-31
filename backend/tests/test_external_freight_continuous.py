@@ -139,6 +139,34 @@ def test_app_capture_keeps_publications_for_ten_day_window(tmp_path):
     assert db.execute('select count(*) from app_messages').fetchone()[0]==1
 
 
+def test_collector_payload_retention_is_bounded_and_preserves_cursors(tmp_path):
+    m=collector();db=m.database(tmp_path/'source.sqlite3')
+    now=datetime(2026, 10, 31, tzinfo=timezone.utc).timestamp()
+    stale=now-14*24*3600
+    recent=now-12*24*3600
+    with db:
+        for ident,source_message,source_date in ((1,101,stale),(2,102,stale),(3,103,recent)):
+            db.execute('''INSERT INTO app_messages
+                (id,source,source_id,source_message,source_date,text,phones,revision,received_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?)''',
+                (ident,'public_channel',12345,source_message,source_date,'raw body','[]','revision',now,now))
+            db.execute('''INSERT INTO app_message_metadata
+                (source_id,source_message,has_media,media_type,entity_contacts,source_date,updated_at)
+                VALUES(?,?,?,?,?,?,?)''',
+                ('12345',source_message,0,None,'[]',source_date,now))
+        db.execute("INSERT INTO app_cursors(source,message_id) VALUES('public_channel',900)")
+        db.execute("INSERT INTO app_history(source,oldest_id,started_at,checked_at,completed_at) VALUES('public_channel',1,1,2,3)")
+
+    assert m.purge_expired_app_payloads(db, now=now, batch_size=1)==1
+    assert db.execute('SELECT count(*) FROM app_messages').fetchone()[0]==2
+    assert db.execute('SELECT count(*) FROM app_message_metadata').fetchone()[0]==2
+    assert db.execute('SELECT message_id FROM app_cursors WHERE source=?',('public_channel',)).fetchone()[0]==900
+    assert db.execute('SELECT completed_at FROM app_history WHERE source=?',('public_channel',)).fetchone()[0]==3
+    assert m.purge_expired_app_payloads(db, now=now, batch_size=500)==1
+    assert db.execute('SELECT source_message FROM app_messages').fetchone()[0]==103
+    assert db.execute('SELECT source_message FROM app_message_metadata').fetchone()[0]==103
+
+
 def test_incoming_delivers_before_telegram_and_survives_restart(tmp_path,monkeypatch):
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=collector();path=tmp_path/'source.sqlite3';db=m.database(path)

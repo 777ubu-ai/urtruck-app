@@ -88,7 +88,9 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     add(worker)
     original_opener = worker.adapter.opener
     worker.adapter.opener = lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))
-    assert worker.run_once()["status"] == "retry_scheduled"
+    failed = worker.run_once()
+    assert failed["status"] == "retry_scheduled"
+    assert failed["error_type"] == "OSError"
     assert worker.adapter.pending_count() == 1
     worker.adapter.opener = original_opener
     worker.adapter.clock = lambda: NOW + 61
@@ -98,6 +100,26 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     assert result["sent"] == 1
     assert worker.adapter.pending_count() == 0
     assert calls[0]["source_published_at"] == "2026-10-21T10:00:00+00:00"
+
+
+def test_expired_outbox_record_is_retained_and_not_retried(bridge):
+    worker, calls = bridge
+    worker.adapter.enqueue({
+        "source_id": "old-source", "source_message_id": "expired", "segment_id": "0",
+        "source_published_at": "2026-10-01T10:00:00+00:00", "kind": "cargo",
+        "status": "active", "original_text": "expired test fixture",
+    })
+    result = worker.run_once()
+    assert result["status"] == "idle"
+    assert result["expired_pending"] == 0
+    assert result["terminal_expired"] == 1
+    assert result["pending"] == 0
+    assert worker.adapter.pending_count() == 0
+    assert worker.adapter.terminal_expired_count() == 1
+    with worker.adapter._connect() as state:
+        row = state.execute("SELECT payload,terminal_reason FROM selected_outbox").fetchone()
+    assert row is not None and row["terminal_reason"] == "source_retention_expired"
+    assert calls == []
 
 
 def test_missing_route_and_contact_are_still_visible(bridge):
@@ -116,6 +138,8 @@ def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
     result = worker.run_once()
     assert result['scanned'] == 1
     assert result['enqueued'] == result['sent'] == 2
+    assert result['segments'] == 2 and result['segments_created'] == 2
+    assert result['segments_updated'] == result['segments_unchanged'] == 0
     assert [(item['segment_id'], item['origin'], item['destination'], item['contacts'], item['status'])
             for item in calls] == [
         ('block-1', 'Хоргос', 'Астана', ['123456'], 'active'),

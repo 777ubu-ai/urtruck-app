@@ -1,0 +1,18 @@
+Команда:
+PYTHON_BIN=/tmp/urtruck-feed04-py312/bin/python DB_PATH=/tmp/urtruck-feed04-final-backend.db scripts/run_backend_tests.sh --isolated -q --disable-warnings
+
+Результат для кода, вошедшего в FEED-04 commit:
+- exit code: 0
+- pytest: 1888 passed, 0 failed
+- standalone unittest files: 58 passed
+- compileall: включён в runner, PASS
+
+Также после изменения collector cleanup:
+- backend/tests/test_external_freight_continuous.py
+- backend/tests/test_owned_telegram_feed.py
+- backend/tests/test_scheduler_and_backup.py
+- backend/tests/test_external_freight_vehicle_supply.py
+- 165 passed, 0 failed
+
+Результат относится к локальному дереву, не к QA2/Production. Реальные
+объявления, контакты и payload в этот файл не включены.
