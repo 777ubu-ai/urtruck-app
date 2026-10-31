@@ -61,9 +61,15 @@ Workflow установки QA2 `41183595894` остановился на изо
 
 Следующий контрольный point-in-time срез 08:23:28 UTC показал incoming pending `8 650`, ready `8 434`, expired pending `213`, quarantine `0`; owned pending/quarantine `0`; Telegram published `7 188`, source errors `0`. QA2 feed/owned timers были active; последняя подтверждённая incoming доставка на момент чтения — 08:22:13 UTC. Это наблюдение длилось менее часа после предыдущего отчёта и не заменяет второй часовой замер. Значение cumulative delivered из разных срезов не монотонно; без выяснения учёта/retention его нельзя использовать как доказательство скорости. Сервер не развёртывался, очереди не изменялись.
 
+Полный follow-up интервал 07:32:31–08:33:01 UTC (60 мин 30 с) показал дальнейший рост incoming pending `8 030 → 8 676` (+646), ready/unexpired `7 812 → 8 463` (+651). В journal было 56 bridge invocations, 41 маркер доставки и 14 `retry_scheduled`; текущий старый bridge не сохраняет HTTP status/класс исключения, поэтому нельзя приписать все 14 конкретной ошибке. Последняя подтверждённая доставка была в 08:32:38 UTC; факт отдельных доставок не означает, что очередь разгружается. Expired pending остался `213`, quarantine `0`, owned pending `0`; Telegram published `+32`, source errors `0`, collector и три нужных timer были active. QA2 SHA и хеши adapter/bridge не изменились.
+
+Read-only проверка измерила старейшую ready/unexpired запись с публикацией `2026-10-21T08:41:59Z`: возраст 863 462 с, до 10-дневного TTL оставалось около 537 с. Это near-expiry риск. В установленной QA2 SQLite-схеме отсутствует колонка `terminal_at`; `.qa-source-sha` всё ещё `4a524b…`, то есть изменение, переводящее истёкшие записи в terminal без удаления payload, не установлено. Деплой-кандидат для QA2 остаётся заблокирован preflight workflow.
+
+Установленный серверный health script имеет SHA-256 `56441a33…`, тогда как локальный скрипт кандидата — `4a4cd81b…`. Текущий `health.json` не содержит поля `expired_pending`, хотя SQLite показывает 213 таких строк; `problems=[]`. Health `ready=8 669` не совпал с nearby DB due/unexpired `8 463`. Значит, состояние истёкших/retry-записей в health snapshot неполное, и этот монитор не даёт корректной картины готовой очереди. Подробный срез записан в `feed-03-metrics/2026-10-31-qa2-hourly-followup.json`.
+
 ## Не принятые требования / продолжение
 
-1. Установить тот же кандидат штатным QA2 workflow после выяснения причины preflight gates; проверить source SHA и версии bridge/adapter на QA2.
+1. Установить тот же кандидат штатным QA2 workflow после выяснения причины preflight gates; проверить source SHA и версии bridge/adapter/health script на QA2. Старейшая ready-запись близка к сроку хранения.
 2. Разобрать retry/error интервалы по классам, сопоставить source → outbox → API confirmation → видимая карточка; объяснить рост incoming и expired records без выдачи счётчиков повторов за новые объявления.
 3. Провести два последовательных часовых измерения на одном QA2 SHA при входящем потоке; включить ready/pending/backoff/expired/quarantine, фактические created/updated/replay/expired, возраст самой старой готовой записи и время до появления карточки.
 4. Разобраться с GitHub Quality Gate: все три jobs не начали шаги, логи недоступны.
