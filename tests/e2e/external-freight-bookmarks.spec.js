@@ -705,7 +705,8 @@ test('share copy-link action copies both public store destinations', async ({ pa
   const box = await boot(page, 'driver');
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByTestId('external-feed-share-external-fixture').click();
-  await page.screenshot({ path: 'test-results/external-feed-share-sheet-before-copy.png' });
+  await expect(page.getByTestId('share-channel-link')).toBeVisible();
+  await page.getByTestId('share-modal-sheet').screenshot({ path: 'test-results/external-feed-share-sheet-before-copy.png' });
   await page.getByTestId('share-channel-link').click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
     'https://play.google.com/store/apps/details?id=com.urtruck.app\nhttps://apps.apple.com/kz/app/urtruck/id6764504167'

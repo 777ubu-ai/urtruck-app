@@ -141,7 +141,7 @@ export default function ShareModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity testID="share-modal-sheet" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{t('share')}</Text>
 
