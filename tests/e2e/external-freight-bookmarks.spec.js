@@ -18,7 +18,7 @@ test.beforeAll(async () => {
   base = 'http://127.0.0.1:' + server.address().port;
 });
 test.afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
-test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', video: 'off', trace: 'off' });
+test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', permissions: ['notifications'], video: 'off', trace: 'off' });
 
 async function boot(page, role = 'driver', options = {}) {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
@@ -193,10 +193,13 @@ test('локальный сброс сохраняет соседний филь
 
 test('непривязанные номера видны как контакты исходного поста', async ({ page }) => {
   const box = await boot(page, 'driver', { item: { contacts: [], source_contacts: ['12345678', '+998901234567'] } });
-  await expect(page.getByTestId('external-feed-source-contacts-external-fixture')).toContainText('Контакты исходного поста');
-  await expect(page.getByTestId('external-feed-copy-source-external-fixture-0').getByText('12345678', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('external-feed-copy-source-external-fixture-1').getByText('+998901234567', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('external-feed-no-contact-external-fixture')).toHaveCount(0);
+  await expect(page.getByTestId('external-feed-no-contact-external-fixture')).toHaveText('Контакт указан в исходнике');
+  await expect(page.getByTestId('external-feed-additional-contacts-external-fixture')).toHaveCount(0);
+  await page.getByTestId('external-feed-expand-external-fixture').click();
+  await expect(page.getByTestId('external-feed-no-contact-external-fixture')).toHaveText('Контакт указан в исходнике');
+  await expect(page.getByTestId('external-feed-additional-contacts-external-fixture')).toContainText('Другие контакты');
+  await expect(page.getByTestId('external-feed-copy-additional-external-fixture-0').getByText('12345678', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('external-feed-copy-additional-external-fixture-1').getByText('+998901234567', { exact: true })).toBeVisible();
   expect(box.errors).toEqual([]);
 });
 
@@ -370,7 +373,8 @@ for (const role of ['driver', 'client']) {
     const toggle = page.getByTestId('external-feed-expand-external-fixture');
     await expect(toggle).toBeVisible();
     await expect(page.getByTestId('external-feed-title')).toHaveText(role === 'driver' ? 'Лента грузов' : 'Лента машин');
-    await expect(page.getByTestId('external-feed-summary-external-fixture')).toContainText('Тент · 25 т · 150 м³ · 1 машина');
+    await expect(page.getByTestId('external-feed-summary-external-fixture')).toContainText('Тент · 25 т · 150 м³');
+    await expect(page.getByTestId('external-feed-summary-external-fixture')).not.toContainText('1 машина');
     const bounds = await card.boundingBox();
     expect(bounds.height).toBeLessThan(370);
     await expect(description).toHaveCount(0);
@@ -382,6 +386,8 @@ for (const role of ['driver', 'client']) {
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(description).toHaveText(text);
+    await expect(card).toContainText('1 машина');
+    if (role === 'driver') await expect(card).toContainText('Упаковка');
     const expandedHeight = (await description.boundingBox()).height;
     expect(expandedHeight).toBeGreaterThan(91);
     await toggle.click();
@@ -476,14 +482,15 @@ for (const role of ['driver', 'client']) {
     });
     expect(await price.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await price.evaluate(el => el.getBoundingClientRect().height >= parseFloat(getComputedStyle(el).fontSize))).toBe(true);
-    await page.screenshot({ path: `test-results/external-feed-card-${role}-320-before.png` });
+    await page.getByTestId('external-feed-card-external-fixture').screenshot({ path: `test-results/external-feed-card-${role}-320-before.png` });
 
     const expand = page.getByTestId('external-feed-expand-external-fixture');
-    await expect(expand).toHaveText('Показать');
+    const expandLabel = page.getByTestId('external-feed-expand-label-external-fixture');
+    await expect(expandLabel).toHaveText('Показать');
     await expand.click();
     await expect(page.getByTestId('external-feed-description-external-fixture')).toContainText('Маршрут: Алматы → Ташкент');
-    await expect(expand).toHaveText('Свернуть');
-    await page.screenshot({ path: `test-results/external-feed-card-${role}-320-expanded.png` });
+    await expect(expandLabel).toHaveText('Свернуть');
+    await page.getByTestId('external-feed-card-external-fixture').screenshot({ path: `test-results/external-feed-card-${role}-320-expanded.png` });
 
     const whatsapp = page.getByTestId('external-feed-whatsapp-external-fixture');
     await expect(whatsapp).toBeEnabled();
@@ -499,6 +506,65 @@ for (const role of ['driver', 'client']) {
     expect(box.businessWrites).toEqual([]);
   });
 }
+
+test('known zero is not presented as a freight price', async ({ page }) => {
+  const box = await boot(page, 'driver', { item: { amount: 0, currency: 'USD', price_state: 'known' } });
+  await expect(page.getByTestId('external-feed-price-external-fixture')).toHaveCount(0);
+  await expect(page.getByTestId('external-feed-card-external-fixture')).not.toContainText('Цена не указана');
+  expect(box.errors).toEqual([]);
+});
+
+test('WhatsApp asks the user to choose when an item has multiple confirmed international contacts', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.addInitScript(() => {
+    window.__openedExternal = [];
+    window.open = url => { window.__openedExternal.push(String(url)); return { focus() {} }; };
+  });
+  const box = await boot(page, 'driver', { item: { contacts: ['+998 90 111 22 33', '+7 777 111 22 33'] } });
+  const whatsapp = page.getByTestId('external-feed-whatsapp-external-fixture');
+  await expect(whatsapp).toBeEnabled();
+  await whatsapp.click();
+  await expect(page.getByTestId('external-feed-whatsapp-number-picker')).toBeVisible();
+  await page.getByTestId('external-feed-whatsapp-number-picker').screenshot({ path: 'test-results/external-feed-whatsapp-contact-picker.png' });
+  expect(await page.evaluate(() => window.__openedExternal)).toEqual([]);
+  await page.getByTestId('external-feed-whatsapp-choice-1').click();
+  const opened = await page.evaluate(() => window.__openedExternal);
+  expect(opened).toHaveLength(1);
+  expect(new URL(opened[0]).pathname).toBe('/77771112233');
+  expect(new URL(opened[0]).searchParams.get('text')).toContain('Алматы → Ташкент');
+  expect(box.errors).toEqual([]);
+});
+
+test('local number stays copyable while the direct WhatsApp action remains unavailable', async ({ page, context }) => {
+  await page.addInitScript(() => { window.__openedExternal = []; window.open = url => { window.__openedExternal.push(String(url)); }; });
+  const box = await boot(page, 'driver', { item: { contacts: ['951607828'] } });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const whatsapp = page.getByTestId('external-feed-whatsapp-external-fixture');
+  await expect(whatsapp).toBeDisabled();
+  await expect(whatsapp).toHaveAttribute('aria-label', 'Написать автору в WhatsApp. WhatsApp недоступен: нет международного номера');
+  await page.getByTestId('external-feed-copy-external-fixture-0').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('951607828');
+  expect(await page.evaluate(() => window.__openedExternal)).toEqual([]);
+  expect(box.errors).toEqual([]);
+});
+
+test('compact action row stays on one line at 320px with 44px targets', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const box = await boot(page, 'driver');
+  const card = await page.getByTestId('external-feed-card-external-fixture').boundingBox();
+  const ids = ['external-feed-expand-external-fixture', 'external-feed-share-external-fixture', 'external-feed-whatsapp-external-fixture'];
+  const boxes = await Promise.all(ids.map(async id => page.getByTestId(id).boundingBox()));
+  for (let i = 0; i < boxes.length; i += 1) {
+    expect(boxes[i].height).toBeGreaterThanOrEqual(44);
+    expect(boxes[i].x).toBeGreaterThanOrEqual(card.x);
+    expect(boxes[i].x + boxes[i].width).toBeLessThanOrEqual(card.x + card.width);
+    if (i) {
+      expect(Math.abs(boxes[i].y - boxes[0].y)).toBeLessThan(2);
+      expect(boxes[i].x).toBeGreaterThanOrEqual(boxes[i - 1].x + boxes[i - 1].width);
+    }
+  }
+  expect(box.errors).toEqual([]);
+});
 
 
 test('continuous refresh adds a real UI card while preserving chosen filters and source link', async ({ page }) => {
@@ -519,7 +585,9 @@ test('continuous refresh adds a real UI card while preserving chosen filters and
   expect(box.feedQueries.length).toBeGreaterThan(requests);
   expect(box.feedQueries.at(-1).origin).toBe('Алматы');
   await expect(page.getByTestId('external-feed-filter-origin')).toContainText('Алматы');
-  await expect(page.getByText('Цена не указана',{exact:true})).toBeVisible();
+  await expect(page.getByTestId('external-feed-price-auto-new')).toHaveCount(0);
+  await expect(page.getByTestId('external-feed-source-auto-new')).toHaveCount(0);
+  await page.getByTestId('external-feed-expand-auto-new').click();
   await expect(page.getByTestId('external-feed-source-auto-new')).toBeVisible();
   await expect(page.getByTestId('external-feed-source-auto-new')).toHaveText('Объявление в Telegram');
   expect(box.errors).toEqual([]);

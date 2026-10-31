@@ -1,7 +1,7 @@
 import { withAdditionalLanguageTree, withAdditionalLanguages } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Linking, KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Linking, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -16,8 +16,8 @@ import ExternalFeedDescription from '../components/externalFreight/ExternalFeedD
 import CarrierContactCard from '../components/externalFreight/CarrierDirectory';
 import ShareModal from '../components/ShareModal';
 import { PUBLIC_WEB_ORIGIN } from '../config/env';
-import { externalTelegramContactURL, externalWhatsAppURL } from '../utils/externalFreightContact';
-import { externalFreightCardActions } from '../utils/externalFreightCardActions';
+import { externalPhoneURL, externalTelegramContactURL, externalWhatsAppURL } from '../utils/externalFreightContact';
+import { externalFreightCardActions, externalFreightWhatsAppDraft } from '../utils/externalFreightCardActions';
 import { buildCarrierContactShare, buildExternalFreightShare } from '../utils/externalFreightShare';
 // Направления внешней ленты вводятся текстом; общий городской picker не подключаем.
 import { useToast } from '../components/Toast';
@@ -64,6 +64,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const sl = SAVED_COPY[lang] || SAVED_COPY.EN;
   const [savedOnly, setSavedOnly] = useState(false);
   const [shareTarget, setShareTarget] = useState(null);
+  const [whatsappTarget, setWhatsappTarget] = useState(null);
   const [saving, setSaving] = useState({});
   const bookmarkRequestsRef = useRef(new Map());
   const ownerKey = `${session?.user?.id || ''}:${role}`;
@@ -203,6 +204,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   useEffect(() => {
     setSaving({});
     setShareTarget(null);
+    setWhatsappTarget(null);
     return () => {
       bookmarkRequestsRef.current.forEach(controller => controller.abort());
       bookmarkRequestsRef.current.clear();
@@ -212,6 +214,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   useEffect(() => {
     const cancel = () => {
       setShareTarget(null);
+      setWhatsappTarget(null);
       sequenceRef.current += 1;
       anchorRef.current = null;
       requestRef.current?.abort?.();
@@ -312,66 +315,91 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       return <CarrierContactCard item={item} shareLabel={t('share')}
         onShare={share ? () => setShareTarget({ ...share, owner: ownerKey }) : undefined} />;
     }
-    const locations = item.kind === 'cargo' ? [item.origin, item.destination] : [item.origin, item.destination];
-    const price = item.price_state === 'negotiable' ? l.negotiable : item.price_state === 'known' ? `${formatNumber(item.amount)} ${item.currency}` : l.unknown;
+    const origin = String(item.origin || '').trim();
+    const destination = String(item.destination || '').trim();
+    const route = origin && destination ? `${origin} → ${destination}`
+      : origin ? `${l.from}: ${origin}` : destination ? `${l.to}: ${destination}` : l.direction;
+    const amount = Number(item.amount);
+    const hasPrice = item.price_state === 'negotiable'
+      || (item.price_state === 'known' && Number.isFinite(amount) && amount > 0 && String(item.currency || '').trim());
+    const price = item.price_state === 'negotiable' ? l.negotiable
+      : hasPrice ? `${formatNumber(amount)} ${String(item.currency).trim()}` : '';
     const summary = [
       ...(item.body_types || []).map(x => bodyLabels[lang]?.[x] || x),
       item.weight != null ? `${formatNumber(item.weight)} ${l.weightUnit}` : '',
       item.volume != null ? `${formatNumber(item.volume)} ${l.volumeUnit}` : '',
-      item.vehicle_count != null ? vehicleCountLabel(item.vehicle_count, lang, isDriver) : '',
     ].filter(Boolean).join(' · ');
     const share = buildExternalFreightShare(item, { origin: PUBLIC_WEB_ORIGIN, lang, summary, price });
-    const whatsappContact = share?.text ? (item.contacts || []).find(contact => externalWhatsAppURL(contact, share.text)) : null;
-    const whatsappURL = whatsappContact ? externalWhatsAppURL(whatsappContact, share?.text) : null;
     const cardActions = externalFreightCardActions(lang);
+    const whatsappDraft = externalFreightWhatsAppDraft({ ...item, origin, destination }, lang);
+    const whatsappContacts = [...new Set((item.contacts || []).filter(contact => externalWhatsAppURL(contact)))];
+    const whatsappURL = whatsappContacts.length === 1 ? externalWhatsAppURL(whatsappContacts[0], whatsappDraft) : null;
+    const whatsappAccessibilityLabel = whatsappContacts.length
+      ? cardActions.whatsapp : `${cardActions.whatsapp}. ${cardActions.unavailable}`;
+    const linkedPhones = [...new Set((item.contacts || []).filter(contact => externalPhoneURL(contact)))];
+    const primaryPhone = linkedPhones[0] || null;
+    const extraContacts = [...new Set([...(item.contacts || []), ...(item.source_contacts || [])])]
+      .filter(contact => contact && contact !== primaryPhone);
     return <View ref={node => { if (node) cardRefs.current.set(String(item.id), node); else cardRefs.current.delete(String(item.id)); }} style={styles.card} testID={`external-feed-card-${item.id}`}>
       <View style={styles.cardHeading}>
-        <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : locations.filter(Boolean).join(' → ') || l.direction}</Text>
+        <Text style={[styles.route, styles.routeFlex]}>{item.status === 'unavailable' ? sl.unavailable : route}</Text>
         <View style={styles.saveSlot}>
           <BookmarkButton saved={item.saved} disabled={Boolean(saving[item.id])} onPress={() => toggleBookmark(item)} accessibilityLabel={item.saved ? sl.unsave : sl.save} testID={`external-feed-bookmark-${item.id}`} />
           {saving[item.id] ? <ActivityIndicator size="small" color="#168759" /> : null}
         </View>
       </View>
       {['expired', 'closed'].includes(item.status) ? <Text style={styles.meta}>{sl[item.status]}</Text> : null}
-      {item.status !== 'unavailable' ? <Text style={styles.price} testID={`external-feed-price-${item.id}`}>{price}</Text> : null}
-      {Array.isArray(item.contacts) && item.contacts.filter(Boolean).map((contact, index) => <View key={`${item.id}-contact-${index}`} style={styles.contactRow}>
-        <TouchableOpacity onPress={() => copyContact(contact)} style={[styles.contact, styles.contactCopy]} accessibilityRole="button" testID={`external-feed-copy-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color={'#168759'} /></TouchableOpacity>
-        {externalTelegramContactURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="link" accessibilityLabel={l.telegramContact}
-          testID={`external-feed-telegram-contact-${item.id}-${index}`} onPress={() => Linking.openURL(externalTelegramContactURL(contact)).catch(() => toast(t('share_open_failed'), 'error'))}>
-          <Feather name="external-link" size={18} color="#168759" />
-        </TouchableOpacity> : null}
-      </View>)}
-      {item.source_contacts?.length ? <View testID={`external-feed-source-contacts-${item.id}`}>
-        <Text style={styles.meta}>{(withAdditionalLanguages({ RU: 'Контакты исходного поста', KK: 'Бастапқы жазбаның байланыстары', ZH: '原始信息的联系方式', EN: 'Contacts from the original post' }))[lang] || 'Contacts from the original post'}</Text>
-        {item.source_contacts.map((contact, index) => <TouchableOpacity key={`${item.id}-source-${index}`} onPress={() => copyContact(contact)} style={styles.contact} accessibilityRole="button" testID={`external-feed-copy-source-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color="#168759" /></TouchableOpacity>)}
+      {summary || item.source_published_at ? <View style={styles.compactMetaRow}>
+        <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
+        <Text style={styles.date} testID={`external-feed-short-date-${item.id}`}>{formatShortDate(item.source_published_at, lang)}</Text>
       </View> : null}
-      {(!Array.isArray(item.contacts) || !item.contacts.some(Boolean)) && !item.source_contacts?.length && item.status !== 'unavailable' ? <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{l.noContact}</Text> : null}
-      {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
-      <Text style={styles.meta} testID={`external-feed-summary-${item.id}`}>{summary}</Text>
-      {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
-      {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.telegram}</Text></TouchableOpacity> : null}
-      <Text style={styles.date}>{l.published}: {formatDate(item.source_published_at, lang)}</Text>
+      {item.status !== 'unavailable' && price ? <Text style={styles.price} testID={`external-feed-price-${item.id}`}>{price}</Text> : null}
+      {primaryPhone ? <TouchableOpacity onPress={() => copyContact(primaryPhone)} style={styles.primaryContact} accessibilityRole="button"
+        accessibilityLabel={`${primaryPhone}, ${cardActions.copyContact}`} testID={`external-feed-copy-${item.id}-0`}>
+        <Text style={styles.contactText}>{primaryPhone}</Text><Feather name="copy" size={14} color="#168759" />
+      </TouchableOpacity> : <Text style={styles.meta} testID={`external-feed-no-contact-${item.id}`}>{item.source_contacts?.length ? cardActions.sourceContactInOriginal : l.noContact}</Text>}
       {item.status !== 'unavailable' && (item.original_text || (item.ready_text && item.loading_date) || share) ? <ExternalFeedDescription
         key={`${ownerKey}:${item.id}`} text={item.original_text} styles={styles}
         moreLabel={cardActions.show} lessLabel={cardActions.less} itemId={item.id}
         onExpand={() => { followingRef.current = false; externalFreightAPI.event('card_expand'); }}
         actions={<>
-          {share ? <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={t('share')}
+          {share ? <TouchableOpacity style={[styles.textAction, styles.shareAction]} accessibilityRole="button" accessibilityLabel={t('share')}
             testID={`external-feed-share-${item.id}`} onPress={() => setShareTarget({ ...share, owner: ownerKey })}>
             <Feather name="share-2" size={14} color="#168759" /><Text style={[styles.link, styles.actionLabel]}>{t('share')}</Text>
           </TouchableOpacity> : null}
-          <TouchableOpacity style={styles.textAction} accessibilityRole="button" accessibilityLabel={whatsappURL ? cardActions.whatsapp : cardActions.unavailable}
-            accessibilityState={{ disabled: !whatsappURL }} disabled={!whatsappURL}
+          <TouchableOpacity style={[styles.textAction, styles.whatsappAction]} accessibilityRole="button" accessibilityLabel={whatsappAccessibilityLabel}
+            accessibilityHint={whatsappContacts.length ? undefined : cardActions.unavailable}
+            accessibilityState={{ disabled: whatsappContacts.length === 0 }} disabled={!whatsappContacts.length}
             testID={`external-feed-whatsapp-${item.id}`} onPress={() => {
-              if (!whatsappURL) return;
+              if (!whatsappContacts.length) return;
               externalFreightAPI.event('whatsapp_contact_open');
-              Linking.openURL(whatsappURL).catch(() => toast(l.retry, 'error'));
+              if (whatsappContacts.length > 1) {
+                setWhatsappTarget({ contacts: whatsappContacts, draft: whatsappDraft, itemId: item.id });
+              } else {
+                Linking.openURL(whatsappURL).catch(() => toast(l.retry, 'error'));
+              }
             }}>
-            <FontAwesome5 name="whatsapp" size={14} color={whatsappURL ? '#168759' : '#98A19B'} />
-            <Text style={[styles.link, styles.actionLabel, { opacity: whatsappURL ? 1 : 0.5 }]}>WhatsApp</Text>
+            <FontAwesome5 name="whatsapp" size={18} color={whatsappContacts.length ? '#168759' : '#98A19B'} />
           </TouchableOpacity>
         </>}
-      >{item.ready_text && item.loading_date ? <Text style={styles.meta}>{item.ready_text}</Text> : null}</ExternalFeedDescription> : null}
+      >
+        {item.kind === 'cargo' && item.cargo_name ? <Text style={styles.strong}>{item.cargo_name}</Text> : null}
+        {item.vehicle_count != null ? <Text style={styles.meta}>{vehicleCountLabel(item.vehicle_count, lang, isDriver)}</Text> : null}
+        {item.loading_date || item.ready_text ? <Text style={styles.meta}>{item.loading_date || item.ready_text}</Text> : null}
+        <Text style={styles.meta} testID={`external-feed-full-date-${item.id}`}>{l.published}: {formatDateTime(item.source_published_at, lang)}</Text>
+        {extraContacts.length ? <View testID={`external-feed-additional-contacts-${item.id}`}>
+          <Text style={styles.meta}>{cardActions.additionalContacts}</Text>
+          {extraContacts.map((contact, index) => <View key={`${item.id}-extra-${index}`} style={styles.contactRow}>
+            <TouchableOpacity onPress={() => copyContact(contact)} style={[styles.contact, styles.contactCopy]} accessibilityRole="button" testID={`external-feed-copy-additional-${item.id}-${index}`}><Text style={styles.contactText}>{contact}</Text><Feather name="copy" size={14} color="#168759" /></TouchableOpacity>
+            {externalTelegramContactURL(contact) ? <TouchableOpacity style={styles.callButton} accessibilityRole="link" accessibilityLabel={l.telegramContact}
+              testID={`external-feed-telegram-contact-${item.id}-${index}`} onPress={() => Linking.openURL(externalTelegramContactURL(contact)).catch(() => toast(t('share_open_failed'), 'error'))}>
+              <Feather name="external-link" size={18} color="#168759" />
+            </TouchableOpacity> : null}
+          </View>)}
+        </View> : null}
+        {externalTelegramPost(item) ? <TouchableOpacity style={styles.sourceLink} accessibilityRole="link" accessibilityLabel={l.telegram}
+          testID={`external-feed-source-${item.id}`} onPress={() => Linking.openURL(externalTelegramPost(item)).catch(() => toast(l.retry, 'error'))}><Text style={styles.sourceText}>{l.telegram}</Text></TouchableOpacity> : null}
+      </ExternalFeedDescription> : null}
     </View>;
   };
 
@@ -399,7 +427,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       </TouchableOpacity>
     </View>
     <ScrollView ref={filterScrollRef} horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="always" onLayout={event => setFilterBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
-      {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_query || (filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : ''))}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
+      {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_query || (filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : ''))}{filterButton('date', l.date, filters.published_from ? `${formatFilterDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatFilterDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
@@ -444,6 +472,25 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       }}>
       <Feather name="arrow-down" size={16} color={theme.text} /><Text style={styles.newListingsText}>{l.newListings} · {unseenIds.length}</Text>
     </TouchableOpacity> : null}
+    {whatsappTarget ? <Modal visible transparent animationType="slide" onRequestClose={() => setWhatsappTarget(null)} testID="external-feed-whatsapp-number-picker">
+      <Pressable style={styles.whatsappOverlay} onPress={() => setWhatsappTarget(null)}>
+        <Pressable style={styles.whatsappSheet} onPress={event => event.stopPropagation()} accessibilityViewIsModal>
+          <Text style={styles.whatsappTitle}>{externalFreightCardActions(lang).choosePhone}</Text>
+          {whatsappTarget.contacts.map((contact, index) => <TouchableOpacity key={`${whatsappTarget.itemId}-${contact}-${index}`}
+            style={styles.whatsappChoice} accessibilityRole="button" testID={`external-feed-whatsapp-choice-${index}`}
+            onPress={() => {
+              const url = externalWhatsAppURL(contact, whatsappTarget.draft);
+              setWhatsappTarget(null);
+              if (url) Linking.openURL(url).catch(() => toast(l.retry, 'error'));
+            }}>
+            <Text style={styles.contactText}>{contact}</Text>
+          </TouchableOpacity>)}
+          <TouchableOpacity style={styles.whatsappCancel} accessibilityRole="button" onPress={() => setWhatsappTarget(null)}>
+            <Text style={styles.link}>{externalFreightCardActions(lang).cancel}</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal> : null}
     {shareTarget?.owner === ownerKey ? <ShareModal visible onClose={() => setShareTarget(null)}
       shareText={shareTarget.text} url={shareTarget.url} copyLinkText={shareTarget.copyLinkText} /> : null}
     {/* Текстовый поиск не монтирует общий справочник стран/городов. */}
@@ -499,7 +546,25 @@ async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
 }
 
 function formatNumber(value) { return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(Number(value)); }
-function formatDate(value, lang) { if (!value) return ''; const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value); const date = dmy ? new Date(+dmy[3], +dmy[2] - 1, +dmy[1]) : new Date(value); return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat((withAdditionalLanguages({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' }))[lang] || 'en-GB', { dateStyle: 'medium' }).format(date); }
+const FEED_LOCALES = withAdditionalLanguages({ RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-GB' });
+function parseFeedDate(value) {
+  if (!value) return null;
+  const dmy = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
+  const date = dmy ? new Date(Date.UTC(+dmy[3], +dmy[2] - 1, +dmy[1])) : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+function formatShortDate(value, lang) {
+  const date = parseFeedDate(value);
+  return date ? new Intl.DateTimeFormat(FEED_LOCALES[lang] || 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date) : '';
+}
+function formatDateTime(value, lang) {
+  const date = parseFeedDate(value);
+  return date ? new Intl.DateTimeFormat(FEED_LOCALES[lang] || 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }).format(date) : '';
+}
+function formatFilterDate(value, lang) {
+  const date = parseFeedDate(value);
+  return date ? new Intl.DateTimeFormat(FEED_LOCALES[lang] || 'en-GB', { dateStyle: 'medium', timeZone: 'UTC' }).format(date) : '';
+}
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({
@@ -521,28 +586,38 @@ function makeStyles(theme, sp) {
     route: { fontSize: sp(15), lineHeight: sp(19), fontWeight: '700', color: theme.text },
     strong: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', minWidth: 0, flexShrink: 1 },
     meta: { color: theme.textMuted, fontSize: sp(12), lineHeight: sp(17), minWidth: 0, flexShrink: 1 },
-    price: { color: '#168759', fontSize: sp(16), lineHeight: sp(21), fontWeight: '700', minWidth: 0, flexShrink: 1 },
+    compactMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 },
+    price: { color: '#168759', fontSize: sp(16), lineHeight: sp(21), fontWeight: '700', minWidth: 0, maxWidth: '100%', alignSelf: 'flex-start', flexShrink: 1 },
     contactRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     contactCopy: { flex: 1, minWidth: 0 },
     callButton: { minHeight: 44, width: 44, alignItems: 'center', justifyContent: 'center' },
-    contact: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 },
+    contact: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 },
+    primaryContact: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0, paddingVertical: 5 },
     contactText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), flex: 1, minWidth: 0, flexShrink: 1 },
     // Ссылка находится в колонке: не наследуем flex контактной строки и защищаем высоту при перерасчёте.
     sourceLink: { minHeight: sp(18), flexShrink: 0 },
     sourceText: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 0 },
-    date: { color: theme.textMuted, fontSize: sp(11), lineHeight: sp(16), minWidth: 0, flexShrink: 1 },
+    date: { color: theme.textMuted, fontSize: sp(11), lineHeight: sp(16), minWidth: 0, flexShrink: 0, textAlign: 'right' },
     details: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: theme.border, marginTop: 3, paddingTop: 6, minWidth: 0 },
     descriptionBox: { minWidth: 0 },
     original: { color: theme.text, fontSize: sp(13), lineHeight: sp(18), minWidth: 0, flexShrink: 1 },
     actionLabel: { fontSize: sp(12), lineHeight: sp(17) },
-    cardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 },
-    textAction: { alignSelf: 'flex-start', minHeight: 44, maxWidth: '100%', minWidth: 0, paddingVertical: 8, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', borderWidth: 1, borderColor: '#168759', borderRadius: 14 },
+    cardActions: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'stretch', gap: 6, minWidth: 0 },
+    textAction: { minHeight: 44, minWidth: 0, paddingVertical: 7, paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', gap: 5, justifyContent: 'center', borderWidth: 1, borderColor: '#168759', borderRadius: 14 },
+    expandAction: { flex: 1, flexBasis: 0 },
+    shareAction: { flex: 1, flexBasis: 0 },
+    whatsappAction: { width: 44, minWidth: 44, minHeight: 44, flexShrink: 0, paddingHorizontal: 0, alignItems: 'center' },
     link: { color: '#168759', fontSize: sp(13), lineHeight: sp(18), fontWeight: '600', flexShrink: 1, minWidth: 0 },
     newListings: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, borderWidth: 1, borderColor: '#168759', backgroundColor: theme.surface },
     newListingsText: { color: theme.text, fontSize: sp(13), fontWeight: '600' },
     warning: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.surface }, warningText: { color: theme.textMuted, fontSize: sp(12) },
     center: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 14 }, message: { color: theme.textMuted, textAlign: 'center', fontSize: sp(14), lineHeight: sp(20) },
     retryButton: { alignSelf: 'stretch' },
+    whatsappOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,.48)' },
+    whatsappSheet: { backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 8 },
+    whatsappTitle: { color: theme.text, fontSize: sp(17), lineHeight: sp(23), fontWeight: '700', marginBottom: 4 },
+    whatsappChoice: { minHeight: 48, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+    whatsappCancel: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     modalOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, zIndex: 10 }, keyboardAvoiding: { flex: 1, justifyContent: 'flex-end' }, scrim: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,.62)' },
     sheet: { maxHeight: '90%', backgroundColor: theme.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderColor: theme.textMuted, shadowColor: '#000000', shadowOffset: { width: 0, height: -6 }, shadowOpacity: 0.24, shadowRadius: 16, elevation: 20, padding: 14, paddingBottom: 14, gap: 8, minWidth: 0 },
     sheetHandle: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center', backgroundColor: theme.textMuted, marginBottom: 4 },
