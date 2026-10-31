@@ -72,8 +72,10 @@ for name, (adapter_db, mode) in zip(sys.argv[1:], expected):
         raise SystemExit('unexpected_adapter_database')
     if values.get('EXTERNAL_FREIGHT_SOURCE_DB') != '/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3':
         raise SystemExit('unexpected_source_database')
-    if values.get('EXTERNAL_FREIGHT_SOURCE_MODE', mode) != mode:
+    if values.get('EXTERNAL_FREIGHT_SOURCE_MODE') != mode:
         raise SystemExit('unexpected_source_mode')
+    if values.get('EXTERNAL_FREIGHT_IMPORT_ENABLED', '').lower() not in {'1', 'true', 'yes'}:
+        raise SystemExit('feed_import_not_enabled')
 PY
 units=(urtruck-qa2.service urtruck-qa2-feed-bridge.service urtruck-qa2-owned-feed-bridge.service)
 for unit in "${units[@]}"; do systemctl cat "$unit" >/dev/null; done
