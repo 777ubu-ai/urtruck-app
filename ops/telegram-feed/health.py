@@ -24,44 +24,84 @@ def readonly(path):
     return db
 
 
-def snapshot(root=ROOT, now=None):
+def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
     now = time.time() if now is None else now
+    root = Path(root)
+    qa_root = Path(qa_root)
     with readonly(root/'state/feed.sqlite3') as db:
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('last_tick','publish_after')"))
         tick = datetime.fromisoformat(metadata['last_tick']).timestamp() if metadata.get('last_tick') else 0
         queue = dict(db.execute('SELECT status,count(*) FROM queue GROUP BY status'))
         latest = db.execute('SELECT max(received_at) FROM app_messages').fetchone()[0]
+        received_last_hour = db.execute('SELECT count(*) FROM app_messages WHERE received_at>=?',
+                                        (now - 3600,)).fetchone()[0]
+        published_last_hour = db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_at>=?",
+                                         (now - 3600,)).fetchone()[0]
+        latest_published = db.execute("SELECT max(published_at) FROM queue WHERE status='published'").fetchone()[0]
         source_errors = db.execute('SELECT count(*) FROM source_health WHERE error IS NOT NULL').fetchone()[0]
         result = {'telegram': {'ready': queue.get('queued', 0),
                   'progress': queue.get('published', 0), 'paused_until': float(metadata.get('publish_after') or 0),
-                  'uncertain': queue.get('sending', 0)+queue.get('uncertain', 0)},
+                  'uncertain': queue.get('sending', 0)+queue.get('uncertain', 0),
+                  'received_messages_last_hour': received_last_hour,
+                  'published_rows_last_hour': published_last_hour,
+                  'latest_published_at': latest_published},
                   'source_errors': source_errors, 'heartbeat_age': max(0, now-tick),
                   'last_received_age': max(0, now-latest) if latest else None}
     for name, directory in [('incoming', 'external-feed'), ('owned', 'external-feed-owned')]:
-        path = Path('/home/ubuntu/urtruck-qa2')/directory/'adapter.sqlite3'
+        path = qa_root/directory/'adapter.sqlite3'
         if not path.is_file():
             result[name] = {'error': 'state_missing'}
             continue
         with readonly(path) as db:
             cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
-            eligible = '''delivered_at IS NULL AND quarantined_at IS NULL
+            columns = {row[1] for row in db.execute('PRAGMA table_info(selected_outbox)')}
+            terminal_clause = ' AND terminal_at IS NULL' if 'terminal_at' in columns else ''
+            eligible = f'''delivered_at IS NULL AND quarantined_at IS NULL{terminal_clause}
                 AND (json_extract(payload,'$.source_published_at') IS NULL
                     OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))'''
-            ready = db.execute(f'SELECT count(*) FROM selected_outbox WHERE {eligible} '
-                               'AND next_attempt_at<=?', (cutoff, now)).fetchone()[0]
+            ready_query = f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?'
+            ready = db.execute(ready_query, (cutoff, now)).fetchone()[0]
+            backoff = db.execute(
+                f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at>?',
+                (cutoff, now)).fetchone()[0]
             progress = db.execute('SELECT max(delivered_at) FROM selected_outbox').fetchone()[0]
-            pending = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NULL').fetchone()[0]
-            expired_pending = db.execute('''SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL
-                AND quarantined_at IS NULL AND json_extract(payload,'$.source_published_at') IS NOT NULL
+            pending = db.execute(f'SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL '
+                                 f'AND quarantined_at IS NULL{terminal_clause}').fetchone()[0]
+            expired_pending = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL
+                AND quarantined_at IS NULL{terminal_clause} AND json_extract(payload,'$.source_published_at') IS NOT NULL
                 AND julianday(json_extract(payload,'$.source_published_at')) <
                     julianday(?)''', (cutoff,)).fetchone()[0]
-            quarantined = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NOT NULL').fetchone()[0]
+            quarantined = db.execute('SELECT count(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL').fetchone()[0]
+            terminal_expired = 0
+            if {'terminal_at', 'terminal_reason'} <= columns:
+                terminal_expired = db.execute("SELECT count(*) FROM selected_outbox WHERE terminal_reason IN "
+                                              "('source_retention_expired','api_expired')").fetchone()[0]
+            confirmed_last_hour = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at>=?',
+                                             (datetime.fromtimestamp(now-3600, timezone.utc).isoformat(),)).fetchone()[0]
+            oldest_ready = db.execute(f'''SELECT min(json_extract(payload,'$.source_published_at'))
+                FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?
+                AND json_extract(payload,'$.source_published_at') IS NOT NULL''', (cutoff, now)).fetchone()[0]
+            oldest_ready_age = None
+            if oldest_ready:
+                try:
+                    oldest_dt = datetime.fromisoformat(oldest_ready.replace('Z', '+00:00'))
+                    oldest_ready_age = max(0, round(now-oldest_dt.timestamp()))
+                except (TypeError, ValueError):
+                    pass
+            missing_publish_time = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE {eligible}
+                AND next_attempt_at<=? AND json_extract(payload,'$.source_published_at') IS NULL''',
+                (cutoff, now)).fetchone()[0]
             result[name] = {'ready': ready, 'pending': pending, 'quarantined': quarantined,
-                            'backlog': pending - expired_pending, 'expired_pending': expired_pending,
+                            'backoff': backoff, 'backlog': ready + backoff,
+                            'expired_pending': expired_pending, 'terminal_expired': terminal_expired,
+                            'confirmed_rows_last_hour': confirmed_last_hour,
+                            'oldest_ready_source_published_at': oldest_ready,
+                            'oldest_ready_age_seconds': oldest_ready_age,
+                            'ready_missing_published_at': missing_publish_time,
                             'progress': progress, 'paused_until': 0}
-    source_path = Path('/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3')
-    incoming_path = Path('/home/ubuntu/urtruck-qa2/external-feed/adapter.sqlite3')
-    owned_path = Path('/home/ubuntu/urtruck-qa2/external-feed-owned/adapter.sqlite3')
+    source_path = root/'state/feed.sqlite3'
+    incoming_path = qa_root/'external-feed/adapter.sqlite3'
+    owned_path = qa_root/'external-feed-owned/adapter.sqlite3'
     if source_path.is_file() and incoming_path.is_file() and owned_path.is_file():
         with readonly(source_path) as source:
             source.execute('ATTACH DATABASE ? AS incoming_state',
@@ -81,6 +121,8 @@ def snapshot(root=ROOT, now=None):
             result['incoming']['source_waiting'] = waiting
             result['incoming']['source_backlog'] = waiting
             result['incoming']['source_progress'] = progress
+            result['incoming']['source_received_messages_last_hour'] = source.execute(
+                'SELECT count(*) FROM app_messages WHERE received_at>=?', (now-3600,)).fetchone()[0]
     return result
 
 
