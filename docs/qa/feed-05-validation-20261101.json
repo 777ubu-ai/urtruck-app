@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-01",
+  "source_commit": "e4cd3bacb7e8e63bb93922574de9b04d44d13344",
+  "source_tree": "12258e8e4f3cb43fec1f8ce08583892c3ae70d48",
+  "base_commit": "2f1d8511665522a11e1172d1001d2d89f6f539f8",
+  "backend_suite": {
+    "pytest_passed": 1914,
+    "unittest_passed": 58,
+    "failed_summaries": [],
+    "source_commit": "16502c44be387aa5cbc3ebec061a5958ca4c1391",
+    "runner_exit": 0,
+    "note": "Subsequent changes touch only deploy script and its runtime test; application/backend runtime files are identical."
+  },
+  "final_deploy_runtime": {
+    "passed": 6,
+    "failed": 0,
+    "scope": "actual remote shell body; local filesystem, systemctl/curl/SSH boundary replaced by test shims"
+  },
+  "final_deploy_contract": {
+    "passed": 7,
+    "failed": 0
+  },
+  "targeted_feed_suite": {
+    "passed": 307,
+    "failed": 0,
+    "note": "Intermediate phase, overlaps full suite; not added to total."
+  },
+  "extra_health_regressions": {
+    "passed": 36,
+    "failed": 0,
+    "note": "Intermediate phase, overlaps full suite; not added to total."
+  },
+  "graphify_preflight": {
+    "nodes": 224,
+    "edges": 523,
+    "llm": false
+  },
+  "file_sha256": {
+    ".github/workflows/deploy-qa2-external-feed.yml": "f0740a1b62d252b3d94430423fdd1523a3e1e91ed1b3c8d6344aeeabc295bb2e",
+    "backend/api/external_freight.py": "6b9ec57a3265cc2abd0f6152f5b6ed28b690287eccf7cbc547fba606bfee5921",
+    "backend/database/external_freight_dal.py": "6f8c1f7a0ba7f1dd83037cd5113553c864c63e87bd59308dd6ff2e3bf2cab194",
+    "backend/services/external_freight_import_adapter.py": "c24d11a148c5e4dcad4f64dd3750ee42be9f13cd45e2a3d09eccd5fa86b04bcb",
+    "backend/services/external_freight_parser.py": "05ede4cb59127d239ae7c8a52aa0cb59841575c27f5377a6640b775f102d1fbe",
+    "backend/services/external_freight_queue_bridge.py": "51bbe230c736d289511e8a800941b5a06901b2d6254502776057ee2b2abce93c",
+    "backend/tests/test_external_feed_audit_05.py": "2f05212ca68fa88b118b92dc0da00626bc1c8c2c601c0699a41c8630b6a256c7",
+    "backend/tests/test_external_freight_feed.py": "f61f422d9829a3274f1bc5783673dc519e935da93445eca23f7d31ff46eb752a",
+    "backend/tests/test_external_freight_queue_bridge.py": "cedfd153b82657af8610681fd2c1f2398afb938fabeb7d716376792e25348743",
+    "backend/tests/test_feed05_deploy_runtime.py": "11cf67e3d03c0eeba0044a786ff35ad0f83288c3a725ca1c416075b9c1cca182",
+    "backend/tests/test_telegram_feed_health_snapshot.py": "e44dbb2b12cbb839bafac08db460749cf46a971b38c4315c89adfefb5979183b",
+    "ops/telegram-feed/health.py": "6c454cc2e1190dc590cf66421cf525f7860051c82ca1effa5cde53cab27b9889",
+    "ops/telegram-feed/urtruck-qa2-feed-health.service": "7f16768d3855bf203bdb329bf931fb51afa6af7737755c21310dd1c05ea479c1",
+    "ops/telegram-feed/urtruck-qa2-feed-health.timer": "5802241bb923e20754c09e7b7d9eb73f8192a565879a3e45e77bf7c13db711f1",
+    "scripts/qa/deploy_external_feed_candidate.sh": "5eb2cdae59e174ec4ea1b00cd7d71d6dfdfed89b6fb9bcae097281df20ada253",
+    "tests/frontend/test_qa2_external_feed_deploy_workflow.mjs": "1be09ffc481fa0bc55576c18d52898c223bfa512d5a41296f47797b427085738"
+  },
+  "acceptance": {
+    "qa2_deployed": false,
+    "server_backlog_recovery_verified": false,
+    "real_message_recall_verified": false,
+    "physical_devices_verified": false,
+    "production_changed": false,
+    "store_upload": false
+  },
+  "github_gate": {
+    "run_id": 41289208431,
+    "conclusion": "failure_before_steps",
+    "jobs": 3,
+    "runner_allocated": false,
+    "steps_per_job": 0
+  }
+}
