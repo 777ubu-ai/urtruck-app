@@ -134,6 +134,9 @@ rollback() {
   for path in "${code_paths[@]}"; do
     if test -f "$backup/$path"; then install -D -m 0644 "$backup/$path" "$qa/$path"; fi
   done
+  if test -f "$backup/health-module-was-absent"; then
+    rm -f -- "$qa/ops/telegram-feed/health.py"
+  fi
   for unit in "${health_units[@]}"; do
     if test -f "$backup/$unit"; then
       sudo -n install -m 0644 "$backup/$unit" "/etc/systemd/system/$unit"

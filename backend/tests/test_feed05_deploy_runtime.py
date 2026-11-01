@@ -87,6 +87,7 @@ with sqlite3.connect(os.environ['FEED05_ADAPTER']) as db:db.execute("INSERT INTO
         assert not (qa/'external-feed-component-manifest').exists()
         if existing == 'absent':
             assert not (unit_root/'urtruck-qa2-feed-health.timer').exists()
+            assert not (qa/'ops/telegram-feed/health.py').exists()
         else:
             assert (unit_root/'urtruck-qa2-feed-health.timer').read_text()=='previous urtruck-qa2-feed-health.timer'
             assert (qa/'ops/telegram-feed/health.py').read_text()=='# previous QA2 health\n'
