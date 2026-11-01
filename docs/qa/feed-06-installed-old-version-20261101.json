@@ -1,0 +1,107 @@
+{
+  "schema": "urtruck.feed06.installed-old-version-proof.v1",
+  "measured_at_utc": "2026-11-01T15:36:48.774203Z",
+  "environment": "QA2 read-only; no deployment, queue mutation, or service restart",
+  "source_revisions": {
+    "installed_backend_sha": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+    "installed_sha_source": "/home/ubuntu/urtruck-qa2/backend/.qa-source-sha",
+    "installed_component_manifest_present": false,
+    "backend_api_version": "1.0.50",
+    "backend_build_time": "2026-10-30 08:54",
+    "backend_api_sha_available": false,
+    "candidate_sha": "4042bd5c9cd17574f3e8cc758fea611ca0ed5b8b",
+    "candidate_installed": false
+  },
+  "component_hashes": {
+    "installed": {
+      "backend/services/external_freight_queue_bridge.py": "99147c562d8c89faedc1d718b5c152bb437635cfc729e01d7f723751021d6433",
+      "backend/services/external_freight_import_adapter.py": "960eda356758c2191507b2b565e0841834fb1bd0189f1641c99d639d366642f8",
+      "backend/services/external_freight_parser.py": "be9f8232a9b82ee7b36f6ed90a307c31bc3bdbf4c80041b4d1d200b55bb13384",
+      "collector/health.py": "56441a33e19785fbe4ef1028e8cf95ed855c6a7cc0456e66cc2ebb36c1f5e108"
+    },
+    "candidate": {
+      "backend/services/external_freight_queue_bridge.py": "c21b6a2860cfd1ba5d31076ce9beb24f41214ed1fcfc1ea1899e11f1a538529e",
+      "backend/services/external_freight_import_adapter.py": "9b94f7d19f656dd399b35f96c688ffe7320e06ee6221fdf4465f1dc85e261140",
+      "backend/services/external_freight_parser.py": "425d9d989a9336c0c8407e82cc924449e040be219ba355e51e4080d9ce20586e",
+      "ops/telegram-feed/health.py": "6c454cc2e1190dc590cf66421cf525f7860051c82ca1effa5cde53cab27b9889"
+    },
+    "terminal_expiry_support": {
+      "installed_adapter_schema_has_terminal_at": false,
+      "installed_adapter_schema_has_terminal_reason": false,
+      "candidate_adapter_implements_terminal_states": true,
+      "candidate_health_counts_expired_pending_and_terminal_expired": true
+    }
+  },
+  "queue_snapshot": {
+    "measured_at_utc": "2026-11-01T15:36:48.774203Z",
+    "incoming_outbox_rows": 183317,
+    "incoming_ready_nonexpired": 0,
+    "incoming_backoff_nonexpired": 42,
+    "incoming_expired_pending_over_10_days": 236,
+    "incoming_terminal_expired": null,
+    "incoming_quarantined": 0,
+    "owned_outbox_rows": 11742,
+    "owned_ready_nonexpired": 0,
+    "owned_backoff_nonexpired": 0,
+    "owned_expired_pending_over_10_days": 0,
+    "owned_quarantined": 0,
+    "unit": "outbox rows"
+  },
+  "comparison": {
+    "previous_measured_at_utc": "2026-10-31T09:48:30Z",
+    "previous_incoming_expired_pending": 219,
+    "current_incoming_expired_pending": 236,
+    "delta": 17,
+    "elapsed_hours": 29.8,
+    "note": "Expired rows remain undelivered without an installed terminal state. They are outside the current eligible ready/backoff window; this proves retained expired-pending rows, not that every row is being actively retried."
+  },
+  "health_and_systemd": {
+    "collector_service": "active/running",
+    "collector_restarts": 0,
+    "collector_health_timer": "active/waiting",
+    "collector_health_file_mtime_utc": "2026-11-01T15:35:59.873828Z",
+    "collector_health_problems": [],
+    "collector_source_errors": 0,
+    "health_snapshot_has_expired_pending_field": false,
+    "qa2_specific_health_timer": "inactive; not installed",
+    "incoming_bridge_timer": "active",
+    "incoming_bridge_transient_failure": {
+      "at_utc": "2026-11-01T15:36:05Z",
+      "exit_status": 1,
+      "recovered_by_next_timer_run_at_utc": "2026-11-01T15:36:43Z",
+      "exception_class": null,
+      "cause": "unknown from available journal summary"
+    },
+    "owned_bridge_timer": "active; latest oneshot exit status 0"
+  },
+  "android_qa": {
+    "device": "Xiaomi 25078RA3EY; adb connected",
+    "installed_package": "com.urtruck.app.qa2",
+    "installed_version_name": "1.0.12-qa2",
+    "installed_version_code": 214494480,
+    "installed_apk_source_sha": null,
+    "installed_signer_sha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+    "expected_qa2_build_signer_sha256": "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c",
+    "installed_apk_sha256": "03562e2401f3bdf2ce870a8f2bac871ee581ce7f3ccba04f1ca9c93367062889",
+    "candidate_workflow_version_name": "1.0.12-qa2",
+    "candidate_workflow_version_code": 214494480,
+    "candidate_in_place_update_preflight": "package/version/signature match; candidate APK not built or installed",
+    "huawei_device_connected": false
+  },
+  "build_attempt": {
+    "workflow": "build-android-apk.yml",
+    "run_id": 41322163276,
+    "url": "https://github.com/777ubu-ai/urtruck-app/actions/runs/41322163276",
+    "source_sha": "4042bd5c9cd17574f3e8cc758fea611ca0ed5b8b",
+    "workflow_result": "failure_before_steps",
+    "jobs": 1,
+    "steps": 0,
+    "note": "Repository secret names for QA2 API, Firebase config, and MapKit key are present, values were not read. GitHub did not allocate a runner, so config validation/build/artifact verification did not execute."
+  },
+  "limitations": [
+    "No exact installed APK source SHA was embedded; backend SHA is independently confirmed by .qa-source-sha.",
+    "HTTP 200/ACK does not prove API active status or rendered client visibility.",
+    "No real message text/contact was copied into this report.",
+    "No queue rows were edited, deleted, or manually cleared."
+  ]
+}
