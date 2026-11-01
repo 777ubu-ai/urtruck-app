@@ -243,6 +243,30 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     destination_country = _bounded(raw.get("destination_country"), 3).upper() if raw.get("destination_country") else None
     if any(code and not re.fullmatch(r"[A-Z]{2,3}", code) for code in (origin_country, destination_country)):
         raise ValueError("invalid_country_code")
+    # Enforce the same publication contract at the API storage boundary, even
+    # if a caller bypasses the Telegram bridge. Optional commercial fields are
+    # deliberately excluded; vehicle offers require one location, cargo needs
+    # both route endpoints.
+    has_route = bool(raw.get("origin") and raw.get("destination"))
+    has_vehicle_location = bool(raw.get("origin") or raw.get("destination"))
+    core_fields_complete = bool(contacts) and (
+        has_route if kind == "cargo" else has_vehicle_location if kind == "vehicle" else False
+    )
+    if status == "active" and not core_fields_complete:
+        status = "review"
+    explicit_review_reason = bool(raw.get("review_reason"))
+    review_reason = str(raw.get("review_reason") or "")[:128]
+    if review_reason and not re.fullmatch(r"[a-z][a-z0-9_|]{0,127}", review_reason):
+        raise ValueError("invalid_review_reason")
+    if status == "review" and not review_reason:
+        missing = []
+        if not contacts:
+            missing.append("missing_contact")
+        if kind == "cargo" and not (raw.get("origin") and raw.get("destination")):
+            missing.append("missing_route")
+        elif kind == "vehicle" and not (raw.get("origin") or raw.get("destination")):
+            missing.append("missing_location")
+        review_reason = "_and_".join(missing) or "classification_review"
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
@@ -258,6 +282,10 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "amount": amount, "currency": currency, "price_state": price_state,
         "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
+        "review_reason": review_reason or None,
+        "core_fields_complete": core_fields_complete,
+        "review_requested": raw.get("status") == "review",
+        "review_reason_explicit": explicit_review_reason,
     }
 
 
@@ -307,7 +335,9 @@ def import_records(records):
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (
-                        current["status"] == "active" and values["status"] == "review" and unchanged):
+                        current["status"] == "active" and values["status"] == "review" and unchanged
+                        and values["core_fields_complete"] and not values["review_requested"]
+                        and not values["review_reason_explicit"]):
                     values["status"] = current["status"]
                 if values["status"] == "closed":
                     values["kind"] = current["kind"]
@@ -320,7 +350,11 @@ def import_records(records):
                 all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
                 c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
                 action = "created"
-            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), "{}"))
+            audit_details = json.dumps(
+                {"review_reason": values["review_reason"]} if values["status"] == "review" else {},
+                separators=(",", ":"),
+            )
+            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), audit_details))
             c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
             c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
             results.append({"id": values["id"], "result": action, "status": values["status"]})

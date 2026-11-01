@@ -15,13 +15,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
-from services.external_freight_parser import map_selected_messages
+from services.external_freight_parser import apply_core_review, map_selected_messages, _phone_identity
 from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 10 * 24 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261101-bullet-segments-v16'
+PARSER_REVISION = '20261101-core-fields-v17'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -46,7 +46,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261101-bullet-segments-v11'
+    parser_revision = '20261101-core-fields-v12'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -127,6 +127,8 @@ class PublishedQueueBridge:
         for row in rows:
             try:
                 records = self.parse(dict(row))
+                for record in records:
+                    apply_core_review(record)
                 segment_ids = {record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old = state.execute(
@@ -204,7 +206,11 @@ class IncomingQueueBridge(PublishedQueueBridge):
     @staticmethod
     def fingerprint(record):
         normalized = " ".join(record["original_text"].casefold().split())
-        value = [normalized, sorted(set(record.get('source_contacts') or []))]
+        # Older outbox rows may have the contact only in `contacts`; use it as
+        # a fallback so parser-mode upgrades keep the same dedup identity.
+        source_contacts = record.get('source_contacts') or record.get('contacts') or []
+        contact_ids = {_phone_identity(contact) or str(contact).strip() for contact in source_contacts}
+        value = [normalized, sorted(contact_ids)]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
     def find_duplicate(self, fingerprint, now, pending_payloads=None, pending_dedup=None):
@@ -308,11 +314,16 @@ class IncomingQueueBridge(PublishedQueueBridge):
             raw=dict(row)
             deleted_source = self.mode == "owned" and str(raw.get("text", "")).strip().casefold() == "заявка закрыта"
             reason="accepted"
+            review_reasons=[]
             try:
                 # A deletion tombstone is control data, not an incomplete listing.
                 # Process it by closing the previous segments below instead of
                 # trying to parse it as a new listing with missing route fields.
                 records=[] if deleted_source else self.parse(raw)
+                for record in records:
+                    # Run only after segmentation and safe footer-contact
+                    # attribution, immediately before the durable outbox.
+                    apply_core_review(record)
                 identities={record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
@@ -345,14 +356,15 @@ class IncomingQueueBridge(PublishedQueueBridge):
                         duplicates+=1;reason="exact_content_duplicate";continue
                     if record["status"]=="review":
                         review+=1
-                        classification=classify_message(record["original_text"])
-                        reason=(classification.get('reason','ambiguous_kind')
-                                if classification.get("kind") is None else "unresolved_direction")
+                        review_reasons.append(record.get("review_reason") or "unresolved_direction")
                     if record["status"]=="active":
                         pending_dedup[fingerprint]=(identity,row["source_date"])
                     enqueue_segment(record)
             except (ValueError,TypeError,OverflowError):
                 rejected+=1;reason="invalid_source_record"
+            if review_reasons:
+                review_reason="|".join(sorted(set(review_reasons)))
+                reason=("partial_review:" if reason not in {"accepted", "invalid_source_record"} else "review:")+review_reason
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
             seen_updates.append((row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
             reasons[reason]=reasons.get(reason,0)+1
@@ -391,7 +403,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261101-bullet-segments-v16'
+    parser_revision = PARSER_REVISION
     parse = staticmethod(map_owned_messages)
 
     @staticmethod

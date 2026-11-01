@@ -1,4 +1,5 @@
 """Регрессии ТЗ: полный исходник и цена не должны скрывать объявления/номера."""
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -16,8 +17,9 @@ def feed_db(monkeypatch, tmp_path):
 def record(message, **changes):
     return {'source_id': 'master-spec', 'source_message_id': str(message), 'kind': 'cargo',
             'original_text': 'Нужен тент, груз готов', 'classification_status': 'approved',
+            'origin': 'Ташкент', 'destination': 'Алматы', 'contacts': ['+77000000012'],
             'source_published_at': (datetime.now(timezone.utc)-timedelta(minutes=int(message))).isoformat(),
-            'contacts': [], **changes}
+            **changes}
 
 
 def test_source_contacts_do_not_replace_local_contact_or_original_text():
@@ -31,11 +33,14 @@ def test_source_contacts_do_not_replace_local_contact_or_original_text():
 
 
 def test_existing_empty_contacts_are_visible_without_reimport_or_date_reset():
-    raw = record(1, original_text='Алматы → Москва\n12345678\nТент\nГруз готов\nДокументы готовы')
+    raw = record(1, original_text='Алматы → Москва\n12345678\nТент\nГруз готов\nДокументы готовы', contacts=[])
     dal.import_records([raw])
-    item = dal.list_items(kind='cargo')['items'][0]
-    assert item['contacts'] == []
-    assert item['source_contacts'] == ['12345678']
+    from database.external_freight_connection import get_conn
+    with get_conn() as c:
+        item = dict(c.execute("SELECT * FROM external_freight_items WHERE source_message_id='1'").fetchone())
+    assert item['status'] == 'review'
+    assert json.loads(item['contacts']) == []
+    assert dal._serialize(item)['source_contacts'] == ['12345678']
     assert item['source_published_at'] == raw['source_published_at']
 
 

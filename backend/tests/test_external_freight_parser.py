@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from services.external_freight_parser import map_selected_message
+from services.external_freight_parser import apply_core_review, map_selected_message, map_selected_messages
 
 
 def _queue(text, **extra):
@@ -68,13 +68,14 @@ def test_unknown_currency_is_not_guessed_and_known_space_route_is_supported():
     assert item["currency"] is None
 
 
-def test_ambiguous_price_invalid_date_and_multiple_routes_stay_visible_or_unknown():
+def test_ambiguous_price_invalid_date_and_multiple_routes_keep_route_reason():
     price = map_selected_message(_queue("Нужен тент, груз готов\nХоргос → Алматы\n4,500 USD"))
     invalid_date = map_selected_message(_queue("Нужен тент, груз готов\nХоргос → Алматы\n32.13.2026"))
     multi_route = map_selected_message(_queue("Нужен тент, груз готов\nХоргос → Алматы\nТашкент → Астана"))
     assert price["amount"] is None and price["price_state"] == "unknown"
     assert invalid_date["loading_date"] is None
     assert multi_route["status"] == "active"
+    assert multi_route["review_reason"] == "ambiguous_route"
     assert multi_route["origin"] is None and multi_route["destination"] is None
     # Keep the source-post contact on the single full-text card when routes
     # cannot be split safely; don't discard the post-level phone.
@@ -103,6 +104,7 @@ def test_hyphenated_city_is_not_split_without_spaces():
 def test_hyphen_multi_route_stays_visible_without_fabricated_route():
     item = map_selected_message(_queue("Нужен тент\nАлашанькоу - Ташкент\nХоргос — Алматы\nГруз готов"))
     assert item["status"] == "active"
+    assert item["review_reason"] == "ambiguous_route"
     assert item["contacts"] == ["+7 700 123 45 67"]
     assert item["origin"] is None and item["destination"] is None
 
@@ -119,7 +121,7 @@ def test_inline_conditions_not_interpreted_as_destination():
     assert item["destination"] is None
 
 
-def test_missing_route_stays_visible_with_original_text():
+def test_missing_route_is_preserved_without_invented_values_at_parser_stage():
     item = map_selected_message(_queue("Нужен тент\nГруз готов"))
     assert item["status"] == "active"
     assert item["origin"] is None and item["destination"] is None
@@ -200,6 +202,7 @@ def test_compact_and_explicit_routes_in_same_message_stay_visible_unattributed()
     item = map_selected_message(_queue(text))
     assert item["kind"] == "vehicle"
     assert item["status"] == "active"
+    assert item["review_reason"] == "ambiguous_route"
     assert item["origin"] is None and item["destination"] is None
 
 
@@ -208,6 +211,7 @@ def test_compact_and_labelled_routes_in_same_message_stay_visible_unattributed()
     item = map_selected_message(_queue(text))
     assert item["kind"] == "vehicle"
     assert item["status"] == "active"
+    assert item["review_reason"] == "ambiguous_route"
     assert item["origin"] is None and item["destination"] is None
 
 
@@ -216,6 +220,7 @@ def test_compact_route_with_partial_label_stays_visible_unattributed():
     item = map_selected_message(_queue(text))
     assert item["kind"] == "vehicle"
     assert item["status"] == "active"
+    assert item["review_reason"] == "ambiguous_route"
     assert item["origin"] is None and item["destination"] is None
 
 
@@ -224,6 +229,7 @@ def test_compact_route_with_unpunctuated_partial_label_stays_visible_unattribute
     item = map_selected_message(_queue(text))
     assert item["kind"] == "vehicle"
     assert item["status"] == "active"
+    assert item["review_reason"] == "ambiguous_route"
     assert item["origin"] is None and item["destination"] is None
 
 
@@ -250,3 +256,49 @@ def test_telegram_contact_without_price_keeps_unknown_price():
     assert item['amount'] is None
     assert item['price_state'] == 'unknown'
     assert item['weight'] == 23
+
+
+def test_core_fields_gate_keeps_optional_fields_optional():
+    item = map_selected_message(_queue(
+        "Груз готов\nХоргос → Алматы\n+77001234567",
+        phones='[]',
+    ))
+    assert item["status"] == "active"
+    assert item["price_state"] == "unknown"
+    assert item["weight"] is None and item["volume"] is None
+    assert item["body_types"] == []
+
+
+def test_core_fields_gate_reviews_missing_contact_or_route_with_specific_reason():
+    no_contact = apply_core_review(map_selected_message(_queue(
+        "Груз готов\nХоргос → Алматы", phones='[]')))
+    no_route = apply_core_review(map_selected_message(_queue(
+        "Груз готов\n+77001234567", phones='[]')))
+    partial_route = apply_core_review(map_selected_message(_queue(
+        "Груз готов\nОткуда: Хоргос\n+77001234567", phones='[]')))
+    assert (no_contact["status"], no_contact["review_reason"]) == ("review", "missing_contact")
+    assert (no_route["status"], no_route["review_reason"]) == ("review", "missing_route")
+    assert (partial_route["status"], partial_route["review_reason"]) == ("review", "incomplete_route")
+
+
+def test_vehicle_core_fields_allow_one_location_but_require_contact():
+    located = apply_core_review(map_selected_message(_queue(
+        "Есть свободная машина\nАлматы\n+77001234567", phones='[]')))
+    no_location = apply_core_review(map_selected_message(_queue(
+        "Есть свободная машина\n+77001234567", phones='[]')))
+    assert located["kind"] == "vehicle" and located["status"] == "active"
+    assert located["origin"] == "Алматы" and located["destination"] is None
+    assert no_location["kind"] == "vehicle" and no_location["status"] == "review"
+    assert no_location["review_reason"] == "missing_location"
+
+
+def test_explicit_common_footer_is_applied_before_core_field_gate():
+    text = (
+        "1. Груз готов\nХоргос-Астана\n"
+        "2. Груз готов\nАлматы-Москва\n"
+        "Общий контакт: +77001234567"
+    )
+    items = [apply_core_review(item) for item in map_selected_messages(_queue(text, phones='[]'))]
+    assert len(items) == 2
+    assert all(item["status"] == "active" for item in items)
+    assert all(item["contacts"] == ["+77001234567"] for item in items)

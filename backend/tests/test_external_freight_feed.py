@@ -81,7 +81,7 @@ def _import(record, *, key="test-importer-key-only"):
     return client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": key}, json={"records": [record]})
 
 
-def test_hidden_entity_contact_is_available_for_all_blocks_without_route_assignment():
+def test_hidden_entity_contact_without_confirmed_assignment_remains_in_review():
     from services.external_freight_parser import map_selected_messages
     text = 'Алматы → Москва\nНужен тент\n\nТашкент → Казань\nНужен тент'
     items = map_selected_messages({'source_id': 'entity-test', 'source_message_id': '44',
@@ -93,10 +93,13 @@ def test_hidden_entity_contact_is_available_for_all_blocks_without_route_assignm
     global _actor
     _actor = {'id': 'driver', 'role': 'driver'}
     rows = client.get('/api/v1/external-freight').json()['items']
-    assert len(rows) == 2
-    for row in rows:
-        assert row['contacts'] == []
-        assert row['source_contacts'] == ['+998901234567']
+    assert rows == []
+    with get_conn() as c:
+        stored = c.execute("SELECT status,contacts,source_contacts,original_text FROM external_freight_items WHERE source_id='entity-test'").fetchall()
+    assert len(stored) == 2
+    for row in stored:
+        assert row['status'] == 'review' and row['contacts'] == '[]'
+        assert row['source_contacts'] == '[\"+998901234567\"]'
         assert row['original_text'] == text
 
 
@@ -279,7 +282,7 @@ def test_only_verified_owned_telegram_source_can_pass_through_incomplete_posts()
     owned.update(origin_source="UrTruck_obyavleniya", contacts=[])
     response = _import(owned)
     assert response.status_code == 200, response.text
-    assert response.json()["results"][0]["status"] == "active"
+    assert response.json()["results"][0]["status"] == "review"
 
     other = _record(
         source="another-source", message="raw-other-post", text="Пост без распознанного направления",
@@ -316,6 +319,39 @@ def test_ambiguous_missing_date_and_closed_source_are_not_published():
     global _actor
     _actor = {"id": "driver", "role": "driver"}
     assert client.get("/api/v1/external-freight").json()["items"] == []
+
+
+def test_api_requires_core_fields_and_replays_an_explicit_review_demotion():
+    valid = _record(source="core-contract", message="valid", kind="cargo",
+                    text="Груз готов. Маршрут Алматы → Москва")
+    created = _import(valid).json()["results"][0]
+    assert created["status"] == "active"
+    no_contact = _record(source="core-contract", message="no-contact", kind="cargo",
+                         text="Груз готов. Маршрут Алматы → Москва", status="active")
+    no_contact["contacts"] = []
+    no_route = _record(source="core-contract", message="no-route", kind="cargo",
+                       text="Груз готов", status="active")
+    no_route["origin"] = no_route["destination"] = None
+    no_vehicle_location = _record(source="core-contract", message="no-vehicle-location",
+                                  kind="vehicle", text="Есть свободная машина", status="active")
+    no_vehicle_location["origin"] = no_vehicle_location["destination"] = None
+    assert _import(no_contact).json()["results"][0]["status"] == "review"
+    no_route_result = _import(no_route).json()["results"][0]
+    no_vehicle_result = _import(no_vehicle_location).json()["results"][0]
+    assert no_route_result["status"] == "review"
+    assert no_vehicle_result["status"] == "review"
+    with get_conn() as c:
+        no_route_item = c.execute("SELECT id FROM external_freight_items WHERE source_id='core-contract' AND source_message_id='no-route'").fetchone()[0]
+        audit = c.execute("SELECT details FROM external_freight_audit WHERE item_id=? ORDER BY created_at DESC LIMIT 1", (no_route_item,)).fetchone()[0]
+    assert json.loads(audit)["review_reason"] == "missing_route"
+
+    demoted = _import({**valid, "status": "review", "classification_status": "review"}).json()["results"][0]
+    assert demoted["id"] == created["id"] and demoted["status"] == "review"
+    with get_conn() as c:
+        assert c.execute("SELECT status FROM external_freight_items WHERE id=?", (created["id"],)).fetchone()[0] == "review"
+    global _actor
+    _actor = {"id": "driver", "role": "driver"}
+    assert all(row["id"] != created["id"] for row in client.get("/api/v1/external-freight").json()["items"])
 
 
 def test_bulk_cargo_wording_is_not_misclassified_as_a_free_vehicle():
@@ -1267,8 +1303,8 @@ def test_continuous_source_to_api_both_roles_without_telegram_publication(tmp_pa
     collector=importlib.util.module_from_spec(spec);spec.loader.exec_module(collector)
     source=tmp_path/'source.sqlite3';db=collector.database(source)
     published=collector.utcnow()
-    collector.capture_for_app(db,'test_channel',98765,1,'Алматы → Москва\nНужна машина\nГруз: шины',published)
-    collector.capture_for_app(db,'test_channel',98765,2,'Астана → Бишкек\nЕсть свободная машина',published)
+    collector.capture_for_app(db,'test_channel',98765,1,'Алматы → Москва\nНужна машина\nГруз: шины\n+77000000001',published)
+    collector.capture_for_app(db,'test_channel',98765,2,'Астана → Бишкек\nЕсть свободная машина\n+77000000002',published)
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     def opener(request,timeout):
         response=client.post('/api/v1/external-freight/import',headers={'X-External-Importer-Key':'test-importer-key-only'},json=json.loads(request.data))
@@ -1284,13 +1320,13 @@ def test_continuous_source_to_api_both_roles_without_telegram_publication(tmp_pa
     for role,kind in [('driver','cargo'),('client','vehicle')]:
         _actor={'id':'actor-'+role,'role':role}
         rows=client.get('/api/v1/external-freight').json()['items']
-        assert len(rows)==1 and rows[0]['kind']==kind and rows[0]['contacts']==[]
+        assert len(rows)==1 and rows[0]['kind']==kind and rows[0]['contacts']
         assert rows[0]['price_state']=='unknown'
     assert IncomingQueueBridge(source,adapter).run_once()['sent']==0
     assert db.execute('select count(*) from queue').fetchone()[0]==0
 
 
-def test_explicit_partial_vehicle_location_is_visible_to_shipper_without_phone_or_price():
+def test_explicit_partial_vehicle_location_without_phone_is_not_public():
     from services.external_freight_parser import map_selected_message
     record=map_selected_message({'source_id':'tg-free-location','source_message':1,
         'source_date':datetime.now(timezone.utc).timestamp(),
@@ -1298,13 +1334,10 @@ def test_explicit_partial_vehicle_location_is_visible_to_shipper_without_phone_o
     response=_import(record)
     assert response.status_code==200
     result=response.json()['results'][0]
-    assert result['status']=='active'
+    assert result['status']=='review'
     global _actor
     _actor={'id':'partial-shipper','role':'client'}
-    item=client.get('/api/v1/external-freight').json()['items'][0]
-    assert item['id']==result['id'] and item['kind']=='vehicle'
-    assert item['origin']=='Маньчжурии' and item['destination'] is None
-    assert item['price_state']=='unknown' and item['contacts']==[]
+    assert client.get('/api/v1/external-freight').json()['items']==[]
     assert _import(record).json()['results'][0]['result']=='replayed'
     _actor={'id':'partial-driver','role':'driver'}
     assert client.get('/api/v1/external-freight').json()['items']==[]

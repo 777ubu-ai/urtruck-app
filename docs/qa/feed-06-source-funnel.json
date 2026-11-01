@@ -1,0 +1,70 @@
+{
+  "schema": "urtruck.feed06.sample-funnel.v1",
+  "environment": "QA2 collector read-only source snapshot; parser evaluated locally",
+  "measured_at": "2026-11-01T15:05:57.542733Z",
+  "timezone": "UTC",
+  "source_publication_window": {
+    "start": "2026-10-22T15:05:57.542733Z",
+    "end": "2026-11-01T15:05:57.542733Z",
+    "days": 10,
+    "unit": "source message publication timestamp"
+  },
+  "sample": {
+    "unique_source_messages": 3033,
+    "sampled_source_count": 17,
+    "selection": "random, up to 200 messages per source",
+    "raw_payloads_saved": false,
+    "real_contact_values_saved": false
+  },
+  "parser_candidate": {
+    "base_source_sha": "8c285829cdf13752a3d76c6c31bc71b6ec11be87",
+    "branch": "integration/urtruck-release-20261031",
+    "working_tree_changes_included": true,
+    "installed_on_qa2": false
+  },
+  "segments": {
+    "total": 6933,
+    "active_cargo": 2580,
+    "active_vehicle": 3,
+    "review_cargo": 4315,
+    "review_vehicle": 4,
+    "closed_cargo": 31,
+    "parse_errors": 0,
+    "unit": "parsed segment, not source message or HTTP attempt"
+  },
+  "review_reasons_segments": {
+    "ambiguous_intent": 25,
+    "ambiguous_route": 238,
+    "ambiguous_route_sections": 348,
+    "invalid_route_value": 19,
+    "missing_contact": 1471,
+    "missing_location": 2,
+    "missing_location_and_missing_contact": 1,
+    "missing_route": 550,
+    "missing_route_and_missing_contact": 371,
+    "mixed_intents": 12,
+    "promotional_content": 1,
+    "unrecognized_intent": 1281
+  },
+  "contact_observations": {
+    "source_messages_with_contact_metadata": 1720,
+    "source_messages_where_redacted_text_phone_parser_matched": 1947,
+    "segments_with_contact": 4320,
+    "unit": "message or segment as named",
+    "interpretation": "diagnostic counts only; not contact extraction recall or precision"
+  },
+  "active_core_fields": {
+    "cargo_origin_destination_contact": 2580,
+    "vehicle_location_contact": 3,
+    "vehicle_without_destination": 1,
+    "unit": "active segment after candidate core-field review gate"
+  },
+  "limitations": [
+    "No independent human labels; precision and recall are not measured.",
+    "The 17 sampled source labels were not reconciled against the full configured source list.",
+    "The small active vehicle count does not distinguish low source supply from classifier misses.",
+    "Attachments without text were not separately measured.",
+    "API persistence, active feed visibility, client rendering, and physical devices were not verified by this snapshot.",
+    "Active, review, and closed counts are segments and must not be compared directly with source-message totals."
+  ]
+}

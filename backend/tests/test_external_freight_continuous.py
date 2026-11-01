@@ -170,7 +170,7 @@ def test_collector_payload_retention_is_bounded_and_preserves_cursors(tmp_path):
 def test_incoming_delivers_before_telegram_and_survives_restart(tmp_path,monkeypatch):
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=collector();path=tmp_path/'source.sqlite3';db=m.database(path)
-    m.capture_for_app(db,'public_channel',12345,88,'Есть свободная машина\nАлматы → Москва',m.utcnow())
+    m.capture_for_app(db,'public_channel',12345,88,'Есть свободная машина\nАлматы → Москва\n+77000000003',m.utcnow())
     received=[]
     def opener(request,timeout):
         records=json.loads(request.data)['records'];received.extend(records)
@@ -193,6 +193,29 @@ def test_incoming_delivers_before_telegram_and_survives_restart(tmp_path,monkeyp
     assert received[0]['kind']=='vehicle' and received[0]['status']=='active'
     assert IncomingQueueBridge(path,adapter).run_once()['sent']==0
     assert db.execute('select count(*) from queue').fetchone()[0]==0
+
+
+def test_incoming_core_field_review_reason_is_durable_and_contact_is_not_fabricated(tmp_path,monkeypatch):
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    m=collector();path=tmp_path/'source.sqlite3';db=m.database(path)
+    m.capture_for_app(db,'public_channel',12345,89,'Груз готов\nХоргос → Алматы',m.utcnow())
+    received=[]
+    def opener(request,timeout):
+        records=json.loads(request.data)['records'];received.extend(records)
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):return json.dumps({'results':[{'id':str(i),'result':'created'} for i,_ in enumerate(records)]}).encode()
+        return Response()
+    adapter=ExternalFreightFeedAdapter(db_path=str(tmp_path/'adapter.sqlite3'),api_url='https://qa2.urtruck.kz',importer_key='test',opener=opener)
+    result=IncomingQueueBridge(path,adapter).run_once()
+    assert result['sent']==1 and result['review']==1
+    assert received[0]['status']=='review' and received[0]['contacts']==[]
+    with adapter._connect() as state:
+        reason=state.execute('SELECT reason FROM incoming_bridge_seen').fetchone()[0]
+    assert reason=='review:missing_contact'
+    assert db.execute('SELECT count(*) FROM queue').fetchone()[0]==0
 
 
 def test_publisher_has_no_night_gate():
@@ -218,7 +241,7 @@ def test_empty_container_and_vehicle_wording_do_not_mix():
 def test_both_feeds_receive_new_messages_and_exact_duplicate_is_suppressed(tmp_path,monkeypatch):
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=collector();path=tmp_path/'source.sqlite3';db=m.database(path)
-    texts=['Алматы → Москва\nГруз: шины','Астана → Бишкек\nЕсть свободная машина']
+    texts=['Алматы → Москва\nГруз: шины\n+77000000004','Астана → Бишкек\nЕсть свободная машина\n+77000000005']
     for i,text in enumerate(texts):m.capture_for_app(db,'public_channel',12345,88+i,text,m.utcnow())
     m.capture_for_app(db,'other_channel',54321,999,texts[0],m.utcnow())
     received=[]

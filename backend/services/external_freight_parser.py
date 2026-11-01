@@ -216,6 +216,36 @@ def _published(value):
     return str(value)
 
 
+def _core_review_reason(record):
+    """Return a safe, field-level reason when a listing lacks its core data."""
+    if record.get("status") != "active":
+        return None
+    if record.get("review_reason"):
+        return record["review_reason"]
+    kind = record.get("kind")
+    has_route = bool(record.get("origin") and record.get("destination"))
+    has_vehicle_location = bool(record.get("origin") or record.get("destination"))
+    has_contact = bool(record.get("contacts"))
+    missing = []
+    if kind == "cargo" and not has_route:
+        missing.append("missing_route" if not has_vehicle_location else "incomplete_route")
+    elif kind == "vehicle" and not has_vehicle_location:
+        missing.append("missing_location")
+    if not has_contact:
+        missing.append("missing_contact")
+    return "_and_".join(missing) if missing else None
+
+
+def apply_core_review(record):
+    """Gate an otherwise active parsed record before it enters the outbox."""
+    reason = _core_review_reason(record)
+    if reason:
+        record["status"] = "review"
+        record["classification_status"] = "review"
+        record["review_reason"] = reason
+    return record
+
+
 def _weight_tonnes(text):
     match = _WEIGHT.search(text)
     if not match:
@@ -319,7 +349,7 @@ def map_selected_message(raw: dict) -> dict:
     if classification.get("status") == "split":
         status = "review"
         phones = []
-    return {
+    record = {
         "source_id": str(raw.get("source_id") or raw.get("source") or "")[:120],
         "source_message_id": str(raw.get("source_message_id") or raw.get("source_message") or raw.get("source_id_message") or raw.get("id") or "")[:160],
         "segment_id": str(raw.get("segment_id") or "0")[:80],
@@ -344,6 +374,15 @@ def map_selected_message(raw: dict) -> dict:
         "source_revision": str(raw.get("source_revision") or raw.get("fingerprint") or "")[:160],
         "origin_source": str(raw.get("origin_source") or raw.get("source") or "")[:120] or None,
     }
+    if status == "review":
+        record["review_reason"] = (
+            "ambiguous_route" if route_conflict else
+            "invalid_route_value" if malformed_web_route else
+            classification.get("reason") or "ambiguous_intent"
+        )
+    elif route_conflict:
+        record["review_reason"] = "ambiguous_route"
+    return record
 
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,}\d(?!\d)")
@@ -642,6 +681,7 @@ def map_selected_messages(raw):
             # fields from a country/request section to the wrong route.
             item["status"] = "review"
             item["classification_status"] = "review"
+            item["review_reason"] = "ambiguous_route_sections"
         return [item]
     result=[]
     for i,block in enumerate(blocks):
