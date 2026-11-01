@@ -148,6 +148,10 @@ rollback() {
   sudo -n systemctl restart "${units[@]}"
 }
 trap 'code=$?; if test "$code" -ne 0; then rollback; fi; exit "$code"' EXIT
+# A previously installed QA2 timer must not read a half-replaced module.
+for unit in urtruck-qa2-feed-health.timer urtruck-qa2-feed-health.service; do
+  if systemctl cat "$unit" >/dev/null 2>&1; then sudo -n systemctl stop "$unit"; fi
+done
 for path in "${code_paths[@]}"; do
   install -D -m 0644 "$stage/$path" "$qa/$path"
 done

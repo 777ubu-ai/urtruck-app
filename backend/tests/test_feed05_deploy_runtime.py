@@ -22,7 +22,8 @@ def executable(path, content):
 
 
 @pytest.mark.parametrize('fail_hash',[False,True])
-def test_real_deploy_installs_health_and_rolls_back_without_overwriting_new_rows(tmp_path, fail_hash):
+@pytest.mark.parametrize('existing', ['absent', 'disabled', 'enabled'])
+def test_real_deploy_installs_health_and_rolls_back_without_overwriting_new_rows(tmp_path, fail_hash, existing):
     collector,qa=f._fixture(tmp_path,time.time())
     (collector/'.env').write_text('PUBLISH_ENABLED=true\n')
     for name in ['feed.py','health.py']:(collector/name).write_text('shared sentinel\n')
@@ -31,6 +32,13 @@ def test_real_deploy_installs_health_and_rolls_back_without_overwriting_new_rows
     remote=original.split("<<'REMOTE'\n",1)[1].rsplit('\nREMOTE',1)[0]
     # Only test roots are substituted. All safety checks and mutations execute unchanged.
     unit_root=tmp_path/'systemd';unit_root.mkdir()
+    if existing != 'absent':
+        for name in ['urtruck-qa2-feed-health.service','urtruck-qa2-feed-health.timer']:
+            (unit_root/name).write_text('previous '+name)
+        old_health=qa/'ops/telegram-feed/health.py'
+        old_health.parent.mkdir(parents=True)
+        old_health.write_text('# previous QA2 health\n')
+    if existing == 'enabled': (tmp_path/'timer-active').touch()
     remote=remote.replace('/home/ubuntu/urtruck-qa2',str(qa)).replace('/home/ubuntu/urtruck-telegram-feed',str(collector)).replace('/etc/systemd/system',str(unit_root))
     remote=remote.replace('/tmp/urtruck-feed-candidate-',str(tmp_path/'urtruck-feed-candidate-'))
     bundle=tmp_path/'bundle';bundle.mkdir()
@@ -58,6 +66,7 @@ with open(os.environ['FEED05_SERVICE_LOG'],'a') as f:f.write(' '.join(args)+'\\n
 marker=pathlib.Path(os.environ['FEED05_TIMER_STATE'])
 if args[0] in ['is-active','is-enabled'] and args[-1]=='urtruck-qa2-feed-health.timer':sys.exit(0 if marker.exists() else 1)
 if args[0]=='enable' and '--now' in args:marker.touch()
+if args[0]=='start' and args[-1]=='urtruck-qa2-feed-health.timer':marker.touch()
 if args[0] in ['stop','disable'] and 'urtruck-qa2-feed-health.timer' in args:marker.unlink(missing_ok=True)
 """)
     # Simulate a new message arriving AFTER online backup, before any rollback.
@@ -76,7 +85,12 @@ with sqlite3.connect(os.environ['FEED05_ADAPTER']) as db:db.execute("INSERT INTO
     if fail_hash:
         assert (qa/'backend/services/external_freight_parser.py').read_text()=='# previous code\n'
         assert not (qa/'external-feed-component-manifest').exists()
-        assert not (unit_root/'urtruck-qa2-feed-health.timer').exists()
+        if existing == 'absent':
+            assert not (unit_root/'urtruck-qa2-feed-health.timer').exists()
+        else:
+            assert (unit_root/'urtruck-qa2-feed-health.timer').read_text()=='previous urtruck-qa2-feed-health.timer'
+            assert (qa/'ops/telegram-feed/health.py').read_text()=='# previous QA2 health\n'
+        assert (tmp_path/'timer-active').exists() == (existing == 'enabled')
     else:
         assert 'QA2_FEED_DEPLOY=verified' in result.stdout
         assert (qa/'ops/telegram-feed/health.py').read_bytes()==(ROOT/'ops/telegram-feed/health.py').read_bytes()
