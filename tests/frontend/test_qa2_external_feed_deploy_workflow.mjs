@@ -96,3 +96,18 @@ test('QA2 preflight rejects disabled or absent import flag for either bridge', (
     }
   }
 });
+
+test('QA2 health is installed, hashed and scheduled without shared collector mutation', () => {
+  const service = readFileSync('ops/telegram-feed/urtruck-qa2-feed-health.service', 'utf8');
+  const timer = readFileSync('ops/telegram-feed/urtruck-qa2-feed-health.timer', 'utf8');
+  for (const file of ['external_freight_parser.py', 'external_freight_dal.py',
+    'backend/api/external_freight.py', 'ops/telegram-feed/health.py',
+    'urtruck-qa2-feed-health.service', 'urtruck-qa2-feed-health.timer']) assert.ok(script.includes(file), file);
+  assert.match(service, /--qa2-only/);
+  assert.match(service, /--state-dir \/home\/ubuntu\/urtruck-qa2\/external-feed-health\/state/);
+  assert.doesNotMatch(service, /--recover/);
+  assert.match(timer, /OnUnitActiveSec=60s/);
+  assert.match(script, /enable --now urtruck-qa2-feed-health\.timer/);
+  assert.match(script, /health-timer-was-active/);
+  assert.match(script, /\$\{code_paths\[@\]\}/);
+});

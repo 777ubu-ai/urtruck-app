@@ -19,7 +19,7 @@ def _collector_db(root, now):
     db.executescript('''
         CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE queue(status TEXT NOT NULL,published_at REAL);
-        CREATE TABLE app_messages(id INTEGER PRIMARY KEY,source_date REAL,received_at REAL);
+        CREATE TABLE app_messages(id INTEGER PRIMARY KEY,source_date REAL,received_at REAL,revision TEXT,source TEXT);
         CREATE TABLE source_health(source TEXT,checked_at REAL,error TEXT);
     ''')
     db.executemany('INSERT INTO metadata VALUES(?,?)', [
@@ -29,8 +29,8 @@ def _collector_db(root, now):
     db.executemany('INSERT INTO queue VALUES(?,?)', [
         ('published', now - 120), ('queued', None),
     ])
-    db.executemany('INSERT INTO app_messages VALUES(?,?,?)', [
-        (1, now - 120, now - 60), (2, now - 120, now - 7200),
+    db.executemany('INSERT INTO app_messages VALUES(?,?,?,?,?)', [
+        (1, now - 120, now - 60, 'current-message', 'external-source'), (2, now - 120, now - 7200, 'current-message', 'external-source'),
     ])
     db.commit()
     db.close()
@@ -68,7 +68,9 @@ def _adapter_db(path, now, *, add_terminal_columns=True):
     if add_terminal_columns:
         add('terminal', iso(11*24*3600), terminal='source_retention_expired')
     db.execute('INSERT INTO incoming_bridge_seen VALUES(?,?,?,?)',
-               (1, 'rev', iso(60), 'accepted'))
+               (1, 'current-message:current-parser', iso(60), 'accepted'))
+    db.execute('CREATE TABLE incoming_bridge_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+    db.execute("INSERT INTO incoming_bridge_meta VALUES('parser_revision','current-parser')")
     db.commit()
     db.close()
 
@@ -98,7 +100,9 @@ def test_snapshot_separates_ready_backoff_expired_and_terminal(tmp_path):
     assert incoming['expired_pending'] == 1
     assert incoming['terminal_expired'] == 1
     assert incoming['quarantined'] == 1
-    assert incoming['confirmed_rows_last_hour'] == 1
+    assert incoming['confirmed_rows_last_hour'] == 0
+    assert incoming['api_accepted_rows_last_hour'] == 1
+    assert incoming['unknown_status_rows_last_hour'] == 1
     assert incoming['oldest_ready_age_seconds'] == 24 * 3600
     assert incoming['ready_missing_published_at'] == 0
     assert incoming['source_received_messages_last_hour'] == 1

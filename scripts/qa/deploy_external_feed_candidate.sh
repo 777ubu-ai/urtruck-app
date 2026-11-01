@@ -14,6 +14,12 @@ paths=(
   backend/services/external_freight_classifier.py
   backend/services/external_freight_import_adapter.py
   backend/services/external_freight_queue_bridge.py
+  backend/services/external_freight_parser.py
+  backend/database/external_freight_dal.py
+  backend/api/external_freight.py
+  ops/telegram-feed/health.py
+  ops/telegram-feed/urtruck-qa2-feed-health.service
+  ops/telegram-feed/urtruck-qa2-feed-health.timer
 )
 for path in "${paths[@]}"; do install -D -m 0644 "$path" "$bundle_dir/$path"; done
 (
@@ -39,12 +45,19 @@ deploy_id="$run_id-$run_attempt"
 stage="$qa/.feed-candidate-$deploy_id"
 backup="$qa/backups/feed-candidate-$deploy_id"
 lock="$qa/.feed-candidate-deploy.lock"
+code_paths=(backend/scheduler/jobs.py backend/services/external_freight_classifier.py
+  backend/services/external_freight_import_adapter.py backend/services/external_freight_queue_bridge.py
+  backend/services/external_freight_parser.py backend/database/external_freight_dal.py
+  backend/api/external_freight.py ops/telegram-feed/health.py)
+health_units=(urtruck-qa2-feed-health.service urtruck-qa2-feed-health.timer)
 [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[0-9]+$ && "$source_sha" =~ ^[0-9a-f]{40}$ && "$bundle_sha" =~ ^[0-9a-f]{64}$ ]]
 test "$archive" = "/tmp/urtruck-feed-candidate-$deploy_id.tar.gz"
 test -d "$qa/backend" && test -f "$source_db"
+test -r /home/ubuntu/urtruck-telegram-feed/.env
 test -f "$qa/external-feed-bridge.env" && test -f "$qa/external-feed-owned.env"
 test -f "$qa/external-feed/adapter.sqlite3" && test -f "$qa/external-feed-owned/adapter.sqlite3"
 test "$(sha256sum "$archive" | awk '{print $1}')" = "$bundle_sha"
+mkdir -p -m 0700 "$qa/backups"
 mkdir -m 0700 "$stage" "$backup"
 tar -xzf "$archive" -C "$stage"
 rm -f -- "$archive"
@@ -84,10 +97,21 @@ exec 9>"$lock"
 flock -n 9
 
 # Code backup and consistent online snapshots; database snapshots are never restored over newer live state.
-for path in backend/scheduler/jobs.py backend/services/external_freight_classifier.py \
-  backend/services/external_freight_import_adapter.py backend/services/external_freight_queue_bridge.py; do
-  install -D -m 0600 "$qa/$path" "$backup/$path"
+for path in "${code_paths[@]}"; do
+  if test -f "$qa/$path"; then
+    install -D -m 0600 "$qa/$path" "$backup/$path"
+  else
+    test "$path" = ops/telegram-feed/health.py
+    touch "$backup/health-module-was-absent"
+  fi
 done
+for unit in "${health_units[@]}"; do
+  if test -f "/etc/systemd/system/$unit"; then
+    install -D -m 0600 "/etc/systemd/system/$unit" "$backup/$unit"
+  fi
+done
+systemctl is-enabled --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-enabled" || true
+systemctl is-active --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-active" || true
 python3 - "$qa" "$source_db" "$backup" <<'PY'
 import sqlite3, sys
 from pathlib import Path
@@ -106,30 +130,49 @@ for label, source in (
 PY
 rollback() {
   set +e
-  for path in backend/scheduler/jobs.py backend/services/external_freight_classifier.py \
-    backend/services/external_freight_import_adapter.py backend/services/external_freight_queue_bridge.py; do
-    install -D -m 0644 "$backup/$path" "$qa/$path"
+  sudo -n systemctl stop urtruck-qa2-feed-health.timer urtruck-qa2-feed-health.service
+  for path in "${code_paths[@]}"; do
+    if test -f "$backup/$path"; then install -D -m 0644 "$backup/$path" "$qa/$path"; fi
   done
+  for unit in "${health_units[@]}"; do
+    if test -f "$backup/$unit"; then
+      sudo -n install -m 0644 "$backup/$unit" "/etc/systemd/system/$unit"
+    else
+      sudo -n systemctl disable "$unit" 2>/dev/null
+      sudo -n rm -f -- "/etc/systemd/system/$unit"
+    fi
+  done
+  sudo -n systemctl daemon-reload
+  if test -f "$backup/health-timer-was-enabled"; then sudo -n systemctl enable urtruck-qa2-feed-health.timer; fi
+  if test -f "$backup/health-timer-was-active"; then sudo -n systemctl start urtruck-qa2-feed-health.timer; fi
   sudo -n systemctl restart "${units[@]}"
 }
 trap 'code=$?; if test "$code" -ne 0; then rollback; fi; exit "$code"' EXIT
-for path in backend/scheduler/jobs.py backend/services/external_freight_classifier.py \
-  backend/services/external_freight_import_adapter.py backend/services/external_freight_queue_bridge.py; do
+for path in "${code_paths[@]}"; do
   install -D -m 0644 "$stage/$path" "$qa/$path"
 done
-python3 -m py_compile "$qa/backend/scheduler/jobs.py" "$qa/backend/services/external_freight_classifier.py" \
-  "$qa/backend/services/external_freight_import_adapter.py" "$qa/backend/services/external_freight_queue_bridge.py"
+python3 -m py_compile "${code_paths[@]/#/$qa/}"
+mkdir -p -m 0700 "$qa/external-feed-health/state"
+for unit in "${health_units[@]}"; do
+  sudo -n install -m 0644 "$stage/ops/telegram-feed/$unit" "/etc/systemd/system/$unit"
+done
+sudo -n systemctl daemon-reload
 sudo -n systemctl restart "${units[@]}"
 for unit in "${units[@]}"; do systemctl is-active --quiet "$unit"; done
 curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
-for entry in \
-  "backend/scheduler/jobs.py:$qa/backend/scheduler/jobs.py" \
-  "backend/services/external_freight_classifier.py:$qa/backend/services/external_freight_classifier.py" \
-  "backend/services/external_freight_import_adapter.py:$qa/backend/services/external_freight_import_adapter.py" \
-  "backend/services/external_freight_queue_bridge.py:$qa/backend/services/external_freight_queue_bridge.py"; do
-  relative="${entry%%:*}"; installed="${entry#*:}"
+# Installed QA2 health reads shared source state; it never replaces shared health/collector code.
+python3 "$qa/ops/telegram-feed/health.py" --qa2-only --snapshot-only --source-root /home/ubuntu/urtruck-telegram-feed --qa-root "$qa" > "$backup/post-install-health-snapshot.json"
+sudo -n systemctl start urtruck-qa2-feed-health.service
+sudo -n systemctl enable --now urtruck-qa2-feed-health.timer
+systemctl is-active --quiet urtruck-qa2-feed-health.timer
+for relative in "${code_paths[@]}"; do
   expected="$(awk -v f="$relative" '$2==f {print $1}' "$stage/SHA256SUMS")"
-  test -n "$expected" && test "$(sha256sum "$installed" | awk '{print $1}')" = "$expected"
+  test -n "$expected" && test "$(sha256sum "$qa/$relative" | awk '{print $1}')" = "$expected"
+done
+for unit in "${health_units[@]}"; do
+  relative="ops/telegram-feed/$unit"
+  expected="$(awk -v f="$relative" '$2==f {print $1}' "$stage/SHA256SUMS")"
+  test -n "$expected" && test "$(sha256sum "/etc/systemd/system/$unit" | awk '{print $1}')" = "$expected"
 done
 {
   printf 'source_sha=%s\ninstalled_at_utc=%s\n' "$source_sha" "$(date -u +%FT%TZ)"

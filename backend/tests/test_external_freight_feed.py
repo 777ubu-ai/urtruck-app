@@ -531,7 +531,7 @@ def test_import_ack_expires_only_the_expired_segment_and_keeps_row(tmp_path, mon
     adapter.enqueue(live); adapter.enqueue(old)
     result = adapter.flush_once()
     assert result["status"] == "delivered" and result["sent"] == 1
-    assert result["outcomes"] == {"created": 1, "updated": 0, "replayed": 0, "expired": 1, "stale_ack": 0}
+    assert result["outcomes"] == {"created": 1, "updated": 0, "replayed": 0, "expired": 1, "stale_ack": 0, "active": 1, "review": 0, "unknown": 0}
     assert adapter.pending_count() == 0 and adapter.ready_pending_count() == 0
     assert adapter.terminal_expired_count() == 1
     with adapter._connect() as db:

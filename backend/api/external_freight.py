@@ -5,13 +5,45 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+from fastapi.routing import APIRoute
 
 from api.verification_gate import require_level, require_admin
 from database import external_freight_dal as dal
 from services.external_freight_classifier import classify_message
 from services.owned_telegram_feed import OWNED_SOURCE
 
-router = APIRouter(tags=["external-freight"])
+MAX_IMPORT_BODY_BYTES = 12_000_000
+
+
+class LimitedImportRoute(APIRoute):
+    """Bound declared and streamed bytes before JSON/Pydantic allocates records."""
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def limited(request):
+            if self.path.endswith('/import') and request.method == 'POST':
+                declared = request.headers.get('content-length')
+                if declared is not None:
+                    try:
+                        size = int(declared)
+                    except ValueError:
+                        raise HTTPException(status_code=400, detail={'error': 'invalid_content_length'}) from None
+                    if size < 0:
+                        raise HTTPException(status_code=400, detail={'error': 'invalid_content_length'})
+                    if size > MAX_IMPORT_BODY_BYTES:
+                        raise HTTPException(status_code=413, detail={'error': 'import_body_too_large'})
+                body = bytearray()
+                async for chunk in request.stream():
+                    if len(body) + len(chunk) > MAX_IMPORT_BODY_BYTES:
+                        raise HTTPException(status_code=413, detail={'error': 'import_body_too_large'})
+                    body.extend(chunk)
+                request._body = bytes(body)
+            return await handler(request)
+
+        return limited
+
+
+router = APIRouter(tags=["external-freight"], route_class=LimitedImportRoute)
 OWNED_TELEGRAM_SOURCE_ID = "4325478296"  # Telethon peer id; marked Telegram id is -1004325478296.
 
 

@@ -129,9 +129,10 @@ def purge_expired_items(now=None):
     with get_conn() as c:
         rows = c.execute(
             "SELECT id,source_id,source_message_id,segment_id FROM external_freight_items "
-            "WHERE source_published_at IS NOT NULL AND source_published_at<=? "
-            "ORDER BY source_published_at,id LIMIT ?",
-            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+            "WHERE (source_published_at IS NOT NULL AND source_published_at<=?) "
+            "OR (source_published_at IS NULL AND ingested_at<=?) "
+            "ORDER BY COALESCE(source_published_at,ingested_at),id LIMIT ?",
+            (cutoff.isoformat(), cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         if not rows:
             return 0
@@ -245,7 +246,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published + timedelta(days=ACTIVE_DAYS)).isoformat() if published else None,
+        "updated_at": now.isoformat(), "expires_at": ((published or now) + timedelta(days=ACTIVE_DAYS)).isoformat(),
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -301,8 +302,8 @@ def import_records(records):
                     values["source_published_at"] = current["source_published_at"]
                     values["expires_at"] = (_utc(current["source_published_at"])
                                              + timedelta(days=ACTIVE_DAYS)).isoformat()
-                elif current["expires_at"]:
-                    values["expires_at"] = current["expires_at"]
+                else:
+                    values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=ACTIVE_DAYS)).isoformat()
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (

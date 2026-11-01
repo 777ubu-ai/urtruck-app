@@ -588,14 +588,26 @@ def map_selected_messages(raw):
         raise ValueError("invalid_original_text")
     shared_post_contact = (None if _country_header_offsets(text)
                            else _single_footer_contact(text))
+    explicit_common_footer = bool(re.search(
+        r'(?im)^[ \t]*(?:общий (?:контакт|телефон)|контакт для всех|contact for all)\b[^\n]*(?:\n[^\n]*)?\s*$', text))
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
+    bullets = list(re.finditer(r"(?m)^[ \t]*[•●▪◦*–-][ \t]+", text))
     blocks = []
     route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
     if not route_matches or uses_extended_intent(text):
         route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
             m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
     route_matches.sort(key=lambda m: m.start())
-    if len(numbered)>1 and not text[:numbered[0].start()].strip():
+    bullet_blocks = []
+    if len(bullets) > 1 and not text[:bullets[0].start()].strip():
+        bullet_blocks = [text[m.end():bullets[i+1].start() if i+1 < len(bullets) else len(text)].strip()
+                         for i, m in enumerate(bullets)]
+        # A bullet list of equipment/features is not a list of separate offers.
+        if not all(classify_message(block).get('status') == 'active' for block in bullet_blocks):
+            bullet_blocks = []
+    if bullet_blocks:
+        blocks = bullet_blocks
+    elif len(numbered)>1 and not text[:numbered[0].start()].strip():
         for i,m in enumerate(numbered):
             end = numbered[i+1].start() if i+1<len(numbered) else len(text)
             blocks.append(text[m.end():end].strip())
@@ -647,8 +659,8 @@ def map_selected_messages(raw):
         # A sole phone belongs to the source post, even when it appears in a
         # footer or another segment. Explicitly numbered requests retain local
         # attribution because their contacts may belong to individual blocks.
-        explicitly_numbered = len(numbered) > 1 and not text[:numbered[0].start()].strip()
-        if (not explicitly_numbered and not item.get("contacts") and
+        explicitly_numbered = bool(bullet_blocks) or (len(numbered) > 1 and not text[:numbered[0].start()].strip())
+        if ((not explicitly_numbered or explicit_common_footer) and not item.get("contacts") and
                 len(blocks) > 1 and shared_post_contact):
             item["contacts"] = [shared_post_contact]
         result.append(item)

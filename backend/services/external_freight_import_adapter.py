@@ -49,7 +49,7 @@ class ExternalFreightFeedAdapter:
             for column in ("quarantined_at", "quarantine_reason"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE selected_outbox ADD COLUMN {column} TEXT")
-            for column in ("terminal_at", "terminal_reason"):
+            for column in ("terminal_at", "terminal_reason", "api_accepted_at", "api_item_status", "active_confirmed_at"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE selected_outbox ADD COLUMN {column} TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS ix_selected_outbox_due ON selected_outbox(delivered_at,next_attempt_at)")
@@ -102,7 +102,7 @@ class ExternalFreightFeedAdapter:
                     outcomes.append("unchanged")
                     continue
                 if existing:
-                    db.execute("UPDATE selected_outbox SET payload=?,generation=generation+1,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL,quarantined_at=NULL,quarantine_reason=NULL,terminal_at=NULL,terminal_reason=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
+                    db.execute("UPDATE selected_outbox SET payload=?,generation=generation+1,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL,quarantined_at=NULL,quarantine_reason=NULL,terminal_at=NULL,terminal_reason=NULL,api_accepted_at=NULL,api_item_status=NULL,active_confirmed_at=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
                     outcomes.append("updated")
                 else:
                     db.execute("INSERT INTO selected_outbox(source_id,source_message_id,segment_id,payload) VALUES(?,?,?,?)", (*identity, encoded))
@@ -194,7 +194,7 @@ class ExternalFreightFeedAdapter:
         return status, results
 
     def _ack(self, rows, results, now, status):
-        counts = {"created": 0, "updated": 0, "replayed": 0, "expired": 0, "stale_ack": 0}
+        counts = {"created": 0, "updated": 0, "replayed": 0, "expired": 0, "stale_ack": 0, "active": 0, "review": 0, "unknown": 0}
         stamp = datetime.fromtimestamp(now, timezone.utc).isoformat()
         with self._connect() as db:
             for row, result in zip(rows, results):
@@ -205,12 +205,16 @@ class ExternalFreightFeedAdapter:
                         AND delivered_at IS NULL AND terminal_at IS NULL AND generation=?""",
                         (stamp, status, row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
                 else:
-                    cur = db.execute("""UPDATE selected_outbox SET delivered_at=?,last_http_status=?
+                    item_status = result.get("status") if result.get("status") in {"active", "review", "closed", "hidden", "expired"} else "unknown"
+                    cur = db.execute("""UPDATE selected_outbox SET delivered_at=?,last_http_status=?,api_accepted_at=?,api_item_status=?,active_confirmed_at=?
                     WHERE source_id=? AND source_message_id=? AND segment_id=?
                     AND delivered_at IS NULL AND generation=?""",
-                    (stamp, status,
+                    (stamp, status, stamp, item_status, stamp if item_status == "active" else None,
                      row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
                 counts[outcome if cur.rowcount else "stale_ack"] += 1
+                if cur.rowcount and outcome != "expired":
+                    if item_status in {"active", "review", "unknown"}:
+                        counts[item_status] += 1
         return counts
 
     def _retry(self, rows, now, status, error_type=None, duration_ms=None):
@@ -242,24 +246,28 @@ class ExternalFreightFeedAdapter:
         return result
 
     def _isolate_validation_errors(self, rows, now, deadline):
-        sent = 0
+        sent = active = review = unknown = 0
+        def metrics(result):
+            result.update(api_accepted=sent, confirmed_deliveries=active, review_accepted=review, unknown_status_accepted=unknown)
+            return result
         for index, row in enumerate(rows):
             # Ограничиваем время oneshot. Остальные записи не теряются.
             if time.monotonic() >= deadline:
                 result = self._retry(rows[index:], now, 422)
                 result["sent"] = sent
-                return result
+                return metrics(result)
             try:
                 started = time.monotonic()
                 status, outcomes = self._send([row])
                 counts = self._ack([row], outcomes, self.clock(), status)
                 sent += sum(counts[key] for key in ("created", "updated", "replayed"))
+                active += counts["active"]; review += counts["review"]; unknown += counts["unknown"]
             except Exception as exc:
                 status = getattr(exc, "http_status", getattr(exc, "code", None))
                 if status != 422:
                     result = self._retry(rows[index:], now, status, type(exc).__name__, round((time.monotonic()-started)*1000))
                     result["sent"] = sent
-                    return result
+                    return metrics(result)
                 # Только одиночный 422 доказывает неисправимость этой версии.
                 # Полный payload остаётся в outbox для диагностики/исправления.
                 with self._connect() as db:
@@ -268,7 +276,8 @@ class ExternalFreightFeedAdapter:
                         AND delivered_at IS NULL AND generation=?""",
                         (datetime.fromtimestamp(now, timezone.utc).isoformat(), "import_validation_422",
                          row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
-        return {"status": "delivered", "sent": sent, "pending": self.pending_count(),
+        return {"status": "delivered", "sent": sent, "api_accepted": sent, "confirmed_deliveries": active,
+                "review_accepted": review, "unknown_status_accepted": unknown, "pending": self.pending_count(),
                 "ready_pending": self.ready_pending_count(now), "quarantined": self.quarantined_count(),
                 "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count()}
 
@@ -317,7 +326,8 @@ class ExternalFreightFeedAdapter:
             counts = self._ack(rows, outcomes, self.clock(), status)
             sent = sum(counts[key] for key in ("created", "updated", "replayed"))
             return {"status": "delivered" if sent else "terminalized", "sent": sent,
-                    "confirmed_deliveries": sent, "attempted_records": len(rows), "outcomes": counts,
+                    "confirmed_deliveries": counts["active"], "api_accepted": sent,
+                    "review_accepted": counts["review"], "unknown_status_accepted": counts["unknown"], "attempted_records": len(rows), "outcomes": counts,
                     "pending": self.pending_count(), "ready_pending": self.ready_pending_count(now),
                     "terminalized_expired": terminalized, "quarantined": self.quarantined_count(),
                     "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count(),

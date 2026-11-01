@@ -56,6 +56,8 @@ jobs:
           CGR_IIN_SALT: ci-feed-deploy-not-a-secret
         run: >-
           python -m pytest -q
+          backend/tests/test_external_feed_audit_05.py
+          backend/tests/test_feed05_deploy_runtime.py
           backend/tests/test_telegram_feed_health.py
           backend/tests/test_telegram_feed_health_snapshot.py
           backend/tests/test_external_freight_parser.py
@@ -76,7 +78,9 @@ jobs:
           python -m py_compile backend/scheduler/jobs.py \
             backend/services/external_freight_classifier.py \
             backend/services/external_freight_import_adapter.py \
-            backend/services/external_freight_queue_bridge.py
+            backend/services/external_freight_queue_bridge.py \
+            backend/services/external_freight_parser.py backend/database/external_freight_dal.py \
+            backend/api/external_freight.py ops/telegram-feed/health.py
       - name: Verify deployment safety contract
         run: node --test tests/frontend/test_qa2_external_feed_deploy_workflow.mjs
 

@@ -264,9 +264,9 @@ def test_contact_footer_fix_advances_each_bridge_parser_revision():
         PARSER_REVISION,
     )
 
-    assert PARSER_REVISION == IncomingQueueBridge.parser_revision == "20261030-phone-numeric-fields-v15"
-    assert OwnedTelegramQueueBridge.parser_revision == "20261030-phone-numeric-fields-v15"
-    assert PublishedQueueBridge.parser_revision == "20261030-phone-numeric-fields-v10"
+    assert PARSER_REVISION == IncomingQueueBridge.parser_revision == "20261101-bullet-segments-v16"
+    assert OwnedTelegramQueueBridge.parser_revision == "20261101-bullet-segments-v16"
+    assert PublishedQueueBridge.parser_revision == "20261101-bullet-segments-v11"
 
 
 def test_delivered_source_edit_and_closure_are_replayed_after_restart(bridge):
