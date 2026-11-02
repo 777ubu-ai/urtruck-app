@@ -89,6 +89,7 @@ class PublishedQueueBridge:
                 result = self._run_locked()
                 result["lock_wait_ms"] = round((acquired-lock_started)*1000)
                 result["bridge_duration_ms"] = round((time.monotonic()-acquired)*1000)
+                result["cycle_duration_ms"] = result["bridge_duration_ms"]
                 return result
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
@@ -169,17 +170,25 @@ class PublishedQueueBridge:
                 ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""", seen_updates)
         source_ack_ms = round((time.monotonic()-ack_started)*1000)
         flush_started = time.monotonic()
-        delivery = self.adapter.flush_once()
+        delivery = self.adapter.flush_bounded()
         flush_duration_ms = round((time.monotonic()-flush_started)*1000)
         return {"status": delivery["status"], "scanned": len(rows), "segments": sum(segment_outcomes.values()),
                 "segments_created": segment_outcomes["created"], "segments_updated": segment_outcomes["updated"],
                 "segments_unchanged": segment_outcomes["unchanged"], "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
+                "attempted_records": delivery.get("attempted_records", 0),
+                "api_accepted": delivery.get("api_accepted", delivery.get("sent", 0)),
+                "confirmed_deliveries": delivery.get("confirmed_deliveries", 0),
+                "review_accepted": delivery.get("review_accepted", 0),
+                "api_request_count": delivery.get("api_request_count", 0),
+                "api_duration_ms": delivery.get("api_duration_ms", 0),
+                "batches_attempted": delivery.get("batches_attempted", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
                 "ready_pending": delivery.get("ready_pending", self.adapter.ready_pending_count(now)),
                 "source_scan_ms": source_scan_ms, "parse_ms": parse_ms,
                 "outbox_write_ms": outbox_write_ms, "source_ack_ms": source_ack_ms,
                 "flush_ms": flush_duration_ms,
+                "cycle_duration_ms": delivery.get("cycle_duration_ms", flush_duration_ms),
                 "terminal_expired": delivery.get("terminal_expired", self.adapter.terminal_expired_count()),
                 "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
                 "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now)),
@@ -389,7 +398,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             state.executemany("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",seen_updates)
         source_ack_ms=round((time.monotonic()-ack_started)*1000)
         flush_started=time.monotonic()
-        delivery=self.adapter.flush_once()
+        delivery=self.adapter.flush_bounded()
         flush_duration_ms=round((time.monotonic()-flush_started)*1000)
         return {**delivery,"scanned":len(rows),"segments":sum(segment_outcomes.values()),
                 "segments_created":segment_outcomes["created"],"segments_updated":segment_outcomes["updated"],
@@ -397,6 +406,10 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode,
                 "source_scan_ms":source_scan_ms,"parse_ms":parse_ms,"outbox_write_ms":outbox_write_ms,
                 "source_ack_ms":source_ack_ms,"flush_ms":flush_duration_ms,
+                "api_request_count":delivery.get("api_request_count",0),
+                "api_duration_ms":delivery.get("api_duration_ms",0),
+                "batches_attempted":delivery.get("batches_attempted",0),
+                "cycle_duration_ms":delivery.get("cycle_duration_ms",flush_duration_ms),
                 "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind,
                 "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
 
@@ -470,30 +483,39 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
 
 
 def main():
-    if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
-        print(json.dumps({"status": "disabled"}))
-        return 0
-    source = os.getenv("EXTERNAL_FREIGHT_SOURCE_DB", "")
-    state = os.getenv("EXTERNAL_FREIGHT_ADAPTER_DB", "")
-    if not source or not state:
-        raise ValueError("explicit_source_and_state_required")
-    # Отклоняем ошибочный target/state до открытия SQLite адаптером.
-    validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
-    os.umask(0o077)
-    # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
-    mode = os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE", 'published')
-    workers = {'incoming': IncomingQueueBridge, 'published': PublishedQueueBridge, 'owned': OwnedTelegramQueueBridge}
-    if mode not in workers:
-        raise ValueError('invalid_source_mode')
-    worker = workers[mode]
-    result = worker(source, ExternalFreightFeedAdapter()).run_once()
-    print(json.dumps(result, sort_keys=True))
-    return 0 if result["status"] in {"delivered", "terminalized", "idle", "busy", "disabled"} else 1
+    stage = "configuration"
+    try:
+        if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
+            print(json.dumps({"status": "disabled"}))
+            return 0
+        source = os.getenv("EXTERNAL_FREIGHT_SOURCE_DB", "")
+        state = os.getenv("EXTERNAL_FREIGHT_ADAPTER_DB", "")
+        if not source or not state:
+            raise ValueError("explicit_source_and_state_required")
+        # Отклоняем ошибочный target/state до открытия SQLite адаптером.
+        validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
+        os.umask(0o077)
+        # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
+        mode = os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE", 'published')
+        workers = {'incoming': IncomingQueueBridge, 'published': PublishedQueueBridge, 'owned': OwnedTelegramQueueBridge}
+        if mode not in workers:
+            raise ValueError('invalid_source_mode')
+        stage = "bridge_cycle"
+        result = workers[mode](source, ExternalFreightFeedAdapter()).run_once()
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["status"] in {
+            "delivered", "terminalized", "idle", "busy", "budget_exhausted", "disabled",
+        } else 1
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        # Only safe diagnostic metadata is emitted. Exception text can contain
+        # paths or request details, so it is intentionally excluded.
+        print(json.dumps({"status": "bridge_configuration_or_source_error",
+                          "failure_stage": stage, "error_type": type(exc).__name__}, sort_keys=True))
+        raise
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (ValueError, OSError, sqlite3.Error):
-        print(json.dumps({"status": "bridge_configuration_or_source_error"}))
         raise SystemExit(1)

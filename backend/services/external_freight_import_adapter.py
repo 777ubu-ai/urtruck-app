@@ -17,6 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 MAX_BATCH = 50
+MAX_FLUSH_BATCHES_PER_CYCLE = 2
+MAX_FLUSH_CYCLE_SECONDS = 30
+API_REQUEST_TIMEOUT_SECONDS = 8
 MAX_BACKOFF_SECONDS = 900
 RETENTION_SECONDS = 10 * 24 * 3600
 
@@ -158,7 +161,7 @@ class ExternalFreightFeedAdapter:
                 AND julianday(json_extract(payload,'$.source_published_at')) < julianday(?)""", (stamp, cutoff))
             return cur.rowcount
 
-    def flush_once(self):
+    def flush_once(self, *, deadline=None):
         # Один отправитель на durable outbox, включая разные процессы.
         # enqueue не блокируется: новая версия останется pending до своего ACK.
         import fcntl
@@ -168,9 +171,72 @@ class ExternalFreightFeedAdapter:
             except BlockingIOError:
                 return {'status': 'busy', 'sent': 0, 'pending': self.pending_count()}
             try:
-                return self._flush_locked()
+                return self._flush_locked(deadline=deadline)
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def flush_bounded(self, *, max_batches=MAX_FLUSH_BATCHES_PER_CYCLE,
+                      time_budget_seconds=MAX_FLUSH_CYCLE_SECONDS):
+        """Drain ready outbox in a small number of durable, independently locked batches.
+
+        The lock is released after every batch so incoming and owned workers can
+        interleave. Each successful batch is ACKed by _flush_locked before the
+        next iteration, and a failed/backoff batch ends this cycle immediately.
+        """
+        max_batches = min(MAX_FLUSH_BATCHES_PER_CYCLE, max(1, int(max_batches)))
+        time_budget_seconds = min(MAX_FLUSH_CYCLE_SECONDS, max(0.1, float(time_budget_seconds)))
+        deadline = time.monotonic() + time_budget_seconds
+        batches = []
+        while (len(batches) < max_batches
+               and deadline - time.monotonic() >= API_REQUEST_TIMEOUT_SECONDS):
+            result = self.flush_once(deadline=deadline)
+            if result.get("status") == "busy":
+                batches.append(result)
+                break
+            batches.append(result)
+            if result.get("status") not in {"delivered", "terminalized"} or not result.get("attempted_records"):
+                # idle, retry, disabled and configuration errors are terminal
+                # for this cycle; do not spin on the same row.
+                break
+        if not batches:
+            batches.append({"status": "budget_exhausted", "sent": 0, "attempted_records": 0,
+                            "confirmed_deliveries": 0, "pending": self.pending_count(),
+                            "ready_pending": self.ready_pending_count()})
+        counts = {"created": 0, "updated": 0, "replayed": 0, "expired": 0,
+                  "stale_ack": 0, "active": 0, "review": 0, "unknown": 0}
+        for batch in batches:
+            for key, value in (batch.get("outcomes") or {}).items():
+                counts[key] = counts.get(key, 0) + value
+        sent = sum(batch.get("sent", 0) for batch in batches)
+        accepted = sum(batch.get("api_accepted", batch.get("sent", 0)) for batch in batches)
+        active = sum(batch.get("confirmed_deliveries", 0) for batch in batches)
+        review = sum(batch.get("review_accepted", 0) for batch in batches)
+        attempted = sum(batch.get("attempted_records", 0) for batch in batches)
+        request_count = sum(batch.get("api_request_count", 0) for batch in batches)
+        api_duration = sum(batch.get("api_duration_ms", 0) for batch in batches)
+        terminalized = sum(batch.get("terminalized_expired", 0) for batch in batches)
+        last = batches[-1]
+        status = last.get("status", "idle")
+        if sent and status == "idle":
+            status = "delivered"
+        result = {"status": status, "sent": sent, "api_accepted": accepted,
+                  "confirmed_deliveries": active, "review_accepted": review,
+                  "unknown_status_accepted": sum(b.get("unknown_status_accepted", 0) for b in batches),
+                  "attempted_records": attempted, "outcomes": counts,
+                  "batches_attempted": sum(1 for b in batches if b.get("attempted_records", 0) > 0),
+                  "api_request_count": request_count, "api_duration_ms": api_duration,
+                  "cycle_duration_ms": round((time.monotonic() - (deadline-time_budget_seconds))*1000),
+                  "pending": self.pending_count(), "ready_pending": self.ready_pending_count(),
+                  "terminalized_expired": terminalized,
+                  "terminal_expired": self.terminal_expired_count(),
+                  "expired_pending": self.expired_pending_count(),
+                  "quarantined": self.quarantined_count()}
+        for key in ("http_status", "error_type", "retry_after_seconds"):
+            if last.get(key) is not None:
+                result[key] = last[key]
+        if status == "busy":
+            result["outbox_lock_busy"] = True
+        return result
 
     def _send(self, rows):
         payload = json.dumps({"records": [json.loads(row["payload"]) for row in rows]}, ensure_ascii=False).encode("utf-8")
@@ -178,7 +244,7 @@ class ExternalFreightFeedAdapter:
             f"{self.api_url}/api/v1/external-freight/import", data=payload, method="POST",
             headers={"Content-Type": "application/json", "X-External-Importer-Key": self.importer_key},
         )
-        with self.opener(req, timeout=8) as response:
+        with self.opener(req, timeout=API_REQUEST_TIMEOUT_SECONDS) as response:
             status = int(getattr(response, "status", 200))
             if not 200 <= status < 300:
                 raise urllib.error.HTTPError(req.full_url, status, "import_rejected", {}, None)
@@ -218,7 +284,8 @@ class ExternalFreightFeedAdapter:
                         counts[item_status] += 1
         return counts
 
-    def _retry(self, rows, now, status, error_type=None, duration_ms=None):
+    def _retry(self, rows, now, status, error_type=None, duration_ms=None, *,
+               api_request_count=0, api_duration_ms=0):
         delay = 0
         retry_rows = []
         with self._connect() as db:
@@ -237,7 +304,8 @@ class ExternalFreightFeedAdapter:
                   "confirmed_deliveries": 0, "attempted_records": len(rows), "pending": self.pending_count(),
                   "ready_pending": self.ready_pending_count(now), "retry_rows": retry_rows,
                   "quarantined": self.quarantined_count(), "expired_pending": self.expired_pending_count(now),
-                  "retry_after_seconds": delay, "http_status": status}
+                  "retry_after_seconds": delay, "http_status": status,
+                  "api_request_count": api_request_count, "api_duration_ms": api_duration_ms}
         if duration_ms is not None:
             result["duration_ms"] = duration_ms
         if error_type:
@@ -246,27 +314,39 @@ class ExternalFreightFeedAdapter:
             result["error_type"] = error_type
         return result
 
-    def _isolate_validation_errors(self, rows, now, deadline):
+    def _isolate_validation_errors(self, rows, now, deadline, *, initial_api_duration_ms=0):
         sent = active = review = unknown = 0
+        api_request_count = 1  # The batch request that returned HTTP 422.
+        api_duration_ms = initial_api_duration_ms
         def metrics(result):
             result.update(api_accepted=sent, confirmed_deliveries=active, review_accepted=review, unknown_status_accepted=unknown)
+            # Every row was included in the initial batch that returned 422;
+            # request_count separately records the additional isolation calls.
+            result["attempted_records"] = len(rows)
             return result
         for index, row in enumerate(rows):
             # Ограничиваем время oneshot. Остальные записи не теряются.
-            if time.monotonic() >= deadline:
-                result = self._retry(rows[index:], now, 422)
+            if deadline - time.monotonic() < API_REQUEST_TIMEOUT_SECONDS:
+                result = self._retry(rows[index:], now, 422, api_request_count=api_request_count,
+                                     api_duration_ms=api_duration_ms)
                 result["sent"] = sent
                 return metrics(result)
             try:
                 started = time.monotonic()
                 status, outcomes = self._send([row])
+                api_request_count += 1
+                api_duration_ms += round((time.monotonic()-started)*1000)
                 counts = self._ack([row], outcomes, self.clock(), status)
                 sent += sum(counts[key] for key in ("created", "updated", "replayed"))
                 active += counts["active"]; review += counts["review"]; unknown += counts["unknown"]
             except Exception as exc:
                 status = getattr(exc, "http_status", getattr(exc, "code", None))
+                api_request_count += 1
+                api_duration_ms += round((time.monotonic()-started)*1000)
                 if status != 422:
-                    result = self._retry(rows[index:], now, status, type(exc).__name__, round((time.monotonic()-started)*1000))
+                    result = self._retry(rows[index:], now, status, type(exc).__name__,
+                                         round((time.monotonic()-started)*1000),
+                                         api_request_count=api_request_count, api_duration_ms=api_duration_ms)
                     result["sent"] = sent
                     return metrics(result)
                 # Только одиночный 422 доказывает неисправимость этой версии.
@@ -277,19 +357,21 @@ class ExternalFreightFeedAdapter:
                         AND delivered_at IS NULL AND generation=?""",
                         (datetime.fromtimestamp(now, timezone.utc).isoformat(), "import_validation_422",
                          row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
-        return {"status": "delivered", "sent": sent, "api_accepted": sent, "confirmed_deliveries": active,
+        return {"status": "delivered" if sent else "terminalized", "sent": sent, "api_accepted": sent, "confirmed_deliveries": active,
                 "review_accepted": review, "unknown_status_accepted": unknown, "pending": self.pending_count(),
+                "attempted_records": len(rows), "api_request_count": api_request_count,
+                "api_duration_ms": api_duration_ms,
                 "ready_pending": self.ready_pending_count(now), "quarantined": self.quarantined_count(),
                 "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count()}
 
-    def _flush_locked(self):
+    def _flush_locked(self, *, deadline=None):
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "false").lower() not in {"1", "true", "yes"}:
             return {"status": "disabled", "sent": 0, "pending": self.pending_count()}
         if not self.api_url or not self.importer_key:
             return {"status": "not_configured", "sent": 0, "pending": self.pending_count()}
         now = self.clock()
         terminalized = self._terminalize_source_expired(now)
-        deadline = time.monotonic() + 25
+        deadline = min(time.monotonic() + 25, deadline) if deadline is not None else time.monotonic() + 25
         cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
         with self._connect() as db:
             rows = db.execute("""SELECT * FROM selected_outbox
@@ -317,24 +399,37 @@ class ExternalFreightFeedAdapter:
                 rows = list(selected.values())[:MAX_BATCH]
         if not rows:
             return {"status": "idle", "sent": 0, "confirmed_deliveries": 0, "attempted_records": 0,
+                    "api_request_count": 0, "api_duration_ms": 0,
                     "pending": self.pending_count(),
                     "ready_pending": self.ready_pending_count(now), "terminalized_expired": terminalized,
                     "quarantined": self.quarantined_count(),
                     "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count()}
+        if deadline - time.monotonic() < API_REQUEST_TIMEOUT_SECONDS:
+            return {"status": "budget_exhausted", "sent": 0, "attempted_records": 0,
+                    "api_request_count": 0, "api_duration_ms": 0,
+                    "pending": self.pending_count(), "ready_pending": self.ready_pending_count(now),
+                    "terminalized_expired": terminalized, "quarantined": self.quarantined_count(),
+                    "expired_pending": self.expired_pending_count(now),
+                    "terminal_expired": self.terminal_expired_count()}
         try:
             started = time.monotonic()
             status, outcomes = self._send(rows)
+            api_duration_ms = round((time.monotonic()-started)*1000)
             counts = self._ack(rows, outcomes, self.clock(), status)
             sent = sum(counts[key] for key in ("created", "updated", "replayed"))
             return {"status": "delivered" if sent else "terminalized", "sent": sent,
                     "confirmed_deliveries": counts["active"], "api_accepted": sent,
                     "review_accepted": counts["review"], "unknown_status_accepted": counts["unknown"], "attempted_records": len(rows), "outcomes": counts,
                     "pending": self.pending_count(), "ready_pending": self.ready_pending_count(now),
+                    "api_request_count": 1, "api_duration_ms": api_duration_ms,
                     "terminalized_expired": terminalized, "quarantined": self.quarantined_count(),
                     "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count(),
                     "http_status": status, "duration_ms": round((time.monotonic()-started)*1000)}
         except Exception as exc:
+            api_duration_ms = round((time.monotonic()-started)*1000)
             status = getattr(exc, "http_status", getattr(exc, "code", None))
             if status == 422:
-                return self._isolate_validation_errors(rows, now, deadline)
-            return self._retry(rows, now, status, type(exc).__name__, round((time.monotonic()-started)*1000))
+                return self._isolate_validation_errors(rows, now, deadline,
+                                                       initial_api_duration_ms=api_duration_ms)
+            return self._retry(rows, now, status, type(exc).__name__, api_duration_ms,
+                               api_request_count=1, api_duration_ms=api_duration_ms)

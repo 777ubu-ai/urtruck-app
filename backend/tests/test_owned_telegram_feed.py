@@ -342,7 +342,7 @@ def owned_worker(tmp_path, monkeypatch):
     db = m.database(source)
     adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path/'state.db'), api_url='https://qa2.urtruck.kz',
                                          importer_key='test-only')
-    monkeypatch.setattr(adapter, 'flush_once', lambda: {'status': 'idle', 'sent': 0})
+    monkeypatch.setattr(adapter, 'flush_bounded', lambda: {'status': 'idle', 'sent': 0})
     return m, db, adapter, OwnedTelegramQueueBridge(source, adapter)
 
 
