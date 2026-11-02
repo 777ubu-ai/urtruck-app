@@ -81,6 +81,31 @@ def _import(record, *, key="test-importer-key-only"):
     return client.post("/api/v1/external-freight/import", headers={"X-External-Importer-Key": key}, json={"records": [record]})
 
 
+def test_feed_requests_do_not_run_expiry_writer_when_sqlite_is_locked(monkeypatch):
+    record = _record(source="sqlite-lock-read-path")
+    created = _import(record)
+    assert created.status_code == 200
+    item_id = created.json()["results"][0]["id"]
+
+    def locked_cleanup(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(dal, "purge_expired_items", locked_cleanup)
+    global _actor
+    _actor = {"id": "lock-test-driver", "role": "driver"}
+
+    # Visibility is enforced by SELECT predicates; a cleanup write must not sit
+    # on the request path and turn list/count/item reads into HTTP 500s.
+    assert client.get("/api/v1/external-freight").status_code == 200
+    assert client.get("/api/v1/external-freight/count").status_code == 200
+    assert client.get(f"/api/v1/external-freight/{item_id}").status_code == 200
+
+    # Imports have their own transactional writes and should not run a second,
+    # unrelated retention batch before accepting the durable outbox batch.
+    replay = _import(_record(source="sqlite-lock-import"))
+    assert replay.status_code == 200
+
+
 def test_hidden_entity_contact_without_confirmed_assignment_remains_in_review():
     from services.external_freight_parser import map_selected_messages
     text = 'Алматы → Москва\nНужен тент\n\nТашкент → Казань\nНужен тент'

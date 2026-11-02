@@ -159,7 +159,6 @@ def count_active_items(kind: str) -> int:
     """Тот же срок видимости, что у публичной ленты; без страниц и закладок."""
     if kind not in {"cargo", "vehicle"}:
         raise ValueError("invalid_feed_kind")
-    purge_expired_items()
     with get_conn() as c:
         return c.execute(
             "SELECT COUNT(*) FROM external_freight_items WHERE kind=? AND status='active' AND expires_at>?",
@@ -309,7 +308,6 @@ def _bounded(value, limit):
 def import_records(records):
     if not isinstance(records, list) or len(records) > MAX_BATCH:
         raise ValueError("invalid_batch_size")
-    purge_expired_items()
     normalized_batch = [normalize_record(raw) for raw in records]
     results = []
     columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
@@ -401,7 +399,6 @@ def _serialize(row):
 def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
                sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
-    purge_expired_items()
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
@@ -564,7 +561,6 @@ def set_bookmark(owner_id, item_id, kind, saved):
 
 
 def get_item(item_id, owner_id=None):
-    purge_expired_items()
     with get_conn() as c:
         row = c.execute("""SELECT * FROM external_freight_items WHERE id=?
           AND status IN ('active','expired','closed')
