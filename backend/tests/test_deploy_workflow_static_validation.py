@@ -105,6 +105,7 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
     ignored = set(push.get("paths-ignore", []))
     expected = {
         ".github/workflows/deploy.yml",
+        ".github/workflows/deploy-qa2-external-feed.yml",
         ".github/workflows/testflight-rc.yml",
         ".github/workflows/submit-android-qa2-internal.yml",
         ".github/workflows/production-deploy-execute.yml",
