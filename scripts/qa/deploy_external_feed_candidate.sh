@@ -50,6 +50,8 @@ code_paths=(backend/scheduler/jobs.py backend/services/external_freight_classifi
   backend/services/external_freight_parser.py backend/database/external_freight_dal.py
   backend/api/external_freight.py ops/telegram-feed/health.py)
 health_units=(urtruck-qa2-feed-health.service urtruck-qa2-feed-health.timer)
+bridge_units=(urtruck-qa2-feed-bridge.service urtruck-qa2-owned-feed-bridge.service)
+bridge_timers=(urtruck-qa2-feed-bridge.timer urtruck-qa2-owned-feed-bridge.timer)
 [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[0-9]+$ && "$source_sha" =~ ^[0-9a-f]{40}$ && "$bundle_sha" =~ ^[0-9a-f]{64}$ ]]
 test "$archive" = "/tmp/urtruck-feed-candidate-$deploy_id.tar.gz"
 test -d "$qa/backend" && test -f "$source_db"
@@ -112,6 +114,9 @@ for unit in "${health_units[@]}"; do
 done
 systemctl is-enabled --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-enabled" || true
 systemctl is-active --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-active" || true
+for unit in "${bridge_timers[@]}"; do
+  systemctl is-active --quiet "$unit" && touch "$backup/$unit-was-active" || true
+done
 python3 - "$qa" "$source_db" "$backup" <<'PY'
 import sqlite3, sys
 from pathlib import Path
@@ -128,9 +133,35 @@ for label, source in (
                 raise SystemExit('sqlite_backup_integrity_failed')
     (backup/label).chmod(0o600)
 PY
+wait_for_qa2_api() {
+  local attempt
+  for attempt in {1..60}; do
+    if curl -fsS --max-time 3 http://127.0.0.1:8002/health -o /dev/null && \
+       curl -fsS --max-time 3 http://127.0.0.1:8002/openapi.json | \
+       python3 -c 'import json,sys; paths=json.load(sys.stdin).get("paths",{}); assert "post" in paths.get("/api/v1/external-freight/import", {})'; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "qa2_api_readiness_timeout" >&2
+  return 1
+}
+wait_for_oneshot_idle() {
+  local unit="$1" attempt state
+  for attempt in {1..300}; do
+    state="$(systemctl show "$unit" -p ActiveState --value)"
+    case "$state" in
+      active|activating|reloading) sleep 1 ;;
+      *) return 0 ;;
+    esac
+  done
+  echo "qa2_bridge_did_not_quiesce unit=$unit" >&2
+  return 1
+}
 rollback() {
   set +e
   sudo -n systemctl stop urtruck-qa2-feed-health.timer urtruck-qa2-feed-health.service
+  sudo -n systemctl stop "${bridge_timers[@]}"
   for path in "${code_paths[@]}"; do
     if test -f "$backup/$path"; then install -D -m 0644 "$backup/$path" "$qa/$path"; fi
   done
@@ -146,15 +177,28 @@ rollback() {
     fi
   done
   sudo -n systemctl daemon-reload
+  local api_ready=1
+  if test -f "$backup/api-restart-required"; then
+    sudo -n systemctl restart urtruck-qa2.service
+    if wait_for_qa2_api; then api_ready=1; else api_ready=0; fi
+  fi
   if test -f "$backup/health-timer-was-enabled"; then sudo -n systemctl enable urtruck-qa2-feed-health.timer; fi
-  if test -f "$backup/health-timer-was-active"; then sudo -n systemctl start urtruck-qa2-feed-health.timer; fi
-  sudo -n systemctl restart "${units[@]}"
+  if test "$api_ready" -eq 1; then
+    if test -f "$backup/health-timer-was-active"; then sudo -n systemctl start urtruck-qa2-feed-health.timer; fi
+    for unit in "${bridge_timers[@]}"; do
+      if test -f "$backup/$unit-was-active"; then sudo -n systemctl start "$unit"; fi
+    done
+  else
+    echo "rollback_api_not_ready; QA2 timers remain stopped for owner diagnosis" >&2
+  fi
 }
 trap 'code=$?; if test "$code" -ne 0; then rollback; fi; exit "$code"' EXIT
 # A previously installed QA2 timer must not read a half-replaced module.
 for unit in urtruck-qa2-feed-health.timer urtruck-qa2-feed-health.service; do
   if systemctl cat "$unit" >/dev/null 2>&1; then sudo -n systemctl stop "$unit"; fi
 done
+sudo -n systemctl stop "${bridge_timers[@]}"
+for unit in "${bridge_units[@]}"; do wait_for_oneshot_idle "$unit"; done
 for path in "${code_paths[@]}"; do
   install -D -m 0644 "$stage/$path" "$qa/$path"
 done
@@ -164,14 +208,21 @@ for unit in "${health_units[@]}"; do
   sudo -n install -m 0644 "$stage/ops/telegram-feed/$unit" "/etc/systemd/system/$unit"
 done
 sudo -n systemctl daemon-reload
-sudo -n systemctl restart "${units[@]}"
-for unit in "${units[@]}"; do systemctl is-active --quiet "$unit"; done
+touch "$backup/api-restart-required"
+sudo -n systemctl restart urtruck-qa2.service
+wait_for_qa2_api
+sudo -n systemctl start urtruck-qa2-feed-bridge.service
+sudo -n systemctl start urtruck-qa2-owned-feed-bridge.service
+systemctl is-active --quiet urtruck-qa2.service
 curl -fsS --max-time 20 http://127.0.0.1:8002/health >/dev/null
 # Installed QA2 health reads shared source state; it never replaces shared health/collector code.
 python3 "$qa/ops/telegram-feed/health.py" --qa2-only --snapshot-only --source-root /home/ubuntu/urtruck-telegram-feed --qa-root "$qa" > "$backup/post-install-health-snapshot.json"
 sudo -n systemctl start urtruck-qa2-feed-health.service
 sudo -n systemctl enable --now urtruck-qa2-feed-health.timer
 systemctl is-active --quiet urtruck-qa2-feed-health.timer
+for unit in "${bridge_timers[@]}"; do
+  if test -f "$backup/$unit-was-active"; then sudo -n systemctl start "$unit"; fi
+done
 for relative in "${code_paths[@]}"; do
   expected="$(awk -v f="$relative" '$2==f {print $1}' "$stage/SHA256SUMS")"
   test -n "$expected" && test "$(sha256sum "$qa/$relative" | awk '{print $1}')" = "$expected"

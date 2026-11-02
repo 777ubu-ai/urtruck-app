@@ -29,6 +29,38 @@ test('deployment script is scoped to feed components, online backups, and code-o
   assert.match(script, /# Code backup and consistent online snapshots; database snapshots are never restored over newer live state\./);
 });
 
+test('QA2 deployment waits for API readiness before starting either bridge', () => {
+  const stopTimers = script.indexOf('sudo -n systemctl stop "${bridge_timers[@]}"');
+  const waitForRunningBridges = script.indexOf('for unit in "${bridge_units[@]}"; do wait_for_oneshot_idle "$unit"; done');
+  const firstCopy = script.indexOf('install -D -m 0644 "$stage/$path" "$qa/$path"');
+  const restartApi = script.indexOf('sudo -n systemctl restart urtruck-qa2.service', firstCopy);
+  const apiReady = script.indexOf('wait_for_qa2_api\nsudo -n systemctl start urtruck-qa2-feed-bridge.service', restartApi);
+  const incomingStart = script.indexOf('sudo -n systemctl start urtruck-qa2-feed-bridge.service', apiReady);
+  const ownedStart = script.indexOf('sudo -n systemctl start urtruck-qa2-owned-feed-bridge.service', incomingStart);
+  const restoreTimers = script.indexOf('for unit in "${bridge_timers[@]}"; do', ownedStart);
+
+  for (const index of [stopTimers, waitForRunningBridges, firstCopy, restartApi, apiReady,
+    incomingStart, ownedStart, restoreTimers]) assert.notEqual(index, -1);
+  assert.ok(stopTimers < waitForRunningBridges && waitForRunningBridges < firstCopy);
+  assert.ok(firstCopy < restartApi && restartApi < apiReady && apiReady < incomingStart);
+  assert.ok(incomingStart < ownedStart && ownedStart < restoreTimers);
+  assert.match(script, /\/openapi\.json/);
+  assert.match(script, /\/api\/v1\/external-freight\/import/);
+  assert.match(script, /qa2_bridge_did_not_quiesce/);
+  assert.doesNotMatch(script, /systemctl restart\s+"\$\{(?:units|bridge_units)\[@\]\}"/);
+});
+
+test('rollback restores code and readiness before resuming timers without firing a bridge one-shot', () => {
+  const start = script.indexOf('rollback() {');
+  const end = script.indexOf("trap 'code=$?", start);
+  assert.ok(start >= 0 && end > start);
+  const rollback = script.slice(start, end);
+  assert.match(rollback, /systemctl restart urtruck-qa2\.service/);
+  assert.match(rollback, /wait_for_qa2_api/);
+  assert.match(rollback, /rollback_api_not_ready; QA2 timers remain stopped/);
+  assert.doesNotMatch(rollback, /systemctl (?:start|restart) urtruck-qa2-(?:owned-)?feed-bridge\.service/);
+});
+
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
