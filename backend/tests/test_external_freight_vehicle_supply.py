@@ -1,11 +1,10 @@
 """Обезличенные регрессии потерь машин из снимка источников 23.10.2026."""
-from datetime import datetime, timezone
 import asyncio
 import importlib.util
 import sys
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from datetime import timedelta
 
 import pytest
 
@@ -333,6 +332,47 @@ def test_history_captures_ten_days_in_bounded_restartable_pages(tmp_path):
     assert calls==[{'limit':2},{'limit':2,'offset_id':4}]
     assert asyncio.run(m.collect_app_history(reader,db,'approved_source',entity))['seen']==0
     assert len(calls)==2
+
+
+def test_vehicle_reserve_classifies_a_bounded_recent_window(tmp_path,monkeypatch):
+    import json
+    from services import external_freight_queue_bridge as bridge_module
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    from services.external_freight_queue_bridge import IncomingQueueBridge
+
+    monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
+    m=collector();path=tmp_path/'source.sqlite3';db=m.database(path);now=m.utcnow()
+    for i in range(650):
+        text=(f'Нужен тент для перевозки груза\nАлматы → Москва\nЗаявка {i+1}')
+        if i==649:
+            text='Машина свободна\nТашкент → Алматы\nТел: +998901234567'
+        m.capture_for_app(db,'approved_source',1001,i+1,text,now-timedelta(minutes=650-i))
+    db.commit()
+
+    calls={'count':0};original=bridge_module.has_vehicle_supply_signal
+    def counted(text):
+        calls['count']+=1
+        return original(text)
+    monkeypatch.setattr(bridge_module,'has_vehicle_supply_signal',counted)
+    received=[]
+    def opener(request,timeout):
+        records=json.loads(request.data)['records'];received.extend(records)
+        class Response:
+            status=200
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self):
+                return json.dumps({'results':[{'id':str(i),'result':'created','status':r.get('status','review')}
+                                              for i,r in enumerate(records)]}).encode()
+        return Response()
+    adapter=ExternalFreightFeedAdapter(db_path=str(tmp_path/'adapter.sqlite3'),
+        api_url='https://qa2.urtruck.kz',importer_key='test',opener=opener)
+
+    result=IncomingQueueBridge(path,adapter).run_once()
+    assert calls['count']<=bridge_module.VEHICLE_RESERVE_LOOKAHEAD
+    assert result['scanned']==50 and result['vehicle_candidates']==1
+    assert any(r['source_message_id']=='650' and r['kind']=='vehicle' for r in received)
+    assert db.execute('SELECT count(*) FROM queue').fetchone()[0]==0
 
 
 def test_history_capture_failure_does_not_skip_record(tmp_path,monkeypatch):

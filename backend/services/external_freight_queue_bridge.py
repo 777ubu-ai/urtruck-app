@@ -14,13 +14,14 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
 from services.external_freight_parser import apply_core_review, map_selected_messages, _phone_identity
-from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 10 * 24 * 3600
 MAX_SCAN = 50
+VEHICLE_RESERVE_LOOKAHEAD = 500
 PARSER_REVISION = '20261101-core-fields-v17'
 
 
@@ -264,7 +265,6 @@ class IncomingQueueBridge(PublishedQueueBridge):
         self.seed_dedup(now)
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory=sqlite3.Row
-            source.create_function('bridge_vehicle_hint', 1, has_vehicle_supply_signal, deterministic=True)
             source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
             unseen="""NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
                   WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
@@ -282,14 +282,16 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 # Его сбор до переключения не создаёт параллельные карточки.
                 query += ' AND lower(q.source)<>?'
                 arguments += (OWNED_SOURCE.lower(),)
-            # Отдельный резерв кандидатов машин: большой грузовой хвост не
-            # расходует всю квоту. Окончательный тип определяет общий парсер.
-            # SQLite может вызывать функцию до NOT EXISTS. CASE не позволяет
-            # повторно разбирать уже подтверждённые посты или чужой поток.
-            scope='lower(q.source)=?' if self.source_name else 'lower(q.source)<>?'
-            hint=f"CASE WHEN {scope} AND {unseen} THEN bridge_vehicle_hint(q.text) ELSE 0 END"
-            vehicles=source.execute(query+f" AND {hint} ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",
-                (*arguments,(self.source_name or OWNED_SOURCE).lower(),self.parser_revision)).fetchall()
+            # Keep the vehicle reserve, but never run Python classification
+            # inside SQLite over the full 10-day history. QA2 measured 137-146s
+            # in source_scan for only 50 selected rows because the UDF was
+            # evaluated before LIMIT. Classify a bounded recent window in Python;
+            # older offers still progress through the indexed oldest-first scan.
+            vehicle_lookahead=source.execute(
+                query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT ?",
+                (*arguments,VEHICLE_RESERVE_LOOKAHEAD)).fetchall()
+            vehicles=[row for row in vehicle_lookahead
+                      if has_vehicle_supply_signal(row["text"] or "")][:10]
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
             # Backfill in publication order. app_messages_published covers
             # source_date/updated_at/id; ordering by updated_at alone forced a

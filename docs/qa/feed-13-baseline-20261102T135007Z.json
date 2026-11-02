@@ -1,0 +1,64 @@
+{
+  "snapshot_window_utc": {
+    "start": "2026-11-02T13:50:07Z",
+    "end": "2026-11-02T13:50:11Z"
+  },
+  "installed_sha": "4d3525ff8d29d0204ed76aff49306c326972defb",
+  "incoming": {
+    "source_waiting": 114688,
+    "oldest_source_waiting_age_seconds": 854280,
+    "source_received_messages_last_hour": 856,
+    "source_progress_utc_epoch": 1793627314.8150783,
+    "pending": 2376,
+    "ready": 2370,
+    "backoff": 0,
+    "expired_pending": 6,
+    "terminal_expired": 1425,
+    "quarantined": 0,
+    "api_accepted_rows_last_hour": 1200,
+    "active_confirmed_rows_last_hour": 131,
+    "review_rows_last_hour": 1046,
+    "oldest_ready_age_seconds": 863986,
+    "oldest_ready_source_published_at": "2026-10-23T13:50:22+00:00",
+    "paused_until_epoch": 0,
+    "progress_utc": "2026-11-02T13:48:37.245322+00:00"
+  },
+  "owned": {
+    "source_waiting": 0,
+    "pending": 0,
+    "ready": 0,
+    "backoff": 0,
+    "expired_pending": 0,
+    "terminal_expired": 0,
+    "quarantined": 0,
+    "api_accepted_rows_last_hour": 0,
+    "active_confirmed_rows_last_hour": 0,
+    "paused_until_epoch": 0,
+    "last_progress_utc": "2026-11-02T11:56:36.017682+00:00"
+  },
+  "telegram": {
+    "received_messages_last_hour": 856,
+    "published_rows_last_hour": 0,
+    "published_total": 7978,
+    "ready": 589,
+    "uncertain": 1,
+    "paused_until_epoch": 0,
+    "latest_published_epoch": 1793605426.583897,
+    "collector_heartbeat_age_seconds": 423,
+    "latest_received_age_seconds": 6,
+    "source_errors": 0
+  },
+  "services": {
+    "qa2_api": "active/running",
+    "incoming_bridge": "activating/start; oneshot cycle in progress",
+    "owned_bridge": "timer active; latest oneshot exited 0",
+    "collector": "active/running",
+    "external_pause": false
+  },
+  "interpretation": [
+    "This is a snapshot on the installed pre-FEED-13 SHA, not post-fix acceptance.",
+    "Incoming source backlog and outbox remain non-empty; the oldest ready row is about 14 seconds short of the 10-day source TTL.",
+    "Telegram intake is recent but publication has 0 confirmed rows in the rolling hour; no delivery claim is made.",
+    "Owned has no new items in this interval."
+  ]
+}
