@@ -44,6 +44,20 @@ def test_existing_empty_contacts_are_visible_without_reimport_or_date_reset():
     assert item['source_published_at'] == raw['source_published_at']
 
 
+def test_dal_does_not_persist_non_phone_values_as_active_contacts():
+    raw = record(1, original_text='Груз готов\nАлматы → Москва\nЦена 12345678 USD',
+                 contacts=['@driver123', 'контакт', '12345678'])
+    raw['source_contacts'] = ['@driver123', '22 тонн']
+    item_id = dal.import_records([raw])[0]['id']
+    from database.external_freight_connection import get_conn
+    with get_conn() as c:
+        item = c.execute('SELECT status,contacts,source_contacts FROM external_freight_items WHERE id=?',
+                         (item_id,)).fetchone()
+    assert item['status'] == 'review'
+    assert json.loads(item['contacts']) == []
+    assert json.loads(item['source_contacts']) == []
+
+
 def test_entity_contacts_stay_separate_and_old_schema_migrates_without_losing_bookmark():
     from database.external_freight_connection import get_conn
     raw = record(1, source_contacts=['+998901234567'])

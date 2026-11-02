@@ -7,6 +7,7 @@ from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from database.external_freight_connection import get_conn, new_id
+from services.external_freight_parser import valid_phone_contacts
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
@@ -235,6 +236,8 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     source_contacts = raw.get('source_contacts') or []
     if not isinstance(source_contacts, list) or len(source_contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in source_contacts):
         raise ValueError('invalid_source_contacts')
+    contacts = valid_phone_contacts(contacts, text)
+    source_contacts = valid_phone_contacts(source_contacts, text)
     source_revision = str(raw.get("source_revision") or "")
     if len(source_revision) > 160:
         raise ValueError("source_revision_too_long")
@@ -249,7 +252,14 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     # both route endpoints.
     has_route = bool(raw.get("origin") and raw.get("destination"))
     has_vehicle_location = bool(raw.get("origin") or raw.get("destination"))
-    core_fields_complete = bool(contacts) and (
+    missing_core = []
+    if kind == "cargo" and not has_route:
+        missing_core.append("missing_route" if not has_vehicle_location else "incomplete_route")
+    elif kind == "vehicle" and not has_vehicle_location:
+        missing_core.append("missing_location")
+    if not contacts:
+        missing_core.append("missing_contact")
+    core_fields_complete = not missing_core and (
         has_route if kind == "cargo" else has_vehicle_location if kind == "vehicle" else False
     )
     if status == "active" and not core_fields_complete:
@@ -258,15 +268,13 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     review_reason = str(raw.get("review_reason") or "")[:128]
     if review_reason and not re.fullmatch(r"[a-z][a-z0-9_|]{0,127}", review_reason):
         raise ValueError("invalid_review_reason")
-    if status == "review" and not review_reason:
-        missing = []
-        if not contacts:
-            missing.append("missing_contact")
-        if kind == "cargo" and not (raw.get("origin") and raw.get("destination")):
-            missing.append("missing_route")
-        elif kind == "vehicle" and not (raw.get("origin") or raw.get("destination")):
-            missing.append("missing_location")
-        review_reason = "_and_".join(missing) or "classification_review"
+    if status == "review":
+        if missing_core:
+            tokens = review_reason.split("_and_") if review_reason else []
+            tokens.extend(reason for reason in missing_core if reason not in tokens)
+            review_reason = "_and_".join(tokens)
+        elif not review_reason:
+            review_reason = "classification_review"
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),

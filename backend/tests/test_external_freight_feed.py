@@ -354,6 +354,35 @@ def test_api_requires_core_fields_and_replays_an_explicit_review_demotion():
     assert all(row["id"] != created["id"] for row in client.get("/api/v1/external-freight").json()["items"])
 
 
+def test_api_and_dal_require_recognized_phone_values_not_nonempty_contacts():
+    bad = _record(source="phone-contract", message="bad-contact",
+                  text="Груз готов. Маршрут Алматы → Москва")
+    bad["contacts"] = ["@driver123", "неизвестно", "22 тонн", "15000 USD"]
+    bad["source_contacts"] = ["@driver123", "контакт"]
+    response = _import(bad)
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "review"
+    with get_conn() as c:
+        stored = c.execute("SELECT contacts,source_contacts,status FROM external_freight_items WHERE id=?",
+                           (result["id"],)).fetchone()
+    assert stored["status"] == "review"
+    assert json.loads(stored["contacts"]) == []
+    assert json.loads(stored["source_contacts"]) == []
+
+    local = _record(source="phone-contract", message="local-contact",
+                    text="Груз готов. Маршрут Алматы → Москва")
+    local["contacts"] = ["901 234 567"]
+    local["source_contacts"] = ["@driver123", "901 234 567"]
+    accepted = _import(local).json()["results"][0]
+    assert accepted["status"] == "active"
+    with get_conn() as c:
+        stored = c.execute("SELECT contacts,source_contacts FROM external_freight_items WHERE id=?",
+                           (accepted["id"],)).fetchone()
+    assert json.loads(stored["contacts"]) == ["901 234 567"]
+    assert json.loads(stored["source_contacts"]) == ["901 234 567"]
+
+
 def test_bulk_cargo_wording_is_not_misclassified_as_a_free_vehicle():
     text = "Актуальные загрузки: требуются машины. Груз: хлопок, маршрут Алматы → Ташкент"
     cargo = _record(source="bulk-cargo", message="cargo", kind="cargo", text=text)

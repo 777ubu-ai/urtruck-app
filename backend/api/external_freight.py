@@ -10,6 +10,7 @@ from fastapi.routing import APIRoute
 from api.verification_gate import require_level, require_admin
 from database import external_freight_dal as dal
 from services.external_freight_classifier import classify_message
+from services.external_freight_parser import apply_core_review, valid_phone_contacts
 from services.owned_telegram_feed import OWNED_SOURCE
 
 MAX_IMPORT_BODY_BYTES = 12_000_000
@@ -207,6 +208,9 @@ def import_external_batch(batch: ImportBatch, importer_key: str | None = Header(
     # its imported posts remain visible even when route/type/contact parsing is
     # incomplete. Other sources still require an unambiguous classification.
     for record in batch.records:
+        text = record.get("original_text", "")
+        record["contacts"] = valid_phone_contacts(record.get("contacts") or [], text)
+        record["source_contacts"] = valid_phone_contacts(record.get("source_contacts") or [], text)
         classification = classify_message(record.get("original_text", ""))
         owned_source = (
             str(record.get("origin_source") or "").casefold() == OWNED_SOURCE.casefold()
@@ -217,6 +221,8 @@ def import_external_batch(batch: ImportBatch, importer_key: str | None = Header(
         ) else "review"
         if classification["status"] == "closed":
             record["status"] = "closed"
+        else:
+            apply_core_review(record)
     try:
         return {"results": dal.import_records(batch.records)}
     except ValueError as exc:

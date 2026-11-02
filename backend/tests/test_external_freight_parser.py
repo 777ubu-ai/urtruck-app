@@ -292,6 +292,29 @@ def test_vehicle_core_fields_allow_one_location_but_require_contact():
     assert no_location["review_reason"] == "missing_location"
 
 
+def test_core_contact_gate_requires_a_phone_not_a_nonempty_contact_value():
+    from services.external_freight_parser import valid_phone_contacts
+
+    text = "Груз готов\nХоргос → Алматы"
+    for value in ("@driver123", "driver@example", "контакт неизвестен", "22 тонн", "15000 USD", "+ 998901234567"):
+        record = map_selected_message(_queue(text, phones="[]", contacts=[value]))
+        reviewed = apply_core_review(record)
+        assert reviewed["contacts"] == []
+        assert (reviewed["status"], reviewed["review_reason"]) == ("review", "missing_contact")
+
+    assert valid_phone_contacts(["+998 90 123 45 67", "901 234 567", "@driver123"]) == [
+        "+998 90 123 45 67", "901 234 567",
+    ]
+
+
+def test_contact_gate_rejects_a_source_price_mislabelled_as_phone():
+    text = "Груз готов\nХоргос → Алматы\nЦена 12345678"
+    record = map_selected_message(_queue(text, phones="[]", contacts=["12345678"]))
+    reviewed = apply_core_review(record)
+    assert reviewed["contacts"] == []
+    assert reviewed["review_reason"] == "missing_contact"
+
+
 def test_explicit_common_footer_is_applied_before_core_field_gate():
     text = (
         "1. Груз готов\nХоргос-Астана\n"

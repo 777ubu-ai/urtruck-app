@@ -200,6 +200,27 @@ def test_published_route_without_contact_is_retained_in_review(bridge):
     assert calls[0]['contacts'] == []
 
 
+def test_published_bridge_does_not_treat_username_or_numeric_field_as_phone(bridge):
+    worker, calls = bridge
+    add(worker, text='Груз готов\nХоргос → Алматы\nЦена 12345678 USD')
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute('UPDATE queue SET phones=? WHERE id=1', ('["@driver123", "12345678", "22 тонн"]',))
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['contacts'] == []
+    assert calls[0]['status'] == 'review'
+    assert calls[0]['review_reason'] == 'missing_contact'
+
+
+def test_published_bridge_accepts_a_local_number_from_source_contacts(bridge):
+    worker, calls = bridge
+    add(worker, text='Груз готов\nХоргос → Алматы')
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute('UPDATE queue SET phones=? WHERE id=1', ('["901234567"]',))
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['contacts'] == ['901234567']
+    assert calls[0]['status'] == 'active'
+
+
 def test_parser_revision_replays_published_records_already_seen_by_old_parser(bridge):
     worker, calls = bridge
     add(worker)
