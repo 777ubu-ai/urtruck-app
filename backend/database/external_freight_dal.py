@@ -1,10 +1,12 @@
 """Отдельное SQLite-хранилище для внешней ленты. Таблицы не затрагивают сделки UrTruck."""
 import hashlib
 import json
+import logging
 import math
 import re
-from functools import lru_cache
+import time
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 from database.external_freight_connection import get_conn, new_id
 from services.external_freight_parser import valid_phone_contacts
@@ -14,6 +16,7 @@ MAX_BATCH = 50
 ACTIVE_DAYS = 10
 PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
+logger = logging.getLogger(__name__)
 
 
 def _utc(value=None):
@@ -48,6 +51,8 @@ def init_schema():
           ON external_freight_items(kind,status,source_published_at DESC,id DESC,expires_at,ingested_at);
         CREATE INDEX IF NOT EXISTS ix_external_freight_expiry
           ON external_freight_items(status, expires_at);
+        CREATE INDEX IF NOT EXISTS ix_external_freight_ingested_purge
+          ON external_freight_items(ingested_at,id);
         CREATE INDEX IF NOT EXISTS ix_external_freight_price
           ON external_freight_items(status,currency,amount,id);
         CREATE TABLE IF NOT EXISTS external_freight_item_body_types (
@@ -67,6 +72,8 @@ def init_schema():
           id TEXT PRIMARY KEY, item_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
           created_at TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE INDEX IF NOT EXISTS ix_external_freight_audit_item
+          ON external_freight_audit(item_id);
         CREATE TABLE IF NOT EXISTS external_freight_delivery (
           source_id TEXT NOT NULL, source_message_id TEXT NOT NULL, segment_id TEXT NOT NULL,
           attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, delivered_at TEXT, last_error TEXT,
@@ -127,14 +134,27 @@ def purge_expired_items(now=None):
     """Delete external feed content after its 10-day source-based lifetime."""
     now = _utc(now)
     cutoff = now - timedelta(days=ACTIVE_DAYS)
+    started = time.monotonic()
     with get_conn() as c:
-        rows = c.execute(
-            "SELECT id,source_id,source_message_id,segment_id FROM external_freight_items "
-            "WHERE (source_published_at IS NOT NULL AND source_published_at<=?) "
-            "OR (source_published_at IS NULL AND ingested_at<=?) "
-            "ORDER BY COALESCE(source_published_at,ingested_at),id LIMIT ?",
-            (cutoff.isoformat(), cutoff.isoformat(), PURGE_BATCH_SIZE),
+        # Split dated and undated retention queries so both can use their
+        # ordered indexes; the previous OR + COALESCE sort scanned all cards.
+        dated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items WHERE source_published_at IS NOT NULL "
+            "AND source_published_at<=? ORDER BY source_published_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
+        undated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
+            "WHERE source_published_at IS NULL "
+            "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+        ).fetchall()
+        rows = sorted(
+            (*dated, *undated),
+            key=lambda row: (row["source_published_at"] or row["ingested_at"], row["id"]),
+        )[:PURGE_BATCH_SIZE]
         if not rows:
             return 0
         item_ids = [row["id"] for row in rows]
@@ -152,7 +172,10 @@ def purge_expired_items(now=None):
             [(row["source_id"], row["source_message_id"], row["segment_id"]) for row in rows],
         )
         c.execute(f"DELETE FROM external_freight_items WHERE id IN ({placeholders})", item_ids)
-        return len(rows)
+        removed = len(rows)
+    duration_ms = round((time.monotonic() - started) * 1000)
+    logger.info("external_feed_retention_batch removed=%d duration_ms=%d", removed, duration_ms)
+    return removed
 
 
 def count_active_items(kind: str) -> int:
@@ -311,59 +334,69 @@ def import_records(records):
     normalized_batch = [normalize_record(raw) for raw in records]
     results = []
     columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
-    with get_conn() as c:
-        for values in normalized_batch:
-            fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
-            too_old = (values["source_published_at"] and
-                       _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
-            previously_expired = c.execute(
-                "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
-            ).fetchone()
-            if too_old or previously_expired:
-                c.execute(
-                    "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
-                    (fingerprint, _utc().isoformat()),
-                )
-                results.append({"id": values["id"], "result": "expired", "status": "expired"})
-                continue
-            current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
-            if current:
-                values["id"] = current["id"]
-                # Replay/edit must keep its original admission time so a new
-                # ingest cannot move the row into an in-progress cursor snapshot.
-                values["ingested_at"] = current["ingested_at"]
-                if current["source_published_at"]:
-                    values["source_published_at"] = current["source_published_at"]
-                    values["expires_at"] = (_utc(current["source_published_at"])
-                                             + timedelta(days=ACTIVE_DAYS)).isoformat()
+    transaction_started = time.monotonic()
+    try:
+        with get_conn() as c:
+            for values in normalized_batch:
+                fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
+                too_old = (values["source_published_at"] and
+                           _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
+                previously_expired = c.execute(
+                    "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
+                ).fetchone()
+                if too_old or previously_expired:
+                    c.execute(
+                        "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+                        (fingerprint, _utc().isoformat()),
+                    )
+                    results.append({"id": values["id"], "result": "expired", "status": "expired"})
+                    continue
+                current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
+                if current:
+                    values["id"] = current["id"]
+                    # Replay/edit must keep its original admission time so a new
+                    # ingest cannot move the row into an in-progress cursor snapshot.
+                    values["ingested_at"] = current["ingested_at"]
+                    if current["source_published_at"]:
+                        values["source_published_at"] = current["source_published_at"]
+                        values["expires_at"] = (_utc(current["source_published_at"])
+                                                 + timedelta(days=ACTIVE_DAYS)).isoformat()
+                    else:
+                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=ACTIVE_DAYS)).isoformat()
+                    unchanged = all(values[key] == current[key] for key in columns
+                                    if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
+                    if current["status"] in {"hidden", "closed"} or (
+                            current["status"] == "active" and values["status"] == "review" and unchanged
+                            and values["core_fields_complete"] and not values["review_requested"]
+                            and not values["review_reason_explicit"]):
+                        values["status"] = current["status"]
+                    if values["status"] == "closed":
+                        values["kind"] = current["kind"]
+                    if values["status"] == "active" and (not values["expires_at"] or _utc(values["expires_at"]) <= _utc()):
+                        values["status"] = "expired"
+                    assignments = ",".join(f"{key}=?" for key in columns)
+                    c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
+                    action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
                 else:
-                    values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=ACTIVE_DAYS)).isoformat()
-                unchanged = all(values[key] == current[key] for key in columns
-                                if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
-                if current["status"] in {"hidden", "closed"} or (
-                        current["status"] == "active" and values["status"] == "review" and unchanged
-                        and values["core_fields_complete"] and not values["review_requested"]
-                        and not values["review_reason_explicit"]):
-                    values["status"] = current["status"]
-                if values["status"] == "closed":
-                    values["kind"] = current["kind"]
-                if values["status"] == "active" and (not values["expires_at"] or _utc(values["expires_at"]) <= _utc()):
-                    values["status"] = "expired"
-                assignments = ",".join(f"{key}=?" for key in columns)
-                c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
-                action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
-            else:
-                all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
-                c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
-                action = "created"
-            audit_details = json.dumps(
-                {"review_reason": values["review_reason"]} if values["status"] == "review" else {},
-                separators=(",", ":"),
-            )
-            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), audit_details))
-            c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
-            c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
-            results.append({"id": values["id"], "result": action, "status": values["status"]})
+                    all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
+                    c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
+                    action = "created"
+                audit_details = json.dumps(
+                    {"review_reason": values["review_reason"]} if values["status"] == "review" else {},
+                    separators=(",", ":"),
+                )
+                c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), audit_details))
+                c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
+                c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
+                results.append({"id": values["id"], "result": action, "status": values["status"]})
+    except Exception as exc:
+        logger.warning(
+            "external_feed_import_transaction_failed batch_size=%d error_class=%s duration_ms=%d",
+            len(normalized_batch), type(exc).__name__, round((time.monotonic() - transaction_started) * 1000),
+        )
+        raise
+    duration_ms = round((time.monotonic() - transaction_started) * 1000)
+    logger.info("external_feed_import_transaction batch_size=%d duration_ms=%d", len(normalized_batch), duration_ms)
     return results
 
 

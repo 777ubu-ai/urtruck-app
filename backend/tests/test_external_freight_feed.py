@@ -1,12 +1,14 @@
 """Контракт отдельной внешней ленты на отдельной изолированной тестовой БД."""
+import base64
+import json
 import os
 import sqlite3
 import stat
 import uuid
-import base64
-import json
-from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 from fastapi import FastAPI
@@ -104,6 +106,62 @@ def test_feed_requests_do_not_run_expiry_writer_when_sqlite_is_locked(monkeypatc
     # unrelated retention batch before accepting the durable outbox batch.
     replay = _import(_record(source="sqlite-lock-import"))
     assert replay.status_code == 200
+
+
+def test_retention_lookups_use_item_and_ingest_indexes():
+    with get_conn() as c:
+        c.executemany(
+            "INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)",
+            [(str(i), f"item-{i % 100}", "test", "created", "2026-01-01T00:00:00+00:00", "{}")
+             for i in range(2000)],
+        )
+        c.execute("ANALYZE external_freight_audit")
+        audit_plan = c.execute(
+            "EXPLAIN QUERY PLAN DELETE FROM external_freight_audit WHERE item_id=?", ("item",)
+        ).fetchall()
+        undated_plan = c.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM external_freight_items "
+            "INDEXED BY ix_external_freight_ingested_purge "
+            "WHERE source_published_at IS NULL AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
+            ("2000-01-01T00:00:00+00:00", 10),
+        ).fetchall()
+    assert any("ix_external_freight_audit_item" in str(tuple(row)) for row in audit_plan), [tuple(row) for row in audit_plan]
+    assert any("ix_external_freight_ingested_purge" in str(tuple(row)) for row in undated_plan), [tuple(row) for row in undated_plan]
+
+
+def test_concurrent_expiry_cleanup_and_import_preserve_both_results():
+    now = datetime.now(UTC)
+    expired = [_record(source="concurrent-expiry", message=f"old-{i}", published=now)
+               for i in range(24)]
+    assert all(result["result"] == "created" for result in dal.import_records(expired))
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET source_published_at=?,ingested_at=?,expires_at=?,status='expired' "
+                  "WHERE source_id=?", ("2000-01-01T00:00:00+00:00", "2000-01-01T00:00:00+00:00",
+                                         "2000-01-11T00:00:00+00:00", "concurrent-expiry"))
+
+    barrier = Barrier(3)
+    def cleanup():
+        barrier.wait()
+        return dal.purge_expired_items(now=now)
+    def write_batch(batch):
+        barrier.wait()
+        return dal.import_records(batch)
+    imports = [
+        [_record(source="concurrent-live", message=f"batch-{batch}-{i}") for i in range(12)]
+        for batch in range(2)
+    ]
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        purge_future = pool.submit(cleanup)
+        import_futures = [pool.submit(write_batch, batch) for batch in imports]
+        purged = purge_future.result(timeout=10)
+        outcomes = [future.result(timeout=10) for future in import_futures]
+
+    assert purged == 24
+    assert all(result["result"] == "created" for batch in outcomes for result in batch)
+    with get_conn() as c:
+        assert c.execute("SELECT count(*) FROM external_freight_items WHERE source_id='concurrent-expiry'").fetchone()[0] == 0
+        assert c.execute("SELECT count(*) FROM external_freight_expired_sources").fetchone()[0] == 24
+        assert c.execute("SELECT count(*) FROM external_freight_items WHERE source_id='concurrent-live'").fetchone()[0] == 24
 
 
 def test_hidden_entity_contact_without_confirmed_assignment_remains_in_review():
