@@ -159,6 +159,48 @@ def test_empty_source_cycle_drains_two_durable_outbox_batches(bridge):
     assert len({(row["source_id"], row["source_message_id"], row["segment_id"]) for row in calls}) == 120
 
 
+def test_saturated_batches_reserve_slots_for_oldest_ready_records(bridge):
+    worker, calls = bridge
+    from datetime import datetime, timezone
+
+    def record(source_id, message_id, published_at):
+        return {
+            "source_id": source_id, "source_message_id": str(message_id), "segment_id": "0",
+            "source_published_at": datetime.fromtimestamp(published_at, timezone.utc).isoformat(),
+            "kind": "cargo", "status": "active", "origin": "Алашанькоу",
+            "destination": "Ташкент", "contacts": ["901234567"],
+            "original_text": f"fixture-{source_id}-{message_id}",
+        }
+
+    worker.adapter.enqueue_many_with_outcomes([
+        *(record("fresh", i, NOW - 3600) for i in range(60)),
+        *(record("old", i, NOW - 9 * 24 * 3600 - i) for i in range(30)),
+    ])
+
+    result = worker.adapter.flush_bounded()
+
+    assert result["batches_attempted"] == 2
+    assert result["attempted_records"] == 90
+    assert result["api_request_count"] == 2
+    assert result["pending"] == 0
+    assert sum(row["source_id"] == "old" for row in calls) >= 20
+    assert len(calls) == len({(row["source_id"], row["source_message_id"], row["segment_id"])
+                             for row in calls}) == 90
+
+
+def test_cycle_duration_covers_bridge_stages_and_reports_flush_separately(bridge):
+    worker, _ = bridge
+    add(worker)
+
+    result = worker.run_once()
+
+    measured_stages = sum(result[key] for key in (
+        "source_scan_ms", "parse_ms", "outbox_write_ms", "source_ack_ms", "flush_ms"))
+    assert result["cycle_duration_ms"] >= measured_stages
+    assert result["bridge_duration_ms"] >= result["cycle_duration_ms"] - result["lock_wait_ms"]
+    assert result["flush_cycle_duration_ms"] >= 0
+
+
 def test_bounded_outbox_stops_after_failed_batch_and_preserves_backoff(bridge):
     worker, calls = bridge
     for i in range(120):
