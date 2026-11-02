@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+from services import external_freight_queue_bridge as queue_bridge
 from services.external_freight_queue_bridge import PublishedQueueBridge, validate_qa_target
 
 NOW = 1792576800
@@ -120,6 +121,123 @@ def test_expired_outbox_record_is_retained_and_not_retried(bridge):
         row = state.execute("SELECT payload,terminal_reason FROM selected_outbox").fetchone()
     assert row is not None and row["terminal_reason"] == "source_retention_expired"
     assert calls == []
+
+
+def test_empty_source_cycle_drains_two_durable_outbox_batches(bridge):
+    worker, calls = bridge
+    for i in range(120):
+        worker.adapter.enqueue({
+            "source_id": "backlog", "source_message_id": str(i), "segment_id": "0",
+            "source_published_at": "2026-10-21T10:00:00+00:00", "kind": "cargo",
+            "status": "active", "origin": "Алашанькоу", "destination": "Ташкент",
+            "contacts": ["901234567"], "original_text": f"fixture-{i}",
+        })
+
+    # The source queue is empty, but durable outbox work must still run.
+    first = worker.run_once()
+    assert first["scanned"] == 0
+    assert first["sent"] == 100
+    assert first["attempted_records"] == 100
+    assert first["batches_attempted"] == 2
+    assert first["api_request_count"] == 2
+    assert first["pending"] == 20
+    with worker.adapter._connect() as state:
+        assert state.execute("SELECT COUNT(*) FROM selected_outbox WHERE delivered_at IS NOT NULL").fetchone()[0] == 100
+
+    before_calls = len(calls)
+    budgeted = worker.adapter.flush_bounded(time_budget_seconds=0.1)
+    assert budgeted["status"] == "budget_exhausted"
+    assert budgeted["api_request_count"] == 0
+    assert len(calls) == before_calls
+
+    second = worker.run_once()
+    assert second["scanned"] == 0
+    assert second["sent"] == 20
+    assert second["api_request_count"] == 1
+    assert second["pending"] == 0
+    assert len(calls) == 120
+    assert len({(row["source_id"], row["source_message_id"], row["segment_id"]) for row in calls}) == 120
+
+
+def test_bounded_outbox_stops_after_failed_batch_and_preserves_backoff(bridge):
+    worker, calls = bridge
+    for i in range(120):
+        worker.adapter.enqueue({
+            "source_id": "backlog", "source_message_id": str(i), "segment_id": "0",
+            "source_published_at": "2026-10-21T10:00:00+00:00", "kind": "cargo",
+            "status": "active", "origin": "Алашанькоу", "destination": "Ташкент",
+            "contacts": ["901234567"], "original_text": f"fixture-{i}",
+        })
+    worker.adapter.opener = lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))
+
+    result = worker.run_once()
+    assert result["status"] == "retry_scheduled"
+    assert result["api_request_count"] == 1
+    assert result["batches_attempted"] == 1
+    assert result["pending"] == 120
+    assert result["ready_pending"] == 70
+    assert calls == []
+
+
+def test_second_batch_failure_keeps_first_ack_and_retries_only_unacked_rows(bridge):
+    worker, calls = bridge
+    for i in range(120):
+        worker.adapter.enqueue({
+            "source_id": "backlog", "source_message_id": str(i), "segment_id": "0",
+            "source_published_at": "2026-10-21T10:00:00+00:00", "kind": "cargo",
+            "status": "active", "origin": "Алашанькоу", "destination": "Ташкент",
+            "contacts": ["901234567"], "original_text": f"fixture-{i}",
+        })
+    successful_opener = worker.adapter.opener
+    calls_made = 0
+
+    def partial_opener(request, timeout):
+        nonlocal calls_made
+        calls_made += 1
+        if calls_made == 1:
+            return successful_opener(request, timeout)
+        raise OSError("offline")
+
+    worker.adapter.opener = partial_opener
+    result = worker.run_once()
+    assert result["status"] == "retry_scheduled"
+    assert result["batches_attempted"] == 2
+    assert result["api_request_count"] == 2
+    assert result["sent"] == result["api_accepted"] == 50
+    assert result["pending"] == 70
+    assert result["ready_pending"] == 20
+    with worker.adapter._connect() as state:
+        delivered = state.execute("SELECT COUNT(*) FROM selected_outbox WHERE delivered_at IS NOT NULL").fetchone()[0]
+        retrying = state.execute("SELECT COUNT(*) FROM selected_outbox WHERE attempts=1 AND delivered_at IS NULL").fetchone()[0]
+    assert delivered == retrying == 50
+    assert len(calls) == 50
+
+    worker.adapter.opener = successful_opener
+    worker.adapter.clock = lambda: NOW + 6
+    resumed = worker.run_once()
+    assert resumed["sent"] == 70
+    assert resumed["pending"] == 0
+    assert len(calls) == 120
+    assert len({(row["source_id"], row["source_message_id"], row["segment_id"]) for row in calls}) == 120
+
+
+def test_bridge_failure_logs_only_safe_stage_and_exception_class(monkeypatch, capsys):
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    monkeypatch.setenv("EXTERNAL_FREIGHT_SOURCE_DB", "/tmp/source.sqlite3")
+    monkeypatch.setenv("EXTERNAL_FREIGHT_ADAPTER_DB", "/tmp/state.sqlite3")
+    monkeypatch.setenv("EXTERNAL_FREIGHT_API_URL", "https://not-qa2.example/private")
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORTER_KEY", "never-print-this")
+
+    with pytest.raises(ValueError):
+        queue_bridge.main()
+    output = capsys.readouterr().out
+    assert json.loads(output) == {
+        "error_type": "ValueError",
+        "failure_stage": "configuration",
+        "status": "bridge_configuration_or_source_error",
+    }
+    assert "never-print-this" not in output
+    assert "not-qa2.example" not in output
 
 
 def test_missing_route_and_contact_are_retained_in_review(bridge):
