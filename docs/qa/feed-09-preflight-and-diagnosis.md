@@ -57,7 +57,7 @@ The existing QA2 deploy script does not modify `/home/ubuntu/urtruck-telegram-fe
 - `bash -n scripts/qa/deploy_external_feed_candidate.sh`: PASS.
 - `node --test tests/frontend/test_qa2_external_feed_deploy_workflow.mjs`: 9/9 PASS, including readiness ordering, serial bridge starts, timer handling, scope guard, and rollback contract.
 - `git diff --check`: PASS.
-- Backend pytest regressions were not completed locally. The system Python environments have no `pytest`; an isolated temporary environment with pytest reaches repository `backend/tests/conftest.py` and stops because runtime dependency `fastapi` is absent. No project or user environment dependencies were installed. No backend source changed in this patch; the protected CI gate remains required before promotion/deploy.
+- Backend pytest regressions were not completed locally. The system Python environments have no `pytest`; an isolated temporary environment with pytest reaches repository `backend/tests/conftest.py` and stops because runtime dependency `fastapi` is absent. No project or user environment dependencies were installed. The first protected Quality Gate run (41421831812) exposed that the existing deploy-runtime test shim did not implement the new health/OpenAPI probes: six runtime cases hit their 30-second harness timeout. The shim is being updated to return the QA2 health and importer-route responses. No backend runtime code changed; the protected Quality Gate must pass on the final commit before promotion/deploy.
 
 ## Status
 
