@@ -49,7 +49,7 @@ jobs:
 
   web-pwa-visual:
     name: Playwright ${{ matrix.suite }} visual audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
       fail-fast: false
