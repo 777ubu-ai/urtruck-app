@@ -70,8 +70,15 @@ if args[0]=='start' and args[-1]=='urtruck-qa2-feed-health.timer':marker.touch()
 if args[0] in ['stop','disable'] and 'urtruck-qa2-feed-health.timer' in args:marker.unlink(missing_ok=True)
 """)
     # Simulate a new message arriving AFTER online backup, before any rollback.
-    executable(shims/'curl',"""import sqlite3,os
-with sqlite3.connect(os.environ['FEED05_ADAPTER']) as db:db.execute("INSERT INTO incoming_bridge_seen VALUES(999,'new-message',123,'accepted')")
+    executable(shims/'curl',"""import json,sqlite3,os,sys
+url=next((arg for arg in sys.argv[1:] if arg.startswith('http://') or arg.startswith('https://')), '')
+if url.endswith('/openapi.json'):
+    print(json.dumps({'paths':{'/api/v1/external-freight/import':{'post':{}}}}))
+elif url.endswith('/health'):
+    with sqlite3.connect(os.environ['FEED05_ADAPTER']) as db:
+        db.execute("INSERT OR IGNORE INTO incoming_bridge_seen VALUES(999,'new-message',123,'accepted')")
+else:
+    sys.exit(22)
 """)
     real_sha=shutil.which('sha256sum')
     executable(shims/'sha256sum',"import os,sys\nif sys.argv[1:]==[os.environ.get('FEED05_FAIL_PATH')]:print('0'*64+'  '+sys.argv[1])\nelse:os.execv("+repr(real_sha)+",["+repr(real_sha)+"]+sys.argv[1:])\n")
