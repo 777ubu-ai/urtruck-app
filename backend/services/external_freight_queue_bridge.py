@@ -73,23 +73,30 @@ class PublishedQueueBridge:
                 source_queue_id INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
 
     def run_once(self):
+        cycle_started = time.monotonic()
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
-            return {"status": "disabled", "scanned": 0}
+            return {"status": "disabled", "scanned": 0,
+                    "bridge_duration_ms": 0,
+                    "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
         if not self.adapter.importer_key:
-            return {"status": "not_configured", "scanned": 0}
-        lock_started = time.monotonic()
+            return {"status": "not_configured", "scanned": 0,
+                    "bridge_duration_ms": 0,
+                    "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
+        lock_started = cycle_started
         with open(self.adapter.db_path + ".bridge.lock", "a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return {"status": "busy", "scanned": 0,
-                        "lock_wait_ms": round((time.monotonic()-lock_started)*1000)}
+                        "lock_wait_ms": round((time.monotonic()-lock_started)*1000),
+                        "bridge_duration_ms": 0,
+                        "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
             try:
                 acquired = time.monotonic()
                 result = self._run_locked()
                 result["lock_wait_ms"] = round((acquired-lock_started)*1000)
                 result["bridge_duration_ms"] = round((time.monotonic()-acquired)*1000)
-                result["cycle_duration_ms"] = result["bridge_duration_ms"]
+                result["cycle_duration_ms"] = round((time.monotonic()-cycle_started)*1000)
                 return result
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
@@ -188,7 +195,7 @@ class PublishedQueueBridge:
                 "source_scan_ms": source_scan_ms, "parse_ms": parse_ms,
                 "outbox_write_ms": outbox_write_ms, "source_ack_ms": source_ack_ms,
                 "flush_ms": flush_duration_ms,
-                "cycle_duration_ms": delivery.get("cycle_duration_ms", flush_duration_ms),
+                "flush_cycle_duration_ms": delivery.get("cycle_duration_ms", flush_duration_ms),
                 "terminal_expired": delivery.get("terminal_expired", self.adapter.terminal_expired_count()),
                 "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
                 "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now)),
@@ -409,7 +416,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 "api_request_count":delivery.get("api_request_count",0),
                 "api_duration_ms":delivery.get("api_duration_ms",0),
                 "batches_attempted":delivery.get("batches_attempted",0),
-                "cycle_duration_ms":delivery.get("cycle_duration_ms",flush_duration_ms),
+                "flush_cycle_duration_ms":delivery.get("cycle_duration_ms",flush_duration_ms),
                 "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind,
                 "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
 

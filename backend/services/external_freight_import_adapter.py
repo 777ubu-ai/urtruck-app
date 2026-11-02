@@ -20,6 +20,7 @@ MAX_BATCH = 50
 MAX_FLUSH_BATCHES_PER_CYCLE = 2
 MAX_FLUSH_CYCLE_SECONDS = 30
 API_REQUEST_TIMEOUT_SECONDS = 8
+OLDEST_RESERVE_PER_BATCH = 10
 MAX_BACKOFF_SECONDS = 900
 RETENTION_SECONDS = 10 * 24 * 3600
 
@@ -390,10 +391,20 @@ class ExternalFreightFeedAdapter:
                 vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now, cutoff)).fetchall()
                 fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now, cutoff)).fetchall()
                 retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now, cutoff)).fetchall()
-                # Квоты не вытесняют весь хвост: оставшиеся места берут старую
-                # выдачу. Пакет по-прежнему не больше 50, ACK привязан к generation.
+                # Резервируем часть каждого насыщенного пакета для oldest-first:
+                # сортировка базовой выборки по source identity не гарантирует
+                # продвижения записей у границы TTL. Записи без даты идут после
+                # датированных, свежая и vehicle-квоты остаются первыми.
+                oldest = db.execute(f"""SELECT * FROM selected_outbox WHERE {due}
+                    ORDER BY CASE WHEN json_extract(payload,'$.source_published_at') IS NULL THEN 1 ELSE 0 END,
+                        julianday(json_extract(payload,'$.source_published_at')) ASC,
+                        source_id,source_message_id,segment_id LIMIT ?""",
+                    (now, cutoff, OLDEST_RESERVE_PER_BATCH)).fetchall()
+                # Квоты дедуплицируются по ключу записи и не увеличивают API
+                # контракт: общий пакет остаётся в пределах MAX_BATCH, ACK
+                # привязан к generation.
                 selected = {}
-                for row in (*controls, *vehicles, *fresh, *retries, *rows):
+                for row in (*controls, *vehicles, *fresh, *retries, *oldest, *rows):
                     identity = (row['source_id'], row['source_message_id'], row['segment_id'])
                     selected.setdefault(identity, row)
                 rows = list(selected.values())[:MAX_BATCH]
