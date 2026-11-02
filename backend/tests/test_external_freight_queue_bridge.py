@@ -88,7 +88,9 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     add(worker)
     original_opener = worker.adapter.opener
     worker.adapter.opener = lambda *args, **kwargs: (_ for _ in ()).throw(OSError("offline"))
-    assert worker.run_once()["status"] == "retry_scheduled"
+    failed = worker.run_once()
+    assert failed["status"] == "retry_scheduled"
+    assert failed["error_type"] == "OSError"
     assert worker.adapter.pending_count() == 1
     worker.adapter.opener = original_opener
     worker.adapter.clock = lambda: NOW + 61
@@ -100,11 +102,32 @@ def test_network_failure_survives_new_worker_and_preserves_payload(bridge):
     assert calls[0]["source_published_at"] == "2026-10-21T10:00:00+00:00"
 
 
-def test_missing_route_and_contact_are_still_visible(bridge):
+def test_expired_outbox_record_is_retained_and_not_retried(bridge):
+    worker, calls = bridge
+    worker.adapter.enqueue({
+        "source_id": "old-source", "source_message_id": "expired", "segment_id": "0",
+        "source_published_at": "2026-10-01T10:00:00+00:00", "kind": "cargo",
+        "status": "active", "original_text": "expired test fixture",
+    })
+    result = worker.run_once()
+    assert result["status"] == "idle"
+    assert result["expired_pending"] == 0
+    assert result["terminal_expired"] == 1
+    assert result["pending"] == 0
+    assert worker.adapter.pending_count() == 0
+    assert worker.adapter.terminal_expired_count() == 1
+    with worker.adapter._connect() as state:
+        row = state.execute("SELECT payload,terminal_reason FROM selected_outbox").fetchone()
+    assert row is not None and row["terminal_reason"] == "source_retention_expired"
+    assert calls == []
+
+
+def test_missing_route_and_contact_are_retained_in_review(bridge):
     worker, calls = bridge
     add(worker, text="Нужен тент 22 тонны. Груз готов")
     assert worker.run_once()["sent"] == 1
-    assert calls[0]["status"] == "active"
+    assert calls[0]["status"] == "review"
+    assert calls[0]["classification_status"] == "review"
     assert calls[0]["origin"] is None and calls[0]["destination"] is None
 
 
@@ -116,6 +139,8 @@ def test_published_bridge_splits_requests_and_reads_footer_contacts(bridge):
     result = worker.run_once()
     assert result['scanned'] == 1
     assert result['enqueued'] == result['sent'] == 2
+    assert result['segments'] == 2 and result['segments_created'] == 2
+    assert result['segments_updated'] == result['segments_unchanged'] == 0
     assert [(item['segment_id'], item['origin'], item['destination'], item['contacts'], item['status'])
             for item in calls] == [
         ('block-1', 'Хоргос', 'Астана', ['123456'], 'active'),
@@ -155,7 +180,8 @@ def test_post_footer_phone_must_be_on_final_nonempty_line(bridge):
     result = worker.run_once()
     assert result['sent'] == 2
     assert calls[0]['contacts'] == ['+998905126071']
-    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'active'
+    assert calls[1]['contacts'] == [] and calls[1]['status'] == 'review'
+    assert worker.run_once()['scanned'] == 0
 
 
 def test_published_vehicle_needs_one_location_and_contact(bridge):
@@ -166,12 +192,33 @@ def test_published_vehicle_needs_one_location_and_contact(bridge):
         'vehicle', 'active', 'Хоргос', ['123456'])
 
 
-def test_published_active_route_without_contact_stays_visible(bridge):
+def test_published_route_without_contact_is_retained_in_review(bridge):
     worker, calls = bridge
     add(worker, text='Груз готов\nХоргос → Алматы')
     assert worker.run_once()['sent'] == 1
-    assert calls[0]['status'] == 'active'
+    assert calls[0]['status'] == 'review'
     assert calls[0]['contacts'] == []
+
+
+def test_published_bridge_does_not_treat_username_or_numeric_field_as_phone(bridge):
+    worker, calls = bridge
+    add(worker, text='Груз готов\nХоргос → Алматы\nЦена 12345678 USD')
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute('UPDATE queue SET phones=? WHERE id=1', ('["@driver123", "12345678", "22 тонн"]',))
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['contacts'] == []
+    assert calls[0]['status'] == 'review'
+    assert calls[0]['review_reason'] == 'missing_contact'
+
+
+def test_published_bridge_accepts_a_local_number_from_source_contacts(bridge):
+    worker, calls = bridge
+    add(worker, text='Груз готов\nХоргос → Алматы')
+    with sqlite3.connect(worker.source_path) as db:
+        db.execute('UPDATE queue SET phones=? WHERE id=1', ('["901234567"]',))
+    assert worker.run_once()['sent'] == 1
+    assert calls[0]['contacts'] == ['901234567']
+    assert calls[0]['status'] == 'active'
 
 
 def test_parser_revision_replays_published_records_already_seen_by_old_parser(bridge):
@@ -185,7 +232,7 @@ def test_parser_revision_replays_published_records_already_seen_by_old_parser(br
     result = worker.run_once()
     assert result['scanned'] == result['sent'] == 1
     assert calls[0]['contacts'] == []
-    assert calls[0]['status'] == 'active'
+    assert calls[0]['status'] == 'review'
     assert worker.run_once()['scanned'] == 0
 
 
@@ -240,9 +287,9 @@ def test_contact_footer_fix_advances_each_bridge_parser_revision():
         PARSER_REVISION,
     )
 
-    assert PARSER_REVISION == IncomingQueueBridge.parser_revision == "20261030-phone-numeric-fields-v15"
-    assert OwnedTelegramQueueBridge.parser_revision == "20261030-phone-numeric-fields-v15"
-    assert PublishedQueueBridge.parser_revision == "20261030-phone-numeric-fields-v10"
+    assert PARSER_REVISION == IncomingQueueBridge.parser_revision == "20261101-core-fields-v17"
+    assert OwnedTelegramQueueBridge.parser_revision == "20261101-core-fields-v17"
+    assert PublishedQueueBridge.parser_revision == "20261101-core-fields-v12"
 
 
 def test_delivered_source_edit_and_closure_are_replayed_after_restart(bridge):

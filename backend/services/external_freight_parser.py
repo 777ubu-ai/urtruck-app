@@ -216,6 +216,43 @@ def _published(value):
     return str(value)
 
 
+def _core_review_reason(record):
+    """Return a safe, field-level reason when a listing lacks its core data."""
+    source_text = record.get("source_text", record.get("original_text"))
+    record["contacts"] = valid_phone_contacts(record.get("contacts"), record.get("original_text", source_text))
+    if "source_contacts" in record:
+        record["source_contacts"] = valid_phone_contacts(record.get("source_contacts"), source_text)
+    if record.get("status") not in {"active", "review"}:
+        return None
+    existing_reason = record.get("review_reason")
+    kind = record.get("kind")
+    has_route = bool(record.get("origin") and record.get("destination"))
+    has_vehicle_location = bool(record.get("origin") or record.get("destination"))
+    has_contact = bool(record["contacts"])
+    missing = []
+    if kind == "cargo" and not has_route:
+        missing.append("missing_route" if not has_vehicle_location else "incomplete_route")
+    elif kind == "vehicle" and not has_vehicle_location:
+        missing.append("missing_location")
+    if not has_contact:
+        missing.append("missing_contact")
+    if missing:
+        tokens = existing_reason.split("_and_") if existing_reason else []
+        tokens.extend(reason for reason in missing if reason not in tokens)
+        return "_and_".join(tokens)
+    return existing_reason if record.get("status") == "review" else None
+
+
+def apply_core_review(record):
+    """Gate an otherwise active parsed record before it enters the outbox."""
+    reason = _core_review_reason(record)
+    if reason and record.get("status") != "closed":
+        record["status"] = "review"
+        record["classification_status"] = "review"
+        record["review_reason"] = reason
+    return record
+
+
 def _weight_tonnes(text):
     match = _WEIGHT.search(text)
     if not match:
@@ -304,7 +341,7 @@ def map_selected_message(raw: dict) -> dict:
             phones = []
     if not isinstance(phones, list):
         phones = []
-    phones = [str(phone)[:200] for phone in phones if str(phone).strip()][:20]
+    phones = valid_phone_contacts(phones, text)
     # Источник может передать неполный список контактов. Дополняем его
     # осторожным разбором текста объявления, сохраняя исходный формат номера.
     known_phone_ids = {_phone_identity(phone) for phone in phones if _phone_identity(phone)}
@@ -319,7 +356,7 @@ def map_selected_message(raw: dict) -> dict:
     if classification.get("status") == "split":
         status = "review"
         phones = []
-    return {
+    record = {
         "source_id": str(raw.get("source_id") or raw.get("source") or "")[:120],
         "source_message_id": str(raw.get("source_message_id") or raw.get("source_message") or raw.get("source_id_message") or raw.get("id") or "")[:160],
         "segment_id": str(raw.get("segment_id") or "0")[:80],
@@ -344,6 +381,15 @@ def map_selected_message(raw: dict) -> dict:
         "source_revision": str(raw.get("source_revision") or raw.get("fingerprint") or "")[:160],
         "origin_source": str(raw.get("origin_source") or raw.get("source") or "")[:120] or None,
     }
+    if status == "review":
+        record["review_reason"] = (
+            "ambiguous_route" if route_conflict else
+            "invalid_route_value" if malformed_web_route else
+            classification.get("reason") or "ambiguous_intent"
+        )
+    elif route_conflict:
+        record["review_reason"] = "ambiguous_route"
+    return record
 
 
 _PHONE_BLOCK = re.compile(r"(?<!\d)\+?\d[\d \t().-]{4,}\d(?!\d)")
@@ -484,14 +530,76 @@ def block_contacts(text):
             allowed = 6 <= len(digits) <= 15 if marker else line_number in footer_lines and 6 <= len(digits) <= 9
             if allowed and _phone_identity(candidate) not in {_phone_identity(item) for item in result}:
                 result.append(candidate)
-    return result[:20]
+    return valid_phone_contacts(result, text)
 
 
 def _phone_identity(value):
+    if not is_phone_number(value):
+        return ""
     digits = ''.join(str(unicodedata.digit(char)) for char in str(value or '') if char.isdigit())
     if len(digits) == 11 and digits.startswith("8"):
         return "7" + digits[1:]
     return digits
+
+
+def is_phone_number(value):
+    """Проверяет синтаксис номера без угадывания страны или преобразования исходника."""
+    if not isinstance(value, str) or not value or len(value) > 200:
+        return False
+    normalized = value.strip()
+    if not normalized or normalized.count("+") > 1 or ("+" in normalized and not normalized.startswith("+")):
+        return False
+    if normalized.startswith("+"):
+        try:
+            unicodedata.digit(normalized[1])
+        except (IndexError, TypeError, ValueError):
+            return False
+    digits = []
+    for char in normalized:
+        try:
+            digits.append(str(unicodedata.digit(char)))
+        except (TypeError, ValueError):
+            if char not in "+ \t\r\n().-\u00a0\u202f":
+                return False
+    return 6 <= len(digits) <= 15
+
+
+def valid_phone_contacts(values, source_text=None):
+    """Отфильтровывает контакты по формату и числовым полям исходного текста."""
+    if not isinstance(values, (list, tuple)):
+        return []
+    numeric_ids = set()
+    if isinstance(source_text, str):
+        for pattern in (_PRICE, _WEIGHT, _VOLUME, _DATE):
+            for match in _numeric_field_matches(pattern, source_text):
+                digits = ''.join(str(unicodedata.digit(char)) for char in match.group() if char.isdigit())
+                if digits:
+                    numeric_ids.add(digits)
+        labeled_values = re.finditer(
+            r"(?i)\b(?:цена|стоимость|ставка|оплата|price|вес|объ[её]м)\s*[:=—–-]?\s*"
+            r"([+]?\d[\d \t.,]{0,20})",
+            source_text,
+        )
+        for match in labeled_values:
+            digits = ''.join(str(unicodedata.digit(char)) for char in match.group(1) if char.isdigit())
+            if digits:
+                numeric_ids.add(digits)
+        for line in source_text.splitlines():
+            for match in _phone_matches(line):
+                if _NON_PHONE_ID_PREFIX.search(line[:match.start()]):
+                    digits = ''.join(str(unicodedata.digit(char)) for char in match.group() if char.isdigit())
+                    if digits:
+                        numeric_ids.add(digits)
+    result, seen = [], set()
+    for value in values[:20]:
+        if not is_phone_number(value):
+            continue
+        identity = ''.join(str(unicodedata.digit(char)) for char in value if char.isdigit())
+        if not identity or identity in numeric_ids or identity in seen:
+            continue
+        result.append(value[:200])
+        seen.add(identity)
+    return result
 
 
 def _single_post_footer_contact(text):
@@ -567,7 +675,7 @@ def source_contact_values(raw):
         for value in block_contacts(text):
             if value not in result:
                 result.append(value)
-    return result[:20]
+    return valid_phone_contacts(result, text)
 
 
 def _single_footer_contact(text):
@@ -588,14 +696,26 @@ def map_selected_messages(raw):
         raise ValueError("invalid_original_text")
     shared_post_contact = (None if _country_header_offsets(text)
                            else _single_footer_contact(text))
+    explicit_common_footer = bool(re.search(
+        r'(?im)^[ \t]*(?:общий (?:контакт|телефон)|контакт для всех|contact for all)\b[^\n]*(?:\n[^\n]*)?\s*$', text))
     numbered = list(re.finditer(r"(?m)^\s*\d+[.)]\s+",text))
+    bullets = list(re.finditer(r"(?m)^[ \t]*[•●▪◦*–-][ \t]+", text))
     blocks = []
     route_matches = [m for m in _ROUTE.finditer(text) if _place(m.group(1)) and _place(m.group(2))]
     if not route_matches or uses_extended_intent(text):
         route_matches += [m for m in _compact_routes(text, allow_space=True) if not any(
             m.start() < existing.end() and m.end() > existing.start() for existing in route_matches)]
     route_matches.sort(key=lambda m: m.start())
-    if len(numbered)>1 and not text[:numbered[0].start()].strip():
+    bullet_blocks = []
+    if len(bullets) > 1 and not text[:bullets[0].start()].strip():
+        bullet_blocks = [text[m.end():bullets[i+1].start() if i+1 < len(bullets) else len(text)].strip()
+                         for i, m in enumerate(bullets)]
+        # A bullet list of equipment/features is not a list of separate offers.
+        if not all(classify_message(block).get('status') == 'active' for block in bullet_blocks):
+            bullet_blocks = []
+    if bullet_blocks:
+        blocks = bullet_blocks
+    elif len(numbered)>1 and not text[:numbered[0].start()].strip():
         for i,m in enumerate(numbered):
             end = numbered[i+1].start() if i+1<len(numbered) else len(text)
             blocks.append(text[m.end():end].strip())
@@ -630,6 +750,7 @@ def map_selected_messages(raw):
             # fields from a country/request section to the wrong route.
             item["status"] = "review"
             item["classification_status"] = "review"
+            item["review_reason"] = "ambiguous_route_sections"
         return [item]
     result=[]
     for i,block in enumerate(blocks):
@@ -647,8 +768,8 @@ def map_selected_messages(raw):
         # A sole phone belongs to the source post, even when it appears in a
         # footer or another segment. Explicitly numbered requests retain local
         # attribution because their contacts may belong to individual blocks.
-        explicitly_numbered = len(numbered) > 1 and not text[:numbered[0].start()].strip()
-        if (not explicitly_numbered and not item.get("contacts") and
+        explicitly_numbered = bool(bullet_blocks) or (len(numbered) > 1 and not text[:numbered[0].start()].strip())
+        if ((not explicitly_numbered or explicit_common_footer) and not item.get("contacts") and
                 len(blocks) > 1 and shared_post_contact):
             item["contacts"] = [shared_post_contact]
         result.append(item)

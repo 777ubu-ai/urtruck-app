@@ -26,6 +26,8 @@ DESTINATION = -1003711161303
 DESTINATION_NAME = "@UrTruck_UT"
 OWNED_FEED_SOURCE = 'UrTruck_obyavleniya'
 ACTIVE_HOURS = 240
+APP_PAYLOAD_RETENTION_HOURS = ACTIVE_HOURS + 72
+APP_PAYLOAD_PURGE_BATCH = 500
 DOWNLOAD_TEXT = 'Скачать UrTruck — грузы и машины в приложении'
 DOWNLOAD_BUTTONS = {'inline_keyboard': [[
     {'text': 'Android — Google Play', 'url': 'https://play.google.com/store/apps/details?id=com.urtruck.app'},
@@ -158,6 +160,30 @@ def capture_for_app(db, source, source_id, message_id, text, source_date, protec
           (source,source_id,message_id,source_date.timestamp(),text,json.dumps(contacts),revision,now,now))
     LOG.info("app_received source=%s message=%s received_at=%.3f",source,message_id,now)
     return True
+
+
+def purge_expired_app_payloads(db, now=None, batch_size=APP_PAYLOAD_PURGE_BATCH):
+    """Удаляет копии текста и контактов через 72 часа после срока активности.
+
+    Курсоры, историю источников, исходящую очередь Telegram и дедупликацию
+    сохраняем. Пакет ограничен, чтобы не удерживать SQLite соединение.
+    """
+    now = time.time() if now is None else float(now)
+    cutoff = now - APP_PAYLOAD_RETENTION_HOURS * 3600
+    rows = db.execute(
+        "SELECT id,source_id,source_message FROM app_messages "
+        "WHERE source_date<? ORDER BY source_date,id LIMIT ?",
+        (cutoff, max(1, min(int(batch_size), APP_PAYLOAD_PURGE_BATCH))),
+    ).fetchall()
+    if not rows:
+        return 0
+    with db:
+        db.executemany(
+            "DELETE FROM app_message_metadata WHERE source_id=? AND source_message=?",
+            [(str(row["source_id"]), row["source_message"]) for row in rows],
+        )
+        db.executemany("DELETE FROM app_messages WHERE id=?", [(row["id"],) for row in rows])
+    return len(rows)
 
 
 def settings():
@@ -903,9 +929,19 @@ async def run_cycles(reader, db, cfg, once=False):
     owned_task = None
     last_scan = float('-inf')
     last_owned_scan = float('-inf')
+    last_retention = float('-inf')
     telegram_state = {}
     try:
         while True:
+            if time.monotonic() - last_retention >= 300:
+                last_retention = time.monotonic()
+                try:
+                    purged = purge_expired_app_payloads(db)
+                    if purged:
+                        LOG.info('app_payload_retention purged=%s batch_limit=%s',
+                                 purged, APP_PAYLOAD_PURGE_BATCH)
+                except Exception as exc:
+                    LOG.warning('app_payload_retention_failed type=%s', type(exc).__name__)
             if owned_task is not None and owned_task.done():
                 try:
                     owned_task.result()

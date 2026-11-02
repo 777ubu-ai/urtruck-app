@@ -1,0 +1,98 @@
+{
+  "schema": "urtruck.feed06.qa2-monitor-compare.v1",
+  "environment": "QA2 read-only; no code or service changes",
+  "comparison_window": {
+    "start": "2026-10-31T09:48:30Z",
+    "end": "2026-11-01T15:22:46Z",
+    "elapsed_hours": 29.57,
+    "timezone": "UTC",
+    "note": "Two point-in-time snapshots; this is not continuous telemetry. Both snapshots precede FEED-06 installation."
+  },
+  "previous_snapshot": {
+    "incoming_ready_nonexpired": 9152,
+    "incoming_backoff_nonexpired": 9,
+    "incoming_expired_pending": 219,
+    "incoming_quarantine": 0,
+    "collector_received_last_hour": 687,
+    "collector_source_errors": 0,
+    "incoming_oldest_ready_age_seconds": 860339,
+    "source": "docs/qa/feed-04-acceptance.md; measured 2026-10-31T09:48:30Z"
+  },
+  "current_snapshot": {
+    "measured_at": "2026-11-01T15:22:46.478085Z",
+    "candidate_sha_installed": false,
+    "backend_sha_last_known": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+    "collector": {
+      "service_active": true,
+      "service_restarts": 0,
+      "health_heartbeat_age_seconds": 16,
+      "last_received_age_seconds": 16,
+      "received_messages_last_hour": 485,
+      "published_rows_last_hour": 15,
+      "source_errors": 0,
+      "queue_status_rows": {
+        "expired": 111,
+        "published": 7778,
+        "rejected": 335
+      }
+    },
+    "incoming": {
+      "outbox_rows": 183212,
+      "ready_nonexpired": 0,
+      "backoff_nonexpired": 42,
+      "expired_pending_over_10_days": 236,
+      "expired_pending_has_terminal_state": false,
+      "quarantined": 0,
+      "http_ack_rows_last_hour": 353,
+      "http_status_rows_last_hour": {
+        "200": 353
+      },
+      "latest_delivery_ack": "2026-11-01T15:22:39.576856Z"
+    },
+    "owned": {
+      "outbox_rows": 11742,
+      "ready_nonexpired": 0,
+      "backoff_nonexpired": 0,
+      "expired_pending_over_10_days": 0,
+      "quarantined": 0,
+      "http_ack_rows_last_hour": 23,
+      "latest_delivery_ack": "2026-11-01T15:21:29.928785Z"
+    },
+    "api_database_active_rows": {
+      "cargo": 30267,
+      "vehicle": 105,
+      "unit": "API database rows; not confirmed client visibility"
+    },
+    "health_monitor": {
+      "collector_health_timer_active": true,
+      "collector_health_last_written": "2026-11-01T15:21:45.890203Z",
+      "health_problems": [],
+      "source_errors": 0,
+      "health_snapshot_exposes_expired_pending": false,
+      "qa2_specific_health_timer_active": false
+    }
+  },
+  "delta_and_interpretation": {
+    "incoming_expired_pending_delta": 17,
+    "incoming_ready_nonexpired_delta": -9152,
+    "incoming_backoff_nonexpired_delta": 33,
+    "quarantine_delta": 0,
+    "expired_pending_note": "Expired rows remain undelivered and have no terminal_at/terminal_reason columns in the installed adapter DB. They are excluded from ready/backoff by TTL, so this count proves retained expired-pending rows, not that every row is currently being retried.",
+    "delivery_note": "HTTP 200 and outbox ACKs are transport-level measurements. The installed schema does not report per-row active/review API status; API active counts do not prove rendering on a device.",
+    "backlog_note": "The ready count fell to zero while backoff increased by 33 and expired-pending increased by 17. The fall must not be presented as successful delivery without event-level reconciliation."
+  },
+  "systemd": {
+    "collector": "active/running",
+    "incoming_bridge_timer": "active/waiting; latest oneshot result success",
+    "owned_bridge_timer": "active/waiting; latest oneshot result success",
+    "collector_health_timer": "active; minute-level heartbeat updated",
+    "qa2_specific_health_timer": "inactive; candidate health component not installed"
+  },
+  "limitations": [
+    "The comparator is a prior aggregate snapshot, not a matched continuous hourly baseline.",
+    "No production changes were made.",
+    "No test messages were created or resent.",
+    "No real phone values, source identifiers, or ad texts are included.",
+    "No physical client visibility test was performed."
+  ]
+}

@@ -49,10 +49,21 @@ def test_scheduler_singleton_idempotent():
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
                               "push_reminders", "expired_notify", "no_bids_notify",
                               "push_outbox_drain", "voice_processing_drain",
-                              "gps_heartbeat_check"]), ids
+                              "gps_heartbeat_check", "external_freight_retention"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)
+
+
+def test_external_feed_retention_job_uses_existing_bounded_purge(monkeypatch):
+    from database import external_freight_dal
+    from scheduler.jobs import external_freight_retention_job
+
+    calls = []
+    monkeypatch.setattr(external_freight_dal, "purge_expired_items",
+                        lambda: calls.append("purge") or 3)
+    external_freight_retention_job()
+    assert calls == ["purge"]
 
 
 def test_second_process_lock_blocks_duplicate():

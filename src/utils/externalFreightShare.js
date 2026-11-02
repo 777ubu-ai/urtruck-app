@@ -27,7 +27,7 @@ export function buildExternalFreightShare(item, { origin, lang = 'RU', summary =
     line(summary), line(price),
     downloadLinks(lang),
   ].filter(Boolean).join('\n');
-  return { url, text };
+  return { url, text, copyLinkText: `${URTRUCK_ANDROID_STORE}\n${URTRUCK_IOS_STORE}` };
 }
 
 // Отдельный тип карточки: не объявление о свободной машине.

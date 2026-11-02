@@ -83,7 +83,7 @@ def test_review_switch_mode_preserves_legacy_active_dedup(tmp_path,monkeypatch):
     from services.external_freight_queue_bridge import IncomingQueueBridge
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=feed_module();p=tmp_path/'source.db';db=m.database(p);a=adapter_for(tmp_path)
-    text='Алматы → Москва\nГруз: шины'
+    text='Алматы → Москва\nГруз: шины\n+77000000008'
     a.enqueue(map_selected_message(dict(source_id='123',source_message=88,source_date=m.utcnow().timestamp(),text=text)))
     assert a.flush_once()['sent']==1
     m.capture_for_app(db,'second_channel',456,99,text,m.utcnow())
@@ -97,7 +97,7 @@ def test_review_edit_to_duplicate_closes_stale_active(tmp_path,monkeypatch):
     from services.external_freight_queue_bridge import IncomingQueueBridge
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=feed_module();p=tmp_path/'source.db';db=m.database(p);a=adapter_for(tmp_path)
-    alpha='Алматы → Москва\nГруз: шины';beta='Астана → Бишкек\nГруз: доски'
+    alpha='Алматы → Москва\nГруз: шины\n+77000000009';beta='Астана → Бишкек\nГруз: доски\n+77000000010'
     for i,text in enumerate([alpha,beta]):m.capture_for_app(db,'test_channel',123,88+i,text,m.utcnow())
     worker=IncomingQueueBridge(p,a);assert worker.run_once()['sent']==2
     with a._connect() as state:
@@ -166,7 +166,7 @@ def test_parser_upgrade_automatically_rechecks_previously_seen_review(tmp_path,m
     from services.external_freight_queue_bridge import IncomingQueueBridge,PARSER_REVISION
     monkeypatch.setenv('EXTERNAL_FREIGHT_IMPORT_ENABLED','true')
     m=feed_module();p=tmp_path/'source.db';db=m.database(p);a=adapter_for(tmp_path)
-    text='Свободный Реф в Маньчжурии , готов к погрузке.'
+    text='Свободный Реф в Маньчжурии , готов к погрузке.\n+77000000011'
     m.capture_for_app(db,'test_channel',123,88,text,m.utcnow())
     item=map_selected_message(dict(db.execute('select * from app_messages').fetchone()))
     item.update(status='review',origin=None,classification_status='review')

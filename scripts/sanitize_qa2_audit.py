@@ -42,7 +42,7 @@ FIELD_PATTERNS = {
     "docker-mount-links": re.compile(r"^DOCKER_MOUNT=[A-Za-z0-9._-]+\|(bind|volume|tmpfs)->/[A-Za-z0-9._/-]+$"),
     "technical-directory-sizes": re.compile(rf"^{SIZE}\s+/(?:home/ubuntu/(?:urtruck(?:-rollback|-releases|-backups|-qa2(?:-ai)?)?)|var/lib/docker|var/log|tmp)$"),
     "health": re.compile(r"^HEALTH_(qa2-8002|ai-8003)=\{.*\}$"),
-    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=\d{3}\s+\d+\.\d+|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
+    "synthetic-translation-observation": re.compile(r"^(SYNTHETIC_CASE=(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_RESULT=\d{3}\s+\d+\.\d+|SYNTHETIC_RU_TO_ZH_CANDIDATE=[\u3400-\u9fff0-9\s，。；：、,.!?！？→—-]{1,300}|SYNTHETIC_(RU_TO_ZH|ZH_TO_RU|EN_TO_ZH)_REASONS=(?:none_or_unavailable|[a-z_]+(?::[a-z_]+)?(?:,[a-z_]+(?::[a-z_]+)?)*)|SWAP_[A-Z0-9_]+=(?:pswpin=\d+;pswpout=\d+;?)|PSI_[A-Z0-9_]+_(?:MEMORY|IO)=some .*|AI_[A-Z0-9_]+_PROCESS=pid=\d+ ppid=\d+ comm=[A-Za-z0-9._-]+ pcpu=[0-9.]+ pmem=[0-9.]+ rss=\d+)$"),
 }
 SECRET_PATTERNS = (
     (re.compile(r"(--password(?:=|\s+))[^\s]+", re.I), r"\1REDACTED"),
@@ -98,12 +98,14 @@ def main() -> int:
     swap = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SWAP_"))
     psi = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("PSI_"))
     latency = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SYNTHETIC_") and "_RESULT=" in line)
+    reasons = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("SYNTHETIC_") and "_REASONS=" in line)
     ai = "\n".join(line for line in sections.get("synthetic-translation-observation", []) if line.startswith("AI_"))
     markdown_path.write_text(
         "# QA2 read-only server audit\n\n"
         f"- Listener evidence: `{pid}`\n"
         "- Swap causality requires non-zero `pswpin/pswpout` deltas together with PSI and request latency.\n\n"
         "## Synthetic latency\n\n```text\n" + latency + "\n```\n\n"
+        "## Safe quality-gate reason codes\n\n```text\n" + reasons + "\n```\n\n"
         "## Swap snapshots\n\n```text\n" + swap + "\n```\n\n"
         "## PSI snapshots\n\n```text\n" + psi + "\n```\n\n"
         "## AI process snapshots\n\n```text\n" + ai + "\n```\n\n"

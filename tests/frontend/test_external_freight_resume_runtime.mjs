@@ -13,6 +13,7 @@ if (previousPublicOrigin === undefined) delete process.env.EXPO_PUBLIC_WEB_URL;
 else process.env.EXPO_PUBLIC_WEB_URL = previousPublicOrigin;
 import * as share from '../../src/utils/externalFreightShare.js';
 import * as contact from '../../src/utils/externalFreightContact.js';
+import * as cardActions from '../../src/utils/externalFreightCardActions.js';
 const require = createRequire(import.meta.url);
 const babel = require('@babel/core');
 const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedScreen.js', 'utf8'), {
@@ -23,7 +24,7 @@ const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {}) {
-  const opened = [], copied = [];
+  const opened = [], copied = [], scrollOffsets = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
   let elapsed = 0;
@@ -31,6 +32,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
   const React = {
     createElement: (type, props, ...children) => {
       if (type === 'ScrollView' && props?.horizontal && props.ref) props.ref.current = { scrollTo: ({ x }) => { filterOffset = x; } };
+      if (type === 'FlatList' && props?.ref) props.ref.current = { scrollToOffset: value => scrollOffsets.push(value) };
       return { type, props: { ...props, children } };
     },
     useState(initial) { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[i].value, value => { const next = typeof value === 'function' ? value(slots[i].value) : value; if (!Object.is(next, slots[i].value)) { slots[i].value = next; dirty = true; } }]; },
@@ -55,7 +57,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     '../components/externalFreight/ExternalFeedDatePicker': 'DatePicker', '../components/ui/v1/BookmarkButton': 'BookmarkButton',
     '../components/ui/v1/PrimaryButton': 'PrimaryButton', '../components/ui/actions/SecondaryButton': 'SecondaryButton',
     '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
-    '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact,
+    '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact, '../utils/externalFreightCardActions': cardActions,
     '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
     '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-' + role, role } } }) },
     '../utils/externalFreightSession': { sessionRole: () => role }, '../utils/truckConstants': { BODY_TYPES: [] },
@@ -77,7 +79,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     async flush() { for (let i = 0; i < 12; i++) { if (dirty) render(); await tick(); } },
     list: () => nodes().find(n => n.type === 'FlatList'), warning: () => nodes().find(n => n.type === 'TouchableOpacity' && n.props.children.some(c => c?.type === 'Text' && c.props.children.some(s => typeof s === 'string' && s.includes('Нет соединения')))),
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
-    poll: () => intervals.forEach((_timer, fn) => fn()), intervals: () => [...intervals.values()].map(timer => timer.delay),
+    resume: () => { listeners.get('blur')?.(); listeners.get('focus')?.(); }, intervals: () => [...intervals.values()].map(timer => timer.delay),
     advance(ms) {
       const end = elapsed + ms;
       while (intervals.size) {
@@ -91,23 +93,35 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
     node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
     shareModal: () => nodes().find(n => n.type === 'ShareModal'),
-    opened, copied, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
+    opened, copied, scrollOffsets, renderItem: item => nodes().find(n => n.type === 'FlatList').props.renderItem({ item }),
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
 
-for (const role of ['driver', 'client']) for (const platform of ['android', 'ios', 'web']) test(`${role}/${platform}: автообновление через минуту, ручное обновление сразу`, async () => {
-  const h = harness({ role, platform }); await h.flush();
-  assert.deepEqual(h.intervals(), [60000]);
-  const initial = h.calls();
-  h.advance(59999); await h.flush();
-  assert.equal(h.calls(), initial, 'нет запросов каждые две секунды');
-  h.advance(1); await h.flush();
-  assert.equal(h.calls(), initial + 1);
-  h.list().props.onRefresh(); await h.flush();
-  assert.equal(h.calls(), initial + 2);
+for (const delta of [-50, 50]) test(`web resume: смещение якоря ${delta}px компенсируется в обычной, не инвертированной ленте`, async () => {
+  const h = harness({ platform: 'web' });
+  await h.flush();
+  h.list().props.onScrollBeginDrag();
+  h.list().props.onScroll({ nativeEvent: { contentOffset: { y: 1200 }, contentSize: { height: 6000 }, layoutMeasurement: { height: 700 } } });
+  h.list().props.onViewableItemsChanged({ viewableItems: [{ key: cards[10].id }] });
+  let y = 180;
+  h.renderItem(cards[10]).props.ref({ measureInWindow: callback => callback(0, y) });
+  h.resume(); await h.flush();
+  y += delta;
+  h.list().props.onContentSizeChange(390, 6100);
+  assert.equal(h.scrollOffsets.at(-1).offset, 1200 + delta);
 });
-test('минутный таймер не запрашивает скрытую ленту, возврат обновляет сразу', async () => {
+
+for (const role of ['driver', 'client']) for (const platform of ['android', 'ios', 'web']) test(`${role}/${platform}: лента не опрашивает сервер по таймеру, ручное обновление сразу`, async () => {
+  const h = harness({ role, platform }); await h.flush();
+  assert.deepEqual(h.intervals(), []);
+  const initial = h.calls();
+  h.advance(600000); await h.flush();
+  assert.equal(h.calls(), initial, 'за 10 минут простоя нет повторных запросов');
+  h.list().props.onRefresh(); await h.flush();
+  assert.equal(h.calls(), initial + 1);
+});
+test('скрытая лента не запрашивает сервер, возврат обновляет сразу', async () => {
   const h = harness(); await h.flush();
   for (const state of ['background', 'inactive']) {
     h.app(state); const before = h.calls();
@@ -151,7 +165,7 @@ for (const mode of ['focus', 'AppState']) test(`сохранённые: ${mode} 
   assert.equal(h.queries.at(-1).cursor, 'older-page');
 });
 for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc', '↑ Дороже']]) {
-  for (const mode of ['poll', 'focus', 'AppState']) test(`${sort}: ${mode} обновляет все60, не обрезает хвост и продолжает cursor`, async () => {
+  for (const mode of ['focus', 'AppState']) test(`${sort}: ${mode} обновляет все60, не обрезает хвост и продолжает cursor`, async () => {
     const fixtures = cards.map(item => ({ ...item, amount: Number(item.id), currency: 'USD', price_state: 'known' }));
     const h = harness({ fixtures }); await h.flush();
     h.node('external-feed-filter-price').props.onPress(); await h.flush();
@@ -165,8 +179,7 @@ for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc',
     // Цена изменила положение записи: нужно освежить весь загруженный префикс,
     // сохранив порядок сервера и следующий cursor, а не склеивать старые цены.
     fixtures.reverse(); fixtures[0] = { ...fixtures[0], amount: 500 };
-    if (mode === 'poll') h.poll();
-    else if (mode === 'focus') { h.blur(); h.focus(); }
+    if (mode === 'focus') { h.blur(); h.focus(); }
     else { h.app('background'); h.app('active'); }
     await h.flush();
     assert.equal(h.list().props.data.length, 60);
@@ -177,16 +190,16 @@ for (const [sort, label] of [['price_asc', '↓ Дешевле'], ['price_desc',
     assert.equal(h.queries.at(-1).cursor, 'older-page');
   });
 }
-test('offline polling: warning остаётся во время повторного запроса и исчезает только после успеха', async () => {
-  const h = harness(); await h.flush(); h.fail(true); h.poll(); await h.flush();
+test('offline: предупреждение остаётся при повторном входе и исчезает только после успеха', async () => {
+  const h = harness(); await h.flush(); h.fail(true); h.resume(); await h.flush();
   assert.ok(h.warning());
-  h.suspend(); h.poll(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
+  h.suspend(); h.resume(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
   h.release(); await h.flush(); assert.ok(h.warning());
-  h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
+  h.fail(false); h.resume(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
 });
 test('достижение конца во время фонового запроса не теряет следующую страницу', async () => {
   const h = harness(); await h.flush();
-  h.suspend(); h.poll(); await h.flush();
+  h.suspend(); h.resume(); await h.flush();
   h.list().props.onEndReached(); await h.flush();
   assert.equal(h.list().props.data.length, 30);
   h.release(); await h.flush();
@@ -232,7 +245,7 @@ function descendants(tree) {
   function walk(node) {
     if (Array.isArray(node)) return node.forEach(walk);
     if (!node?.props) return;
-    all.push(node); walk(node.props.children);
+    all.push(node); walk(node.props.children); walk(node.props.actions);
   }
   walk(tree); return all;
 }
@@ -241,12 +254,17 @@ for (const role of ['driver', 'client']) test(`${role}: реальный env и 
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
   const description = nodes.find(n => n.type === 'Description');
-  assert.equal(description.props.actions.props.testID, 'external-feed-share-minimal');
+  const shareButton = nodes.find(n => n.props.testID === 'external-feed-share-minimal');
+  const whatsappButton = nodes.find(n => n.props.testID === 'external-feed-whatsapp-minimal');
+  assert.ok(shareButton);
+  assert.ok(whatsappButton);
+  assert.equal(whatsappButton.props.disabled, true);
   assert.ok(nodes.find(n => n.props.testID === 'external-feed-no-contact-minimal'));
-  description.props.actions.props.onPress(); await h.flush();
+  shareButton.props.onPress(); await h.flush();
   // Проверяем настоящее состояние экрана после нажатия, а не mock payload.
   const shareModal = h.shareModal();
   assert.equal(shareModal.props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
+  assert.equal(shareModal.props.copyLinkText, 'https://play.google.com/store/apps/details?id=com.urtruck.app\nhttps://apps.apple.com/kz/app/urtruck/id6764504167');
   assert.match(shareModal.props.shareText, /Android: https:\/\/play\.google\.com/);
   assert.match(shareModal.props.shareText, /iPhone: https:\/\/apps\.apple\.com/);
   assert.ok(!shareModal.props.shareText.includes('https://urtruck.kz/'));
@@ -290,14 +308,21 @@ for (const role of ['driver', 'client']) test(`${role}: телефоны тол�
     contacts: ['+7 (700) 000-00-01', '998500014250', '@source_user'], body_types: [] };
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
+  const primary = nodes.find(n => n.props.testID === 'external-feed-copy-phone-0');
+  assert.ok(primary, 'основной телефон доступен в компактной карточке');
+  await primary.props.onPress();
+  const additional = nodes.find(n => n.props.testID === 'external-feed-additional-contacts-phone');
+  assert.ok(additional, 'остальные контакты сохранены в раскрываемом описании');
   for (let index = 0; index < 2; index++) {
-    await nodes.find(n => n.props.testID === `external-feed-copy-phone-${index}`).props.onPress();
+    const copy = descendants(additional).find(n => n.props.testID === `external-feed-copy-additional-phone-${index}`);
+    assert.ok(copy, 'дополнительный контакт можно скопировать');
+    await copy.props.onPress();
   }
-  assert.deepEqual(h.copied, item.contacts.slice(0, 2));
+  assert.deepEqual(h.copied, item.contacts);
   assert.deepEqual(h.opened, [], 'копирование не открывает внешние приложения');
   assert.ok(!nodes.some(n => n.props.testID?.startsWith('external-feed-call-')));
   assert.ok(!nodes.some(n => n.type === 'Feather' && n.props.name === 'phone'));
-  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-2').props.onPress();
+  await nodes.find(n => n.props.testID === 'external-feed-telegram-contact-phone-1').props.onPress();
   assert.deepEqual(h.opened, ['https://t.me/source_user']);
 });
 test('контакт перевозчика открывает тот же modal без фиктивного объявления', async () => {
@@ -319,8 +344,8 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   assert.ok(source);
   await source.props.onPress();
   assert.deepEqual(h.opened, ['https://t.me/UrTruck_obyavleniya/44']);
-  const actions = nodes.find(n => n.type === 'Description').props.actions;
-  actions.props.onPress(); await h.flush();
+  const shareAction = nodes.find(n => n.props.testID === 'external-feed-share-own');
+  shareAction.props.onPress(); await h.flush();
   assert.equal(h.shareModal().props.url, 'https://apps.apple.com/kz/app/urtruck/id6764504167');
   nodes = descendants(h.renderItem({ ...item, origin_source: 'foreign_chat' }));
   await nodes.find(n => n.props.testID === 'external-feed-source-own').props.onPress();
@@ -328,7 +353,7 @@ for (const role of ['driver', 'client']) test(`${role}: переход в сво
   assert.ok(nodes.find(n => n.type === 'Description').props.actions);
 });
 
-for (const role of ['driver', 'client']) test(`${role}: цена и контакты перед параметрами, оригинал передан полностью`, async () => {
+for (const role of ['driver', 'client']) test(`${role}: компактные параметры, цена и телефон; исходник и дополнительные контакты сохранены`, async () => {
   const original = '🚚 Алматы → Москва\n' + 'Условия перевозки\n'.repeat(400) + '\nТелефон +998901234567\n  ';
   const item = { id: 'full', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active',
     origin: 'Алматы', destination: 'Москва', amount: 7500, currency: 'USD', price_state: 'known',
@@ -336,11 +361,13 @@ for (const role of ['driver', 'client']) test(`${role}: цена и контак
   const h = harness({ role, fixtures: [item] }); await h.flush();
   const nodes = descendants(h.renderItem(item));
   const position = id => nodes.findIndex(n => n.props.testID === id);
-  assert.ok(position('external-feed-price-full') < position('external-feed-copy-full-0'));
-  assert.ok(position('external-feed-copy-full-0') < position('external-feed-source-contacts-full'));
-  assert.ok(position('external-feed-source-contacts-full') < position('external-feed-summary-full'));
+  const order = ['external-feed-summary-full', 'external-feed-price-full',
+    'external-feed-copy-full-0', 'external-feed-additional-contacts-full'];
+  for (const id of order) assert.ok(position(id) >= 0, `${id} должен присутствовать`);
+  for (let i = 1; i < order.length; i++) assert.ok(position(order[i - 1]) < position(order[i]));
   assert.equal(nodes.find(n => n.type === 'Description').props.text, original);
   assert.equal(nodes.find(n => n.props.testID === 'external-feed-no-contact-full'), undefined);
-  await nodes.find(n => n.props.testID === 'external-feed-copy-source-full-0').props.onPress();
+  await nodes.find(n => n.props.testID === 'external-feed-copy-additional-full-0').props.onPress();
   assert.deepEqual(h.copied, ['+998901234567']);
 });
+

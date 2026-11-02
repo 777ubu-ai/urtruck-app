@@ -53,6 +53,7 @@ HEALTH_qa2-8002={"status":"ok","source_sha":"abc123"}
 SECTION=synthetic-translation-observation
 SYNTHETIC_CASE=RU_TO_ZH
 SYNTHETIC_RU_TO_ZH_RESULT=200 8.420123
+SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed
 SWAP_RU_TO_ZH_BEFORE=pswpin=10;pswpout=20;
 SWAP_RU_TO_ZH_AFTER=pswpin=10;pswpout=20;
 PSI_RU_TO_ZH_BEFORE_MEMORY=some avg10=0.01 avg60=0.02 avg300=0.03 total=1234;

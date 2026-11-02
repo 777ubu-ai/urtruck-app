@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """Контроль прогресса QA2/Telegram: без текстов объявлений и телефонов в логах."""
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
 import subprocess
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STALL_SECONDS = 120
 HEARTBEAT_SECONDS = 180
+BACKLOG_GROWTH_SECONDS = 600
+BACKLOG_GROWTH_MIN_ROWS = 20
+RETENTION_SECONDS = 10 * 24 * 3600
 
 
 def readonly(path):
@@ -21,32 +25,128 @@ def readonly(path):
     return db
 
 
-def snapshot(root=ROOT, now=None):
+def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
     now = time.time() if now is None else now
+    root = Path(root)
+    qa_root = Path(qa_root)
     with readonly(root/'state/feed.sqlite3') as db:
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('last_tick','publish_after')"))
         tick = datetime.fromisoformat(metadata['last_tick']).timestamp() if metadata.get('last_tick') else 0
         queue = dict(db.execute('SELECT status,count(*) FROM queue GROUP BY status'))
         latest = db.execute('SELECT max(received_at) FROM app_messages').fetchone()[0]
+        received_last_hour = db.execute('SELECT count(*) FROM app_messages WHERE received_at>=?',
+                                        (now - 3600,)).fetchone()[0]
+        published_last_hour = db.execute("SELECT count(*) FROM queue WHERE status='published' AND published_at>=?",
+                                         (now - 3600,)).fetchone()[0]
+        latest_published = db.execute("SELECT max(published_at) FROM queue WHERE status='published'").fetchone()[0]
         source_errors = db.execute('SELECT count(*) FROM source_health WHERE error IS NOT NULL').fetchone()[0]
         result = {'telegram': {'ready': queue.get('queued', 0),
                   'progress': queue.get('published', 0), 'paused_until': float(metadata.get('publish_after') or 0),
-                  'uncertain': queue.get('sending', 0)+queue.get('uncertain', 0)},
+                  'uncertain': queue.get('sending', 0)+queue.get('uncertain', 0),
+                  'received_messages_last_hour': received_last_hour,
+                  'published_rows_last_hour': published_last_hour,
+                  'latest_published_at': latest_published},
                   'source_errors': source_errors, 'heartbeat_age': max(0, now-tick),
                   'last_received_age': max(0, now-latest) if latest else None}
     for name, directory in [('incoming', 'external-feed'), ('owned', 'external-feed-owned')]:
-        path = Path('/home/ubuntu/urtruck-qa2')/directory/'adapter.sqlite3'
+        path = qa_root/directory/'adapter.sqlite3'
         if not path.is_file():
             result[name] = {'error': 'state_missing'}
             continue
         with readonly(path) as db:
-            ready = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL '
-                               'AND quarantined_at IS NULL AND next_attempt_at<=?', (now,)).fetchone()[0]
+            cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
+            columns = {row[1] for row in db.execute('PRAGMA table_info(selected_outbox)')}
+            terminal_clause = ' AND terminal_at IS NULL' if 'terminal_at' in columns else ''
+            eligible = f'''delivered_at IS NULL AND quarantined_at IS NULL{terminal_clause}
+                AND (json_extract(payload,'$.source_published_at') IS NULL
+                    OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))'''
+            ready_query = f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?'
+            ready = db.execute(ready_query, (cutoff, now)).fetchone()[0]
+            backoff = db.execute(
+                f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at>?',
+                (cutoff, now)).fetchone()[0]
             progress = db.execute('SELECT max(delivered_at) FROM selected_outbox').fetchone()[0]
-            pending = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NULL').fetchone()[0]
-            quarantined = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NOT NULL').fetchone()[0]
+            pending = db.execute(f'SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL '
+                                 f'AND quarantined_at IS NULL{terminal_clause}').fetchone()[0]
+            expired_pending = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL
+                AND quarantined_at IS NULL{terminal_clause} AND json_extract(payload,'$.source_published_at') IS NOT NULL
+                AND julianday(json_extract(payload,'$.source_published_at')) <
+                    julianday(?)''', (cutoff,)).fetchone()[0]
+            quarantined = db.execute('SELECT count(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL').fetchone()[0]
+            terminal_expired = 0
+            if {'terminal_at', 'terminal_reason'} <= columns:
+                terminal_expired = db.execute("SELECT count(*) FROM selected_outbox WHERE terminal_reason IN "
+                                              "('source_retention_expired','api_expired')").fetchone()[0]
+            hour_start = datetime.fromtimestamp(now-3600, timezone.utc).isoformat()
+            accepted_last_hour = db.execute('SELECT count(*) FROM selected_outbox WHERE delivered_at>=?', (hour_start,)).fetchone()[0]
+            confirmed_last_hour = review_last_hour = 0
+            if {'active_confirmed_at', 'api_item_status'} <= columns:
+                confirmed_last_hour = db.execute('SELECT count(*) FROM selected_outbox WHERE active_confirmed_at>=?', (hour_start,)).fetchone()[0]
+                review_last_hour = db.execute("SELECT count(*) FROM selected_outbox WHERE delivered_at>=? AND api_item_status='review'", (hour_start,)).fetchone()[0]
+            unknown_last_hour = accepted_last_hour
+            if 'api_item_status' in columns:
+                unknown_last_hour = db.execute("SELECT count(*) FROM selected_outbox WHERE delivered_at>=? AND (api_item_status IS NULL OR api_item_status='unknown')", (hour_start,)).fetchone()[0]
+            oldest_ready = db.execute(f'''SELECT min(json_extract(payload,'$.source_published_at'))
+                FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?
+                AND json_extract(payload,'$.source_published_at') IS NOT NULL''', (cutoff, now)).fetchone()[0]
+            oldest_ready_age = None
+            if oldest_ready:
+                try:
+                    oldest_dt = datetime.fromisoformat(oldest_ready.replace('Z', '+00:00'))
+                    oldest_ready_age = max(0, round(now-oldest_dt.timestamp()))
+                except (TypeError, ValueError):
+                    pass
+            oldest_identity = db.execute(f"SELECT source_id,source_message_id,segment_id FROM selected_outbox WHERE {eligible} AND next_attempt_at<=? ORDER BY COALESCE(julianday(json_extract(payload,'$.source_published_at')),0),source_id,source_message_id,segment_id LIMIT 1", (cutoff, now)).fetchone()
+            oldest_key = hashlib.sha256(json.dumps(tuple(oldest_identity)).encode()).hexdigest() if oldest_identity else None
+            missing_publish_time = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE {eligible}
+                AND next_attempt_at<=? AND json_extract(payload,'$.source_published_at') IS NULL''',
+                (cutoff, now)).fetchone()[0]
             result[name] = {'ready': ready, 'pending': pending, 'quarantined': quarantined,
+                            'backoff': backoff, 'backlog': ready + backoff,
+                            'expired_pending': expired_pending, 'terminal_expired': terminal_expired,
+                            'confirmed_rows_last_hour': confirmed_last_hour,
+                            'api_accepted_rows_last_hour': accepted_last_hour,
+                            'review_rows_last_hour': review_last_hour,
+                            'unknown_status_rows_last_hour': unknown_last_hour,
+                            'oldest_ready_source_published_at': oldest_ready,
+                            'oldest_ready_age_seconds': oldest_ready_age, 'oldest_ready_key': oldest_key,
+                            'ready_missing_published_at': missing_publish_time,
                             'progress': progress, 'paused_until': 0}
+    source_path = root/'state/feed.sqlite3'
+    incoming_path = qa_root/'external-feed/adapter.sqlite3'
+    owned_path = qa_root/'external-feed-owned/adapter.sqlite3'
+    if source_path.is_file() and incoming_path.is_file() and owned_path.is_file():
+        with readonly(source_path) as source:
+            source.execute('ATTACH DATABASE ? AS incoming_state',
+                           (incoming_path.resolve().as_uri() + '?mode=ro',))
+            source.execute('ATTACH DATABASE ? AS owned_state',
+                           (owned_path.resolve().as_uri() + '?mode=ro',))
+            source_columns = {r[1] for r in source.execute('PRAGMA table_info(app_messages)')}
+            waits = 0
+            for name, alias in [('incoming', 'incoming_state'), ('owned', 'owned_state')]:
+                meta = {}
+                if source.execute(f"SELECT 1 FROM {alias}.sqlite_master WHERE name='incoming_bridge_meta'").fetchone():
+                    meta = dict(source.execute(f'SELECT key,value FROM {alias}.incoming_bridge_meta'))
+                parser_revision = meta.get('parser_revision')
+                owned_source = meta.get('owned_source', 'UrTruck_obyavleniya')
+                revision_known = bool(parser_revision and {'source', 'revision'} <= source_columns)
+                scope = ('lower(m.source)=?' if name == 'owned' else 'lower(m.source)<>?') if 'source' in source_columns else ('0' if name == 'owned' else '1')
+                parameters = [now-RETENTION_SECONDS, now+300]
+                if 'source' in source_columns: parameters.append(owned_source.lower())
+                unseen = '1'
+                if revision_known:
+                    unseen = f"NOT EXISTS (SELECT 1 FROM {alias}.incoming_bridge_seen s WHERE s.source_queue_id=m.id AND s.source_revision=m.revision || ':' || ?)"
+                    parameters.append(parser_revision)
+                waiting, oldest_source = source.execute(f'SELECT count(*),min(m.source_date) FROM app_messages m WHERE m.source_date>=? AND m.source_date<=? AND {scope} AND {unseen}', parameters).fetchone()
+                flow = result[name]
+                flow['source_revision_known'] = revision_known
+                flow['source_waiting'] = flow['source_backlog'] = waiting
+                flow['oldest_source_waiting_age_seconds'] = max(0, now-oldest_source) if oldest_source is not None else None
+                flow['source_progress'] = source.execute(f'SELECT max(processed_at) FROM {alias}.incoming_bridge_seen').fetchone()[0]
+                waits += waiting
+            result['incoming']['source_waiting_total'] = waits
+            result['incoming']['source_received_messages_last_hour'] = source.execute(
+                'SELECT count(*) FROM app_messages WHERE received_at>=?', (now-3600,)).fetchone()[0]
     return result
 
 
@@ -67,15 +167,69 @@ def evaluate(current, previous, now):
             problems.append(name + '_' + flow['error'])
             continue
         paused = flow.get('paused_until', 0) > now
-        waiting = bool(flow.get('pending') or flow.get('ready') or flow.get('uncertain'))
+        # `pending` includes records whose retry is scheduled in the future.
+        # Only a due record (ready) or an in-flight/uncertain Telegram send
+        # proves that delivery should currently be making progress.
+        waiting = bool(flow.get('ready') or flow.get('uncertain'))
         if flow.get('quarantined'):
             problems.append(name + '_validation_quarantined')
+        if flow.get('expired_pending'):
+            problems.append(name + '_expired_pending')
+        if flow.get('source_revision_known') is False:
+            problems.append(name + '_source_revision_unknown')
+        key = flow.get('oldest_ready_key')
+        ready_since = now if paused or not waiting or not key or key != old.get('oldest_ready_key') else old.get('ready_since', now)
+        age = flow.get('oldest_ready_age_seconds')
+        if flow.get('ready', 0) > 0 and isinstance(age, (int, float)) and age >= BACKLOG_GROWTH_SECONDS and not paused:
+            problems.append(name + '_ready_age_exceeded')
+        if waiting and key and not paused and now-ready_since >= BACKLOG_GROWTH_SECONDS:
+            problems.append(name + '_ready_age_exceeded')
         changed = old.get('progress') != flow.get('progress')
         since = now if changed or paused or not waiting or not old.get('waiting') else old.get('since', now)
-        state['flows'][name] = {'progress': flow.get('progress'), 'since': since, 'waiting': waiting and not paused}
+        backlog = flow.get('backlog', flow.get('pending'))
+        baseline = old.get('backlog_baseline')
+        baseline_at = old.get('backlog_baseline_at')
+        if paused or not isinstance(backlog, int):
+            baseline, baseline_at = backlog, now
+        elif not isinstance(baseline, int) or not isinstance(baseline_at, (int, float)):
+            baseline, baseline_at = backlog, now
+        elif backlog < baseline:
+            baseline, baseline_at = backlog, now
+        elif now - baseline_at >= BACKLOG_GROWTH_SECONDS and backlog - baseline >= BACKLOG_GROWTH_MIN_ROWS:
+            problems.append(name + '_backlog_growing')
+        elif now - baseline_at >= BACKLOG_GROWTH_SECONDS:
+            baseline, baseline_at = backlog, now
+        state['flows'][name] = {'progress': flow.get('progress'), 'since': since, 'waiting': waiting and not paused,
+                                'backlog_baseline': baseline, 'backlog_baseline_at': baseline_at,
+                                'oldest_ready_key': key, 'ready_since': ready_since}
+        source_waiting = flow.get('source_waiting')
+        if name in {'incoming', 'owned'} and isinstance(source_waiting, int):
+            source_age = flow.get('oldest_source_waiting_age_seconds')
+            if source_waiting and not paused and isinstance(source_age, (int, float)) and source_age >= BACKLOG_GROWTH_SECONDS:
+                problems.append(name + '_source_age_exceeded')
+            source_old = old.get('source_progress')
+            source_changed = source_old != flow.get('source_progress')
+            source_since = now if source_changed or paused or not source_waiting or not old.get('source_waiting') else old.get('source_since', now)
+            source_backlog = flow.get('source_backlog', source_waiting)
+            source_baseline = old.get('source_backlog_baseline')
+            source_baseline_at = old.get('source_backlog_baseline_at')
+            if paused or not isinstance(source_baseline, int) or not isinstance(source_baseline_at, (int, float)):
+                source_baseline, source_baseline_at = source_backlog, now
+            elif source_backlog < source_baseline:
+                source_baseline, source_baseline_at = source_backlog, now
+            elif now-source_baseline_at >= BACKLOG_GROWTH_SECONDS and source_backlog-source_baseline >= BACKLOG_GROWTH_MIN_ROWS:
+                problems.append(name + '_source_backlog_growing')
+            elif now-source_baseline_at >= BACKLOG_GROWTH_SECONDS:
+                source_baseline, source_baseline_at = source_backlog, now
+            if source_waiting and not paused and now-source_since >= STALL_SECONDS:
+                problems.append(name + '_source_stalled')
+            state['flows'][name].update({'source_waiting': source_waiting,
+                'source_progress': flow.get('source_progress'), 'source_since': source_since,
+                'source_backlog_baseline': source_baseline,
+                'source_backlog_baseline_at': source_baseline_at})
         if waiting and not paused and now-since >= STALL_SECONDS:
             problems.append(name + '_delivery_stalled')
-    state['problems'] = sorted(problems)
+    state['problems'] = sorted(set(problems))
     state['checked_at'] = now
     return state
 
@@ -86,9 +240,9 @@ def restart_allowed(state, now):
             and (not recent or now-max(recent) >= 300))
 
 
-def settings():
+def settings(path=None):
     result = {}
-    for line in (ROOT/'.env').read_text().splitlines():
+    for line in (path or ROOT/'.env').read_text().splitlines():
         if '=' in line and not line.lstrip().startswith('#'):
             key, value = line.split('=', 1)
             result[key.strip()] = value.strip().strip('"').strip("'")
@@ -101,8 +255,9 @@ def send_alert(state, cfg, now):
         return 'not_configured'
     if state['problems'] == state['alerted'] or now-state['last_alert'] < 300:
         return 'unchanged_or_throttled'
-    text = ('UrTruck: требуется проверка загрузки. ' + ', '.join(state['problems'])
-            if state['problems'] else 'UrTruck: загрузка восстановлена, контроль прогресса проходит.')
+    label = 'UrTruck QA2' if state.get('scope') == 'qa2' else 'UrTruck'
+    text = (label + ': требуется проверка загрузки. ' + ', '.join(state['problems'])
+            if state['problems'] else label + ': загрузка восстановлена, контроль прогресса проходит.')
     request = urllib.request.Request('https://api.telegram.org/bot'+token+'/sendMessage',
         data=json.dumps({'chat_id': chat, 'text': text}).encode(),
         headers={'Content-Type': 'application/json'}, method='POST')
@@ -126,25 +281,49 @@ def save(path, state):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--recover', action='store_true')
+    parser.add_argument('--source-root', type=Path, default=ROOT)
+    parser.add_argument('--qa-root', type=Path, default=Path('/home/ubuntu/urtruck-qa2'))
+    parser.add_argument('--state-dir', type=Path)
+    parser.add_argument('--qa2-only', action='store_true')
+    parser.add_argument('--snapshot-only', action='store_true')
+    parser.add_argument('--alert-config', type=Path)
     args = parser.parse_args()
+    if args.qa2_only and args.recover:
+        parser.error('QA2-only health must never restart the shared collector')
+    def read_snapshot():
+        current = snapshot(root=args.source_root, qa_root=args.qa_root)
+        if args.qa2_only:
+            current.pop('telegram', None)
+            current.pop('source_errors', None)
+            current.pop('heartbeat_age', None)
+        return current
+    if args.snapshot_only:
+        print(json.dumps(read_snapshot(), sort_keys=True), flush=True)
+        return
+    state_dir = args.state_dir or ROOT/'state'
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    cfg = {} if args.qa2_only and not args.alert_config else None
     import fcntl
-    with (ROOT/'state/health.lock').open('a') as lock:
+    with (state_dir/'health.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
-        path = ROOT/'state/health.json'
+        path = state_dir/'health.json'
         previous = json.loads(path.read_text()) if path.exists() else {}
         now = time.time()
         try:
-            current = snapshot(now=now)
-            cfg = settings()
-            if cfg.get('PUBLISH_ENABLED', 'false').lower() != 'true':
+            current = read_snapshot()
+            if cfg is None:
+                cfg = settings(args.alert_config)
+            if not args.qa2_only and cfg.get('PUBLISH_ENABLED', 'false').lower() != 'true':
                 current['telegram']['ready'] = current['telegram']['uncertain'] = 0
             state = evaluate(current, previous, now)
         except Exception as exc:
             state = evaluate({}, previous, now)
             state['problems'] = ['health_read_failed_' + type(exc).__name__]
+        if args.qa2_only:
+            state['scope'] = 'qa2'
         if args.recover and restart_allowed(state, now):
             state['restarts'] = [stamp for stamp in state['restarts'] if now-stamp < 3600] + [now]
             save(path, state)
@@ -155,7 +334,7 @@ def main():
             except (OSError, subprocess.TimeoutExpired):
                 state['recovery'] = 'restart_failed'
         try:
-            state['notification'] = send_alert(state, settings(), now)
+            state['notification'] = send_alert(state, cfg or {}, now)
         except Exception as exc:
             state['notification'] = 'failed_' + type(exc).__name__
         save(path, state)

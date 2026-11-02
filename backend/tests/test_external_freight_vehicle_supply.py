@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import pytest
 
-from services.external_freight_classifier import classify_message
+from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.external_freight_parser import block_contacts, map_selected_message, map_selected_messages
 
 
@@ -27,6 +27,26 @@ def message(text):
 ])
 def test_explicit_vehicle_intents_are_recognized(text):
     assert classify_message(text)['kind'] == 'vehicle'
+
+
+@pytest.mark.parametrize('text', [
+    'Бос фура\nТошкент',
+    'Фура бўш\nСамарканд',
+    'Bo\'sh fura\nToshkent',
+    'Fura bo‘sh\nSamarqand',
+])
+def test_uzbek_empty_vehicle_phrases_are_visible_and_prioritized(text):
+    result = classify_message(text)
+    assert (result['kind'], result['status']) == ('vehicle', 'active')
+    assert has_vehicle_supply_signal(text)
+
+
+@pytest.mark.parametrize('text', [
+    'Фура бўш эмас\nТошкент',
+    'Fura bo\'sh emas\nToshkent',
+])
+def test_uzbek_unavailable_vehicle_is_not_published_as_free(text):
+    assert classify_message(text)['kind'] != 'vehicle'
 
 
 @pytest.mark.parametrize('offer', [
@@ -255,8 +275,8 @@ def test_history_capture_does_not_displace_fresh_publication(tmp_path,monkeypatc
         m.capture_for_app(db,'approved_source',1001,i+1,
                           f'Груз: доски\nАлматы → Москва\nНомер заявки: {i+1}',
                           now-timedelta(hours=30 if i<60 else 80))
-    m.capture_for_app(db,'approved_source',1001,999,'Есть машина\nАлматы → Астана',now)
-    m.capture_for_app(db,'approved_source',1001,998,'Машина свободна\nОренбург → Ташкент',now-timedelta(hours=50))
+    m.capture_for_app(db,'approved_source',1001,999,'Есть машина\nАлматы → Астана\n+77000000006',now)
+    m.capture_for_app(db,'approved_source',1001,998,'Машина свободна\nОренбург → Ташкент\n+77000000007',now-timedelta(hours=50))
     # Старый хвост + массовый backfill, принятый позже свежей публикации.
     db.execute('UPDATE app_messages SET updated_at=? WHERE source_message<=60',(now.timestamp()-3600,))
     db.execute('UPDATE app_messages SET updated_at=? WHERE source_message>60 AND source_message<999',(now.timestamp()+1,))

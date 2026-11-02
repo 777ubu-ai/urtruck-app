@@ -7,6 +7,7 @@ from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from database.external_freight_connection import get_conn, new_id
+from services.external_freight_parser import valid_phone_contacts
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
@@ -129,9 +130,10 @@ def purge_expired_items(now=None):
     with get_conn() as c:
         rows = c.execute(
             "SELECT id,source_id,source_message_id,segment_id FROM external_freight_items "
-            "WHERE source_published_at IS NOT NULL AND source_published_at<=? "
-            "ORDER BY source_published_at,id LIMIT ?",
-            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+            "WHERE (source_published_at IS NOT NULL AND source_published_at<=?) "
+            "OR (source_published_at IS NULL AND ingested_at<=?) "
+            "ORDER BY COALESCE(source_published_at,ingested_at),id LIMIT ?",
+            (cutoff.isoformat(), cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         if not rows:
             return 0
@@ -234,6 +236,8 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     source_contacts = raw.get('source_contacts') or []
     if not isinstance(source_contacts, list) or len(source_contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in source_contacts):
         raise ValueError('invalid_source_contacts')
+    contacts = valid_phone_contacts(contacts, text)
+    source_contacts = valid_phone_contacts(source_contacts, text)
     source_revision = str(raw.get("source_revision") or "")
     if len(source_revision) > 160:
         raise ValueError("source_revision_too_long")
@@ -242,10 +246,39 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     destination_country = _bounded(raw.get("destination_country"), 3).upper() if raw.get("destination_country") else None
     if any(code and not re.fullmatch(r"[A-Z]{2,3}", code) for code in (origin_country, destination_country)):
         raise ValueError("invalid_country_code")
+    # Enforce the same publication contract at the API storage boundary, even
+    # if a caller bypasses the Telegram bridge. Optional commercial fields are
+    # deliberately excluded; vehicle offers require one location, cargo needs
+    # both route endpoints.
+    has_route = bool(raw.get("origin") and raw.get("destination"))
+    has_vehicle_location = bool(raw.get("origin") or raw.get("destination"))
+    missing_core = []
+    if kind == "cargo" and not has_route:
+        missing_core.append("missing_route" if not has_vehicle_location else "incomplete_route")
+    elif kind == "vehicle" and not has_vehicle_location:
+        missing_core.append("missing_location")
+    if not contacts:
+        missing_core.append("missing_contact")
+    core_fields_complete = not missing_core and (
+        has_route if kind == "cargo" else has_vehicle_location if kind == "vehicle" else False
+    )
+    if status == "active" and not core_fields_complete:
+        status = "review"
+    explicit_review_reason = bool(raw.get("review_reason"))
+    review_reason = str(raw.get("review_reason") or "")[:128]
+    if review_reason and not re.fullmatch(r"[a-z][a-z0-9_|]{0,127}", review_reason):
+        raise ValueError("invalid_review_reason")
+    if status == "review":
+        if missing_core:
+            tokens = review_reason.split("_and_") if review_reason else []
+            tokens.extend(reason for reason in missing_core if reason not in tokens)
+            review_reason = "_and_".join(tokens)
+        elif not review_reason:
+            review_reason = "classification_review"
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published + timedelta(days=ACTIVE_DAYS)).isoformat() if published else None,
+        "updated_at": now.isoformat(), "expires_at": ((published or now) + timedelta(days=ACTIVE_DAYS)).isoformat(),
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -257,6 +290,10 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "amount": amount, "currency": currency, "price_state": price_state,
         "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
+        "review_reason": review_reason or None,
+        "core_fields_complete": core_fields_complete,
+        "review_requested": raw.get("status") == "review",
+        "review_reason_explicit": explicit_review_reason,
     }
 
 
@@ -301,12 +338,14 @@ def import_records(records):
                     values["source_published_at"] = current["source_published_at"]
                     values["expires_at"] = (_utc(current["source_published_at"])
                                              + timedelta(days=ACTIVE_DAYS)).isoformat()
-                elif current["expires_at"]:
-                    values["expires_at"] = current["expires_at"]
+                else:
+                    values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=ACTIVE_DAYS)).isoformat()
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (
-                        current["status"] == "active" and values["status"] == "review" and unchanged):
+                        current["status"] == "active" and values["status"] == "review" and unchanged
+                        and values["core_fields_complete"] and not values["review_requested"]
+                        and not values["review_reason_explicit"]):
                     values["status"] = current["status"]
                 if values["status"] == "closed":
                     values["kind"] = current["kind"]
@@ -319,7 +358,11 @@ def import_records(records):
                 all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
                 c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
                 action = "created"
-            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), "{}"))
+            audit_details = json.dumps(
+                {"review_reason": values["review_reason"]} if values["status"] == "review" else {},
+                separators=(",", ":"),
+            )
+            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), audit_details))
             c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
             c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
             results.append({"id": values["id"], "result": action, "status": values["status"]})

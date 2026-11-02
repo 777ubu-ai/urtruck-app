@@ -11,7 +11,8 @@ def test_full_original_repair_and_conditional_rollback(tmp_path, monkeypatch):
     monkeypatch.setenv('EXTERNAL_FREIGHT_DB_PATH', str(tmp_path/'feed.sqlite3'))
     dal.init_schema()
     raw = {'source_id':'1','source_message_id':'2','kind':'cargo','original_text':'Алматы → Москва\nНужен тент',
-           'classification_status':'approved','source_published_at':datetime.now(timezone.utc).isoformat()}
+           'classification_status':'approved','source_published_at':datetime.now(timezone.utc).isoformat(),
+           'origin':'Алматы','destination':'Москва','contacts':['+77000000013']}
     ident = dal.import_records([raw])[0]['id']
     dal.set_bookmark('owner', ident, 'cargo', True)
     full = raw['original_text']+'\n+998901234567\n'

@@ -8,19 +8,20 @@ import hashlib
 import json
 import os
 import sqlite3
+import time
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
-from services.external_freight_parser import map_selected_messages
+from services.external_freight_parser import apply_core_review, map_selected_messages, _phone_identity
 from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 10 * 24 * 3600
 MAX_SCAN = 50
-PARSER_REVISION = '20261030-phone-numeric-fields-v15'
+PARSER_REVISION = '20261101-core-fields-v17'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -45,7 +46,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261030-phone-numeric-fields-v10'
+    parser_revision = '20261101-core-fields-v12'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -75,17 +76,24 @@ class PublishedQueueBridge:
             return {"status": "disabled", "scanned": 0}
         if not self.adapter.importer_key:
             return {"status": "not_configured", "scanned": 0}
+        lock_started = time.monotonic()
         with open(self.adapter.db_path + ".bridge.lock", "a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                return {"status": "busy", "scanned": 0}
+                return {"status": "busy", "scanned": 0,
+                        "lock_wait_ms": round((time.monotonic()-lock_started)*1000)}
             try:
-                return self._run_locked()
+                acquired = time.monotonic()
+                result = self._run_locked()
+                result["lock_wait_ms"] = round((acquired-lock_started)*1000)
+                result["bridge_duration_ms"] = round((time.monotonic()-acquired)*1000)
+                return result
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
     def _run_locked(self):
+        selection_started = time.monotonic()
         now = self.adapter.clock()
         # Seen identities rather than a high-water cursor also cover delayed
         # reconciliation of a previously uncertain Telegram publication.
@@ -111,10 +119,16 @@ class PublishedQueueBridge:
                 ORDER BY CASE WHEN bridge_kind(q.text)='vehicle' THEN 0 ELSE 1 END,
                          q.source_date DESC,q.destination_message DESC,q.id DESC LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
+        source_scan_ms = round((time.monotonic()-selection_started)*1000)
         enqueued = rejected = review = 0
+        enqueue_operations = []
+        seen_updates = []
+        parse_started = time.monotonic()
         for row in rows:
             try:
                 records = self.parse(dict(row))
+                for record in records:
+                    apply_core_review(record)
                 segment_ids = {record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old = state.execute(
@@ -126,27 +140,49 @@ class PublishedQueueBridge:
                     previous = json.loads(previous["payload"])
                     if previous["segment_id"] not in segment_ids and previous.get("status") == "active":
                         previous["status"] = "closed"
-                        enqueued += bool(self.adapter.enqueue(previous))
+                        enqueue_operations.append(previous)
                 for record in records:
                     # Подтверждённые публикации не прячем из-за неполных
                     # структурных полей: исходный текст остаётся доступен в карточке.
                     review += record["status"] == "review"
-                    enqueued += bool(self.adapter.enqueue(record))
+                    enqueue_operations.append(record)
             except (ValueError, TypeError, OverflowError):
                 rejected += 1
                 with self.adapter._connect() as state:
                     state.execute("INSERT OR REPLACE INTO published_bridge_rejections_v2 VALUES(?,?)",
                                   (row["id"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
-            with self.adapter._connect() as state:
-                state.execute("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
-                              ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""",
-                              (row["id"], row["bridge_source_revision"]))
+            seen_updates.append((row["id"], row["bridge_source_revision"]))
+        parse_ms = round((time.monotonic()-parse_started)*1000)
+        segment_outcomes = {"created": 0, "updated": 0, "unchanged": 0}
+        write_started = time.monotonic()
+        if enqueue_operations:
+            outcomes = self.adapter.enqueue_many_with_outcomes(enqueue_operations)
+            for outcome in outcomes:
+                segment_outcomes[outcome] += 1
+            enqueued = sum(segment_outcomes[key] for key in ("created", "updated"))
+        outbox_write_ms = round((time.monotonic()-write_started)*1000)
+        ack_started = time.monotonic()
+        with self.adapter._connect() as state:
+            state.executemany("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
+                ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""", seen_updates)
+        source_ack_ms = round((time.monotonic()-ack_started)*1000)
+        flush_started = time.monotonic()
         delivery = self.adapter.flush_once()
-        return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
+        flush_duration_ms = round((time.monotonic()-flush_started)*1000)
+        return {"status": delivery["status"], "scanned": len(rows), "segments": sum(segment_outcomes.values()),
+                "segments_created": segment_outcomes["created"], "segments_updated": segment_outcomes["updated"],
+                "segments_unchanged": segment_outcomes["unchanged"], "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
-                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count())}
+                "ready_pending": delivery.get("ready_pending", self.adapter.ready_pending_count(now)),
+                "source_scan_ms": source_scan_ms, "parse_ms": parse_ms,
+                "outbox_write_ms": outbox_write_ms, "source_ack_ms": source_ack_ms,
+                "flush_ms": flush_duration_ms,
+                "terminal_expired": delivery.get("terminal_expired", self.adapter.terminal_expired_count()),
+                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
+                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now)),
+                **({"error_type": delivery["error_type"]} if delivery.get("error_type") else {})}
 
 
 class IncomingQueueBridge(PublishedQueueBridge):
@@ -164,22 +200,38 @@ class IncomingQueueBridge(PublishedQueueBridge):
             state.execute("""CREATE TABLE IF NOT EXISTS incoming_bridge_dedup (
                 fingerprint TEXT PRIMARY KEY, identity TEXT NOT NULL, published_at REAL NOT NULL)""")
             state.execute('CREATE TABLE IF NOT EXISTS incoming_bridge_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+            state.execute("INSERT OR REPLACE INTO incoming_bridge_meta VALUES('parser_revision',?)", (self.parser_revision,))
+            state.execute("INSERT OR REPLACE INTO incoming_bridge_meta VALUES('owned_source',?)", (OWNED_SOURCE,))
 
     @staticmethod
     def fingerprint(record):
         normalized = " ".join(record["original_text"].casefold().split())
-        value = [normalized, sorted(set(record.get('source_contacts') or []))]
+        # Older outbox rows may have the contact only in `contacts`; use it as
+        # a fallback so parser-mode upgrades keep the same dedup identity.
+        source_contacts = record.get('source_contacts') or record.get('contacts') or []
+        contact_ids = {_phone_identity(contact) or str(contact).strip() for contact in source_contacts}
+        value = [normalized, sorted(contact_ids)]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
-    def find_duplicate(self, fingerprint, now):
+    def find_duplicate(self, fingerprint, now, pending_payloads=None, pending_dedup=None):
         with self.adapter._connect() as state:
+            staged = (pending_dedup or {}).get(fingerprint)
+            if staged and staged[1] > now-ACTIVE_SECONDS:
+                identity = staged[0]
+                record = (pending_payloads or {}).get(tuple(identity.rsplit('/', 2)))
+                if record and record.get('status') == 'active' and self.fingerprint(record) == fingerprint:
+                    return (identity,)
+                pending_dedup.pop(fingerprint, None)
             duplicate = state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
                                       (fingerprint, now-ACTIVE_SECONDS)).fetchone()
             if not duplicate:
                 return None
             parts = duplicate[0].rsplit('/', 2)
-            row = state.execute('SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?', parts).fetchone() if len(parts) == 3 else None
-            record = json.loads(row['payload']) if row else None
+            identity = tuple(parts) if len(parts) == 3 else None
+            record = (pending_payloads or {}).get(identity) if identity else None
+            if record is None:
+                row = state.execute('SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?', parts).fetchone() if identity else None
+                record = json.loads(row['payload']) if row else None
             if record and record.get('status') == 'active' and self.fingerprint(record) == fingerprint:
                 return duplicate
             state.execute('DELETE FROM incoming_bridge_dedup WHERE fingerprint=? AND identity=?', (fingerprint, duplicate[0]))
@@ -207,6 +259,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             state.execute('INSERT INTO incoming_bridge_meta VALUES(?,?)', (key, 'complete'))
 
     def _run_locked(self):
+        selection_started=time.monotonic()
         now=self.adapter.clock()
         self.seed_dedup(now)
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
@@ -238,21 +291,39 @@ class IncomingQueueBridge(PublishedQueueBridge):
             vehicles=source.execute(query+f" AND {hint} ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",
                 (*arguments,(self.source_name or OWNED_SOURCE).lower(),self.parser_revision)).fetchall()
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
-            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
+            # Backfill in publication order. app_messages_published covers
+            # source_date/updated_at/id; ordering by updated_at alone forced a
+            # temp sort over the entire active history on every short QA2 tick.
+            oldest=source.execute(query+" ORDER BY source_date ASC,updated_at ASC,id ASC LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
+        source_scan_ms=round((time.monotonic()-selection_started)*1000)
         enqueued=review=rejected=duplicates=0
+        enqueue_operations=[]
+        pending_payloads={}
+        pending_dedup={}
+        seen_updates=[]
+        def enqueue_segment(record):
+            identity=(str(record["source_id"]),str(record["source_message_id"]),str(record.get("segment_id") or "0"))
+            enqueue_operations.append(record)
+            pending_payloads[identity]=record
         active_by_kind = {'cargo': 0, 'vehicle': 0}
         reasons={}
+        parse_started=time.monotonic()
         for row in rows:
             raw=dict(row)
             deleted_source = self.mode == "owned" and str(raw.get("text", "")).strip().casefold() == "заявка закрыта"
             reason="accepted"
+            review_reasons=[]
             try:
                 # A deletion tombstone is control data, not an incomplete listing.
                 # Process it by closing the previous segments below instead of
                 # trying to parse it as a new listing with missing route fields.
                 records=[] if deleted_source else self.parse(raw)
+                for record in records:
+                    # Run only after segmentation and safe footer-contact
+                    # attribution, immediately before the durable outbox.
+                    apply_core_review(record)
                 identities={record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
@@ -270,48 +341,69 @@ class IncomingQueueBridge(PublishedQueueBridge):
                             previous.pop("source_text", None)
                             previous["contacts"] = []
                             previous['source_contacts'] = []
-                        enqueued+=bool(self.adapter.enqueue(previous))
+                        enqueue_segment(previous)
                 for record in records:
                     identity="/".join((record["source_id"],record["source_message_id"],record["segment_id"]))
                     fingerprint=self.fingerprint(record)
-                    duplicate=self.find_duplicate(fingerprint, now)
+                    duplicate=self.find_duplicate(fingerprint, now, pending_payloads, pending_dedup)
                     if duplicate and duplicate[0]!=identity and record["status"]=="active":
                         # Редактирование в дубль не должно оставлять старую карточку active.
                         for previous in old:
                             previous=json.loads(previous["payload"])
                             if previous["segment_id"]==record["segment_id"] and previous.get("status")=="active":
                                 previous["status"]="closed"
-                                enqueued+=bool(self.adapter.enqueue(previous))
+                                enqueue_segment(previous)
                         duplicates+=1;reason="exact_content_duplicate";continue
                     if record["status"]=="review":
                         review+=1
-                        classification=classify_message(record["original_text"])
-                        reason=(classification.get('reason','ambiguous_kind')
-                                if classification.get("kind") is None else "unresolved_direction")
+                        review_reasons.append(record.get("review_reason") or "unresolved_direction")
                     if record["status"]=="active":
-                        with self.adapter._connect() as state:
-                            state.execute("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,row["source_date"]))
-                    added = bool(self.adapter.enqueue(record))
-                    enqueued += added
-                    if added and record['status'] == 'active':
-                        active_by_kind[record['kind']] += 1
+                        pending_dedup[fingerprint]=(identity,row["source_date"])
+                    enqueue_segment(record)
             except (ValueError,TypeError,OverflowError):
                 rejected+=1;reason="invalid_source_record"
+            if review_reasons:
+                review_reason="|".join(sorted(set(review_reasons)))
+                reason=("partial_review:" if reason not in {"accepted", "invalid_source_record"} else "review:")+review_reason
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
-            with self.adapter._connect() as state:
-                state.execute("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",(row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
+            seen_updates.append((row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
             reasons[reason]=reasons.get(reason,0)+1
+        parse_ms=round((time.monotonic()-parse_started)*1000)
+        segment_outcomes={"created":0,"updated":0,"unchanged":0}
+        write_started=time.monotonic()
+        if enqueue_operations:
+            outcomes=self.adapter.enqueue_many_with_outcomes(enqueue_operations)
+            for record,outcome in zip(enqueue_operations,outcomes):
+                segment_outcomes[outcome]+=1
+                if outcome in {"created","updated"}:
+                    enqueued+=1
+                    if record.get("status")=="active":active_by_kind[record["kind"]]+=1
+        outbox_write_ms=round((time.monotonic()-write_started)*1000)
+        # Mark source rows only after every corresponding outbox write is durable.
+        ack_started=time.monotonic()
+        with self.adapter._connect() as state:
+            state.executemany("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",
+                              [(fingerprint,identity,published) for fingerprint,(identity,published) in pending_dedup.items()])
+            state.executemany("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",seen_updates)
+        source_ack_ms=round((time.monotonic()-ack_started)*1000)
+        flush_started=time.monotonic()
         delivery=self.adapter.flush_once()
-        return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
+        flush_duration_ms=round((time.monotonic()-flush_started)*1000)
+        return {**delivery,"scanned":len(rows),"segments":sum(segment_outcomes.values()),
+                "segments_created":segment_outcomes["created"],"segments_updated":segment_outcomes["updated"],
+                "segments_unchanged":segment_outcomes["unchanged"],"enqueued":enqueued,"review":review,
                 "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode,
-                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind}
+                "source_scan_ms":source_scan_ms,"parse_ms":parse_ms,"outbox_write_ms":outbox_write_ms,
+                "source_ack_ms":source_ack_ms,"flush_ms":flush_duration_ms,
+                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind,
+                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
 
 
 class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = '20261030-phone-numeric-fields-v15'
+    parser_revision = PARSER_REVISION
     parse = staticmethod(map_owned_messages)
 
     @staticmethod
@@ -322,8 +414,8 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
                  sorted(set(record.get("contacts") or [])), sorted(set(record.get('source_contacts') or []))]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
-    def find_duplicate(self, fingerprint, now):
-        duplicate = super().find_duplicate(fingerprint, now)
+    def find_duplicate(self, fingerprint, now, pending_payloads=None, pending_dedup=None):
+        duplicate = super().find_duplicate(fingerprint, now, pending_payloads, pending_dedup)
         if not duplicate:
             return None
         source_id, message_id, segment_id = duplicate[0].rsplit("/", 2)
@@ -394,7 +486,7 @@ def main():
     worker = workers[mode]
     result = worker(source, ExternalFreightFeedAdapter()).run_once()
     print(json.dumps(result, sort_keys=True))
-    return 0 if result["status"] in {"delivered", "idle", "busy", "disabled"} else 1
+    return 0 if result["status"] in {"delivered", "terminalized", "idle", "busy", "disabled"} else 1
 
 
 if __name__ == "__main__":

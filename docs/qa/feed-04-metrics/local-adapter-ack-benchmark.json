@@ -1,0 +1,37 @@
+{
+  "api_outcomes": {
+    "created": 49,
+    "expired": 1
+  },
+  "baseline": {
+    "api_requests": 2,
+    "first_status": "retry_scheduled",
+    "pending_after": 50,
+    "request_ms": [
+      3.007,
+      3.007
+    ],
+    "second_status": "retry_scheduled",
+    "sqlite_transactions": 2,
+    "sqlite_write_statements": 100,
+    "terminal_expired_after": 0,
+    "two_flushes_ms": 10.661
+  },
+  "baseline_sha": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+  "candidate": {
+    "api_requests": 1,
+    "first_status": "delivered",
+    "pending_after": 0,
+    "request_ms": [
+      3.006
+    ],
+    "second_status": "idle",
+    "sqlite_transactions": 3,
+    "sqlite_write_statements": 52,
+    "terminal_expired_after": 1,
+    "two_flushes_ms": 7.177
+  },
+  "candidate_sha": "56a51a13d90fff59ce705205bef1819a1719c6ce",
+  "rows": 50,
+  "scope": "local synthetic mock only; not QA2 throughput"
+}

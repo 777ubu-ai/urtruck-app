@@ -1,0 +1,60 @@
+{
+  "schema": "urtruck-feed-03-qa2-observation-v1",
+  "interval": {
+    "start_utc": "2026-10-31T07:32:31Z",
+    "end_utc": "2026-10-31T08:33:01Z",
+    "duration_seconds": 3630
+  },
+  "deployment": {
+    "candidate_app_source_sha": "a36d475653650e61946cab27e0f6594f18e62bd7",
+    "qa2_backend_sha": "4a524b31ac97d8ecd57e7463352160244fe7a41b",
+    "qa2_adapter_sha256": "960eda356758c2191507b2b565e0841834fb1bd0189f1641c99d639d366642f8",
+    "qa2_bridge_sha256": "99147c562d8c89faedc1d718b5c152bb437635cfc729e01d7f723751021d6433",
+    "deployed_health_py_sha256": "56441a33e19785fbe4ef1028e8cf95ed855c6a7cc0456e66cc2ebb36c1f5e108",
+    "backlog_fix_installed": false
+  },
+  "incoming": {
+    "pending": {"start": 8030, "end": 8676, "delta": 646},
+    "ready_unexpired": {"start": 7812, "end": 8463, "delta": 651},
+    "expired_pending": {"start": 213, "end": 213, "delta": 0},
+    "quarantine": {"start": 0, "end": 0},
+    "bridge_service_invocations": 56,
+    "journal_markers": {"delivered_runs_or_batches": 41, "retry_scheduled": 14},
+    "exception_class_and_http_status": "not recorded in deployed bridge journal",
+    "latest_confirmed_delivery_utc": "2026-10-31T08:32:38.517870Z",
+    "oldest_ready_source_published_at_utc": "2026-10-21T08:41:59Z",
+    "oldest_ready_age_seconds": 863462,
+    "oldest_ready_time_to_10_day_retention_seconds": 537,
+    "delivered_row_count_start": 137476,
+    "delivered_row_count_end": 137391,
+    "delivered_row_count_note": "Non-monotonic row count; do not interpret as delivery delta. Latest confirmed delivery timestamp advanced."
+  },
+  "owned": {
+    "pending": {"start": 0, "end": 0},
+    "quarantine": {"start": 0, "end": 0},
+    "latest_confirmed_delivery_utc": "2026-10-31T08:30:02.306342Z",
+    "owned_bridge_timer_active": true
+  },
+  "telegram_collector": {
+    "published": {"start": 7162, "end": 7194, "delta": 32},
+    "source_scan_errors": 0,
+    "active": true,
+    "restart_count": 0,
+    "heartbeat_age_seconds": 18,
+    "external_pause": false,
+    "last_tick_utc": "2026-10-31T08:33:01.953579Z"
+  },
+  "health_monitor": {
+    "active_timer": true,
+    "checked_at_utc": "2026-10-31T08:32:53.586045Z",
+    "problems": [],
+    "expired_pending_field_present": false,
+    "health_ready": 8669,
+    "db_ready_unexpired_nearby_snapshot": 8463,
+    "assessment": "deployed health snapshot omits expired_pending and its ready count disagrees with the nearby due/unexpired DB count"
+  },
+  "assessment": "Incoming backlog worsened by 646 pending and 651 due/unexpired ready rows. Delivery continues intermittently, but does not catch up. Oldest ready item is within 537 seconds of 10-day retention. Expired rows remain pending; health monitor does not expose them. No restoration claim is supported.",
+  "production_modified": false,
+  "queue_mutated": false,
+  "payloads_or_contacts_recorded": false
+}

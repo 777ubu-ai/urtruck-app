@@ -9,9 +9,9 @@ const workflow = fs.readFileSync('.github/workflows/qa2-server-readonly-audit.ym
 
 test('QA2 server audit is manual, exact-source and protected', () => {
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:\n\s+branches: \[fix\/voice-stt-translation-20260925\]/);
+  assert.match(workflow, /push:\n\s+branches: \[fix\/feed-on-open-battery-20261029\]/);
   assert.match(workflow, /AUDIT_SOURCE_SHA/);
-  assert.match(workflow, /GITHUB_REF_NAME" = "fix\/voice-stt-translation-20260925/);
+  assert.match(workflow, /GITHUB_REF_NAME" = "fix\/feed-on-open-battery-20261029/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.doesNotMatch(workflow, /ref: \$\{\{ env\.AUDIT_SOURCE_SHA \}\}/);
   assert.match(workflow, /git rev-parse HEAD\)" = "\$GITHUB_SHA/);
@@ -35,17 +35,42 @@ test('QA2 server audit gathers only technical capacity and process evidence', ()
     'FragmentPath', 'server_name[[:space:]]', 'docker image ls', 'docker volume ls',
     'docker builder du', 'technical-directory-sizes', 'source_sha',
     'synthetic_translation RU_TO_ZH', 'synthetic_translation ZH_TO_RU',
-    'synthetic_translation EN_TO_ZH', 'pswpin', 'pswpout',
+    'synthetic_translation EN_TO_ZH', 'sanitize_qa2_reason_codes.py', 'pswpin', 'pswpout',
+    'Алматы → Урумчи, загрузка 31 октября, 20 тонн, ставка 11 500 USD',
   ]) {
     assert.ok(workflow.includes(required), `missing required read-only evidence: ${required}`);
   }
   assert.match(workflow, /allowed = \('status', 'source_sha', 'version', 'private', 'translation_model', 'speech_model', 'languages'\)/);
   assert.match(workflow, /sanitize_qa2_audit\.py/);
+  assert.match(workflow, /sanitize_qa2_reason_codes\.py/);
   assert.doesNotMatch(workflow, /PROCESS_8002_CMD/);
   assert.match(workflow, /SERVER_SSH_KNOWN_HOSTS/);
   assert.match(workflow, /StrictHostKeyChecking=yes/);
   assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
   assert.doesNotMatch(workflow, /printenv|env\s*\||\.env|Authorization:|Bearer\s+/i);
+});
+
+test('synthetic translation reason extractor emits only allowlisted codes', () => {
+  const input = JSON.stringify({ detail: { reason_codes: ['weight_value_changed', 'city_missing:almaty', 'private message', 'secret_123'] } });
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'SYNTHETIC_RU_TO_ZH_REASONS=city_missing:almaty,weight_value_changed');
+  const malformed = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: 'not json', encoding: 'utf8' });
+  assert.equal(malformed.status, 0, malformed.stderr);
+  assert.equal(malformed.stdout.trim(), 'SYNTHETIC_RU_TO_ZH_REASONS=none_or_unavailable');
+});
+
+test('synthetic RU-to-ZH audit exposes only a bounded Chinese candidate for model diagnosis', () => {
+  const allowed = JSON.stringify({ detail: { candidate: '阿拉木图到乌鲁木齐，31日装载20吨，运费11500美元', gate_failure_reasons: ['logistics_term_missing:loading'] } });
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: allowed, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^SYNTHETIC_RU_TO_ZH_CANDIDATE=阿拉木图到乌鲁木齐，31日装载20吨，运费11500美元\n/);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_REASONS=logistics_term_missing:loading/);
+
+  const unsafe = JSON.stringify({ detail: { candidate: 'private customer name', gate_failure_reasons: [] } });
+  const rejected = spawnSync('python3', ['scripts/sanitize_qa2_reason_codes.py', 'RU_TO_ZH'], { input: unsafe, encoding: 'utf8' });
+  assert.equal(rejected.status, 0, rejected.stderr);
+  assert.equal(rejected.stdout.includes('private customer name'), false);
 });
 
 test('allowlist artifact sanitizer removes command-line and header secrets from every output', () => {
@@ -90,6 +115,7 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   assert.equal(payload.sanitized, true);
   assert.ok(payload.sections.listeners.includes('PORT_8002_PID=12345'));
   assert.ok(payload.sections['synthetic-translation-observation'].includes('SYNTHETIC_RU_TO_ZH_RESULT=200 8.420123'));
+  assert.ok(payload.sections['synthetic-translation-observation'].includes('SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed'));
   assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('SWAP_')));
   assert.ok(payload.sections['synthetic-translation-observation'].some((line) => line.startsWith('PSI_')));
   assert.match(published, /PORT_8002_PID=12345/);
@@ -98,6 +124,24 @@ test('representative server output keeps PID, latency, swap, PSI and sizes', () 
   assert.match(published, /5\.6G \/home\/ubuntu\/urtruck-qa2/);
   assert.match(published, /1\.56G \/var\/lib\/docker/);
   assert.doesNotMatch(published, /example-secret|password|token|Authorization|postgres:/i);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('synthetic translation reason sanitizer drops arbitrary or candidate text', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa2-audit-reasons-'));
+  const input = path.join(dir, 'input.txt');
+  const json = path.join(dir, 'audit.json');
+  const markdown = path.join(dir, 'summary.md');
+  fs.writeFileSync(input, [
+    'SECTION=synthetic-translation-observation',
+    'SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed,private message',
+    'SYNTHETIC_ZH_TO_RU_REASONS=city_missing:almaty',
+  ].join('\n'));
+  const result = spawnSync('python3', ['scripts/sanitize_qa2_audit.py', input, json, markdown], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const published = `${fs.readFileSync(json, 'utf8')}\n${fs.readFileSync(markdown, 'utf8')}`;
+  assert.match(published, /SYNTHETIC_ZH_TO_RU_REASONS=city_missing:almaty/);
+  assert.doesNotMatch(published, /private message|weight_value_changed/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -144,4 +188,30 @@ test('QA2 server audit rejects server-mutating commands', () => {
     /\b(?:rsync|scp)\b/i,
   ];
   for (const pattern of forbidden) assert.doesNotMatch(workflow, pattern);
+});
+
+test('remote reason extractor runs without a server checkout', () => {
+  const extractor = fs.readFileSync('scripts/sanitize_qa2_reason_codes.py').toString('base64');
+  assert.ok(workflow.includes('reason_extractor_b64="$(base64 -w0 scripts/sanitize_qa2_reason_codes.py)"'));
+  assert.ok(workflow.includes('"bash -s -- \'$reason_extractor_b64\'"'));
+  assert.ok(workflow.includes('reason_extractor="$(printf \'%s\' "$1" | base64 --decode)"'));
+  assert.doesNotMatch(workflow, /python3 scripts\/sanitize_qa2_reason_codes\.py "\$label"/);
+  const remoteStart = workflow.indexOf('          set -euo pipefail\n          export LC_ALL=C');
+  const functionStart = workflow.indexOf('          synthetic_translation() {', remoteStart);
+  const functionEnd = workflow.indexOf("\n          echo 'SECTION=synthetic-translation-observation'", functionStart);
+  assert.ok(remoteStart > 0 && functionStart > remoteStart && functionEnd > functionStart);
+  const remotePrefix = workflow.slice(remoteStart, workflow.indexOf("\n          echo 'AUDIT_MODE", remoteStart));
+  const fn = workflow.slice(functionStart, functionEnd);
+  // Execute the actual remote function from an empty cwd with a synthetic curl response.
+  const script = remotePrefix + '\n' + `
+psi_snapshot() { :; }
+swap_snapshot() { :; }
+ai_snapshot() { :; }
+curl() { printf '%s\\n' '{"detail":{"reason_codes":["weight_value_changed","private response"]}}' '422 0.012345'; }
+` + fn + '\nsynthetic_translation RU_TO_ZH ru zh "test"\n';
+  const result = spawnSync('bash', ['-s', '--', extractor], { cwd: os.tmpdir(), input: script.replace(/^ {10}/gm, ''), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_RESULT=422 0\.012345/);
+  assert.match(result.stdout, /SYNTHETIC_RU_TO_ZH_REASONS=weight_value_changed/);
+  assert.doesNotMatch(result.stdout, /private response/);
 });
