@@ -117,6 +117,7 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
         "scripts/ops/production_push_mode_sync_preflight.py",
         "scripts/remote_health_check.sh",
         ".github/workflows/quality-gate-reusable.yml",
+        ".github/workflows/full-qa-audit.yml",
         ".gitattributes",
         "package.json",
         "package-lock.json",
@@ -186,7 +187,26 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
         "tests/frontend/test_qa2_live_build_contract.mjs",
     }
     assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored) for path in pr563_paths)
+    pr663_and_ci_fix_paths = {
+        ".github/workflows/deploy.yml",
+        ".github/workflows/deploy-qa2-external-feed.yml",
+        ".github/workflows/full-qa-audit.yml",
+        ".github/workflows/quality-gate-reusable.yml",
+        "backend/tests/test_deploy_workflow_static_validation.py",
+        "package.json",
+        "package-lock.json",
+    }
+    assert all(any(fnmatch.fnmatchcase(path, pattern) for pattern in ignored)
+               for path in pr663_and_ci_fix_paths)
+
     assert not any(fnmatch.fnmatchcase("backend/api/push.py", pattern) for pattern in ignored)
+
+
+def test_playwright_jobs_use_a_supported_runner_image():
+    quality_gate = _load("quality-gate-reusable.yml")
+    full_audit = _load("full-qa-audit.yml")
+    assert quality_gate["jobs"]["mandatory-e2e"]["runs-on"] == "ubuntu-24.04"
+    assert full_audit["jobs"]["web-pwa-visual"]["runs-on"] == "ubuntu-24.04"
 
 
 # ── secure-production-deploy.yml: no more bare workflow_dispatch bypass ──

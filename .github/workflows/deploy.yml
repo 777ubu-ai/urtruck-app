@@ -20,6 +20,7 @@ on:
       - "scripts/ops/production_push_mode_sync_preflight.py"
       - "scripts/remote_health_check.sh"
       - ".github/workflows/quality-gate-reusable.yml"
+      - ".github/workflows/full-qa-audit.yml"
       - ".gitattributes"
       - "package.json"
       - "package-lock.json"
