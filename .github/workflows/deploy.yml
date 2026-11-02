@@ -8,6 +8,7 @@ on:
     # Any changed path outside this explicit list still runs the full gate.
     paths-ignore:
       - ".github/workflows/deploy.yml"
+      - ".github/workflows/deploy-qa2-external-feed.yml"
       - ".github/workflows/testflight-rc.yml"
       - ".github/workflows/submit-android-qa2-internal.yml"
       - ".github/workflows/production-deploy-execute.yml"
