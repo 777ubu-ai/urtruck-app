@@ -46,6 +46,11 @@ on:
         description: "Номер объединённого PR, соответствующего точному SHA внутреннего кандидата"
         required: false
         type: string
+      source_sha:
+        description: "Точный merge SHA выбранного PR; отдельное исправление процесса сборки не меняет исходник приложения"
+        required: false
+        default: ""
+        type: string
       download_generated_version_code:
         description: "Read-only download of existing Google-signed APK; skips build/upload"
         required: false
@@ -148,6 +153,8 @@ jobs:
   quality-gate:
     if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
     uses: ./.github/workflows/quality-gate-reusable.yml
+    with:
+      source_ref: ${{ inputs.source_sha || github.sha }}
 
   build-and-submit:
     needs: quality-gate
@@ -155,7 +162,7 @@ jobs:
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
-      URTRUCK_SOURCE_SHA: ${{ github.sha }}
+      URTRUCK_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ inputs.enable_external_freight_feed && 'true' || 'false' }}
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
@@ -166,6 +173,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - name: Prepare reviewed internal candidate identity
         env:
@@ -173,8 +181,15 @@ jobs:
           TRACK_INPUT: ${{ inputs.track || 'internal' }}
           VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
           MERGED_PR_NUMBER: ${{ inputs.merged_pr_number || '' }}
+          SOURCE_SHA_OVERRIDE: ${{ inputs.source_sha || '' }}
         run: |
           set -euo pipefail
+          if [ -n "${SOURCE_SHA_OVERRIDE:-}" ]; then
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+            [[ "$SOURCE_SHA_OVERRIDE" =~ ^[0-9a-f]{40}$ ]]
+            test "$URTRUCK_SOURCE_SHA" = "$SOURCE_SHA_OVERRIDE"
+            git merge-base --is-ancestor "$URTRUCK_SOURCE_SHA" "$GITHUB_SHA"
+          fi
           if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
             test "$GITHUB_REF_NAME" = qa2/integration-candidate || {
               echo '::error::QA2 internal candidates may only be built from the reviewed integration-candidate branch'
@@ -184,7 +199,7 @@ jobs:
           if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+            test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
             test "$API_ENVIRONMENT_INPUT" = qa2
             test "$TRACK_INPUT" = internal
             test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
@@ -197,10 +212,10 @@ jobs:
             test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
             test "$(jq -r '.state' <<<"$PR_JSON")" = closed
             test "$(jq -r '.merged' <<<"$PR_JSON")" = true
-            test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$GITHUB_SHA"
+            test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$URTRUCK_SOURCE_SHA"
             PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
             git fetch origin "$PR_HEAD_SHA" --depth=1
-            git diff --quiet "$PR_HEAD_SHA" "$GITHUB_SHA" -- || {
+            git diff --quiet "$PR_HEAD_SHA" "$URTRUCK_SOURCE_SHA" -- || {
               echo '::error::Merged candidate tree differs from the reviewed PR head'
               exit 1
             }
@@ -211,7 +226,7 @@ jobs:
               test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
             done
             python3 scripts/prepare_store_candidate_version.py --platform android \
-              --version 1.0.14 --source-sha "$GITHUB_SHA"
+              --version 1.0.14 --source-sha "$URTRUCK_SOURCE_SHA"
             echo "URTRUCK_VERSION_NAME=1.0.14" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
@@ -423,8 +438,8 @@ jobs:
             node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (config.version !== '1.0.12' || config.extra?.urtruckExternalFreightFeedEnabled !== true
-              || config.extra?.urtruckSourceSha !== process.env.GITHUB_SHA) throw new Error('Candidate version/source/feed identity mismatch');
+          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true
+              || config.extra?.urtruckSourceSha !== process.env.URTRUCK_SOURCE_SHA) throw new Error('Candidate version/source/feed identity mismatch');
           NODEVERIFY
           fi
           if [ "$API_ENVIRONMENT" = qa2 ]; then
@@ -457,7 +472,7 @@ jobs:
           fi
           echo "AAB_SHA256=${aab_sha}" >> "$GITHUB_ENV"
           echo "UPLOAD_CERT_SHA256=${cert_sha}" >> "$GITHUB_ENV"
-          echo "Source SHA=${GITHUB_SHA}"
+          echo "Source SHA=${URTRUCK_SOURCE_SHA}; workflow SHA=${GITHUB_SHA}"
           echo "AAB SHA-256=${aab_sha}"
           echo "Upload certificate SHA-256=${cert_sha}"
 
@@ -514,7 +529,7 @@ jobs:
           auth_tag="$(od -An -vtx1 "$envelope/auth-tag.bin" | tr -d ' \n')"
           cipher_sha="$(shasum -a 256 "$envelope/UrTruck.apk.enc" | awk '{print $1}')"
           jq -n \
-            --arg source_sha "$GITHUB_SHA" \
+            --arg source_sha "$URTRUCK_SOURCE_SHA" \
             --arg apk_sha "$APK_SHA256" \
             --arg ciphertext_sha "$cipher_sha" \
             --arg iv "$iv" \
@@ -584,7 +599,8 @@ jobs:
           fi
           body=$(cat <<EOF
           ### Android release artifact — ${RESULT^^}
-          - sha: \`${GITHUB_SHA}\`
+          - sha: \`${URTRUCK_SOURCE_SHA}\`
+          - workflow sha: \`${GITHUB_SHA}\`
           - workflow: \`Deploy Android to Google Play\`
           - run: ${RUN_URL}
           - result: \`${RESULT}\`

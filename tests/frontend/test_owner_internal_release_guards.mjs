@@ -30,6 +30,11 @@ for (const [label, workflow, step] of guards) {
       ['актуальный объединённый PR671', { MERGED_PR_NUMBER: '671' }, true],
       ['номер PR отсутствует', { MERGED_PR_NUMBER: '' }, false],
       ['номер PR содержит команду', { MERGED_PR_NUMBER: '671;exit 0' }, false],
+      ['исходник приложения закреплён после исправления workflow', { GITHUB_SHA: 'c'.repeat(40), SOURCE_SHA_OVERRIDE: sha }, true],
+      ['подмена закреплённого исходника', { SOURCE_SHA_OVERRIDE: head }, false],
+      ['недопустимый SHA исходника', { SOURCE_SHA_OVERRIDE: 'not-a-sha' }, false],
+      ['исходник вне истории workflow', { SOURCE_SHA_OVERRIDE: sha, FAKE_ANCESTOR_STATUS: '1' }, false],
+      ['закрепление исходника запрещено для production', { SOURCE_SHA_OVERRIDE: sha, GITHUB_REF_NAME: 'main' }, false],
     ] : []),
     ['последний CI неуспешен', { FAKE_CHECKS: JSON.stringify({ check_runs: [...checks, { ...checks[0], id: 99, conclusion: 'failure' }] }) }, false],
     ['CI отсутствует', { FAKE_CHECKS: '{"check_runs":[]}' }, false],
@@ -45,7 +50,7 @@ for (const [label, workflow, step] of guards) {
         const bin = join(root, 'bin'); mkdirSync(bin);
         const mocks = {
           gh: 'case "$*" in *reviews*) echo "Unexpected review dependency" >&2; exit 91;; *check-runs*) printf "%s" "$FAKE_CHECKS";; *pulls/*) if [ "$FAKE_VALIDATE_PR" = true ]; then test "$*" = "api repos/777ubu-ai/urtruck-app/pulls/$MERGED_PR_NUMBER" || exit 93; fi; printf "%s" "$FAKE_PR";; *) printf "%s" "$FAKE_PR";; esac',
-          git: 'case "$1" in rev-parse) printf "%s" "$FAKE_CHECKOUT";; diff) exit "$FAKE_DIFF_STATUS";; fetch|merge-base) exit 0;; *) exit 92;; esac',
+          git: 'case "$1" in rev-parse) printf "%s" "$FAKE_CHECKOUT";; diff) exit "$FAKE_DIFF_STATUS";; merge-base) exit "${FAKE_ANCESTOR_STATUS:-0}";; fetch) exit 0;; *) exit 92;; esac',
           python3: 'if [ "$1" = - ]; then cat >/dev/null; printf "qa2.urtruck.kz\\n"; fi',
           curl: 'exit 0', npx: 'exit 0',
         };
@@ -55,7 +60,7 @@ for (const [label, workflow, step] of guards) {
         const result = spawnSync('/bin/bash', ['-c', script], { encoding: 'utf8', env: {
           ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_ENV: join(root, 'env'),
           GITHUB_REPOSITORY: '777ubu-ai/urtruck-app', GITHUB_EVENT_NAME: 'workflow_dispatch',
-          GITHUB_REF_NAME: 'qa2/integration-candidate', GITHUB_SHA: sha, QA_SOURCE_SHA: sha, AUDIT_SOURCE_SHA: sha,
+          GITHUB_REF_NAME: 'qa2/integration-candidate', GITHUB_SHA: sha, QA_SOURCE_SHA: sha, AUDIT_SOURCE_SHA: sha, URTRUCK_SOURCE_SHA: sha,
           CONFIRMATION: 'BUILD_QA2_TESTFLIGHT', URTRUCK_MIN_IOS_BUILD: '111',
           MERGED_PR_NUMBER: '605', FAKE_VALIDATE_PR: label === 'Play' ? 'true' : 'false',
           EXPO_TOKEN: 'test-only', EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: 'test-only', EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: 'test-only',
