@@ -14,8 +14,8 @@ import AndroidBrandedLaunchSplash from './src/components/AndroidBrandedLaunchSpl
 import AppNavigator from './src/navigation/AppNavigator';
 import { flushOutbox } from './src/utils/outbox';
 // Фоновый GPS: сам импорт регистрирует TaskManager-таску (обязательно на
-// верхнем уровне, до маунта) — старт/стоп управляется из broadcast-хука.
-import './src/utils/backgroundLocation';
+// верхнем уровне, до маунта). Legacy-регистрация убирается и до входа.
+import { initializeLocationPolicy } from './src/utils/backgroundLocation';
 import { captureSocialCallbackUrl } from './src/utils/socialAuth';
 import { sweepPrivatePdfCache } from './src/components/deal/privatePdfCacheStartup';
 import { sweepNativeAttachmentStaging } from './src/utils/nativeAttachmentStagingStartup';
@@ -450,6 +450,9 @@ function AppInner() {
 }
 
 function App() {
+  useEffect(() => {
+    initializeLocationPolicy();
+  }, []);
   useEffect(() => {
     sweepPrivatePdfCache();
     sweepNativeAttachmentStaging();
