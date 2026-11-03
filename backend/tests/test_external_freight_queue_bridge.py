@@ -201,6 +201,30 @@ def test_cycle_duration_covers_bridge_stages_and_reports_flush_separately(bridge
     assert result["flush_cycle_duration_ms"] >= 0
 
 
+
+@pytest.mark.parametrize("times", [
+    [100.0001, 100.0004, 100.0107],
+    [100.0008, 100.0012, 100.0106],
+])
+def test_cycle_and_bridge_share_end_boundary_across_fractional_milliseconds(bridge, monkeypatch, times):
+    worker, _ = bridge
+    readings = iter(times)
+    monkeypatch.setattr(queue_bridge.time, "monotonic", lambda: next(readings))
+    monkeypatch.setattr(worker, "_run_locked", lambda: {"status": "ok"})
+
+    result = worker.run_once()
+
+    assert result["cycle_duration_ms"] == result["lock_wait_ms"] + result["bridge_duration_ms"]
+    assert result["cycle_duration_ms"] == int(times[-1] * 1000) - int(times[0] * 1000)
+    assert result["bridge_duration_ms"] >= 0
+
+
+def test_disjoint_stage_durations_fit_enclosing_cycle_at_rounding_boundary():
+    times = [100.0001, 100.0006, 100.0012, 100.0017, 100.0023, 100.0029]
+    stages = [queue_bridge.elapsed_ms(start, end) for start, end in zip(times, times[1:])]
+    assert sum(stages) == queue_bridge.elapsed_ms(times[0], times[-1])
+
+
 def test_bounded_outbox_stops_after_failed_batch_and_preserves_backoff(bridge):
     worker, calls = bridge
     for i in range(120):
