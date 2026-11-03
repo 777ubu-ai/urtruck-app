@@ -47,6 +47,7 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
       />
       {suggestions.length > 0 && (
         <ScrollView
+          testID={testID ? `${testID}-suggestions` : undefined}
           style={[s.dropdown, { backgroundColor: theme.card, borderColor: theme.border }]}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
@@ -76,7 +77,7 @@ const s = StyleSheet.create({
   wrap: { position: 'relative', marginBottom: 10, zIndex: 50 },
   input: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1 },
   dropdown: {
-    position: 'absolute', top: 52, left: 0, right: 0,
+    position: 'absolute', top: '100%', left: 0, right: 0,
     borderRadius: 12, borderWidth: 1, maxHeight: 320,
     zIndex: 1000,
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },

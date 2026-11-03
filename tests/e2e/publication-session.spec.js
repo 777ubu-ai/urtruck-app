@@ -102,3 +102,14 @@ test('город сохраняет пробел при быстром ввод�
  await page.getByTestId('loc-close').click();await expect(input).toHaveCount(0);
  expect(box.errors).toEqual([]);
 });
+
+
+test('многострочное описание не перекрывается справочными подсказками',async({page})=>{
+ const box=await boot(page);await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId('mytrips-place-cargo').click();
+ const input=page.getByTestId('cargo-desc-input');await input.fill('Оборудование в деревянных ящиках\nХрупкое 设备 箱装 ');
+ const suggestions=page.getByTestId('cargo-desc-input-suggestions');await expect(suggestions).toBeAttached();
+ const field=await input.boundingBox(),list=await suggestions.boundingBox();
+ expect(list.y).toBeGreaterThanOrEqual(field.y+field.height-1);
+ await expect(input).toHaveValue('Оборудование в деревянных ящиках\nХрупкое 设备 箱装 ');
+ expect(box.errors).toEqual([]);
+});
