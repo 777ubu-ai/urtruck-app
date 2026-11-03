@@ -53,3 +53,17 @@ test('справочная подпись применяется только н
   h.type('Из черновика\n设备 новый ввод '); h.notify();
   assert.equal(h.input().props.value, 'Из черновика\n设备 новый ввод ');
 });
+
+test('подсказки получают ненулевую native-высоту до измерения, растут и остаются прокручиваемыми', () => {
+  const h = harness(); h.input().props.onFocus();
+  const dropdown = () => h.render().find(x => x.type === 'ScrollView');
+  const height = () => dropdown().props.style.find(x => Object.hasOwn(x, 'height')).height;
+  assert.ok(height() > 0);
+  dropdown().props.onContentSizeChange(300, 68);
+  assert.equal(height(), 68);
+  dropdown().props.onContentSizeChange(300, 900);
+  assert.equal(height(), 320);
+  assert.equal(dropdown().props.keyboardShouldPersistTaps, 'handled');
+  h.render().find(x => x.type === 'TouchableOpacity').props.onPress();
+  assert.equal(h.input().props.value, 'Обувь');
+});

@@ -650,7 +650,12 @@ test('resume insertion preserves the scrolled card position and marks new listin
   await expect(page.getByTestId('external-feed-new-listings')).toContainText('1');
   await page.screenshot({path:'test-results/external-feed-continuous-scroll.png'});
   await page.getByTestId('external-feed-new-listings').click();
-  await page.clock.runFor(1000);
+  // Между тиками даём React и браузеру измерить виртуализированные строки.
+  // Один скачок на секунду исполнял таймер завершения раньше этих измерений.
+  for (let frame = 0; frame < 20; frame += 1) {
+    await page.clock.runFor(50);
+    await page.waitForTimeout(15);
+  }
   await expect(page.getByTestId('external-feed-card-head-new')).toBeInViewport();
   await expect(page.getByTestId('external-feed-new-listings')).toHaveCount(0);
   expect(box.errors).toEqual([]);

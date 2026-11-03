@@ -9,6 +9,7 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [focused, setFocused] = useState(false);
+  const [dropdownHeight, setDropdownHeight] = useState(320);
   // Редактируемое значение принадлежит форме: эффекты и смена языка его не заменяют.
   const [selection, setSelection] = useState(null);
   const query = selection && value === selection.name ? selection.label : cargoInputText(value);
@@ -48,7 +49,9 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
       {suggestions.length > 0 && (
         <ScrollView
           testID={testID ? `${testID}-suggestions` : undefined}
-          style={[s.dropdown, { backgroundColor: theme.card, borderColor: theme.border }]}
+          style={[s.dropdown, { height: dropdownHeight, backgroundColor: theme.card, borderColor: theme.border }]}
+          // Явная высота и обычный поток разметки сохраняют native-область нажатия.
+          onContentSizeChange={(_width, height) => setDropdownHeight(Math.min(320, Math.max(1, height)))}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
           showsVerticalScrollIndicator
@@ -56,6 +59,7 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
           {suggestions.map((c, i) => (
             <TouchableOpacity
               key={c.name + i}
+              testID={testID ? `${testID}-suggestion-${i}` : undefined}
               style={[s.item, i < suggestions.length - 1 && { borderBottomColor: theme.border, borderBottomWidth: 1 }, c.isCustom && { backgroundColor: theme.border + '40' }]}
               onPress={() => pick(c)}
             >
@@ -77,7 +81,7 @@ const s = StyleSheet.create({
   wrap: { position: 'relative', marginBottom: 10, zIndex: 50 },
   input: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1 },
   dropdown: {
-    position: 'absolute', top: '100%', left: 0, right: 0,
+    marginTop: 4,
     borderRadius: 12, borderWidth: 1, maxHeight: 320,
     zIndex: 1000,
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },

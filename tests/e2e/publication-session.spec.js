@@ -111,6 +111,7 @@ test('многострочное описание не перекрываетс�
  const suggestions=page.getByTestId('cargo-desc-input-suggestions');await expect(suggestions).toBeAttached();
  const field=await input.boundingBox(),list=await suggestions.boundingBox();
  expect(list.y).toBeGreaterThanOrEqual(field.y+field.height-1);
+ expect(list.height).toBeGreaterThan(0);
  await expect(input).toHaveValue('Оборудование в деревянных ящиках\nХрупкое 设备 箱装 ');
  expect(box.errors).toEqual([]);
 });
