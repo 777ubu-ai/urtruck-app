@@ -215,7 +215,8 @@ jobs:
             tests/e2e/urtruck-full-e2e-web.spec.js \
             tests/e2e/profile-save-recovery.spec.js \
             tests/e2e/urtruck-runtime-crash-regression.spec.js \
-            tests/e2e/urtruck-deal-confirmation.spec.js
+            tests/e2e/urtruck-deal-confirmation.spec.js \
+            tests/e2e/publication-session.spec.js
       - name: Повтор публикации после потери ответа и перезапуска
         run: |
           set -euo pipefail
