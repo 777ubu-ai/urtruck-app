@@ -1,13 +1,13 @@
 {
   "base_sha": "e396a097b7f47f8344634ff54b56ff1d144b4ab9",
-  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged; owner-authorized PR643 registration session-owner guards only, behavioral whole-component regression PASS; all other protected hashes unchanged; owner29Oct authorized five complete UI locales and compact picker; only recorded locale-adapter/picker files updated, Auth/registration/network/FSM logic preserved",
+  "baseline_change": "PR633 public 30-day visibility plus owner-authorized PR634 narrow bid route-date guard; other protected modules unchanged; owner-authorized PR643 registration session-owner guards only, behavioral whole-component regression PASS; all other protected hashes unchanged; owner29Oct authorized five complete UI locales and compact picker; only recorded locale-adapter/picker files updated, Auth/registration/network/FSM logic preserved; owner-authorized FEED-16 preserves cargo text during editing and normalizes only at submission, protected CreateCargoScreen hash updated with submit regression; URTRUCK-TEST-16: подтверждённая потеря последнего изменения при закрытии до autosave; разрешённое заданием сохранение при unmount в прежней очереди с проверкой ключа/поколения и без восстановления опубликованной формы; обновлён только хэш usePublicationDraft, поведенческие регрессии добавлены",
   "sha256": {
     "src/utils/AuthContext.js": "d111f2a1431cded19d0a971ba7e9b2443490a820d5e1d4d036c8d869c74d814f",
     "src/utils/registration.js": "b6efef77a15745d706c9418160c009df68859d03bfb6b8fce17df7db2d3f85b1",
     "src/utils/marketAPI.js": "01b601a5130a5b71258ea7718e8dcf57729c747f62d097550f75e94ee7e030ef",
     "src/utils/publicationSession.js": "02335055e5f5311f1ccbf0d67cfb6d849318268fb484b4aabfd67e0d7460289a",
-    "src/hooks/usePublicationDraft.js": "426ca9815452984a56b1c0c57e533892d725b7ed5bb75ae8386638ee6f33ac86",
-    "src/screens/CreateCargoScreen.js": "4567e526de3fac6befabafcfffcf360fc2e06f4d7eab9116f7d0fee0114d562c",
+    "src/hooks/usePublicationDraft.js": "49d71d81a584945a3070f84ed253f1160eae0ce50dca14adb3b0d39e76e93d62",
+    "src/screens/CreateCargoScreen.js": "95cfc253d0e448f371b86b1621fcfb06a76b40fcaf681017de507a0e15a73732",
     "src/screens/CreateTripScreen.js": "10fcebfb7d47050b7e32007e36ee4fc0faaa6d7fe3a32b6498efa617d58cfd62",
     "src/screens/DriverExpensesScreen.js": "61f66917a59e3097a8f513810bf35840bdf8ae1339e874e4cf8a3f09d424328a",
     "src/screens/ProfileScreen.js": "583680b46e46ab6cef6b0177ab2331df267a4d111bdb7bd47d0326d30add0777",

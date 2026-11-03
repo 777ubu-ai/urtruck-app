@@ -21,7 +21,7 @@
 //     for screens that want it.
 
 import { ALL_COUNTRIES } from './countries.js';
-import { worldCitiesForCountry, searchWorldCities } from './worldCities.js';
+import { worldCitiesForCountry, searchWorldCities, searchWorldCitiesAsync } from './worldCities.js';
 
 const CORRIDOR_COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
@@ -246,6 +246,25 @@ export const searchPoints = (query, { country, type } = {}) => {
     excludedNames: CURATED_CITY_NAMES,
     type,
   });
+  return rankPoints(query, country, type, worldHits);
+};
+
+const asyncSearchCache = new Map();
+export const searchPointsAsync = async (query, { country, type, ...options } = {}) => {
+  if (options.isCurrent && !options.isCurrent()) return null;
+  const key = JSON.stringify([String(query || '').trim().toLocaleLowerCase(), country, type]);
+  if (asyncSearchCache.has(key)) return asyncSearchCache.get(key);
+  const worldHits = await searchWorldCitiesAsync(query, country, {
+    ...options, allowedCountries: COUNTRIES, excludedNames: CURATED_CITY_NAMES, type,
+  });
+  if (worldHits === null || (options.isCurrent && !options.isCurrent())) return null;
+  const result = rankPoints(query, country, type, worldHits);
+  if (asyncSearchCache.size >= 32) asyncSearchCache.delete(asyncSearchCache.keys().next().value);
+  asyncSearchCache.set(key, result);
+  return result;
+};
+
+const rankPoints = (query, country, type, worldHits) => {
   let pool = [...POINTS, ...worldHits];
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);

@@ -641,3 +641,46 @@ test('смена языка без разрешения push не показыв
     assert.equal(f.calls.length,0);
   } finally {f.restore();shim.uninstall();}
 });
+
+test('поздний повтор SDK token не зацикливает native getter, настоящая ротация сохраняется', async () => {
+ await reset(); const shim = installNativeRequireShim(); const f = fetchMock();
+ const original = shim.NotificationsMock.getDevicePushTokenAsync;
+ let nativeReads = 0;
+ shim.NotificationsMock.getDevicePushTokenAsync = async (...args) => {
+  nativeReads++;
+  const result = await original(...args);
+  // Отдельный event-loop turn: регистрация уже завершилась и её single-flight снят.
+  if (nativeReads < 8) setImmediate(() => {
+   for (const listener of shim.state.tokenListeners) listener({ data: result.data, type: result.type });
+  });
+  return result;
+ };
+ try {
+  const push = await freshPush(); await push.registerNative();
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(nativeReads, 1, 'один OS getter не должен порождать следующий getter через свой поздний callback');
+  assert.equal(f.calls.filter(call => call.url.includes('/register-native')).length, 1);
+  shim.state.nativeDeviceToken = 'real-rotation-after-late-replay';
+  await shim.NotificationsMock.__emitTokenRotation();
+  await new Promise(resolve => setTimeout(resolve, 40));
+  const calls = f.calls.filter(call => call.url.includes('/register-native'));
+  assert.equal(calls.length, 2); assert.equal(calls.at(-1).body.token, 'real-rotation-after-late-replay');
+  assert.equal(nativeReads, 2);
+ } finally {
+  await new Promise(resolve => setTimeout(resolve, 50)); f.restore(); shim.uninstall();
+ }
+});
+
+test('подавление позднего token replay не скрывает смену владельца сессии', async () => {
+ await reset(); const shim = installNativeRequireShim(); const old = globalThis.fetch; const owners = [];
+ globalThis.fetch = async (_url, opts) => { owners.push(opts.headers.Authorization); return { status: 200, ok: true, json: async () => ({ user_id: 'user' }) }; };
+ try {
+  const storage = (await import('./mocks/async-storage.mjs')).default;
+  await storage.setItem('ur_reg_token', 'owner-a');
+  const push = await freshPush(); await push.registerNative();
+  await storage.setItem('ur_reg_token', 'owner-b');
+  await shim.NotificationsMock.__emitTokenRotation();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(owners, ['Bearer owner-a', 'Bearer owner-b']);
+ } finally { globalThis.fetch = old; shim.uninstall(); }
+});

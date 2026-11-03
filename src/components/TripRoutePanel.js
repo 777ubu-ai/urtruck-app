@@ -1,6 +1,7 @@
 import { ADDITIONAL_TRANSLATIONS } from '../utils/additionalLocales.js';
 import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React from 'react';
+import { GPS_TRACKING_PAUSED } from '../utils/locationPolicy';
 import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
@@ -155,12 +156,15 @@ export default function TripRoutePanel({
   }, []);
 
   React.useEffect(() => {
+    if (GPS_TRACKING_PAUSED || role !== 'driver') return undefined;
     let cancelled = false;
     const controller = new AbortController();
+    const cancel = () => { cancelled = true; controller.abort(); };
+    const listener = AppState.addEventListener('change', state => { if (state !== 'active') cancel(); });
     const load = async () => {
-      if (role !== 'driver') return;
+      if (cancelled || AppState.currentState !== 'active') return;
       const permission = await Location.getForegroundPermissionsAsync();
-      if (permission.status !== 'granted') return;
+      if (cancelled || AppState.currentState !== 'active' || permission.status !== 'granted') return;
       const position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
       if (cancelled || AppState.currentState !== 'active' || !position?.coords) return;
       const { latitude, longitude } = position.coords;
@@ -189,7 +193,7 @@ export default function TripRoutePanel({
       }
     };
     load().catch(() => {});
-    return () => { cancelled = true; controller.abort(); };
+    return () => { cancel(); listener?.remove?.(); };
   }, [lang, role]);
 
   const serverWeatherText = weather?.current_label || weather?.current || weather?.now || '';

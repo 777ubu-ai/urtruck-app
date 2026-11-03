@@ -15,7 +15,7 @@ function setup(photos,upload) {
  const calls=[],uploadedPhotos={current:new Map()}, submissionInFlight={current:false};
  const ctx={...publicationEnv(),from:'Алматы',to:'Астана',cargoDesc:'Груз',tons:'1',m3:'0',price:'1000',pickupDate:'2099-01-01',parseWeightTonsInput,
  fromPoint:null,toPoint:null,truckType:'tent',currency:'USD',paymentType:null,photos,submitting:false,uploadedPhotos,submissionInFlight,
- setErrors:()=>{},setSubmitting:x=>calls.push(['busy',x]),t:x=>x,toast:(...x)=>calls.push(['toast',...x]),
+ setErrors:()=>{},setSubmitting:x=>calls.push(['busy',x]),t:x=>x,toast:(...x)=>calls.push(['toast',...x]),normalizeCargoDescription:x=>String(x??'').trim(),
  normalizeDateInput:x=>x,addCustomCargoType:()=>{},cleanPlaceName:x=>x,role:'client',navigation:{reset:x=>calls.push(['nav',x])},
  marketAPI:{uploadCargoPhoto:async uri=>{calls.push(['upload',uri]); return upload(uri);},createCargo:async payload=>{calls.push(['create',payload]);return {ok:true,id:'new-cargo'};}}};
  return {submit:vm.runInNewContext(actual,ctx),calls,uploadedPhotos,submissionInFlight};
@@ -52,7 +52,7 @@ test('cargo submission preserves decimal comma in the tonnes payload', async () 
   from:'Алматы',to:'Астана',cargoDesc:'Груз',tons:'20,5',m3:'0',price:'1000',pickupDate:'2099-01-01',
   fromPoint:null,toPoint:null,truckType:'tent',currency:'USD',paymentType:null,photos:[],submitting:false,
   uploadedPhotos:{current:new Map()},submissionInFlight:{current:false},parseWeightTonsInput,
-  setErrors:()=>{},setSubmitting:()=>{},t:x=>x,toast:()=>{},normalizeDateInput:x=>x,addCustomCargoType:()=>{},cleanPlaceName:x=>x,role:'client',
+  setErrors:()=>{},setSubmitting:()=>{},t:x=>x,toast:()=>{},normalizeCargoDescription:x=>String(x??'').trim(),normalizeDateInput:x=>x,addCustomCargoType:()=>{},cleanPlaceName:x=>x,role:'client',
   navigation:{reset:()=>{}},marketAPI:{uploadCargoPhoto:async()=>{},createCargo:async payload=>{h.calls.push(['create',payload]);return {ok:true,id:'cargo-decimal'};}}
  });
  await h.submit();

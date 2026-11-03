@@ -1,6 +1,15 @@
 // Разовое свежее измерение с ограничением времени и отменой нативной подписки.
 // Таймаут Promise сам по себе не выключает датчики: remove нужен и для
 // подписки, которая разрешилась уже после отмены/сворачивания приложения.
+function removePositionSubscription(subscription) {
+  try { subscription?.remove?.(); return true; }
+  catch {
+    // Только фиксированный код: исключение native может содержать координаты.
+    console.warn('[location-diagnostic]', 'foreground_subscription_remove_failed');
+    return false;
+  }
+}
+
 export function captureForegroundPosition(location, { appState, signal, timeoutMs = 8000, now = Date.now } = {}) {
   if (signal?.aborted || (appState && appState.currentState !== 'active')) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -13,10 +22,10 @@ export function captureForegroundPosition(location, { appState, signal, timeoutM
       if (finished) return;
       finished = true;
       if (timer) clearTimeout(timer);
-      try { subscription?.remove?.(); } catch {}
-      try { listener?.remove?.(); } catch {}
+      const stopped = removePositionSubscription(subscription);
+      try { listener?.remove?.(); } catch { console.warn('[location-diagnostic]', 'foreground_listener_remove_failed'); }
       signal?.removeEventListener?.('abort', cancel);
-      resolve(point);
+      resolve(stopped ? point : null);
     };
     const cancel = () => finish();
     timer = setTimeout(cancel, timeoutMs);
@@ -34,7 +43,7 @@ export function captureForegroundPosition(location, { appState, signal, timeoutM
         finish(point);
       }, cancel)).then(value => {
         subscription = value;
-        if (finished) { try { subscription?.remove?.(); } catch {} }
+        if (finished) removePositionSubscription(subscription);
       }, cancel);
     } catch { cancel(); }
   });

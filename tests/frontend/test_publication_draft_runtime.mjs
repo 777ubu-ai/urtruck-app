@@ -19,8 +19,35 @@ function hookHarness(owner){
  };
  const exports={};vm.runInNewContext(sucrase.transform(fs.readFileSync('src/hooks/usePublicationDraft.js','utf8'),{transforms:['imports']}).code,{exports,require:name=>name==='react'?React:drafts,setTimeout,clearTimeout});
  function render(){cursor=0;const result=exports.usePublicationDraft('cargo',owner,{...values},{description:v=>{values.description=v;},price:v=>{values.price=v;}});while(pending.length)pending.shift()();return result;}
- return {render,values,unmount:()=>slots.forEach(x=>x.cleanup?.())};
+ return {render,values,setOwner:next=>{owner=next;},unmount:()=>slots.forEach(x=>x.cleanup?.())};
 }
+
+test('закрытие до autosave сохраняет последний символ и пробел для немедленного открытия',async()=>{
+ const owner='quick-back-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),h=hookHarness(owner);
+ try{
+  h.render();await tick();assert.equal(h.render().ready,true);
+  h.values.description='Оборудование в деревянных ящиках ';h.render();h.unmount();
+  const reopened=hookHarness(owner);
+  try{reopened.render();await tick();assert.equal(reopened.render().ready,true);assert.equal(reopened.values.description,'Оборудование в деревянных ящиках ');}
+  finally{reopened.unmount();}
+ }finally{await drafts.clearPublicationDraft(k);}
+});
+
+test('закрытие опубликованной формы не воскрешает очищенный черновик',async()=>{
+ const owner='published-close-'+(++sequence),k=drafts.publicationDraftKey('cargo',owner),h=hookHarness(owner);
+ try{
+  h.render();await tick();h.render();h.values.description='Контроль ';const current=h.render();await current.save();await current.clear();h.unmount();
+  assert.equal(await drafts.readPublicationDraft(k),null);
+ }finally{await durableStorage.remove(k);}
+});
+
+test('смена владельца до hydration не сохраняет старые поля под новым ключом',async()=>{
+ const owner='owner-before-close-'+(++sequence),other=owner+'-other',h=hookHarness(owner),a=drafts.publicationDraftKey('cargo',owner),b=drafts.publicationDraftKey('cargo',other);
+ try{
+  h.render();await tick();h.render();h.values.description='Только первый аккаунт';h.render();h.setOwner(other);h.render();h.unmount();await tick();
+  assert.notEqual((await drafts.readPublicationDraft(b))?.description,'Только первый аккаунт');
+ }finally{await drafts.clearPublicationDraft(a);await drafts.clearPublicationDraft(b);}
+});
 
 test('черновики не переходят между аккаунтами',async()=>{
  const a=key(),b=key();await drafts.savePublicationDraft(a,{price:'4500'});assert.equal(await drafts.readPublicationDraft(b),null);assert.equal((await drafts.readPublicationDraft(a)).price,'4500');await drafts.clearPublicationDraft(a);

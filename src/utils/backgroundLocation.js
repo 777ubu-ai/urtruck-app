@@ -55,7 +55,7 @@ function backgroundTrackingOptions(locationModule) {
 }
 
 async function restoreTrackingAfterCancelledLogout(locationModule, expectedToken) {
-  if (FOREGROUND_LOCATION_ONLY) return await storage.get(TOKEN_KEY) === expectedToken;
+  if (GPS_TRACKING_PAUSED || FOREGROUND_LOCATION_ONLY) return await storage.get(TOKEN_KEY) === expectedToken;
   try {
     if (await storage.get(TOKEN_KEY) !== expectedToken) return false;
     const permission = await getBackgroundLocationPermissionState();
@@ -271,7 +271,7 @@ export function pushLocationToDeals(coords, explicitDealIds = null) {
 if (TaskManager) {
   try {
     TaskManager.defineTask(BG_LOCATION_TASK, async ({ data, error } = {}) => {
-      if (FOREGROUND_LOCATION_ONLY) { await stopBackgroundTracking(); return; }
+      if (GPS_TRACKING_PAUSED || FOREGROUND_LOCATION_ONLY) { await stopBackgroundTracking(); return; }
       if (error) return;
       const epoch = locationSessionEpoch;
       const token = await storage.get(TOKEN_KEY);
@@ -512,7 +512,7 @@ export async function getLocationHealth({ requestPosition = true } = {}) {
 export async function startBackgroundTracking({ forceReconfigure = false } = {}) {
   const epoch = locationSessionEpoch;
   return runTrackingLifecycle(async () => {
-    if (FOREGROUND_LOCATION_ONLY) {
+    if (GPS_TRACKING_PAUSED || FOREGROUND_LOCATION_ONLY) {
       const result = await stopBackgroundTrackingNow();
       return { ok: result.ok, foregroundOnly: true, reason: result.reason };
     }
@@ -553,6 +553,12 @@ export async function startBackgroundTracking({ forceReconfigure = false } = {})
 
 export async function stopBackgroundTracking() {
   return runTrackingLifecycle(stopBackgroundTrackingNow);
+}
+
+// Обновление должно убрать legacy-регистрацию и до восстановления входа.
+export function initializeLocationPolicy() {
+  if (!GPS_TRACKING_PAUSED && !FOREGROUND_LOCATION_ONLY) return Promise.resolve({ ok: true, skipped: 'legacy' });
+  return stopBackgroundTracking();
 }
 
 export function stopBackgroundTrackingForLogout(expectedToken, { signal } = {}) {
@@ -606,7 +612,7 @@ export function stopBackgroundTrackingForLogout(expectedToken, { signal } = {}) 
 }
 
 export function restoreBackgroundTrackingForLogoutFailure(expectedToken, wasStopped = false) {
-  if (FOREGROUND_LOCATION_ONLY) return Promise.resolve({ ok: true, restored: false, foregroundOnly: true });
+  if (GPS_TRACKING_PAUSED || FOREGROUND_LOCATION_ONLY) return Promise.resolve({ ok: true, restored: false, foregroundOnly: true });
   if (!wasStopped) return Promise.resolve({ ok: true, restored: false });
   return runTrackingLifecycle(async () => {
     if (await storage.get(TOKEN_KEY) !== expectedToken) {
@@ -657,15 +663,21 @@ async function stopBackgroundTrackingNow() {
   const locationModule = await resolveLocationModule();
   if (Platform.OS === 'web') return { ok: true, stopped: false, skipped: 'web' };
   if (!TaskManager || !locationModule) {
+    console.warn('[location-diagnostic]', 'background_stop_module_unavailable');
     return { ok: false, reason: 'location_module_unavailable' };
   }
   try {
     // A failed status query is not evidence that native tracking is stopped.
     const started = await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK);
     if (started) await locationModule.stopLocationUpdatesAsync(BG_LOCATION_TASK);
+    if (started && await locationModule.hasStartedLocationUpdatesAsync(BG_LOCATION_TASK)) {
+      console.warn('[location-diagnostic]', 'background_stop_unconfirmed');
+      return { ok: false, reason: 'background_stop_unconfirmed', locationModule };
+    }
     backgroundTrackingConfiguredThisProcess = false;
     return { ok: true, stopped: started, locationModule };
   } catch (error) {
+    console.warn('[location-diagnostic]', 'background_stop_failed');
     return {
       ok: false,
       reason: String(error?.message || error || 'background_stop_failed'),

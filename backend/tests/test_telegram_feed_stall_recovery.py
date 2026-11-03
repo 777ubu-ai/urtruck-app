@@ -15,6 +15,75 @@ def collector():
     return module
 
 
+def test_repeated_dedup_does_not_reparse_unchanged_history(monkeypatch):
+    m = collector()
+    original = m.phones
+    calls = []
+    monkeypatch.setattr(m, 'phones', lambda text: (calls.append(text), original(text))[1])
+    left = 'Алматы → Москва\nГруз: оборудование +77001234567'
+    right = 'Алматы → Москва\nГруз: оборудование +7 700 123 45 67'
+    other = 'Алматы → Москва\nГруз: оборудование +998901234567'
+    for _ in range(20):
+        assert m.similar(left, right)
+        assert not m.similar(left, other)
+        assert not m.similar(left, 'Алматы → Москва\nДругой груз +77001234567')
+    assert len(calls) == 4
+    assert m._dedup_contacts.cache_info().maxsize == 8192
+    assert m._dedup_canonical.cache_info().maxsize == 8192
+
+
+def test_large_dedup_yields_and_cancel_does_not_insert_or_advance_cursor(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    with db:
+        db.executemany('INSERT INTO prior VALUES(?,?,?)',
+                       [(i, f'Груз {i} +998901234567', '2026-11-03') for i in range(256)])
+        db.execute("INSERT INTO cursors VALUES('source', 10)")
+
+    async def scenario():
+        task = asyncio.create_task(m.enqueue_for_collection(
+            db, 'source', 101, 11, 'Алматы → Москва +77001234567', datetime.now(timezone.utc)))
+        await asyncio.sleep(0)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        assert db.execute('SELECT count(*) FROM queue').fetchone()[0] == 0
+        assert db.execute('SELECT message_id FROM cursors').fetchone()[0] == 10
+        assert await m.enqueue_for_collection(
+            db, 'source', 101, 11, 'Алматы → Москва +77001234567', datetime.now(timezone.utc))
+        assert not await m.enqueue_for_collection(
+            db, 'source', 101, 12, 'Алматы → Москва +7 700 123 45 67', datetime.now(timezone.utc))
+        assert db.execute('SELECT count(*) FROM queue').fetchone()[0] == 1
+
+    asyncio.run(scenario())
+    db.close()
+
+
+def test_reconciliation_during_dedup_cannot_enqueue_confirmed_copy(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    with db:
+        db.executemany('INSERT INTO prior VALUES(?,?,?)',
+                       [(i, f'Груз {i} +998901234567', '2026-11-03') for i in range(128)])
+    text = 'Алматы → Москва +77001234567'
+
+    async def scenario():
+        task = asyncio.create_task(m.enqueue_for_collection(
+            db, 'source', 101, 11, text, datetime.now(timezone.utc)))
+        await asyncio.sleep(0)
+        assert not task.done()
+        with db:
+            db.execute('INSERT INTO prior VALUES(?,?,?)', (1000, text, '2026-11-03'))
+        assert not await task
+        assert db.execute('SELECT count(*) FROM queue').fetchone()[0] == 0
+
+    asyncio.run(scenario())
+    db.close()
+
+
 class Reader:
     def __init__(self, messages):
         self.messages = messages

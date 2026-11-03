@@ -591,6 +591,23 @@ export const push = {
           }
           return;
         }
+        const previous = nativeRegistrationLastAttempt;
+        if (previous?.token === eventToken && previous.locale === getLanguage()) {
+          // SDK Android посылает onNewToken даже после resolve своего getter.
+          // Сетевой dedup ниже слишком поздний: новый getter снова породит событие.
+          const eventGeneration = nativeRegistrationGeneration;
+          storage.get(TOKEN_KEY).then(currentAuth => {
+            if (nativeRegistrationSuspended || eventGeneration !== nativeRegistrationGeneration) return;
+            if (previous === nativeRegistrationLastAttempt && previous.locale === getLanguage()
+              && previous.authFingerprint === authContextFingerprint(currentAuth || '')
+              && (previous.result.ok || Date.now() - previous.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS)) return;
+            // Запущенная за время чтения новая регистрация уже владеет контекстом.
+            if (nativeRegistrationInFlight) return;
+            nativeLatestTokenEvent = eventToken;
+            this.registerNative({ tokenOverride: eventToken }).catch(() => {});
+          }).catch(() => {});
+          return;
+        }
         nativeLatestTokenEvent = eventToken;
         this.registerNative({ tokenOverride: eventToken }).catch(() => {});
       });

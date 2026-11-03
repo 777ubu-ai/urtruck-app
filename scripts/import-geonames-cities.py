@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import zipfile
+import subprocess
 
 parser=argparse.ArgumentParser()
 parser.add_argument('archive',type=Path)
@@ -23,4 +24,5 @@ for cities in rows.values():
     cities.sort(key=lambda row:(-row[4],row[0]))
 out=root/'src/data/worldCities.js'
 out.write_text('// GeoNames cities15000, CC BY 4.0. See docs/geonames-attribution.md.\nexport default '+json.dumps(rows,ensure_ascii=False,separators=(',',':'))+';\n')
+subprocess.run(['node',str(root/'scripts/prepare-world-city-search.mjs')],check=True)
 print(f'{sum(map(len,rows.values()))} cities, {len(rows)} country codes')

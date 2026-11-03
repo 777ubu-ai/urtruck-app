@@ -1,4 +1,4 @@
-import rows from '../data/worldCities.js';
+import rows, { searchCaseProbe } from '../data/worldCities.js';
 
 const countries = new Map();
 export function worldCitiesForCountry(code) {
@@ -10,7 +10,19 @@ export function worldCitiesForCountry(code) {
   return countries.get(code);
 }
 
-export function searchWorldCities(query, country, { excludedNames, allowedCountries, type } = {}) {
+// Храним только поисковые строки и ссылки на исходные tuple, без каталога city-объектов.
+const searchLabels = new WeakMap();
+// Особые правила регистра текущей locale сохраняют прежний путь вычисления.
+const usePreparedLabels = 'IİÌÍĨJ\u0301I\u0307'.toLocaleLowerCase() === searchCaseProbe;
+function labelsFor(row) {
+  if (usePreparedLabels && row[6]) return row[6];
+  if (!searchLabels.has(row)) {
+    searchLabels.set(row, [row[0], ...row[1]].map(label => label.toLocaleLowerCase()));
+  }
+  return searchLabels.get(row);
+}
+
+function* worldCitySearch(query, country, { excludedNames, allowedCountries, type, sliceBudgetMs = 8, now = () => performance.now() } = {}) {
   const q = String(query || '').trim().toLocaleLowerCase();
   if (!q || (type && type !== 'city')) return [];
   const limit = 12;
@@ -21,6 +33,8 @@ export function searchWorldCities(query, country, { excludedNames, allowedCountr
     const byName = name.localeCompare(right.name, 'ru');
     return byName || rowOrder - right.order;
   };
+  let scanned = 0;
+  let sliceStarted = now();
   for (const code of country ? [country] : Object.keys(rows)) {
     if (allowedCountries && !allowedCountries[code]) continue;
     // Search the compact source tuples first. Materializing each country's
@@ -28,13 +42,19 @@ export function searchWorldCities(query, country, { excludedNames, allowedCountr
     // the module cache. Keep only the best twelve raw rows while scanning so
     // even one-character queries do not allocate/sort every matching city.
     for (const row of rows[code] || []) {
-      const [name, aliases] = row;
+      // Отдаём управление вводу и кадру до следующей порции работы.
+      if (++scanned % 32 === 0 && now() - sliceStarted >= sliceBudgetMs) {
+        yield;
+        sliceStarted = now();
+      }
+      const [name] = row;
+      const labels = labelsFor(row);
+      const nameLower = labels[0];
       const rowOrder = order++;
-      const nameLower = name.toLocaleLowerCase();
       if (!(nameLower.includes(q)
-        || aliases.some((alias) => alias.toLocaleLowerCase().includes(q)))) continue;
+        || labels.some((alias) => alias.includes(q)))) continue;
       if (excludedNames && (excludedNames.has(`${code}:${nameLower}`)
-        || aliases.some((alias) => excludedNames.has(`${code}:${alias.toLocaleLowerCase()}`)))) continue;
+        || labels.some((alias) => excludedNames.has(`${code}:${alias}`)))) continue;
 
       const startsWith = nameLower.startsWith(q);
       let low = 0;
@@ -53,6 +73,27 @@ export function searchWorldCities(query, country, { excludedNames, allowedCountr
   return selected.map(({ code, row: [name, aliases, latitude, longitude, population, id] }) => ({
     name, aliases, latitude, longitude, population, geonameId: id, country: code, type: 'city', source: 'GeoNames',
   }));
+}
+
+// Синхронный контракт сохранён для прочих потребителей и тестов.
+export function searchWorldCities(query, country, options) {
+  const work = worldCitySearch(query, country, options);
+  let step;
+  do { step = work.next(); } while (!step.done);
+  return step.value;
+}
+
+export async function searchWorldCitiesAsync(query, country, options = {}) {
+  const { isCurrent = () => true, yieldTask = () => new Promise(resolve => setTimeout(resolve, 0)) } = options;
+  const work = worldCitySearch(query, country, options);
+  while (isCurrent()) {
+    const sliceStarted = performance.now();
+    const step = work.next();
+    options.onSlice?.(performance.now() - sliceStarted);
+    if (step.done) return step.value;
+    await yieldTask();
+  }
+  return null;
 }
 
 export function customCityForCountry(name, country) {

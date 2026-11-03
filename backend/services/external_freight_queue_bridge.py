@@ -25,6 +25,12 @@ VEHICLE_RESERVE_LOOKAHEAD = 500
 PARSER_REVISION = '20261101-core-fields-v17'
 
 
+def elapsed_ms(start, end=None):
+    # Общие границы миллисекунд сохраняют сумму неперекрывающихся этапов.
+    finished = time.monotonic() if end is None else end
+    return int(finished * 1000) - int(start * 1000)
+
+
 def validate_qa_target(api_url, *, state_path=None):
     # Старые вызовы и окружения остаются строго QA2. Боевой адрес требует
     # явного выбора и отдельного durable state; очередь QA2 не перенаправляется.
@@ -77,26 +83,27 @@ class PublishedQueueBridge:
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
             return {"status": "disabled", "scanned": 0,
                     "bridge_duration_ms": 0,
-                    "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
+                    "cycle_duration_ms": elapsed_ms(cycle_started)}
         if not self.adapter.importer_key:
             return {"status": "not_configured", "scanned": 0,
                     "bridge_duration_ms": 0,
-                    "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
+                    "cycle_duration_ms": elapsed_ms(cycle_started)}
         lock_started = cycle_started
         with open(self.adapter.db_path + ".bridge.lock", "a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return {"status": "busy", "scanned": 0,
-                        "lock_wait_ms": round((time.monotonic()-lock_started)*1000),
+                        "lock_wait_ms": elapsed_ms(lock_started),
                         "bridge_duration_ms": 0,
-                        "cycle_duration_ms": round((time.monotonic()-cycle_started)*1000)}
+                        "cycle_duration_ms": elapsed_ms(cycle_started)}
             try:
                 acquired = time.monotonic()
                 result = self._run_locked()
-                result["lock_wait_ms"] = round((acquired-lock_started)*1000)
-                result["bridge_duration_ms"] = round((time.monotonic()-acquired)*1000)
-                result["cycle_duration_ms"] = round((time.monotonic()-cycle_started)*1000)
+                finished = time.monotonic()
+                result["lock_wait_ms"] = elapsed_ms(lock_started, acquired)
+                result["bridge_duration_ms"] = elapsed_ms(acquired, finished)
+                result["cycle_duration_ms"] = elapsed_ms(cycle_started, finished)
                 return result
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
@@ -128,7 +135,7 @@ class PublishedQueueBridge:
                 ORDER BY CASE WHEN bridge_kind(q.text)='vehicle' THEN 0 ELSE 1 END,
                          q.source_date DESC,q.destination_message DESC,q.id DESC LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
-        source_scan_ms = round((time.monotonic()-selection_started)*1000)
+        source_scan_ms = elapsed_ms(selection_started)
         enqueued = rejected = review = 0
         enqueue_operations = []
         seen_updates = []
@@ -162,7 +169,7 @@ class PublishedQueueBridge:
                                   (row["id"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
             seen_updates.append((row["id"], row["bridge_source_revision"]))
-        parse_ms = round((time.monotonic()-parse_started)*1000)
+        parse_ms = elapsed_ms(parse_started)
         segment_outcomes = {"created": 0, "updated": 0, "unchanged": 0}
         write_started = time.monotonic()
         if enqueue_operations:
@@ -170,15 +177,15 @@ class PublishedQueueBridge:
             for outcome in outcomes:
                 segment_outcomes[outcome] += 1
             enqueued = sum(segment_outcomes[key] for key in ("created", "updated"))
-        outbox_write_ms = round((time.monotonic()-write_started)*1000)
+        outbox_write_ms = elapsed_ms(write_started)
         ack_started = time.monotonic()
         with self.adapter._connect() as state:
             state.executemany("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
                 ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""", seen_updates)
-        source_ack_ms = round((time.monotonic()-ack_started)*1000)
+        source_ack_ms = elapsed_ms(ack_started)
         flush_started = time.monotonic()
         delivery = self.adapter.flush_bounded()
-        flush_duration_ms = round((time.monotonic()-flush_started)*1000)
+        flush_duration_ms = elapsed_ms(flush_started)
         return {"status": delivery["status"], "scanned": len(rows), "segments": sum(segment_outcomes.values()),
                 "segments_created": segment_outcomes["created"], "segments_updated": segment_outcomes["updated"],
                 "segments_unchanged": segment_outcomes["unchanged"], "enqueued": enqueued,
@@ -315,7 +322,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             oldest=source.execute(query+" ORDER BY source_date ASC,updated_at ASC,id ASC LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
-        source_scan_ms=round((time.monotonic()-selection_started)*1000)
+        source_scan_ms=elapsed_ms(selection_started)
         enqueued=review=rejected=duplicates=0
         enqueue_operations=[]
         pending_payloads={}
@@ -386,7 +393,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
             seen_updates.append((row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
             reasons[reason]=reasons.get(reason,0)+1
-        parse_ms=round((time.monotonic()-parse_started)*1000)
+        parse_ms=elapsed_ms(parse_started)
         segment_outcomes={"created":0,"updated":0,"unchanged":0}
         write_started=time.monotonic()
         if enqueue_operations:
@@ -396,17 +403,17 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 if outcome in {"created","updated"}:
                     enqueued+=1
                     if record.get("status")=="active":active_by_kind[record["kind"]]+=1
-        outbox_write_ms=round((time.monotonic()-write_started)*1000)
+        outbox_write_ms=elapsed_ms(write_started)
         # Mark source rows only after every corresponding outbox write is durable.
         ack_started=time.monotonic()
         with self.adapter._connect() as state:
             state.executemany("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",
                               [(fingerprint,identity,published) for fingerprint,(identity,published) in pending_dedup.items()])
             state.executemany("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",seen_updates)
-        source_ack_ms=round((time.monotonic()-ack_started)*1000)
+        source_ack_ms=elapsed_ms(ack_started)
         flush_started=time.monotonic()
         delivery=self.adapter.flush_bounded()
-        flush_duration_ms=round((time.monotonic()-flush_started)*1000)
+        flush_duration_ms=elapsed_ms(flush_started)
         return {**delivery,"scanned":len(rows),"segments":sum(segment_outcomes.values()),
                 "segments_created":segment_outcomes["created"],"segments_updated":segment_outcomes["updated"],
                 "segments_unchanged":segment_outcomes["unchanged"],"enqueued":enqueued,"review":review,

@@ -45,3 +45,17 @@ test('country and locale changes invalidate earlier search contexts', () => {
   time.flush();
   assert.deepEqual(results, ['Berlin:DE:ZH']);
 });
+
+
+test('уже запущенный асинхронный поиск теряет право публиковать после отмены', async () => {
+  const time = clock(), scheduler = createPickerSearchScheduler(time);
+  let finish, current, published = false;
+  scheduler.schedule('Нижний ', async (_, isCurrent) => {
+    current = isCurrent;
+    await new Promise(resolve => { finish = resolve; });
+    if (isCurrent()) published = true;
+  });
+  time.flush(); assert.equal(current(), true);
+  scheduler.cancel(); finish(); await Promise.resolve();
+  assert.equal(current(), false); assert.equal(published, false);
+});

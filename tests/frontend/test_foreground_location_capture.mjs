@@ -39,24 +39,24 @@ test('измерение не стартует в фоне или после abo
 
 function policyHarness(paused = false) {
   const data = new Map([['ur_reg_token', 'A'], ['ur_session', '{"user":{"id":"driver"}}'], ['ur_bg_deal_ids', '["deal"]']]);
-  const calls = { start: 0, stop: 0, fetch: 0, bgPermission: 0, append: 0 }; let task;
+  const calls = { start: 0, stop: 0, fetch: 0, bgPermission: 0, append: 0 }; let task; let started = true; const diagnostics = [];
   const appState = { currentState: 'active' };
   const storage = { get: async k => data.get(k) ?? null, set: async (k,v) => data.set(k,v), remove: async k => data.delete(k) };
-  const native = { Accuracy: { Balanced: 1 }, hasStartedLocationUpdatesAsync: async () => true,
-    stopLocationUpdatesAsync: async () => { calls.stop++; }, startLocationUpdatesAsync: async () => { calls.start++; },
+  const native = { Accuracy: { Balanced: 1 }, hasStartedLocationUpdatesAsync: async () => started,
+    stopLocationUpdatesAsync: async () => { calls.stop++; started = false; }, startLocationUpdatesAsync: async () => { calls.start++; },
     getForegroundPermissionsAsync: async () => ({ status: 'granted', canAskAgain: true }),
     getBackgroundPermissionsAsync: async () => { calls.bgPermission++; return { status: 'denied' }; },
   };
   const scope = { GPS_TRACKING_PAUSED: paused, Platform: { OS: 'ios' }, AppState: appState, captureForegroundPosition: capture, storage, durableStorage: storage,
     createLocationQueue: () => ({ migrate: async () => {}, append: async () => { calls.append++; }, drain: async () => {} }),
-    locationSampleId: () => 'sample', API_BASE: 'https://test.invalid', t: k => k, AbortController, setTimeout, clearTimeout, console,
+    locationSampleId: () => 'sample', API_BASE: 'https://test.invalid', t: k => k, AbortController, setTimeout, clearTimeout, console: { warn: (...args) => diagnostics.push(args) },
     require: name => name === 'expo-task-manager' ? { defineTask: (_, cb) => { task = cb; } } : native,
     fetch: async () => { calls.fetch++; return { ok: true, json: async () => ({ ok: true, deal_ids: ['deal'] }) }; },
   };
   const code = fs.readFileSync('src/utils/backgroundLocation.js', 'utf8')
     .replace(/^import .*;\s*$/gm, '').replace(/^export .* from .*;\s*$/gm, '').replace(/^export /gm, '');
-  const api = vm.runInNewContext(code + '\n({getCurrentLocationPayload,getLocationHealth,requestForegroundLocationPermission,FOREGROUND_LOCATION_ONLY,startBackgroundTracking,getBackgroundLocationPermissionState,restoreBackgroundTrackingForLogoutFailure,pushLocationToDeals})', scope);
-  return { api, task, calls, appState, data };
+  const api = vm.runInNewContext(code + '\n({getCurrentLocationPayload,getLocationHealth,requestForegroundLocationPermission,FOREGROUND_LOCATION_ONLY,startBackgroundTracking,getBackgroundLocationPermissionState,restoreBackgroundTrackingForLogoutFailure,pushLocationToDeals,stopBackgroundTracking,initializeLocationPolicy})', scope);
+  return { api, task, calls, appState, data, native, diagnostics };
 }
 test('текущий режим по умолчанию не запускает native background и убирает старую регистрацию', async () => {
   const h = policyHarness(); assert.equal(h.api.FOREGROUND_LOCATION_ONLY, true);
@@ -81,7 +81,7 @@ test('поздняя foreground-отправка не стартует в фон
 test('ошибка native remove не оставляет ожидающий запрос и слушатель AppState', async () => {
   const h = setup();
   h.location.watchPositionAsync = async (_, cb) => { setImmediate(() => cb({ coords: { latitude: 43, longitude: 76 }, timestamp: Date.now() })); return { remove: () => { throw Error('native cleanup failed'); } }; };
-  assert.equal((await capture(h.location, { appState: h.appState })).coords.latitude, 43);
+  assert.equal(await capture(h.location, { appState: h.appState }), null);
   assert.equal(h.listeners(), 0);
 });
 
@@ -93,4 +93,47 @@ test('пауза до native API: нет разрешений, измерени�
  assert.equal((await h.api.pushLocationToDeals({lat:43,lng:76,timestamp:Date.now()},['deal'])).reason,'gps_paused');
  await h.api.startBackgroundTracking();
  assert.equal(h.calls.start,0); assert.equal(h.calls.fetch,0); assert.equal(h.calls.append,0); assert.equal(h.calls.bgPermission,0); assert.ok(h.calls.stop>0);
+});
+
+
+test('обновление останавливает legacy GPS до входа без очистки сохранённых данных', async () => {
+ const h = policyHarness(true); h.data.delete('ur_reg_token');
+ const before = [...h.data];
+ assert.equal((await h.api.initializeLocationPolicy()).ok, true);
+ assert.equal(h.calls.stop, 1); assert.equal(h.calls.start, 0); assert.equal(h.calls.fetch, 0);
+ assert.deepEqual([...h.data], before);
+});
+
+test('native stop без реальной остановки не объявляется успешным', async () => {
+ const h = policyHarness(true);
+ h.native.stopLocationUpdatesAsync = async () => { h.calls.stop++; };
+ const result = await h.api.stopBackgroundTracking();
+ assert.equal(result.ok, false); assert.equal(result.reason, 'background_stop_unconfirmed');
+ assert.deepEqual(h.diagnostics, [['[location-diagnostic]', 'background_stop_unconfirmed']]);
+});
+
+test('ошибка native stop фиксируется без текста исключения и повторяется при следующем вызове', async () => {
+ const h = policyHarness(true);
+ h.native.stopLocationUpdatesAsync = async () => { throw Error('секрет: latitude=43 token=private'); };
+ assert.equal((await h.api.stopBackgroundTracking()).ok, false);
+ assert.equal((await h.api.stopBackgroundTracking()).ok, false);
+ assert.equal(h.diagnostics.length, 2);
+ assert.equal(JSON.stringify(h.diagnostics).includes('private'), false);
+ assert.ok(h.diagnostics.every(row => row[1] === 'background_stop_failed'));
+});
+
+test('поздняя ошибка удаления подписки после abort имеет безопасную диагностику', async () => {
+ const diagnostics = [];
+ const captureWithLog = vm.runInNewContext(source.replace(/^export /gm, '') + '\ncaptureForegroundPosition;', {
+  console: { warn: (...args) => diagnostics.push(args) }, setTimeout, clearTimeout, Date,
+ });
+ const h = setup(); let resolve;
+ h.location.watchPositionAsync = () => new Promise(r => { resolve = r; });
+ const controller = new AbortController();
+ const pending = captureWithLog(h.location, { appState: h.appState, signal: controller.signal });
+ controller.abort(); assert.equal(await pending, null);
+ resolve({ remove: () => { throw Error('координаты и токен не должны попасть в лог'); } });
+ await tick();
+ assert.equal(diagnostics.length, 1);
+ assert.deepEqual(diagnostics[0], ['[location-diagnostic]', 'foreground_subscription_remove_failed']);
 });

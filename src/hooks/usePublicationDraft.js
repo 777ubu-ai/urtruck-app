@@ -30,6 +30,14 @@ export function usePublicationDraft(kind, ownerId, values, setters) {
   const encoded = JSON.stringify(values);
   const currentDraft = useRef({ key, encoded, generation });
   currentDraft.current = { key, encoded, generation };
+  useEffect(() => () => {
+    const current = currentDraft.current;
+    // Закрытие до 250-мс autosave сохраняет последний снимок в той же очереди,
+    // из которой следующая форма читает черновик. Чужой ключ и старое поколение не пишем.
+    if (!key || loadedKey !== key || cleared.current
+      || current.key !== key || current.generation !== generation) return;
+    savePublicationDraft(key, JSON.parse(current.encoded), generation).catch(() => {});
+  }, [key, loadedKey, generation]);
   useEffect(() => {
     if (!key || loadedKey !== key || cleared.current) return;
     timer.current = setTimeout(() => {

@@ -5,7 +5,7 @@ import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../utils/useI18n';
-import { cleanPlaceName, localizePlace } from '../utils/places';
+import { cleanPlaceName, localizePlace, normalizeCargoDescription } from '../utils/places';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../utils/AuthContext';
@@ -171,7 +171,8 @@ export default function CreateCargoScreen({ navigation, route }) {
     // приходит именно узнать рынок и собрать ставки.
     if (!from.trim()) errs.from = t('val_from_required');
     if (!to.trim()) errs.to = t('val_to_required');
-    if (!cargoDesc.trim()) errs.cargoDesc = t('val_cargo_desc_required');
+    const normalizedCargoDesc = normalizeCargoDescription(cargoDesc);
+    if (!normalizedCargoDesc) errs.cargoDesc = t('val_cargo_desc_required');
     const wNum = parseWeightTonsInput(tons);
     const vNum = parseFloat(m3) || 0;
     if (tons.trim() && (wNum == null || wNum < 0)) errs.weight = t('val_weight_invalid');
@@ -194,7 +195,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     // Stage 42: если пользователь ввёл custom описание (не из base
     // списка) — сохраняем его в локальный custom-список, чтобы в
     // следующий раз появилось в подсказках.
-    try { addCustomCargoType(cargoDesc.trim()); } catch {}
+    try { addCustomCargoType(normalizedCargoDesc); } catch {}
     const priceNum = Math.max(0, parseInt(String(price || '').replace(/\s/g, ''), 10) || 0);
     // Stage 8: forward the structured route triple alongside the
     // legacy from_city / to_city strings. Backend tolerates missing
@@ -203,7 +204,7 @@ export default function CreateCargoScreen({ navigation, route }) {
     let payload = {
       from_city: fromPoint?.name || cleanPlaceName(from.trim()),
       to_city: toPoint?.name || cleanPlaceName(to.trim()),
-      cargo_desc: cargoDesc.trim(),
+      cargo_desc: normalizedCargoDesc,
       cargo_type: truckType,
       weight_tons: wNum ?? 0,
       volume_m3: parseFloat(m3) || 0,
