@@ -499,13 +499,18 @@ def _enqueue_steps(db, source, source_id, message_id, text, source_date, now=Non
     contact = phones(text)
     # Compare exact copies only against the active destination and its queue.
     started = destination_started_at(db)
-    previous = db.execute("SELECT text FROM prior UNION ALL SELECT text FROM queue WHERE status NOT IN ('expired','rejected') AND (published_at IS NULL OR published_at>=?)", (started,)).fetchall()
-    for index, row in enumerate(previous, 1):
-        if similar(text, row[0]):
-            return False
-        if index % 64 == 0:
-            # Одна длинная страница не должна задерживать ACK и heartbeat.
-            yield
+    while True:
+        revision = db.total_changes
+        previous = db.execute("SELECT text FROM prior UNION ALL SELECT text FROM queue WHERE status NOT IN ('expired','rejected') AND (published_at IS NULL OR published_at>=?)", (started,)).fetchall()
+        for index, row in enumerate(previous, 1):
+            if similar(text, row[0]):
+                return False
+            if index % 64 == 0:
+                # Одна длинная страница не должна задерживать ACK и heartbeat.
+                yield
+        # Reconciliation мог добавить подтверждённую копию во время уступки.
+        if db.total_changes == revision:
+            break
     with db:
         db.execute("INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint) VALUES(?,?,?,?,?,?,?)",
                    (source, source_id, message_id, source_date.timestamp(), text, json.dumps(contact), fingerprint(text)))

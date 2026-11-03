@@ -62,6 +62,28 @@ def test_large_dedup_yields_and_cancel_does_not_insert_or_advance_cursor(tmp_pat
     db.close()
 
 
+def test_reconciliation_during_dedup_cannot_enqueue_confirmed_copy(tmp_path):
+    m = collector()
+    db = m.database(tmp_path/'feed.sqlite3')
+    with db:
+        db.executemany('INSERT INTO prior VALUES(?,?,?)',
+                       [(i, f'Груз {i} +998901234567', '2026-11-03') for i in range(128)])
+    text = 'Алматы → Москва +77001234567'
+
+    async def scenario():
+        task = asyncio.create_task(m.enqueue_for_collection(
+            db, 'source', 101, 11, text, datetime.now(timezone.utc)))
+        await asyncio.sleep(0)
+        assert not task.done()
+        with db:
+            db.execute('INSERT INTO prior VALUES(?,?,?)', (1000, text, '2026-11-03'))
+        assert not await task
+        assert db.execute('SELECT count(*) FROM queue').fetchone()[0] == 0
+
+    asyncio.run(scenario())
+    db.close()
+
+
 class Reader:
     def __init__(self, messages):
         self.messages = messages
