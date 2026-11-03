@@ -1,8 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import rows from '../../src/data/worldCities.js';
 import { COUNTRIES, POINTS, searchPoints, searchPointsAsync } from '../../src/utils/geography.js';
 import { searchWorldCities, searchWorldCitiesAsync, worldCitiesForCountry } from '../../src/utils/worldCities.js';
+
+test('готовый индекс сохраняет каждое имя и каждый алиас без нормализации при поиске', () => {
+  let count = 0;
+  for (const cities of Object.values(rows)) {
+    for (const row of cities) {
+      assert.deepEqual(row[6], [row[0], ...row[1]].map(label => label.toLocaleLowerCase()));
+      count++;
+    }
+  }
+  assert.ok(count > 30000, 'проверяется весь исходный справочник');
+});
+
+test('холодный поиск не пересчитывает регистр всего справочника', () => {
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { searchWorldCities } from './src/utils/worldCities.js';
+    const original = String.prototype.toLocaleLowerCase;
+    let calls = 0;
+    String.prototype.toLocaleLowerCase = function (...args) { calls++; return original.apply(this, args); };
+    const hits = searchWorldCities('Нижний Новгород');
+    console.log(JSON.stringify({ calls, found: hits.some(hit => hit.geonameId === '520555') }));
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  const measured = JSON.parse(result.stdout);
+  assert.equal(measured.found, true);
+  assert.ok(measured.calls < 10, `нормализация вызвана ${measured.calls} раз`);
+});
 
 test('global city search only materializes matching compact-directory entries', () => {
   const hits = searchWorldCities('Berlin', 'DE');

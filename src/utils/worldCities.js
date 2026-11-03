@@ -1,4 +1,4 @@
-import rows from '../data/worldCities.js';
+import rows, { searchCaseProbe } from '../data/worldCities.js';
 
 const countries = new Map();
 export function worldCitiesForCountry(code) {
@@ -12,7 +12,10 @@ export function worldCitiesForCountry(code) {
 
 // Храним только поисковые строки и ссылки на исходные tuple, без каталога city-объектов.
 const searchLabels = new WeakMap();
+// Особые правила регистра текущей locale сохраняют прежний путь вычисления.
+const usePreparedLabels = 'IİÌÍĨJ\u0301I\u0307'.toLocaleLowerCase() === searchCaseProbe;
 function labelsFor(row) {
+  if (usePreparedLabels && row[6]) return row[6];
   if (!searchLabels.has(row)) {
     searchLabels.set(row, [row[0], ...row[1]].map(label => label.toLocaleLowerCase()));
   }
