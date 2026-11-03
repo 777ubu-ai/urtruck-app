@@ -21,7 +21,8 @@ function harness() {
     if (name.endsWith('/ThemeContext')) return { useTheme: () => ({ theme: {} }) };
     if (name.endsWith('/useI18n')) return { useI18n: () => ({ lang, t: x => x }) };
     if (name.endsWith('/places')) return { cargoInputText, localizeCargoName };
-    if (name.endsWith('/cargoTypes')) return { searchCargoTypes: () => [{ name: 'Обувь' }], addCustomCargoType: () => {}, subscribeToCargoTypes: cb => { notify = cb; return () => {}; } };
+    if (name.endsWith('/KeyboardSafeLayout')) return { useKeyboardSafeFocus: onFocus => onFocus };
+    if (name.endsWith('/cargoTypes')) return { searchCargoTypes: query => query.includes('две') ? [{ name: 'Обувь' }, { name: 'Электроника' }] : [{ name: 'Обувь' }], addCustomCargoType: () => {}, subscribeToCargoTypes: cb => { notify = cb; return () => {}; } };
     throw Error(name);
   };
   const exports = {};
@@ -54,15 +55,18 @@ test('справочная подпись применяется только н
   assert.equal(h.input().props.value, 'Из черновика\n设备 новый ввод ');
 });
 
-test('подсказки получают ненулевую native-высоту до измерения, растут и остаются прокручиваемыми', () => {
+test('список сохраняет ограниченную высоту при смене числа подсказок и не переписывает ввод', () => {
   const h = harness(); h.input().props.onFocus();
   const dropdown = () => h.render().find(x => x.type === 'ScrollView');
   const height = () => dropdown().props.style.find(x => Object.hasOwn(x, 'height')).height;
-  assert.ok(height() > 0);
-  dropdown().props.onContentSizeChange(300, 68);
-  assert.equal(height(), 68);
-  dropdown().props.onContentSizeChange(300, 900);
-  assert.equal(height(), 320);
+  assert.equal(height(), 160);
+  h.type('две ');
+  assert.equal(h.render().filter(x => x.type === 'TouchableOpacity').length, 2);
+  assert.equal(height(), 160);
+  h.type('одна ');
+  assert.equal(h.render().filter(x => x.type === 'TouchableOpacity').length, 1);
+  assert.equal(height(), 160);
+  assert.equal(h.input().props.value, 'одна ');
   assert.equal(dropdown().props.keyboardShouldPersistTaps, 'handled');
   h.render().find(x => x.type === 'TouchableOpacity').props.onPress();
   assert.equal(h.input().props.value, 'Обувь');

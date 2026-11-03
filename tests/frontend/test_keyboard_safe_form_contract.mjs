@@ -39,7 +39,7 @@ test('canonical keyboard primitive scrolls the focused native input into view', 
   assert.match(primitive, /scrollNode\.measure/);
   assert.match(primitive, /const visibleBottom = Number\.isFinite\(scrollBottom\)/);
   assert.match(primitive, /Math\.min\(keyboardTop\.current, scrollBottom\)/);
-  assert.match(primitive, /const overlap = pageY \+ height \+ 16 - visibleBottom/);
+  assert.match(primitive, /const overlap = pageY \+ height \+ focusBottomInset\.current \+ 16 - visibleBottom/);
   assert.match(primitive, /scrollTo\?\.\(\{ y: nextY, animated: true \}\)/);
   assert.match(primitive, /keyboardShouldPersistTaps/);
   assert.match(primitive, /keyboardVerticalOffset=\{offset\}/);

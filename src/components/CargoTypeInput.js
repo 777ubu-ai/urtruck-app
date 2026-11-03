@@ -4,12 +4,14 @@ import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
 import { cargoInputText, localizeCargoName } from '../utils/places';
 import { searchCargoTypes, addCustomCargoType, subscribeToCargoTypes } from '../utils/cargoTypes';
+import { useKeyboardSafeFocus } from './ui/v1/KeyboardSafeLayout';
+
+const DROPDOWN_HEIGHT = 160;
 
 export default function CargoTypeInput({ value, onChange, placeholder, style, testID }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [focused, setFocused] = useState(false);
-  const [dropdownHeight, setDropdownHeight] = useState(320);
   // Редактируемое значение принадлежит форме: эффекты и смена языка его не заменяют.
   const [selection, setSelection] = useState(null);
   const query = selection && value === selection.name ? selection.label : cargoInputText(value);
@@ -18,6 +20,11 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
   useEffect(() => subscribeToCargoTypes(() => setTick(x => x + 1)), []);
 
   const suggestions = focused ? searchCargoTypes(query, lang) : [];
+  const handleFocus = useKeyboardSafeFocus((event) => {
+    // Контекст уже получил focus: повторный bubble запускал бы вторую прокрутку.
+    event?.stopPropagation?.();
+    setFocused(true);
+  }, DROPDOWN_HEIGHT + 4);
 
   const handleChange = (text) => {
     setSelection(null);
@@ -43,15 +50,13 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
         onChangeText={handleChange}
         placeholder={placeholder}
         placeholderTextColor={theme.textMuted}
-        onFocus={() => setFocused(true)}
+        onFocus={handleFocus}
         onBlur={() => setTimeout(() => setFocused(false), 200)}
       />
       {suggestions.length > 0 && (
         <ScrollView
           testID={testID ? `${testID}-suggestions` : undefined}
-          style={[s.dropdown, { height: dropdownHeight, backgroundColor: theme.card, borderColor: theme.border }]}
-          // Явная высота и обычный поток разметки сохраняют native-область нажатия.
-          onContentSizeChange={(_width, height) => setDropdownHeight(Math.min(320, Math.max(1, height)))}
+          style={[s.dropdown, { backgroundColor: theme.card, borderColor: theme.border }]}
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled
           showsVerticalScrollIndicator
@@ -82,7 +87,8 @@ const s = StyleSheet.create({
   input: { borderRadius: 12, padding: 14, fontSize: 14, borderWidth: 1 },
   dropdown: {
     marginTop: 4,
-    borderRadius: 12, borderWidth: 1, maxHeight: 320,
+    // Постоянная высота не сдвигает поле при смене числа результатов.
+    borderRadius: 12, borderWidth: 1, height: DROPDOWN_HEIGHT,
     zIndex: 1000,
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },
     elevation: 12,
