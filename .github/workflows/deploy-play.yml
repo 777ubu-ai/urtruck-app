@@ -37,6 +37,15 @@ on:
       - ".github/workflows/deploy-play.yml"
   workflow_dispatch:
     inputs:
+      inspect_store_only:
+        description: "Только сверить версии Play: без сборки, загрузки и изменения треков"
+        required: false
+        default: false
+        type: boolean
+      merged_pr_number:
+        description: "Номер объединённого PR, соответствующего точному SHA внутреннего кандидата"
+        required: false
+        type: string
       download_generated_version_code:
         description: "Read-only download of existing Google-signed APK; skips build/upload"
         required: false
@@ -113,13 +122,36 @@ permissions:
   pull-requests: read
 
 jobs:
+  inspect-store:
+    name: Сверить версии Google Play без загрузки
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.inspect_store_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Подготовить штатную авторизацию API
+        run: python -m pip install google-auth requests
+      - name: Прочитать версии и удалить временный edit
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python scripts/ops/inspect_play_store.py --output play-current.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-Play-current-readonly
+          path: play-current.json
+          retention-days: 14
+          if-no-files-found: error
+
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
     uses: ./.github/workflows/quality-gate-reusable.yml
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
@@ -140,6 +172,7 @@ jobs:
           API_ENVIRONMENT_INPUT: ${{ inputs.api_environment || 'production' }}
           TRACK_INPUT: ${{ inputs.track || 'internal' }}
           VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
+          MERGED_PR_NUMBER: ${{ inputs.merged_pr_number || '' }}
         run: |
           set -euo pipefail
           if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
@@ -158,7 +191,9 @@ jobs:
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
             test "$VERIFIED_PLAY_MAX_CODE" -lt 2100000000
-            PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
+            case "$MERGED_PR_NUMBER" in ''|0*|*[!0-9]*) echo '::error::Требуется допустимый номер объединённого PR'; exit 1;; esac
+            test "${#MERGED_PR_NUMBER}" -le 8
+            PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
             test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
             test "$(jq -r '.state' <<<"$PR_JSON")" = closed
             test "$(jq -r '.merged' <<<"$PR_JSON")" = true
@@ -176,8 +211,8 @@ jobs:
               test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
             done
             python3 scripts/prepare_store_candidate_version.py --platform android \
-              --version 1.0.12 --source-sha "$GITHUB_SHA"
-            echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
+              --version 1.0.14 --source-sha "$GITHUB_SHA"
+            echo "URTRUCK_VERSION_NAME=1.0.14" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
@@ -574,7 +609,7 @@ jobs:
 
   download-google-signed-apk:
     name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' && !inputs.inspect_store_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
