@@ -76,7 +76,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
         LEFT JOIN trips t ON t.id=b.trip_id
         WHERE b.status IN ('pending','countered')
           AND (
-            datetime(COALESCE(NULLIF(b.updated_at,''), b.created_at), '+48 hours') <= CURRENT_TIMESTAMP
+            COALESCE(julianday(NULLIF(b.updated_at,'')), julianday(b.created_at)) + 2 <= julianday('now')
             OR (b.cargo_id IS NOT NULL AND (
                  c.id IS NULL OR c.status <> 'active'
             ))
@@ -94,7 +94,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
         f"""
         SELECT 1 FROM cargos c
         WHERE (
-            (c.status='active' AND datetime(COALESCE(NULLIF(c.published_at,''), c.created_at), '+30 days') <= CURRENT_TIMESTAMP)
+            (c.status='active' AND COALESCE(julianday(NULLIF(c.published_at,'')), julianday(c.created_at)) + 30 <= julianday('now'))
           )
           AND NOT EXISTS (
             SELECT 1 FROM deals d
@@ -110,7 +110,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
         f"""
         SELECT 1 FROM trips t
         WHERE (
-            (t.status='active' AND datetime(COALESCE(NULLIF(t.published_at,''), t.created_at), '+30 days') <= CURRENT_TIMESTAMP)
+            (t.status='active' AND COALESCE(julianday(NULLIF(t.published_at,'')), julianday(t.created_at)) + 30 <= julianday('now'))
           )
           AND NOT EXISTS (
             SELECT 1 FROM deals d

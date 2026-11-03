@@ -165,3 +165,19 @@ def test_ttl_activity_does_not_extend_parent(kind):
         expire_stale_marketplace(now=NOW+timedelta(days=1), conn=c)
         assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == "expired"
         assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == "expired"
+
+@pytest.mark.parametrize("kind", ["cargo", "trip"])
+def test_request_probe_uses_valid_created_at_when_publication_is_invalid(kind):
+    import sqlite3
+    c = sqlite3.connect(":memory:")
+    c.executescript("""
+        CREATE TABLE cargos(id,status,published_at,created_at,pickup_date);
+        CREATE TABLE trips(id,status,published_at,created_at,departure);
+        CREATE TABLE bids(id,status,updated_at,created_at,cargo_id,trip_id);
+        CREATE TABLE deals(id,status,cargo_id,trip_id);
+    """)
+    table = "cargos" if kind == "cargo" else "trips"
+    c.execute(f"INSERT INTO {table} VALUES('listing','active','invalid',datetime('now','-30 days'),'2020-01-01')")
+    assert db._market_expiry_due(c)
+    c.execute(f"UPDATE {table} SET published_at=datetime('now')")
+    assert not db._market_expiry_due(c), "Старая дата маршрута не запускает полную очистку при каждом запросе"
