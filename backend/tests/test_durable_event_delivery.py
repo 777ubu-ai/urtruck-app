@@ -241,12 +241,20 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     owner = "owner-durable-2"
     driver = "driver-durable-2"
     seed_device(driver)
+    seed_device(owner)
     cargo_id = seed_cargo(owner)
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1500}).json()["id"]
 
-    flaky = _FlakyNative(fail_times=1)
+    # Доставка создания ставки проверяется отдельным тестом выше.
+    _reset_outbox()
+
+    # После принятия уведомляются оба участника. Сбой первой попытки
+    # моделируется отдельно для каждого получателя, независимо от порядка.
+    attempts = {owner: _FlakyNative(fail_times=1), driver: _FlakyNative(fail_times=1)}
+    def flaky(user_id, *args, **kwargs):
+        return attempts[user_id](user_id, *args, **kwargs)
     monkeypatch.setattr(push_sender, "_send_native", flaky)
 
     as_user(owner)
@@ -255,13 +263,17 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     deal_id = r.json()["deal_id"]
     assert deal_id
 
-    rows = outbox_rows(driver)
-    assert len(rows) == 1 and rows[0]["status"] == "pending"
-
-    _force_due(driver)
+    for participant in (owner, driver):
+        rows = outbox_rows(participant)
+        assert len(rows) == 1 and rows[0]["status"] == "pending"
+        _force_due(participant)
     stats = push_gateway.process_pending_once(flaky, limit=10)
-    assert stats["sent"] == 1
-    assert len(flaky.successful_payloads) == 1
+    assert stats["sent"] == 2
+    for participant in (owner, driver):
+        assert len(attempts[participant].successful_payloads) == 1
+        assert attempts[participant].calls == 2
+        assert outbox_rows(participant)[0]["status"] == "sent"
+    assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 0
 
 
 # ───────────────────────── chat: durable, sender excluded, retry-safe ─────────────────────────
