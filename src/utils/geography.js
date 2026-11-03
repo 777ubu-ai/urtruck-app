@@ -249,11 +249,19 @@ export const searchPoints = (query, { country, type } = {}) => {
   return rankPoints(query, country, type, worldHits);
 };
 
+const asyncSearchCache = new Map();
 export const searchPointsAsync = async (query, { country, type, ...options } = {}) => {
+  if (options.isCurrent && !options.isCurrent()) return null;
+  const key = JSON.stringify([String(query || '').trim().toLocaleLowerCase(), country, type]);
+  if (asyncSearchCache.has(key)) return asyncSearchCache.get(key);
   const worldHits = await searchWorldCitiesAsync(query, country, {
     ...options, allowedCountries: COUNTRIES, excludedNames: CURATED_CITY_NAMES, type,
   });
-  return worldHits === null ? null : rankPoints(query, country, type, worldHits);
+  if (worldHits === null || (options.isCurrent && !options.isCurrent())) return null;
+  const result = rankPoints(query, country, type, worldHits);
+  if (asyncSearchCache.size >= 32) asyncSearchCache.delete(asyncSearchCache.keys().next().value);
+  asyncSearchCache.set(key, result);
+  return result;
 };
 
 const rankPoints = (query, country, type, worldHits) => {

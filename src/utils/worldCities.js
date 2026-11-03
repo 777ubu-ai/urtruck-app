@@ -19,7 +19,7 @@ function labelsFor(row) {
   return searchLabels.get(row);
 }
 
-function* worldCitySearch(query, country, { excludedNames, allowedCountries, type } = {}) {
+function* worldCitySearch(query, country, { excludedNames, allowedCountries, type, sliceBudgetMs = 8, now = () => performance.now() } = {}) {
   const q = String(query || '').trim().toLocaleLowerCase();
   if (!q || (type && type !== 'city')) return [];
   const limit = 12;
@@ -31,6 +31,7 @@ function* worldCitySearch(query, country, { excludedNames, allowedCountries, typ
     return byName || rowOrder - right.order;
   };
   let scanned = 0;
+  let sliceStarted = now();
   for (const code of country ? [country] : Object.keys(rows)) {
     if (allowedCountries && !allowedCountries[code]) continue;
     // Search the compact source tuples first. Materializing each country's
@@ -39,7 +40,10 @@ function* worldCitySearch(query, country, { excludedNames, allowedCountries, typ
     // even one-character queries do not allocate/sort every matching city.
     for (const row of rows[code] || []) {
       // Отдаём управление вводу и кадру до следующей порции работы.
-      if (++scanned % 256 === 0) yield;
+      if (++scanned % 32 === 0 && now() - sliceStarted >= sliceBudgetMs) {
+        yield;
+        sliceStarted = now();
+      }
       const [name] = row;
       const labels = labelsFor(row);
       const nameLower = labels[0];

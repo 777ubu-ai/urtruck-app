@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import rows from '../../src/data/worldCities.js';
-import { COUNTRIES, POINTS, searchPoints } from '../../src/utils/geography.js';
+import { COUNTRIES, POINTS, searchPoints, searchPointsAsync } from '../../src/utils/geography.js';
 import { searchWorldCities, searchWorldCitiesAsync, worldCitiesForCountry } from '../../src/utils/worldCities.js';
 
 test('global city search only materializes matching compact-directory entries', () => {
@@ -75,7 +75,7 @@ test('one-character global search preserves previous top results without materia
 test('порционный поиск сохраняет ранжирование, пробелы, алиасы и страну', async () => {
   for (const query of ['Нижний Новгород ', 'Нью Йорк', 'Ростов-на-Дону', '北京', 'a']) {
     let yields = 0;
-    const options = { allowedCountries: COUNTRIES, yieldTask: async () => { yields++; } };
+    const options = { sliceBudgetMs: 0, allowedCountries: COUNTRIES, yieldTask: async () => { yields++; } };
     assert.deepEqual(await searchWorldCitiesAsync(query, undefined, options), searchWorldCities(query, undefined, options));
     assert.ok(yields > 50, 'глобальный поиск должен отдавать управление многократно');
   }
@@ -85,10 +85,32 @@ test('новый ввод, смена страны и закрытие прер�
   for (const reason of ['query', 'country', 'close']) {
     let current = true, slices = 0;
     const result = await searchWorldCitiesAsync('a', undefined, {
-      isCurrent: () => current,
+      sliceBudgetMs: 0, isCurrent: () => current,
       yieldTask: async () => { slices++; current = false; },
     });
     assert.equal(result, null, reason);
     assert.equal(slices, 1, 'после отмены следующий блок не выполняется');
   }
+});
+
+
+test('нормализованный повтор поиска использует готовый результат и сохраняет отмену', async () => {
+  let slices = 0;
+  const first = await searchPointsAsync('Нижний Новгород', { onSlice: () => slices++, yieldTask: async () => {} });
+  assert.ok(slices > 0);
+  slices = 0;
+  assert.deepEqual(await searchPointsAsync('Нижний Новгород ', { onSlice: () => slices++ }), first);
+  assert.equal(slices, 0);
+  assert.equal(await searchPointsAsync('Нижний Новгород', { isCurrent: () => false }), null);
+});
+
+test('частота отдачи управления зависит от времени работы, а не от фиксированного числа таймеров', async () => {
+  async function measure(tick) {
+    let time = 0, yields = 0;
+    const hits = await searchWorldCitiesAsync('a', undefined, { now: () => (time += tick), yieldTask: async () => { yields++; } });
+    return { hits, yields };
+  }
+  const fast = await measure(0.1), slow = await measure(1);
+  assert.deepEqual(fast.hits, slow.hits);
+  assert.ok(fast.yields > 0 && fast.yields < slow.yields);
 });

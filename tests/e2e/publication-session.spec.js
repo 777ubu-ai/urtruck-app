@@ -93,6 +93,7 @@ test('город сохраняет пробел при быстром ввод�
  const box=await boot(page);await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId('mytrips-place-cargo').click();
  await page.getByText('Например, Хоргос',{exact:true}).click();
  const input=page.getByTestId('loc-search');await expect(input).toBeVisible();
+ expect(await page.locator('[data-testid^="loc-country-"]').count()).toBeLessThan(50);
  for(const text of ['Нижний Новгород ', 'Нью Йорк ', 'Ростов-на-Дону']) {
   await input.fill('');await input.pressSequentially(text,{delay:5});await expect(input).toHaveValue(text);
   await expect(page.getByTestId('loc-search-loading')).toHaveCount(0,{timeout:10000});await expect(input).toHaveValue(text);

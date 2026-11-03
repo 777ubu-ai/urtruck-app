@@ -12,7 +12,7 @@ import { GPS_TRACKING_PAUSED } from '../utils/locationPolicy';
 //   showGeo    — показывать «Определить по геолокации» (для «Откуда»)
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { AppState, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { AppState, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import Constants from 'expo-constants';
@@ -294,6 +294,75 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     ['border', t('loc_borders')],
   ];
 
+  // Полный каталог с SVG-флагами не монтируется одновременно: на Xiaomi
+  // его удаление при первом символе занимало 756 мс ещё до поиска.
+  const listRows = useMemo(() => {
+    const rows = [];
+    const point = (prefix, p, index, showHeart = true) => rows.push({ key: `${prefix}:${pointKey(p)}:${index}`, type: 'point', p, showHeart });
+    const section = (key, icon, label) => rows.push({ key, type: 'section', icon, label });
+    if (hits) {
+      if (searchPending) rows.push({ key: 'loading', type: 'loading' });
+      else {
+        if (hits.countryHits.length === 0 && hits.pointHits.length === 0) rows.push({ key: 'empty', type: 'empty' });
+        hits.countryHits.forEach(code => rows.push({ key: `hit-country:${code}`, type: 'country', code, fromSearch: true }));
+        hits.pointHits.forEach((p, index) => point('hit', p, index));
+        if (query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0) {
+          rows.push({ key: 'custom-divider', type: 'divider' });
+          point('custom', customCityForCountry(query, country), 0, false);
+        }
+      }
+    } else if (country) {
+      rows.push({ key: 'country-back', type: 'countryBack' }, { key: 'country-divider', type: 'divider' });
+      if (allowCountryOnly) rows.push({ key: 'country-only', type: 'countryOnly' }, { key: 'country-only-divider', type: 'divider' });
+      countryPoints.forEach((p, index) => point('cc', p, index));
+      rows.push({ key: 'country-hint', type: 'hint' }, { key: 'attribution', type: 'attribution' });
+    } else {
+      if (showGeo && !GPS_TRACKING_PAUSED) rows.push({ key: 'geo', type: 'geo' });
+      if (scope === 'all' || scope === 'country') {
+        section('countries', 'globe', 'loc_countries');
+        COUNTRY_ORDER.forEach(code => rows.push({ key: `country:${code}`, type: 'country', code }));
+      }
+      if (scope === 'all' || scope === 'border') {
+        section('borders', 'flag', 'loc_borders');
+        BORDERS.forEach((p, index) => point('border', p, index, false));
+      }
+      if (scope === 'all' || scope === 'city') {
+        if (favs.length) { section('favorites', 'star', 'loc_favorites'); favs.forEach((p, index) => point('fav', p, index)); }
+        if (recent.length) { section('recent', 'clock', 'loc_recent'); recent.forEach((p, index) => point('recent', p, index)); }
+        section('popular', 'star', 'route_popular');
+        POPULAR.forEach((p, index) => point('popular', p, index));
+      }
+    }
+    return rows;
+  }, [hits, searchPending, query, country, countryPoints, allowCountryOnly, showGeo, scope, favs, recent]);
+
+  const renderListRow = ({ item }) => {
+    switch (item.type) {
+      case 'point': return <Row p={item.p} showHeart={item.showHeart} />;
+      case 'country': return <CountryRow code={item.code} fromSearch={item.fromSearch} />;
+      case 'section': return <Sect icon={item.icon}>{t(item.label)}</Sect>;
+      case 'loading': return <ActivityIndicator color={v1.driver} testID="loc-search-loading" />;
+      case 'empty': return <Text style={s.empty}>{t('loc_no_results')}</Text>;
+      case 'divider': return <View style={s.divider} />;
+      case 'hint': return <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>;
+      case 'attribution': return <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>;
+      case 'countryBack': return <TouchableOpacity style={s.row} onPress={() => setCountry(null)} activeOpacity={0.7} testID="loc-country-back">
+        <View style={s.lead}><Text style={s.leadText}>‹</Text></View><View style={{ flex: 1 }}>
+          <Text style={s.name}>{t('loc_all_countries')}</Text><Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text>
+        </View></TouchableOpacity>;
+      case 'countryOnly': return <TouchableOpacity style={s.row} onPress={() => pickCountry(country)} activeOpacity={0.7} testID={`loc-country-only-${country}`}>
+        <View style={[s.lead, s.geoLead]}><Feather name="globe" size={18} color={v1.driver} /></View>
+        <View style={{ flex: 1 }}><Text style={[s.name, { color: v1.driver }]}>{t('loc_whole_country')}</Text>
+          <Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text></View><Text style={s.chev}>›</Text>
+      </TouchableOpacity>;
+      case 'geo': return <TouchableOpacity style={s.row} onPress={useGeo} testID="loc-geo" activeOpacity={0.7}>
+        <View style={[s.lead, s.geoLead]}>{geoLoading ? <ActivityIndicator color={v1.driver} /> : <Feather name="map-pin" size={18} color={v1.driver} />}</View>
+        <View style={{ flex: 1 }}><Text style={[s.name, { color: v1.driver }]}>{t('loc_geo')}</Text><Text style={s.sub}>{t('loc_geo_sub')}</Text></View>
+        <Text style={s.chev}>›</Text></TouchableOpacity>;
+      default: return null;
+    }
+  };
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
       {/* React Native Modal с presentationStyle="fullScreen" рендерится в
@@ -337,87 +406,17 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
           </ScrollView>
         </View>
 
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 24 }}>
-          {hits ? (
-            <>
-              {searchPending ? <ActivityIndicator color={v1.driver} testID="loc-search-loading" /> : null}
-              {!searchPending && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? <Text style={s.empty}>{t('loc_no_results')}</Text> : null}
-              {hits.countryHits.map((code) => <CountryRow key={`hit-country:${code}`} code={code} fromSearch />)}
-              {hits.pointHits.map((p, i) => <Row key={`hit:${pointKey(p)}:${i}`} p={p} />)}
-              {!searchPending && query.trim().length >= 2 && hits.countryHits.length === 0 && hits.pointHits.length === 0 ? (
-                <>
-                  <View style={s.divider} />
-                  <Row p={customCityForCountry(query, country)} showHeart={false} />
-                </>
-              ) : null}
-            </>
-          ) : country ? (
-            /* Режим «страна → города»: список городов выбранной страны +
-               строка «← Все страны» для возврата. */
-            <>
-              <TouchableOpacity style={s.row} onPress={() => setCountry(null)} activeOpacity={0.7} testID="loc-country-back">
-                <View style={s.lead}><Text style={s.leadText}>‹</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.name}>{t('loc_all_countries')}</Text>
-                  <Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text>
-                </View>
-              </TouchableOpacity>
-              <View style={s.divider} />
-              {allowCountryOnly ? (
-                <>
-                  <TouchableOpacity style={s.row} onPress={() => pickCountry(country)} activeOpacity={0.7} testID={`loc-country-only-${country}`}>
-                    <View style={[s.lead, s.geoLead]}><Feather name="globe" size={18} color={v1.driver} /></View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[s.name, { color: v1.driver }]}>{t('loc_whole_country')}</Text>
-                      <Text style={s.sub} numberOfLines={1}>{countryLabel(country)}</Text>
-                    </View>
-                    <Text style={s.chev}>›</Text>
-                  </TouchableOpacity>
-                  <View style={s.divider} />
-                </>
-              ) : null}
-              {countryPoints.map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
-              <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>
-              <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>
-            </>
-          ) : (
-            <>
-              {showGeo && !GPS_TRACKING_PAUSED ? (
-                <TouchableOpacity style={s.row} onPress={useGeo} testID="loc-geo" activeOpacity={0.7}>
-                  <View style={[s.lead, s.geoLead]}>
-                    {geoLoading ? <ActivityIndicator color={v1.driver} /> : <Feather name="map-pin" size={18} color={v1.driver} />}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.name, { color: v1.driver }]}>{t('loc_geo')}</Text>
-                    <Text style={s.sub}>{t('loc_geo_sub')}</Text>
-                  </View>
-                  <Text style={s.chev}>›</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {/* Порядок разделов по решению владельца: 1) Страны 2) Погран-
-                  переходы 3) Избранное. Недавние/Популярные — ниже. */}
-              {(scope === 'all' || scope === 'country') ? <><Sect icon="globe">{t('loc_countries')}</Sect>{COUNTRY_ORDER.map((code) => <CountryRow key={`country:${code}`} code={code} />)}</> : null}
-              {(scope === 'all' || scope === 'border') ? <><Sect icon="flag">{t('loc_borders')}</Sect>{BORDERS.map((p, i) => <Row key={`bord:${pointKey(p)}:${i}`} p={p} showHeart={false} />)}</> : null}
-
-              {(scope === 'all' || scope === 'city') && favs.length ? (
-                <>
-                  <Sect icon="star">{t('loc_favorites')}</Sect>
-                  {favs.map((p, i) => <Row key={`fav:${pointKey(p)}:${i}`} p={p} />)}
-                </>
-              ) : null}
-
-              {(scope === 'all' || scope === 'city') && recent.length ? (
-                <>
-                  <Sect icon="clock">{t('loc_recent')}</Sect>
-                  {recent.map((p, i) => <Row key={`rec:${pointKey(p)}:${i}`} p={p} />)}
-                </>
-              ) : null}
-
-              {(scope === 'all' || scope === 'city') ? <><Sect icon="star">{t('route_popular')}</Sect>{POPULAR.map((p, i) => <Row key={`pop:${pointKey(p)}:${i}`} p={p} />)}</> : null}
-            </>
-          )}
-        </ScrollView>
+        <FlatList
+          testID="loc-results"
+          data={listRows}
+          keyExtractor={item => item.key}
+          renderItem={renderListRow}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 24 }}
+          initialNumToRender={8}
+          maxToRenderPerBatch={4}
+          windowSize={3}
+        />
       </SafeAreaView>
       </SafeAreaProvider> : null}
     </Modal>
