@@ -13,6 +13,15 @@ name: UrTruck Quality Gate (reusable)
 # "what a deploy must pass".
 on:
   workflow_call:
+    inputs:
+      source_ref:
+        description: "Точный исходник для всех обязательных проверок"
+        required: false
+        default: ""
+        type: string
+
+env:
+  QA_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
 
 permissions:
   contents: read
@@ -24,6 +33,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -39,10 +50,10 @@ jobs:
           python backend/tests/test_push_release_manifest.py -q
           python scripts/ops/runtime_release_manifest.py create \
             --root backend --manifest "$RUNNER_TEMP/ci-runtime-manifest.json" \
-            --source-sha "$GITHUB_SHA" --environment ci
+            --source-sha "$QA_SOURCE_SHA" --environment ci
           python scripts/ops/runtime_release_manifest.py verify \
             --root backend --manifest "$RUNNER_TEMP/ci-runtime-manifest.json" \
-            --source-sha "$GITHUB_SHA" --environment ci
+            --source-sha "$QA_SOURCE_SHA" --environment ci
       - name: Compile backend and tests
         run: |
           python -m compileall -q backend
@@ -112,6 +123,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -172,6 +185,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
