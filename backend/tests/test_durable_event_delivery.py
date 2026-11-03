@@ -256,6 +256,7 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     def flaky(user_id, *args, **kwargs):
         return attempts[user_id](user_id, *args, **kwargs)
     monkeypatch.setattr(push_sender, "_send_native", flaky)
+    monkeypatch.setattr(push_gateway, "send_to_devices", flaky)
 
     as_user(owner)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
@@ -267,13 +268,13 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
         rows = outbox_rows(participant)
         assert len(rows) == 1 and rows[0]["status"] == "pending"
         _force_due(participant)
-    stats = push_gateway.process_pending_once(flaky, limit=10)
+    stats = push_gateway.process_pending_once(limit=10)
     assert stats["sent"] == 2
     for participant in (owner, driver):
         assert len(attempts[participant].successful_payloads) == 1
         assert attempts[participant].calls == 2
         assert outbox_rows(participant)[0]["status"] == "sent"
-    assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 0
+    assert push_gateway.process_pending_once(limit=10)["sent"] == 0
 
 
 # ───────────────────────── chat: durable, sender excluded, retry-safe ─────────────────────────
