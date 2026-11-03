@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import rows from '../../src/data/worldCities.js';
 import { COUNTRIES, POINTS, searchPoints } from '../../src/utils/geography.js';
-import { searchWorldCities, worldCitiesForCountry } from '../../src/utils/worldCities.js';
+import { searchWorldCities, searchWorldCitiesAsync, worldCitiesForCountry } from '../../src/utils/worldCities.js';
 
 test('global city search only materializes matching compact-directory entries', () => {
   const hits = searchWorldCities('Berlin', 'DE');
@@ -69,4 +69,26 @@ test('one-character global search preserves previous top results without materia
     .map(({ name, country }) => [name, country]);
   const newResults = searchPoints(query).map(({ name, country }) => [name, country]);
   assert.deepEqual(newResults, oldResults, 'picker top results must keep the previous ranking and labels');
+});
+
+
+test('порционный поиск сохраняет ранжирование, пробелы, алиасы и страну', async () => {
+  for (const query of ['Нижний Новгород ', 'Нью Йорк', 'Ростов-на-Дону', '北京', 'a']) {
+    let yields = 0;
+    const options = { allowedCountries: COUNTRIES, yieldTask: async () => { yields++; } };
+    assert.deepEqual(await searchWorldCitiesAsync(query, undefined, options), searchWorldCities(query, undefined, options));
+    assert.ok(yields > 50, 'глобальный поиск должен отдавать управление многократно');
+  }
+});
+
+test('новый ввод, смена страны и закрытие прерывают уже начатую работу', async () => {
+  for (const reason of ['query', 'country', 'close']) {
+    let current = true, slices = 0;
+    const result = await searchWorldCitiesAsync('a', undefined, {
+      isCurrent: () => current,
+      yieldTask: async () => { slices++; current = false; },
+    });
+    assert.equal(result, null, reason);
+    assert.equal(slices, 1, 'после отмены следующий блок не выполняется');
+  }
 });

@@ -21,7 +21,7 @@
 //     for screens that want it.
 
 import { ALL_COUNTRIES } from './countries.js';
-import { worldCitiesForCountry, searchWorldCities } from './worldCities.js';
+import { worldCitiesForCountry, searchWorldCities, searchWorldCitiesAsync } from './worldCities.js';
 
 const CORRIDOR_COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
@@ -246,6 +246,17 @@ export const searchPoints = (query, { country, type } = {}) => {
     excludedNames: CURATED_CITY_NAMES,
     type,
   });
+  return rankPoints(query, country, type, worldHits);
+};
+
+export const searchPointsAsync = async (query, { country, type, ...options } = {}) => {
+  const worldHits = await searchWorldCitiesAsync(query, country, {
+    ...options, allowedCountries: COUNTRIES, excludedNames: CURATED_CITY_NAMES, type,
+  });
+  return worldHits === null ? null : rankPoints(query, country, type, worldHits);
+};
+
+const rankPoints = (query, country, type, worldHits) => {
   let pool = [...POINTS, ...worldHits];
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);

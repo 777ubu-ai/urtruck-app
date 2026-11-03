@@ -9,35 +9,24 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [focused, setFocused] = useState(false);
-  const [query, setQuery] = useState(cargoInputText(value));
-  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
+  // Редактируемое значение принадлежит форме: эффекты и смена языка его не заменяют.
+  const [selection, setSelection] = useState(null);
+  const query = selection && value === selection.name ? selection.label : cargoInputText(value);
   const [, setTick] = useState(0);
 
-  // Free-form text always comes back from the form unchanged. A localized
-  // label is retained only after the user explicitly picked a suggestion.
-  useEffect(() => {
-    const nextValue = cargoInputText(value);
-    if (selectedSuggestion && nextValue === selectedSuggestion.name) {
-      setQuery(localizeCargoName(selectedSuggestion.name, lang) || selectedSuggestion.name);
-      return;
-    }
-    setSelectedSuggestion(null);
-    setQuery(nextValue);
-  }, [value, lang, selectedSuggestion]);
   useEffect(() => subscribeToCargoTypes(() => setTick(x => x + 1)), []);
 
   const suggestions = focused ? searchCargoTypes(query, lang) : [];
 
   const handleChange = (text) => {
-    setSelectedSuggestion(null);
-    setQuery(cargoInputText(text));
-    onChange(text);
+    setSelection(null);
+    onChange(cargoInputText(text));
   };
 
   const pick = (item) => {
     if (item.isCustom) addCustomCargoType(item.name);
-    setSelectedSuggestion(item);
-    setQuery(localizeCargoName(item.name, lang) || item.name);
+    // Переведённая подсказка попадает в поле только по явному нажатию.
+    setSelection({ name: item.name, label: localizeCargoName(item.name, lang) || item.name });
     onChange(item.name);
     setFocused(false);
   };

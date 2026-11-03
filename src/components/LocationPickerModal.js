@@ -15,16 +15,24 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AppState, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
+import Constants from 'expo-constants';
 import { useV1Colors, v1Radius } from '../theme/designV1';
 import { useI18n } from '../utils/useI18n';
 import { storage } from '../utils/storage';
 import { localizePlace } from '../utils/places';
-import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPoints, formatPoint, pointsForCountry } from '../utils/geography';
+import { COUNTRIES, COUNTRY_ORDER, POINTS, searchPointsAsync, formatPoint, pointsForCountry } from '../utils/geography';
 import CountryFlag from './ui/v1/CountryFlag';
 import { getCountryName } from '../utils/countries';
 import { customCityForCountry, locationScopeAllowsPoint } from '../utils/worldCities';
 import { createPickerSearchScheduler } from '../utils/pickerSearchScheduler';
 import { captureForegroundPosition } from '../utils/foregroundLocation';
+
+// QA2 пишет только интервалы, без названий городов, введённого текста и аккаунта.
+const reportTiming = (phase, durationMs, extra = {}) => {
+  if (Constants.expoConfig?.extra?.urtruckBuildFlavor === 'qa2') {
+    console.info('[picker-metric]', JSON.stringify({ phase, durationMs, ...extra }));
+  }
+};
 
 const RECENT_KEY = 'ur_recent_places';
 const FAV_KEY = 'ur_fav_places';
@@ -34,6 +42,9 @@ const POPULAR_NAMES = [
   'Урумчи', 'Иу', 'Санкт-Петербург', 'Хоргос',
 ];
 const POPULAR = POPULAR_NAMES.map((n) => POINTS.find((p) => p.name === n)).filter(Boolean);
+// Локализованные справочные строки готовятся один раз, отдельно от пользовательского ввода.
+const LOCALIZED_POINTS = POINTS.map(point => ({ point, labels: ['ZH', 'EN'].map(lang =>
+  String(localizePlace(point.name, lang) || '').toLocaleLowerCase()) }));
 const BORDERS = POINTS.filter((p) => p.type === 'border').slice(0, 6);
 
 const pointKey = (p) => `${p.country}:${p.type}:${p.name}`;
@@ -59,20 +70,44 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
   const [country, setCountry] = useState(null);
-  const [settledSearch, setSettledSearch] = useState('');
+  const inputStarted = useRef(null);
+  const handleQueryChange = (text) => {
+    searchScheduler.cancel();
+    inputStarted.current = performance.now();
+    setQuery(text);
+  };
+  useEffect(() => {
+    if (inputStarted.current !== null) reportTiming('inputCommit', performance.now() - inputStarted.current);
+  }, [query]);
+  const [settledSearch, setSettledSearch] = useState(null);
   const searchScheduler = useMemo(() => createPickerSearchScheduler(), []);
   const searchKey = JSON.stringify([query, country, scope, lang]);
-  const searchPending = visible && Boolean(query.trim()) && settledSearch !== searchKey;
+  const searchPending = visible && Boolean(query.trim()) && settledSearch?.key !== searchKey;
 
   useEffect(() => {
     if (!visible || !query.trim()) {
       searchScheduler.cancel();
-      setSettledSearch('');
+      setSettledSearch(null);
       return undefined;
     }
-    searchScheduler.schedule(searchKey, setSettledSearch);
+    searchScheduler.schedule(searchKey, async (key, isCurrent) => {
+      const started = performance.now();
+      let maxSliceMs = 0;
+      const primary = await searchPointsAsync(query, { country: country || undefined, isCurrent,
+        onSlice: ms => { maxSliceMs = Math.max(maxSliceMs, ms); } });
+      if (!isCurrent() || primary === null) return;
+      reportTiming('search', performance.now() - started, { maxSliceMs });
+      setSettledSearch({ key, primary });
+    });
     return () => searchScheduler.cancel();
   }, [visible, searchKey, searchScheduler]);
+
+  useEffect(() => {
+    if (!visible || settledSearch?.key !== searchKey || inputStarted.current === null) return undefined;
+    const started = inputStarted.current;
+    const frame = requestAnimationFrame(() => reportTiming('resultsFrame', performance.now() - started));
+    return () => cancelAnimationFrame(frame);
+  }, [visible, settledSearch, searchKey]);
 
   const countryLabel = (code) => {
     const translated = t(`country_${code}`);
@@ -142,13 +177,11 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
     if (!visible || !q) return null;
     // Never show selectable results (or a custom fallback) for an older query.
     if (searchPending) return { countryHits: [], pointHits: [] };
-    const primary = searchPoints(query, { country: country || undefined });
-    const localized = POINTS.filter((p) => {
+    const primary = settledSearch.primary;
+    const localized = LOCALIZED_POINTS.filter(({ point: p, labels }) => {
       if (country && p.country !== country && p.partnerCountry !== country) return false;
-      const zh = String(localizePlace(p.name, 'ZH') || '').toLocaleLowerCase();
-      const en = String(localizePlace(p.name, 'EN') || '').toLocaleLowerCase();
-      return zh.includes(q) || en.includes(q);
-    });
+      return labels.some(label => label.includes(q));
+    }).map(({ point }) => point);
     const unique = new Map();
     [...primary, ...localized].forEach((p) => unique.set(pointKey(p), p));
     const pointHits = [...unique.values()]
@@ -162,7 +195,11 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
       })
       : [];
     return { countryHits, pointHits };
-  }, [query, scope, lang, country, visible, searchPending]);
+  }, [query, scope, lang, country, visible, searchPending, settledSearch]);
+
+  const countryPoints = useMemo(() => country
+    ? pointsForCountry(country).filter(p => locationScopeAllowsPoint(scope, country, p)).slice(0, 80)
+    : [], [country, scope]);
 
   const s = useMemo(() => StyleSheet.create({
     safe: { flex: 1, backgroundColor: v1.bg },
@@ -281,7 +318,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
             <TextInput
               style={s.searchInput}
               value={query}
-              onChangeText={setQuery}
+              onChangeText={handleQueryChange}
               placeholder={t('loc_search_ph')}
               placeholderTextColor={v1.placeholder}
               autoFocus
@@ -339,7 +376,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
                   <View style={s.divider} />
                 </>
               ) : null}
-              {pointsForCountry(country).filter((p) => locationScopeAllowsPoint(scope, country, p)).slice(0, 80).map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
+              {countryPoints.map((p, i) => <Row key={`cc:${pointKey(p)}:${i}`} p={p} />)}
               <Text style={s.empty}>{t('loc_search_ph')} · {t('loc_custom_hint')}</Text>
               <Text style={[s.sub, { paddingHorizontal: 16 }]}>GeoNames · CC BY 4.0</Text>
             </>

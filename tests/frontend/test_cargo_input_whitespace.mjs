@@ -33,11 +33,8 @@ test('submission normalization is separate from the editable text', () => {
   assert.equal(normalizeCargoDescription(raw), 'Оборудование в деревянных ящиках');
   assert.match(cargoInput, /value=\{query\}[\s\S]*?onChangeText=\{handleChange\}/);
   assert.match(cargoInput, /<TextInput[\s\S]*?multiline/);
-  assert.match(cargoInput, /const nextValue = cargoInputText\(value\)/);
-  assert.match(cargoInput, /setQuery\(nextValue\)/);
-  assert.match(cargoInput, /setQuery\(cargoInputText\(text\)\)/);
-  assert.doesNotMatch(cargoInput, /localizeCargoName\(value,\s*lang\)/);
-  assert.match(cargoInput, /localizeCargoName\(selectedSuggestion\.name,\s*lang\)/);
+  assert.match(cargoInput, /const query = .*cargoInputText\(value\)/);
+  assert.doesNotMatch(cargoInput, /setQuery|selectedSuggestion/);
   assert.match(cargoInput, /localizeCargoName\(c\.name,\s*lang\)/);
   assert.match(cargoInput, /onPress=\{\(\) => pick\(c\)\}/);
   assert.match(createCargo, /normalizeCargoDescription\(cargoDesc\)/);
@@ -48,8 +45,8 @@ test('draft restore finishes before create-cargo form is mounted', () => {
 });
 
 test('manual city input remains immediate while only suggestions are delayed', () => {
-  assert.match(picker, /onChangeText=\{setQuery\}/);
-  assert.match(picker, /searchScheduler\.schedule\(searchKey, setSettledSearch\)/);
+  assert.match(picker, /onChangeText=\{handleQueryChange\}/);
+  assert.match(picker, /searchScheduler\.schedule\(searchKey, async/);
   assert.match(picker, /if \(searchPending\) return \{ countryHits: \[\], pointHits: \[\] \}/);
   assert.doesNotMatch(picker, /onChangeText=\{[^}]*localizePlace/);
 });

@@ -19,7 +19,7 @@ export function createPickerSearchScheduler({
       timer = scheduleTimer(() => {
         if (current !== generation) return;
         timer = null;
-        commit(value);
+        commit(value, () => current === generation);
       }, delay);
     },
   };
