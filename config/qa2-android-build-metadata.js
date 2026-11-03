@@ -5,8 +5,8 @@
  * installed directly on physical test devices and never submitted to Play.
  */
 // Единый кандидат FEED-16 для физической приёмки ввода и внешней ленты.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494483;
-const QA2_ANDROID_VERSION_CODE = 214494484;
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494484;
+const QA2_ANDROID_VERSION_CODE = 214494485;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

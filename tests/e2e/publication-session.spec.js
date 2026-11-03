@@ -25,6 +25,7 @@ async function boot(page,{savedRole='client',actualRole=savedRole,delayMe=false}
   else if(u.pathname==='/api/v1/users/me')data={name:'Изолированный тест',role:actualRole};
   else if(u.pathname==='/api/v1/market/my')data={my_cargos:[],my_trips:[],my_bids:[],incoming_bids:[],my_deals:[]};
   else if(u.pathname==='/api/v1/market/my/listings')data={items:[],total:0,next_offset:null,archive_total:0};
+  else if(u.pathname==='/api/v1/driver/vehicles')data={vehicles:[]};
   else if(u.pathname.includes('/notifications'))data={notifications:[],unread:0,count:0};
   else if(u.pathname.includes('/chat/'))data={messages:[],rooms:[],unread:0};
   else if(u.pathname.includes('/market/cargos'))data={cargos:[],total:0};
@@ -114,4 +115,17 @@ test('многострочное описание не перекрываетс�
  expect(list.height).toBeGreaterThan(0);
  await expect(input).toHaveValue('Оборудование в деревянных ящиках\nХрупкое 设备 箱装 ');
  expect(box.errors).toEqual([]);
+});
+
+for(const role of ['client','driver'])test(`${role}: быстрый возврат до autosave сохраняет последнее изменение`,async({page})=>{
+ const box=await boot(page,{savedRole:role,actualRole:role});
+ const open=async()=>{await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId(role==='client'?'mytrips-place-cargo':'mytrips-publish-route').click();await expect(page.getByTestId(role==='client'?'cargo-submit-button':'trip-submit-button')).toBeVisible();};
+ await open();
+ if(role==='client')await page.getByTestId('cargo-desc-input').fill('Последний символ и пробел ');
+ else{await page.getByText('Например, Алматы',{exact:true}).click();await page.getByTestId('loc-search').fill('Алматы ');await page.getByTestId('loc-point-Алматы').click();}
+ // Не ждём 250-мс autosave: действие «Назад» должно само сохранить свежие поля.
+ await page.getByTestId('brand-back').click();await expect(page.getByTestId('my-work-screen')).toBeVisible();await open();
+ if(role==='client')await expect(page.getByTestId('cargo-desc-input')).toHaveValue('Последний символ и пробел ');
+ else await expect(page.getByText('Алматы',{exact:true})).toBeVisible();
+ expect(box.errors).toEqual([]);expect(box.writes).toEqual([]);
 });
