@@ -37,7 +37,7 @@ test('manual production device-QA APK is opt-in, encrypted, release-signed, and 
   assert.match(source, /build_installable_apk:[\s\S]*?default: false[\s\S]*?type: boolean/);
   assert.match(source, /installed_version_code=213720253/);
   assert.match(source, /Build signed production APK for device QA[\s\S]*?inputs\.build_installable_apk/);
-  assert.match(source, /name: Build release AAB\n        if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| !inputs\.build_installable_apk \|\| inputs\.submit_to_play \}\}/);
+  assert.match(source, /name: Build release AAB\n        if: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| !inputs\.build_installable_apk \|\| inputs\.submit_to_play \|\| github\.ref_name == 'ops\/public-store-preflight-20261028' \}\}/);
   assert.match(source, /EXPO_PUBLIC_API_URL: https:\/\/urtruck\.kz/);
   assert.match(source, /app-release\.apk[\s\S]*?aapt[\s\S]*?com\.urtruck\.app/);
   assert.match(source, /unzip -p "\$apk" assets\/app\.config/);
