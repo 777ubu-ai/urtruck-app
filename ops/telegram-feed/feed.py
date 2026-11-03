@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parent
 TZ = ZoneInfo("Asia/Almaty")
@@ -80,9 +81,19 @@ def fingerprint(text):
     return hashlib.sha256(("|".join(phones(text)) + ":" + canonical(text)).encode()).hexdigest()
 
 
+@lru_cache(maxsize=8192)
+def _dedup_contacts(text):
+    return frozenset(phones(text))
+
+
+@lru_cache(maxsize=8192)
+def _dedup_canonical(text):
+    return canonical(text)
+
+
 def similar(left, right):
-    """Suppress only a normalized exact copy with at least one shared contact."""
-    return bool(set(phones(left)).intersection(phones(right))) and canonical(left) == canonical(right)
+    """Только нормализованная точная копия с общим контактом; кеш ограничен."""
+    return bool(_dedup_contacts(left).intersection(_dedup_contacts(right))) and _dedup_canonical(left) == _dedup_canonical(right)
 
 
 def eligible(text, source_date, protected=False, now=None):
@@ -482,19 +493,42 @@ def database(path=None):
     return db
 
 
-def enqueue(db, source, source_id, message_id, text, source_date, now=None):
+def _enqueue_steps(db, source, source_id, message_id, text, source_date, now=None):
     if db.execute("SELECT 1 FROM queue WHERE source_id=? AND source_message=?", (source_id, message_id)).fetchone():
         return False
     contact = phones(text)
     # Compare exact copies only against the active destination and its queue.
     started = destination_started_at(db)
     previous = db.execute("SELECT text FROM prior UNION ALL SELECT text FROM queue WHERE status NOT IN ('expired','rejected') AND (published_at IS NULL OR published_at>=?)", (started,)).fetchall()
-    if any(similar(text, row[0]) for row in previous):
-        return False
+    for index, row in enumerate(previous, 1):
+        if similar(text, row[0]):
+            return False
+        if index % 64 == 0:
+            # Одна длинная страница не должна задерживать ACK и heartbeat.
+            yield
     with db:
         db.execute("INSERT INTO queue(source,source_id,source_message,source_date,text,phones,fingerprint) VALUES(?,?,?,?,?,?,?)",
                    (source, source_id, message_id, source_date.timestamp(), text, json.dumps(contact), fingerprint(text)))
     return True
+
+
+def enqueue(db, source, source_id, message_id, text, source_date, now=None):
+    steps = _enqueue_steps(db, source, source_id, message_id, text, source_date, now)
+    while True:
+        try:
+            next(steps)
+        except StopIteration as completed:
+            return completed.value
+
+
+async def enqueue_for_collection(db, source, source_id, message_id, text, source_date):
+    steps = _enqueue_steps(db, source, source_id, message_id, text, source_date)
+    while True:
+        try:
+            next(steps)
+        except StopIteration as completed:
+            return completed.value
+        await asyncio.sleep(0)
 
 
 def destination_started_at(db):
@@ -655,7 +689,7 @@ async def collect(reader, db):
                 protected = bool(getattr(msg, "noforwards", False))
                 captured += capture_message_for_app(db,source,entity.id,msg,protected=protected)
                 if msg.id>legacy_high and eligible(text,msg.date,protected):
-                    added += enqueue(db,source,entity.id,msg.id,text,msg.date)
+                    added += await enqueue_for_collection(db,source,entity.id,msg.id,text,msg.date)
                 # Обе записи durable до продвижения курсора; хронологические страницы.
                 with db:
                     for table in ("cursors", "app_cursors"):
