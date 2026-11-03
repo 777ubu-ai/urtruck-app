@@ -112,7 +112,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
         keyboardVerticalOffset={0}
       >
         <Pressable style={[s.backdrop, { backgroundColor: theme.overlay || 'rgba(0,0,0,0.5)' }]} onPress={onClose}>
-          <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[s.sheet, { backgroundColor: theme.cardElevated || theme.card || theme.surface }]} onPress={(e) => e.stopPropagation()}>
             <View style={[s.handle, { backgroundColor: theme.border }]} />
             <KeyboardSafeScrollView
               keyboardShouldPersistTaps="handled"
@@ -199,7 +199,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
 
               <TouchableOpacity
                 onPress={onSave} disabled={saving}
-                style={[s.save, { backgroundColor: theme.surfaceMuted, borderColor: theme.border, borderWidth: 1, opacity: saving ? 0.6 : 1 }]}
+                style={[s.save, { backgroundColor: theme.surfaceMuted || theme.surfaceAlt || theme.surface, borderColor: theme.border, borderWidth: 1, opacity: saving ? 0.6 : 1 }]}
                 testID="edit-cargo-save"
               >
                 {saving ? <ActivityIndicator color={theme.text} /> : <Text style={[s.saveText, { color: theme.text }]}>{t('edit_cargo_save')}</Text>}
