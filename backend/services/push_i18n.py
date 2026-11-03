@@ -98,6 +98,12 @@ TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
         "ZH": ("📋 新报价", "{route}：{amount}"),
         "EN": ("📋 New bid", "{amount} for {route}"),
     },
+    "bid_accept_confirmed": {
+        "RU": ("✅ Сделка создана", "Вы приняли предложение {amount}. Сделка создана."),
+        "KK": ("✅ Мәміле жасалды", "Сіз {amount} ұсынысын қабылдадыңыз. Мәміле жасалды."),
+        "ZH": ("✅ 交易已创建", "您已接受 {amount} 的报价。交易已创建。"),
+        "EN": ("✅ Deal created", "You accepted the offer of {amount}. Deal created."),
+    },
     "bid_accepted": {
         "RU": ("✅ Ставка принята!", "Ваше предложение {amount} принято! Сделка создана."),
         "KK": ("✅ Баға қабылданды!", "Сіздің {amount} ұсынысыңыз қабылданды! Мәміле жасалды."),

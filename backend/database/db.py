@@ -61,7 +61,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     """Cheap request-time guard for deadlines that can be evaluated in SQL.
 
     The full Python cleanup is throttled for performance, but a bid that turns
-    48h old, a 30-day owned-listing deadline, or an ISO route date that passes
+    48h old, a 30-day owned-listing deadline, or a publication deadline that passes
     must not remain actionable during that throttle window. These LIMIT-1
     probes close that race; the periodic full scan remains the fallback for
     legacy timestamps and any data anomaly the SQL fast-path does not express.
@@ -79,11 +79,9 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
             datetime(COALESCE(NULLIF(b.updated_at,''), b.created_at), '+48 hours') <= CURRENT_TIMESTAMP
             OR (b.cargo_id IS NOT NULL AND (
                  c.id IS NULL OR c.status <> 'active'
-                 OR (c.pickup_date GLOB '????-??-??*' AND substr(c.pickup_date,1,10) < date('now'))
             ))
             OR (b.trip_id IS NOT NULL AND (
                  t.id IS NULL OR t.status <> 'active'
-                 OR (t.departure GLOB '????-??-??*' AND substr(t.departure,1,10) < date('now'))
             ))
           )
         LIMIT 1
@@ -97,7 +95,6 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
         SELECT 1 FROM cargos c
         WHERE (
             (c.status='active' AND datetime(COALESCE(NULLIF(c.published_at,''), c.created_at), '+30 days') <= CURRENT_TIMESTAMP)
-            OR (c.status='expired' AND datetime(COALESCE(NULLIF(c.published_at,''), c.created_at), '+30 days') > CURRENT_TIMESTAMP)
           )
           AND NOT EXISTS (
             SELECT 1 FROM deals d
@@ -114,7 +111,6 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
         SELECT 1 FROM trips t
         WHERE (
             (t.status='active' AND datetime(COALESCE(NULLIF(t.published_at,''), t.created_at), '+30 days') <= CURRENT_TIMESTAMP)
-            OR (t.status='expired' AND datetime(COALESCE(NULLIF(t.published_at,''), t.created_at), '+30 days') > CURRENT_TIMESTAMP)
           )
           AND NOT EXISTS (
             SELECT 1 FROM deals d
@@ -130,7 +126,7 @@ def _maybe_expire_marketplace(conn: sqlite3.Connection) -> None:
     """Expire stale marketplace state before a request can read/accept it.
 
     Full cleanup runs at least once per process-minute. Between full scans a
-    cheap due probe bypasses the throttle the moment a 48h/ISO-date deadline
+    cheap due probe bypasses the throttle the moment a 48h/30-day deadline
     has passed, so a stale offer cannot be accepted in the timing gap.
     """
     global _MARKET_EXPIRY_LAST_RUN, _MARKET_EXPIRY_LAST_PROBE

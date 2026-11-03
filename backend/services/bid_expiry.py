@@ -181,19 +181,15 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     # Keep owned listings available in «Мои грузы»/«Мои рейсы» for 30 days
     # from publication, regardless of the route's date. Bids use the same
     # publication lifetime, while their own 48h TTL stays separate.
-    # Restore listings that the old
-    # departure-date rule expired recently so the new 30-day window applies
-    # to already published records too. Never touch a listing with a deal.
+    # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM cargos WHERE status IN ('active','expired')"
+        "SELECT id, status, published_at, created_at FROM cargos WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, cargo_id=row["id"])
         if has_deal or deadline is None:
             continue
-        if row["status"] == "expired" and deadline > now:
-            conn.execute("UPDATE cargos SET status='active' WHERE id=? AND status='expired'", (row["id"],))
-        elif row["status"] == "active" and deadline <= now:
+        if deadline <= now:
             cur = conn.execute(
                 "UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND status='active'",
@@ -203,15 +199,13 @@ def _expire_with_conn(conn, now: datetime) -> dict:
                 expired_cargos.append(row["id"])
 
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM trips WHERE status IN ('active','expired')"
+        "SELECT id, status, published_at, created_at FROM trips WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, trip_id=row["id"])
         if has_deal or deadline is None:
             continue
-        if row["status"] == "expired" and deadline > now:
-            conn.execute("UPDATE trips SET status='active' WHERE id=? AND status='expired'", (row["id"],))
-        elif row["status"] == "active" and deadline <= now:
+        if deadline <= now:
             cur = conn.execute(
                 "UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND status='active'",

@@ -1,3 +1,4 @@
+import { isListingExpired } from '../utils/listingLifetime.js';
 import { localizeUiText } from '../utils/additionalLocales.js';
 import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -330,18 +331,8 @@ export default function MyTripsScreen({ navigation, route }) {
     myItemsRaw = reconcileCreatedCargoOverlay(myItemsRaw, createdCargoOverlay).items;
   }
 
-  // Свои публикации остаются в разделе «Мои грузы»/«Мои рейсы» 30 дней
-  // от последней публикации. Даты погрузки и выезда по-прежнему ограничивают
-  // видимость в публичной ленте; в этом личном списке они не сокращают срок.
-  const OWN_LISTING_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-  const isExpiredItem = (it) => {
-    const raw = String(it.published_at || it.created_at || '').trim();
-    if (!raw) return false;
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    const withUtc = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`;
-    const publishedAt = Date.parse(withUtc);
-    return Number.isFinite(publishedAt) && Date.now() >= publishedAt + OWN_LISTING_RETENTION_MS;
-  };
+  // Срок публикации: ровно 30 суток UTC от published_at, fallback created_at.
+  const isExpiredItem = isListingExpired;
   // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — ТОЛЬКО управление
   // объявлениями (active/draft/expired + архив unpublished/cancelled/rejected).
   // Всё, что связано со сделкой — целиком в «Сделках». Статусы листинга во
@@ -366,7 +357,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
   // Отменённые/отклонённые ОБЪЯВЛЕНИЯ (не сделки/ставки — те в «Сделках»).
   const myItemsClosed = myItemsRaw.filter((it) => it.status === 'cancelled' || it.status === 'rejected');
-  const myItemsExpired = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && isExpiredItem(it));
+  const myItemsExpired = myItemsRaw.filter((it) => it.status === 'expired' || (isOpenPublicationStatus(it) && isExpiredItem(it)));
   const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
   const myBids = isDriver ? (data?.my_bids || []) : (data?.incoming_bids || []);

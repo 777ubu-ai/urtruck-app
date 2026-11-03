@@ -153,7 +153,7 @@ def test_listing_expires_after_30_days_from_publication_not_route_date():
     assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "expired"
 
 
-def test_recently_expired_listing_is_restored_until_30_day_deadline():
+def test_terminal_listing_is_not_automatically_republished():
     conn = _db()
     conn.execute(
         "INSERT INTO cargos (id,status,pickup_date,published_at,created_at) "
@@ -168,8 +168,8 @@ def test_recently_expired_listing_is_restored_until_30_day_deadline():
 
     assert result["expired_cargos"] == []
     assert result["expired_trips"] == []
-    assert conn.execute("SELECT status FROM cargos WHERE id='recent-cargo'").fetchone()[0] == "active"
-    assert conn.execute("SELECT status FROM trips WHERE id='recent-trip'").fetchone()[0] == "active"
+    assert conn.execute("SELECT status FROM cargos WHERE id='recent-cargo'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM trips WHERE id='recent-trip'").fetchone()[0] == "expired"
 
 
 def test_accepted_deal_is_never_auto_expired_or_cancelled():

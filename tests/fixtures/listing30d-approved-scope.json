@@ -1,0 +1,8 @@
+{
+  "reason": "Решение владельца 04.11.2026, PR673: единый срок публикации 30 суток UTC, TTL ставок 48 часов, атомарное принятие и уведомления обеих сторон; дата маршрута сохраняется. Другие protected baseline сохранены. Поведенческие регрессии test_listing30d_acceptance.py и test_listing_lifetime.mjs обязательны.",
+  "sha256": {
+    "backend/api/marketplace.py": "d8f1285bac5db6d75e17f4ab85a78c8c6b99002e2f1b6b2272f236322bfad7cc",
+    "backend/database/db.py": "54fa7f3d7c19bbadc8ddd6452b473a6c861c00b47f62446d096c76e65ec9da16",
+    "src/screens/MyTripsScreen.js": "77be3c13379786055e1a9931ff272b3e678ca12104553bd188a9951de9b810f2"
+  }
+}
