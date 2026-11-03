@@ -415,6 +415,12 @@ for (const [ru, variants] of Object.entries(CARGO_DICT)) {
   if (CARGO_KK[ru]) CARGO_VARIANT_INDEX.set(CARGO_KK[ru].toLocaleLowerCase('kk-KZ'), ru);
 }
 
+// Keep free-form cargo text intact while it is being edited. Presentation and
+// submission normalization are explicit, separate operations so a controlled
+// input never round-trips through a display formatter that trims whitespace.
+export const cargoInputText = (value) => value == null ? '' : String(value);
+export const normalizeCargoDescription = (value) => cargoInputText(value).trim();
+
 const canonicalCargoName = (raw) => {
   const value = String(raw || '').trim();
   if (!value) return '';

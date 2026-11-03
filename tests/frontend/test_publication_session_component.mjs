@@ -28,7 +28,7 @@ function cargoHarness({ role = 'client', routeRole = 'client', serverRole = role
     if(name.endsWith('/marketAPI'))return {marketAPI};
     if(name.endsWith('/publicationSession'))return publication;
     if(name.endsWith('/designV1'))return {useV1Colors:()=>colors,useShipperCeramicColors:()=>colors,v1AccentFor:()=>colors,v1Colors:colors,v1Spacing:{sm:8,md:16},v1Typography:{h1:{},bodyMd:{}},v1Radius:{field:8}};
-    if(name.endsWith('/places'))return {cleanPlaceName:x=>x,localizePlace:x=>x};
+    if(name.endsWith('/places'))return {cleanPlaceName:x=>x,localizePlace:x=>x,normalizeCargoDescription:x=>String(x??'').trim()};
     if(name.endsWith('/cargoTypes'))return {addCustomCargoType:()=>{}};
     if(name.endsWith('/dateInput'))return {normalizeDateInput:x=>x==='25.10.2026'?'2026-10-25':x};
     if(name.endsWith('/normalizers'))return {parseWeightTonsInput};
@@ -78,6 +78,16 @@ test('контрольный груз отправляется грузоотп�
  assert.equal(p.from_city,'Хоргос');assert.equal(p.to_city,'Алматы');assert.equal(p.weight_tons,25);assert.equal(p.volume_m3,150);
  assert.equal(p.price,4500);assert.equal(p.currency,'USD');assert.equal(p.payment_type,'any');assert.equal(p.pickup_date,'2026-10-25');
  assert.equal(h.calls.filter(x=>x[0]==='nav').length,1);
+});
+
+test('описание сохраняет пробелы в форме и нормализуется только в payload отправки',async()=>{
+ const h=cargoHarness();h.fill();
+ const raw='  Оборудование в деревянных ящиках  ';
+ h.byId('cargo-desc-input').props.onChange(raw);
+ assert.equal(h.byId('cargo-desc-input').props.value,raw);
+ await h.byId('cargo-submit-button').props.onPress();
+ const p=h.calls.find(x=>x[0]==='create')?.[1];assert.ok(p);
+ assert.equal(p.cargo_desc,'Оборудование в деревянных ящиках');
 });
 
 test('сбой сети сохраняет заполненную форму для повторной отправки',async()=>{

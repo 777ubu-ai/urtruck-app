@@ -2,30 +2,41 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useTheme } from '../utils/ThemeContext';
 import { useI18n } from '../utils/useI18n';
-import { localizeCargoName } from '../utils/places';
+import { cargoInputText, localizeCargoName } from '../utils/places';
 import { searchCargoTypes, addCustomCargoType, subscribeToCargoTypes } from '../utils/cargoTypes';
 
 export default function CargoTypeInput({ value, onChange, placeholder, style, testID }) {
   const { theme } = useTheme();
   const { t, lang } = useI18n();
   const [focused, setFocused] = useState(false);
-  const [query, setQuery] = useState(localizeCargoName(value, lang) || value || '');
+  const [query, setQuery] = useState(cargoInputText(value));
+  const [selectedSuggestion, setSelectedSuggestion] = useState(null);
   const [, setTick] = useState(0);
 
-  // Stage 42: синхронизируем local query со внешним value, если родитель
-  // его меняет (например после addCustomCargoType.pick).
-  useEffect(() => { setQuery(localizeCargoName(value, lang) || value || ''); }, [value, lang]);
+  // Free-form text always comes back from the form unchanged. A localized
+  // label is retained only after the user explicitly picked a suggestion.
+  useEffect(() => {
+    const nextValue = cargoInputText(value);
+    if (selectedSuggestion && nextValue === selectedSuggestion.name) {
+      setQuery(localizeCargoName(selectedSuggestion.name, lang) || selectedSuggestion.name);
+      return;
+    }
+    setSelectedSuggestion(null);
+    setQuery(nextValue);
+  }, [value, lang, selectedSuggestion]);
   useEffect(() => subscribeToCargoTypes(() => setTick(x => x + 1)), []);
 
   const suggestions = focused ? searchCargoTypes(query, lang) : [];
 
   const handleChange = (text) => {
-    setQuery(text);
+    setSelectedSuggestion(null);
+    setQuery(cargoInputText(text));
     onChange(text);
   };
 
   const pick = (item) => {
     if (item.isCustom) addCustomCargoType(item.name);
+    setSelectedSuggestion(item);
     setQuery(localizeCargoName(item.name, lang) || item.name);
     onChange(item.name);
     setFocused(false);
@@ -36,6 +47,8 @@ export default function CargoTypeInput({ value, onChange, placeholder, style, te
       <TextInput
         testID={testID}
         style={[s.input, { backgroundColor: theme.card, color: theme.text, borderColor: theme.border }]}
+        multiline
+        textAlignVertical="top"
         value={query}
         onChangeText={handleChange}
         placeholder={placeholder}
