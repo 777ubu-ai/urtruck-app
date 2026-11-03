@@ -371,6 +371,24 @@ jobs:
           USER_FRACTION: ${{ inputs.user_fraction || '' }}
         run: node scripts/validate-play-release-inputs.mjs
 
+      - name: Проверить выбранную конфигурацию до компиляции
+        if: ${{ inputs.api_environment == 'qa2' }}
+        env:
+          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
+        run: |
+          set -euo pipefail
+          npx expo config --json > "$RUNNER_TEMP/resolved-store-config.json"
+          node --input-type=module - "$RUNNER_TEMP/resolved-store-config.json" <<'STOREVERIFY'
+          import { readFileSync } from 'node:fs';
+          import { assertStoreConfig } from './scripts/qa2-internal-store-config.mjs';
+          const config = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          if (!process.env.URTRUCK_SOURCE_SHA) throw Error('Не задан исходник приложения');
+          assertStoreConfig(config, process.env.API_ENVIRONMENT, process.env.PLAY_TRACK, process.env.URTRUCK_SOURCE_SHA);
+          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true) throw Error('Неверная версия или флаг ленты');
+          console.log('Проверены API, package, режим, версия, лента и точный исходник приложения');
+          STOREVERIFY
+
       - name: Build release AAB
         if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         env:
@@ -443,7 +461,15 @@ jobs:
           NODEVERIFY
           fi
           if [ "$API_ENVIRONMENT" = qa2 ]; then
-            node scripts/qa2-internal-store-config.mjs "$RUNNER_TEMP/aab-app-config.json"
+            node --input-type=module - "$RUNNER_TEMP/aab-app-config.json" <<'STOREVERIFY'
+          import { readFileSync } from 'node:fs';
+          import { assertStoreConfig } from './scripts/qa2-internal-store-config.mjs';
+          const config = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          if (!process.env.URTRUCK_SOURCE_SHA) throw Error('Не задан исходник приложения');
+          assertStoreConfig(config, process.env.API_ENVIRONMENT, process.env.PLAY_TRACK, process.env.URTRUCK_SOURCE_SHA);
+          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true) throw Error('Неверная версия или флаг ленты');
+          console.log('Проверены API, package, режим, версия, лента и точный исходник приложения');
+          STOREVERIFY
           else
             node scripts/verify-production-apk-config.mjs "$RUNNER_TEMP/aab-app-config.json"
           fi
