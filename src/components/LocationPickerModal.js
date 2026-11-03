@@ -70,10 +70,15 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   // Выбранная страна для режима «страна → города». null = обычный список
   // (популярные/недавние/страны). Тап по стране раскрывает её города.
   const [country, setCountry] = useState(null);
+  const [emptyQueryReady, setEmptyQueryReady] = useState(true);
   const inputStarted = useRef(null);
   const handleQueryChange = (text) => {
+    if (text === query) return;
     searchScheduler.cancel();
     inputStarted.current = performance.now();
+    // Повторный монтаж флагов после очистки относится к подсказкам,
+    // а не к срочному обновлению редактируемого значения.
+    setEmptyQueryReady(false);
     setQuery(text);
   };
   useEffect(() => {
@@ -82,21 +87,24 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   const [settledSearch, setSettledSearch] = useState(null);
   const searchScheduler = useMemo(() => createPickerSearchScheduler(), []);
   const searchKey = JSON.stringify([query, country, scope, lang]);
-  const searchPending = visible && Boolean(query.trim()) && settledSearch?.key !== searchKey;
+  const searchPending = visible && (query.trim() ? settledSearch?.key !== searchKey : !emptyQueryReady);
 
   useEffect(() => {
     if (!visible || !query.trim()) {
       searchScheduler.cancel();
       setSettledSearch(null);
-      return undefined;
+      if (visible && !emptyQueryReady) searchScheduler.schedule(searchKey, () => setEmptyQueryReady(true));
+      return () => searchScheduler.cancel();
     }
     searchScheduler.schedule(searchKey, async (key, isCurrent) => {
       const started = performance.now();
       let maxSliceMs = 0;
+      let searchWorkMs = 0;
+      let slices = 0;
       const primary = await searchPointsAsync(query, { country: country || undefined, isCurrent,
-        onSlice: ms => { maxSliceMs = Math.max(maxSliceMs, ms); } });
+        onSlice: ms => { maxSliceMs = Math.max(maxSliceMs, ms); searchWorkMs += ms; slices += 1; } });
       if (!isCurrent() || primary === null) return;
-      reportTiming('search', performance.now() - started, { maxSliceMs });
+      reportTiming('search', performance.now() - started, { maxSliceMs, searchWorkMs, slices });
       setSettledSearch({ key, primary });
     });
     return () => searchScheduler.cancel();
@@ -119,6 +127,7 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
   useEffect(() => {
     if (!visible) return;
     setQuery('');
+    setEmptyQueryReady(true);
     setCountry(null);
     setScope('all');
     (async () => {
@@ -174,9 +183,10 @@ export default function LocationPickerModal({ visible, onClose, onSelect, title,
 
   const hits = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
-    if (!visible || !q) return null;
+    if (!visible) return null;
     // Never show selectable results (or a custom fallback) for an older query.
     if (searchPending) return { countryHits: [], pointHits: [] };
+    if (!q) return null;
     const primary = settledSearch.primary;
     const localized = LOCALIZED_POINTS.filter(({ point: p, labels }) => {
       if (country && p.country !== country && p.partnerCountry !== country) return false;
