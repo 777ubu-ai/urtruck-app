@@ -2791,6 +2791,8 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
     bid_id = bid["id"]
+    if bid["bidder_id"] == user["id"]:
+        raise HTTPException(status_code=403, detail="Нельзя принять собственное предложение")
     shipper_id = user["id"]
     driver_id = bid["bidder_id"]
     from_city, to_city = "", ""
@@ -2922,7 +2924,9 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     # P3-fix: пишем событие в ценовой timeline каждой перебитой ставки — иначе
     # у проигравших история обрывалась на «proposed» без финала.
     for _sib in rejected_siblings:
-        _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", "other_bid_accepted")
+        event_id = _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", "other_bid_accepted")
+        if event_id is None:
+            raise HTTPException(status_code=503, detail="Не удалось сохранить причину отклонения предложения")
 
     chat_room_id = _ensure_chat_room_inline(
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
@@ -3032,7 +3036,9 @@ def accept_bid(bid_id: str, user=Depends(require_active_level(1))):
         # обновиться гонкой с update_bid — см. _finalize_accept_inline).
         committed_amount = result["amount"]
         # Часть 3: событие — владелец принял ставку (actor=owner).
-        _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
+        event_id = _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
+        if event_id is None:
+            raise HTTPException(status_code=503, detail="Не удалось сохранить историю принятия предложения")
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
         # Уведомления и outbox фиксируются атомарно со сделкой.
@@ -3415,7 +3421,9 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         owner_user = {"id": owner_id}
         result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered")
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
-        _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
+        event_id = _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
+        if event_id is None:
+            raise HTTPException(status_code=503, detail="Не удалось сохранить историю принятия предложения")
 
         # Сначала сохраняем обе доставки в той же транзакции, что и сделку.
         # Сбой процесса после commit не должен терять уведомления.

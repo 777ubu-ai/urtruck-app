@@ -91,7 +91,7 @@ def test_repeat_accept_has_one_deal_message_and_both_notifications(kind):
         assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == ("taken" if kind == "cargo" else "booked")
 
 @pytest.mark.parametrize("kind", ["cargo", "trip"])
-@pytest.mark.parametrize("failure", ["notification", "message", "event"])
+@pytest.mark.parametrize("failure", ["notification", "message", "event", "price_event"])
 def test_failed_accept_rolls_back_all_writes(kind, failure, monkeypatch):
     table, listing, owner, bidder, bid = seed(kind)
     from api import notifications
@@ -99,6 +99,7 @@ def test_failed_accept_rolls_back_all_writes(kind, failure, monkeypatch):
     def fail(*a, **k): raise RuntimeError("Контрольный сбой транзакции")
     if failure == "notification": monkeypatch.setattr(notifications, "create_notification", fail)
     elif failure == "event": monkeypatch.setattr(deal_room_dal, "create_deal_event", fail)
+    elif failure == "price_event": monkeypatch.setattr(market, "_record_price_event", lambda *a, **k: None)
     else:
         with db.get_conn() as c: c.execute("CREATE TRIGGER qa_fail_chat BEFORE INSERT ON chat_messages BEGIN SELECT RAISE(ABORT,'Контрольный сбой'); END")
     try:
@@ -188,3 +189,16 @@ def test_accept_locale_read_does_not_open_another_database_connection(monkeypatc
         raise AssertionError('Вложенный get_conn может запустить очистку под write lock')
     monkeypatch.setattr(market.push_gateway, 'get_recipient_locale', nested_read)
     assert market.accept_bid(bid, user={'id': owner})['ok']
+
+@pytest.mark.parametrize('kind', ['cargo', 'trip'])
+@pytest.mark.parametrize('counter', [False, True])
+def test_legacy_self_bid_cannot_create_a_deal(kind, counter):
+    table, listing, owner, bidder, bid = seed(kind)
+    with db.get_conn() as c:
+        c.execute("UPDATE bids SET bidder_id=?, status=?, counter_amount=950 WHERE id=?", (owner, 'countered' if counter else 'pending', bid))
+    with pytest.raises(HTTPException) as caught:
+        (market.accept_counter if counter else market.accept_bid)(bid, user={'id':owner})
+    assert caught.value.status_code == 403
+    with db.get_conn() as c:
+        assert c.execute('SELECT COUNT(*) FROM deals WHERE bid_id=?', (bid,)).fetchone()[0] == 0
+        assert c.execute(f'SELECT status FROM {table} WHERE id=?', (listing,)).fetchone()[0] == 'active'
