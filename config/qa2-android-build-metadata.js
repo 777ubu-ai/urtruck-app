@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Единый кандидат RELEASE-17 для физической приёмки ввода и внешней ленты.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494486;
-const QA2_ANDROID_VERSION_CODE = 214494487;
+// PR673: новая QA2-сборка для приёмки сроков и полного цикла сделки.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494487;
+const QA2_ANDROID_VERSION_CODE = 214494488;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

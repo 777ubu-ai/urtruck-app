@@ -91,7 +91,7 @@ def test_recent_activity_resets_48_hour_window():
     assert conn.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "countered"
 
 
-def test_past_cargo_date_expires_open_bid_but_keeps_owned_listing_for_30_days():
+def test_past_cargo_date_keeps_fresh_bid_for_active_listing():
     conn = _db()
     conn.execute("INSERT INTO cargos (id,status,pickup_date,updated_at,bids_count) VALUES ('c1','active','2026-08-19',NULL,1)")
     conn.execute(
@@ -101,12 +101,12 @@ def test_past_cargo_date_expires_open_bid_but_keeps_owned_listing_for_30_days():
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
     assert result["expired_cargos"] == []
-    assert result["expired_bids"] == ["b1"]
+    assert result["expired_bids"] == []
     assert conn.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == "active"
-    assert conn.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == "pending"
 
 
-def test_past_trip_date_expires_open_bid_but_keeps_owned_trip_for_30_days():
+def test_past_trip_date_keeps_fresh_bid_for_active_listing():
     conn = _db()
     conn.execute("INSERT INTO trips (id,status,departure,updated_at) VALUES ('t1','active','2026-08-19',NULL)")
     conn.execute(
@@ -116,7 +116,7 @@ def test_past_trip_date_expires_open_bid_but_keeps_owned_trip_for_30_days():
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
     assert result["expired_trips"] == []
-    assert result["expired_bids"] == ["b1"]
+    assert result["expired_bids"] == []
     assert conn.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == "active"
 
 
@@ -153,7 +153,7 @@ def test_listing_expires_after_30_days_from_publication_not_route_date():
     assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "expired"
 
 
-def test_recently_expired_listing_is_restored_until_30_day_deadline():
+def test_terminal_listing_is_not_automatically_republished():
     conn = _db()
     conn.execute(
         "INSERT INTO cargos (id,status,pickup_date,published_at,created_at) "
@@ -168,8 +168,8 @@ def test_recently_expired_listing_is_restored_until_30_day_deadline():
 
     assert result["expired_cargos"] == []
     assert result["expired_trips"] == []
-    assert conn.execute("SELECT status FROM cargos WHERE id='recent-cargo'").fetchone()[0] == "active"
-    assert conn.execute("SELECT status FROM trips WHERE id='recent-trip'").fetchone()[0] == "active"
+    assert conn.execute("SELECT status FROM cargos WHERE id='recent-cargo'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM trips WHERE id='recent-trip'").fetchone()[0] == "expired"
 
 
 def test_accepted_deal_is_never_auto_expired_or_cancelled():

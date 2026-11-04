@@ -4,7 +4,7 @@ Product rule (2026-08-20):
 - an unaccepted bid is actionable for at most 48 hours since its last activity;
 - a user's own listing stays in their management list for 30 days from its
   latest publication; public feed date filters remain separate;
-- bids still close when the pickup/departure date passes;
+- past route dates do not shorten the publication window;
 - accepted deals are never deleted or auto-cancelled by this cleanup;
 - expired rows stay in the database for history/audit.
 """
@@ -173,28 +173,23 @@ def _queue_expired_bid_notifications(conn, bid):
 
 
 def _expire_with_conn(conn, now: datetime) -> dict:
-    today = now.date()
     expired_cargos = []
     expired_trips = []
     expired_bids = []
     reasons = {}
 
     # Keep owned listings available in «Мои грузы»/«Мои рейсы» for 30 days
-    # from publication, regardless of the route's date. Public feed endpoints
-    # independently hide stale pickup/departure dates, and bids still expire
-    # below when their route date passes. Restore listings that the old
-    # departure-date rule expired recently so the new 30-day window applies
-    # to already published records too. Never touch a listing with a deal.
+    # from publication, regardless of the route's date. Bids use the same
+    # publication lifetime, while their own 48h TTL stays separate.
+    # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM cargos WHERE status IN ('active','expired')"
+        "SELECT id, status, published_at, created_at FROM cargos WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, cargo_id=row["id"])
         if has_deal or deadline is None:
             continue
-        if row["status"] == "expired" and deadline > now:
-            conn.execute("UPDATE cargos SET status='active' WHERE id=? AND status='expired'", (row["id"],))
-        elif row["status"] == "active" and deadline <= now:
+        if deadline <= now:
             cur = conn.execute(
                 "UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND status='active'",
@@ -204,15 +199,13 @@ def _expire_with_conn(conn, now: datetime) -> dict:
                 expired_cargos.append(row["id"])
 
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM trips WHERE status IN ('active','expired')"
+        "SELECT id, status, published_at, created_at FROM trips WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, trip_id=row["id"])
         if has_deal or deadline is None:
             continue
-        if row["status"] == "expired" and deadline > now:
-            conn.execute("UPDATE trips SET status='active' WHERE id=? AND status='expired'", (row["id"],))
-        elif row["status"] == "active" and deadline <= now:
+        if deadline <= now:
             cur = conn.execute(
                 "UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP "
                 "WHERE id=? AND status='active'",
@@ -243,22 +236,16 @@ def _expire_with_conn(conn, now: datetime) -> dict:
 
         if bid.get("cargo_id"):
             parent_status = bid.get("cargo_status")
-            parent_date = parse_market_date(bid.get("pickup_date"))
             if parent_status is None:
                 reason = "listing_missing"
             elif parent_status != "active":
                 reason = "listing_inactive"
-            elif parent_date and parent_date < today:
-                reason = "listing_date_passed"
         elif bid.get("trip_id"):
             parent_status = bid.get("trip_status")
-            parent_date = parse_market_date(bid.get("departure"))
             if parent_status is None:
                 reason = "listing_missing"
             elif parent_status != "active":
                 reason = "listing_inactive"
-            elif parent_date and parent_date < today:
-                reason = "listing_date_passed"
         elif ttl_expired:
             # Legacy/unlinked bids can still age out by TTL.
             reason = "bid_ttl_48h"

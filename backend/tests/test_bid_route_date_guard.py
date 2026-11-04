@@ -1,4 +1,4 @@
-"""Route dates guard bid mutations independently of opportunistic cleanup."""
+"""30-дневная публикация допускает предложения при прошедшей дате маршрута."""
 from datetime import datetime, timedelta
 
 import pytest
@@ -42,21 +42,14 @@ def test_creation_obeys_route_date_without_expiring_listing(listing, request):
     days = request.node.callspec.params["listing"][1]
     body = market.BidIn(**{f"{kind}_id": listing_id}, amount=900)
     user = {"id": bidder_id, "role": "driver" if kind == "cargo" else "client"}
-    if days < 0:
-        with pytest.raises(HTTPException) as caught:
-            market.create_bid(body, user=user)
-        assert caught.value.status_code == 409
-        with db.get_conn() as conn:
-            assert conn.execute("SELECT COUNT(*) FROM bids WHERE cargo_id=? OR trip_id=?", (listing_id, listing_id)).fetchone()[0] == 0
-    else:
-        assert market.create_bid(body, user=user)["ok"]
+    assert market.create_bid(body, user=user)["ok"]
     with db.get_conn() as conn:
         assert conn.execute(f"SELECT status FROM {'cargos' if kind == 'cargo' else 'trips'} WHERE id=?", (listing_id,)).fetchone()[0] == "active"
 
 
 @pytest.mark.parametrize("listing", [(k,-1,f) for k in ("cargo","trip") for f in ("%Y-%m-%d","%d.%m.%Y")], indirect=True)
 @pytest.mark.parametrize("counter", [False, True])
-def test_acceptance_rejects_past_route_before_any_deal_write(listing, counter):
+def test_past_route_acceptance_uses_publication_lifetime(listing, counter):
     kind, listing_id, owner_id, bidder_id = listing
     bid_id = db.new_id()
     with db.get_conn() as conn:
@@ -64,16 +57,11 @@ def test_acceptance_rejects_past_route_before_any_deal_write(listing, counter):
             f"INSERT INTO bids(id,{kind}_id,bidder_id,amount,status,counter_amount) VALUES(?,?,?,?,?,?)",
             (bid_id, listing_id, bidder_id, 900, "countered" if counter else "pending", 950 if counter else None),
         )
-    with pytest.raises(HTTPException) as caught:
-        if counter:
-            market.accept_counter(bid_id, user={"id": bidder_id})
-        else:
-            market.accept_bid(bid_id, user={"id": owner_id})
-    assert caught.value.status_code == 409
+    result = (market.accept_counter(bid_id, user={"id": bidder_id}) if counter
+              else market.accept_bid(bid_id, user={"id": owner_id}))
+    assert result["ok"]
     with db.get_conn() as conn:
-        assert conn.execute(f"SELECT status FROM {'cargos' if kind == 'cargo' else 'trips'} WHERE id=?", (listing_id,)).fetchone()[0] == "active"
-        assert conn.execute("SELECT status FROM bids WHERE id=?", (bid_id,)).fetchone()[0] == ("countered" if counter else "pending")
-        assert conn.execute("SELECT COUNT(*) FROM deals WHERE bid_id=?", (bid_id,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM deals WHERE bid_id=?", (bid_id,)).fetchone()[0] == 1
 
 
 @pytest.mark.parametrize("listing", [(k,d,f) for k in ("cargo","trip") for d in (0,1) for f in ("%Y-%m-%d","%d.%m.%Y")], indirect=True)
@@ -98,4 +86,15 @@ def test_current_route_still_creates_deal_and_removes_public_status(listing, cou
 
 @pytest.mark.parametrize("value", [None, "", "unknown legacy date"])
 def test_missing_legacy_date_preserves_existing_behavior(value):
-    market._require_current_bid_route_date(value)
+    market._require_current_bid_listing({"published_at": value, "created_at": None})
+
+@pytest.mark.parametrize("age", [29, 30, 31])
+def test_listing_lifetime_guard_without_cleanup(age):
+    published = (datetime.utcnow() - timedelta(days=age)).isoformat()
+    row = {"published_at": published, "created_at": published}
+    if age < 30:
+        market._require_current_bid_listing(row)
+    else:
+        with pytest.raises(HTTPException) as caught:
+            market._require_current_bid_listing(row)
+        assert caught.value.status_code == 409

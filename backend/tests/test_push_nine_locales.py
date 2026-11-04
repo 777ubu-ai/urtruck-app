@@ -20,7 +20,10 @@ def fields(text):
 
 
 def test_previous_four_templates_are_unchanged():
-    old = {event: {code: rows[code] for code in ('RU','KK','ZH','EN')} for event, rows in i18n.TEMPLATES.items()}
+    # PR673 добавляет отдельное подтверждение владельцу; прежний каталог
+    # целиком остаётся под прежней контрольной суммой, включая удаление ключей.
+    old = {event: {code: rows[code] for code in ('RU','KK','ZH','EN')}
+           for event, rows in i18n.TEMPLATES.items() if event != 'bid_accept_confirmed'}
     assert hashlib.sha256(json.dumps(old,ensure_ascii=False,sort_keys=True).encode()).hexdigest() == '497ebfbfdd576dffcefdd945f3bd20220d23fef4e6c31e5ebedb291fc600d0ad'
 
 

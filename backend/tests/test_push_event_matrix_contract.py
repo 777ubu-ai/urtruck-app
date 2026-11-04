@@ -35,8 +35,17 @@ def test_bid_created_routes_to_owner_or_trip_driver_with_order_deeplink():
 def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
     # Push-closure track: event_key added for durable-outbox retry; text
     # localized via push_i18n instead of hardcoded RU.
-    assert 'create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)' in MARKET
-    assert 'push_i18n.push_text("bid_accepted", loc, amount=_money' in MARKET
+    # Обычное принятие сохраняет обе доставки до commit, с каноническим URL.
+    import ast
+    accept = next(n for n in ast.parse(MARKET).body if isinstance(n, ast.FunctionDef) and n.name == "accept_bid")
+    accept_calls = [n for n in ast.walk(accept) if isinstance(n, ast.Call)]
+    notices = [n for n in accept_calls if isinstance(n.func, ast.Name) and n.func.id == "create_notification"]
+    assert any(ast.unparse(n.args[0]) == "uid" and ast.literal_eval(n.args[1]) == "bid_accepted"
+               and {kw.arg: ast.unparse(kw.value) for kw in n.keywords}
+                   == {"url": "deal_url", "event_key": "event_key", "conn": "c"} for n in notices)
+    loops = [n for n in ast.walk(accept) if isinstance(n, ast.For)]
+    assert any(ast.unparse(n.iter) == "(result['shipper_id'], result['driver_id'])" for n in loops)
+    assert 'i18n_event = "bid_accepted" if uid == bid["bidder_id"] else "bid_accept_confirmed"' in MARKET
     # Новый contract сохраняет event_key внутри транзакции сделки.
     import ast
     calls = [node for node in ast.walk(ast.parse(MARKET)) if isinstance(node, ast.Call)
@@ -146,6 +155,7 @@ def test_critical_bid_and_deal_status_events_now_carry_typed_payload_and_event_k
     info_calls = re.findall(r"send_to_user\([^\\n]+url=.*?\)", MARKET)
     assert info_calls, "expected marketplace push callsites to exist"
     assert 'send_to_user(recipient, title, text, url=url, kind="bid",' in MARKET
-    assert 'send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",' in MARKET
+    assert 'send_to_user(uid, title, text, url=deal_url, kind="bid", data=data)' in MARKET
+    assert '"deal_id": result["deal_id"], "i18n_event": i18n_event' in MARKET
     # Every one of these critical call sites carries "event_key" in its data.
     assert MARKET.count('"event_key": event_key') >= 4

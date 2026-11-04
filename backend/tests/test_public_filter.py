@@ -127,8 +127,8 @@ def public_cargo_ok_uses_published_at_for_thirty_day_window():
     }
     _check(_public_cargo_ok(legacy, today=today) is True,
            "republished listing uses published_at instead of created_at")
-    _check(_public_cargo_ok({**legacy, "published_at": "2026-04-04", "created_at": "2026-04-04"}, today=today) is True,
-           "exactly 30 days from publication remains visible")
+    _check(_public_cargo_ok({**legacy, "published_at": "2026-04-04", "created_at": "2026-04-04"}, today=today) is False,
+           "exactly 30 days from publication is expired")
     _check(_public_cargo_ok({**legacy, "published_at": "2026-04-03", "created_at": "2026-04-03"}, today=today) is False,
            "older than 30 days is hidden")
 
