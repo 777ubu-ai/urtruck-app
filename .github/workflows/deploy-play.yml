@@ -438,7 +438,7 @@ jobs:
           bundletool_jar="$RUNNER_TEMP/bundletool.jar"
           curl -fsSL "https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar" -o "$bundletool_jar"
           bundle_config=$(java -jar "$bundletool_jar" dump config --bundle "$aab")
-          if ! printf "%s" "$bundle_config" | grep -q "PAGE_ALIGNMENT_16K"; then
+          if ! grep -Fq -- "PAGE_ALIGNMENT_16K" <<< "$bundle_config"; then
             echo "::error::AAB does not request 16 KB ZIP alignment"
             exit 1
           fi
@@ -448,9 +448,9 @@ jobs:
             echo "::error::Snapshot AAB unexpectedly declares background/location-service permission"
             exit 1
           fi
-          printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
-          printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
-          printf '%s\n' "$manifest_xml" | grep -q "android:versionName=\"${URTRUCK_VERSION_NAME}\""
+          grep -Fq -- 'package="com.urtruck.app"' <<< "$manifest_xml"
+          grep -Fq -- "android:versionCode=\"${URTRUCK_VERSION_CODE}\"" <<< "$manifest_xml"
+          grep -Fq -- "android:versionName=\"${URTRUCK_VERSION_NAME}\"" <<< "$manifest_xml"
           unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
           if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
