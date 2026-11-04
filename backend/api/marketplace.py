@@ -3043,7 +3043,13 @@ def accept_bid(bid_id: str, user=Depends(require_active_level(1))):
         amount = _money(committed_amount, _cur)
         recipients = []
         for uid in (result["shipper_id"], result["driver_id"]):
-            loc = push_gateway.get_recipient_locale(uid)
+            # То же соединение: get_conn внутри write-транзакции способен
+            # запустить очистку и ждать собственную блокировку SQLite.
+            locale_row = c.execute(
+                "SELECT locale FROM push_devices WHERE user_id=? AND enabled=1 "
+                "ORDER BY last_seen_at DESC,id DESC LIMIT 1", (uid,),
+            ).fetchone()
+            loc = push_i18n.normalize_locale(locale_row["locale"] if locale_row else None)
             i18n_event = "bid_accepted" if uid == bid["bidder_id"] else "bid_accept_confirmed"
             title, text = push_i18n.push_text(i18n_event, loc, amount=amount)
             data = {"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,

@@ -181,3 +181,10 @@ def test_request_probe_uses_valid_created_at_when_publication_is_invalid(kind):
     assert db._market_expiry_due(c)
     c.execute(f"UPDATE {table} SET published_at=datetime('now')")
     assert not db._market_expiry_due(c), "Старая дата маршрута не запускает полную очистку при каждом запросе"
+
+def test_accept_locale_read_does_not_open_another_database_connection(monkeypatch):
+    table, listing, owner, bidder, bid = seed('cargo')
+    def nested_read(*args):
+        raise AssertionError('Вложенный get_conn может запустить очистку под write lock')
+    monkeypatch.setattr(market.push_gateway, 'get_recipient_locale', nested_read)
+    assert market.accept_bid(bid, user={'id': owner})['ok']
