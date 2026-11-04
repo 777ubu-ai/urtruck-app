@@ -42,8 +42,13 @@ on:
         required: false
         default: false
         type: boolean
+      production_review_only:
+        description: "Production-кандидат только в draft; отправка на проверку вручную через Console"
+        required: false
+        default: false
+        type: boolean
       merged_pr_number:
-        description: "Номер объединённого PR, соответствующего точному SHA внутреннего кандидата"
+        description: "Номер объединённого PR, соответствующего точному SHA проверенного кандидата"
         required: false
         type: string
       source_sha:
@@ -182,8 +187,19 @@ jobs:
           VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
           MERGED_PR_NUMBER: ${{ inputs.merged_pr_number || '' }}
           SOURCE_SHA_OVERRIDE: ${{ inputs.source_sha || '' }}
+          PRODUCTION_REVIEW_ONLY: ${{ inputs.production_review_only && 'true' || 'false' }}
+          RELEASE_STATUS_INPUT: ${{ inputs.status || 'draft' }}
         run: |
           set -euo pipefail
+          # BEGIN_PRODUCTION_REVIEW_GUARD
+          if [ "$PRODUCTION_REVIEW_ONLY" = true ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            test "$GITHUB_REF_NAME" = qa2/integration-candidate
+            test "$API_ENVIRONMENT_INPUT" = production
+            test "$TRACK_INPUT" = production
+            test "$RELEASE_STATUS_INPUT" = draft
+          fi
+          # END_PRODUCTION_REVIEW_GUARD
           if [ -n "${SOURCE_SHA_OVERRIDE:-}" ]; then
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
             [[ "$SOURCE_SHA_OVERRIDE" =~ ^[0-9a-f]{40}$ ]]
@@ -200,8 +216,21 @@ jobs:
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
             test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
-            test "$API_ENVIRONMENT_INPUT" = qa2
-            test "$TRACK_INPUT" = internal
+            # BEGIN_CANDIDATE_TARGET_GUARD
+            if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
+              test "$TRACK_INPUT" = internal
+              test "$PRODUCTION_REVIEW_ONLY" = false
+            elif [ "$API_ENVIRONMENT_INPUT" = production ]; then
+              test "$PRODUCTION_REVIEW_ONLY" = true
+              test "$TRACK_INPUT" = production
+              test "$RELEASE_STATUS_INPUT" = draft
+              echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
+              echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
+            else
+              echo '::error::Неизвестная среда магазинного кандидата'
+              exit 1
+            fi
+            # END_CANDIDATE_TARGET_GUARD
             test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
             [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
             test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
@@ -372,7 +401,7 @@ jobs:
         run: node scripts/validate-play-release-inputs.mjs
 
       - name: Проверить выбранную конфигурацию до компиляции
-        if: ${{ inputs.api_environment == 'qa2' }}
+        if: ${{ inputs.api_environment == 'qa2' || inputs.production_review_only }}
         env:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
