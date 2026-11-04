@@ -141,3 +141,23 @@ test('частота отдачи управления зависит от вр�
   assert.deepEqual(fast.hits, slow.hits);
   assert.ok(fast.yields > 0 && fast.yields < slow.yields);
 });
+
+test('Нью Йорк с пробелом находит тот же город, что Нью-Йорк, сохраняя соседние города и страну', async () => {
+  for (const query of ['Нью Йорк', 'Нью-Йорк', 'New York City']) {
+    const direct = searchPoints(query, { country: 'US' });
+    const city = direct.find(city => city.geonameId === '5128581');
+    assert.ok(city, query);
+    if (query === 'Нью Йорк') assert.equal(direct[0].geonameId, city.geonameId);
+    assert.equal(city.name, 'New York City');
+    assert.equal(city.latitude, 40.71427);
+    assert.equal(city.longitude, -74.00597);
+    assert.deepEqual(await searchPointsAsync(query, { country: 'US' }), direct);
+    assert.equal(searchPoints(query, { country: 'RU' }).length, 0);
+  }
+  assert.ok(searchPoints('Нью Йорк').some(city => city.geonameId === '5106292'), 'West New York остаётся отдельным городом');
+  const city = worldCitiesForCountry('US').find(city => city.geonameId === '5128581');
+  assert.ok(city.aliases.includes('Нью Йорк'));
+  assert.ok(city.aliases.includes('Нью-Йорк'));
+  assert.ok(city.aliases.includes('紐約'));
+  assert.equal(searchPoints('Нью-Йорк', { country: 'US' })[0].geonameId, '5115985', 'прежнее ранжирование дефисного запроса сохраняется');
+});
