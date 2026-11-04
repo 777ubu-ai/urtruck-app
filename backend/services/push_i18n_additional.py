@@ -1,6 +1,14 @@
 """Статические системные push: TR/UZ/KY/TG/BE. Параметры пользователя не переводятся."""
 
-ADDITIONAL_TEMPLATES = {'bid_not_selected': {'TR': ('❌ Teklif seçilmedi', 'Başka bir teklif seçildi. {amount} tutarındaki teklifiniz reddedildi.'),
+ADDITIONAL_TEMPLATES = {
+ 'bid_accept_confirmed': {
+     'TR': ('✅ Anlaşma oluşturuldu', '{amount} tutarındaki teklifi kabul ettiniz. Anlaşma oluşturuldu.'),
+     'UZ': ('✅ Bitim yaratildi', 'Siz {amount} miqdoridagi taklifni qabul qildingiz. Bitim yaratildi.'),
+     'KY': ('✅ Келишим түзүлдү', 'Сиз {amount} өлчөмүндөгү сунушту кабыл алдыңыз. Келишим түзүлдү.'),
+     'TG': ('✅ Аҳд сохта шуд', 'Шумо пешниҳоди {amount}-ро қабул кардед. Аҳд сохта шуд.'),
+     'BE': ('✅ Здзелка створана', 'Вы прынялі прапанову {amount}. Здзелка створана.'),
+ },
+ 'bid_not_selected': {'TR': ('❌ Teklif seçilmedi', 'Başka bir teklif seçildi. {amount} tutarındaki teklifiniz reddedildi.'),
                       'UZ': ('❌ Taklif tanlanmadi', 'Boshqa taklif tanlandi. {amount} miqdoridagi taklifingiz rad etildi.'),
                       'KY': ('❌ Сунуш тандалган жок', 'Башка сунуш тандалды. {amount} өлчөмүндөгү сунушуңуз четке кагылды.'),
                       'TG': ('❌ Пешниҳод интихоб нашуд',
