@@ -19,6 +19,8 @@ const base = { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF_NAME: 'qa2/int
 for (const [name, override, allowed] of [
   ['production допускает только явно выбранный draft', {}, true],
   ['QA2/Internal сохраняет существующий путь', { API_ENVIRONMENT_INPUT: 'qa2', TRACK_INPUT: 'internal', PRODUCTION_REVIEW_ONLY: 'false' }, true],
+  ['пустой новый флаг сохраняет прежний QA2/Internal', { API_ENVIRONMENT_INPUT: 'qa2', TRACK_INPUT: 'internal', PRODUCTION_REVIEW_ONLY: '' }, true],
+  ['пустой флаг не разрешает production', { PRODUCTION_REVIEW_ONLY: '' }, false],
   ['production без явного режима отклоняется', { PRODUCTION_REVIEW_ONLY: 'false' }, false],
   ['completed не может включить публичный выпуск', { RELEASE_STATUS_INPUT: 'completed' }, false],
   ['inProgress не может включить поэтапный выпуск', { RELEASE_STATUS_INPUT: 'inProgress' }, false],

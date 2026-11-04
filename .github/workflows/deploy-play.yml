@@ -192,6 +192,7 @@ jobs:
         run: |
           set -euo pipefail
           # BEGIN_PRODUCTION_REVIEW_GUARD
+          PRODUCTION_REVIEW_ONLY="${PRODUCTION_REVIEW_ONLY:-false}"
           if [ "$PRODUCTION_REVIEW_ONLY" = true ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REF_NAME" = qa2/integration-candidate
