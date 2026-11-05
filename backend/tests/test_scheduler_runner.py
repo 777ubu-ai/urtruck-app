@@ -11,11 +11,12 @@ def test_environment_loader_preserves_external_values_and_pem_escapes(tmp_path):
     assert env['DB_PATH']=='/isolated' and env['APNS_AUTH_KEY_P8']=='first\\nsecond'
 
 
-def test_configuration_check_is_read_only_and_rejects_missing_apns(tmp_path,monkeypatch):
+@pytest.mark.parametrize('environment',['test','qa'])
+def test_configuration_check_is_read_only_and_rejects_missing_apns(tmp_path,monkeypatch,environment):
     path=tmp_path/'db.sqlite'
     with sqlite3.connect(path) as c:
         for table in ['notifications','push_outbox','notification_preferences','notification_event_claims','push_web_delivery_log']:c.execute(f'CREATE TABLE {table}(id INTEGER)')
-    monkeypatch.setenv('URTRUCK_ENV','test');monkeypatch.setenv('DB_PATH',str(path));monkeypatch.setenv('URTRUCK_SCHEDULER_LOCK',str(tmp_path/'lock'))
+    monkeypatch.setenv('URTRUCK_ENV',environment);monkeypatch.setenv('DB_PATH',str(path));monkeypatch.setenv('URTRUCK_SCHEDULER_LOCK',str(tmp_path/'lock'))
     monkeypatch.setenv('URTRUCK_REQUIRE_APNS','1');monkeypatch.setattr(push_gateway.APNsProvider,'_jwt',lambda self:None)
     before=path.read_bytes()
     with pytest.raises(RuntimeError,match='apns_pre_http'):runner.check_configuration()

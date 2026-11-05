@@ -29,6 +29,7 @@ async function openAs(page, session) {
     localStorage.setItem('ur_session', JSON.stringify({ user: { id, role, phone: null } }));
   }, session);
   await page.reload({ waitUntil: 'networkidle' });
+  await H.dismissFirstVisit(page);
   await expect(page.locator(H.tid('bottom-nav'))).toBeVisible({ timeout: 20000 });
 }
 

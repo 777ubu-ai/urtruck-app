@@ -18,7 +18,7 @@ def load_environment(path, environ=None):
 
 
 def check_configuration():
-    if (os.getenv('URTRUCK_ENV') or os.getenv('ENV')) not in ('production','qa2','test'):
+    if (os.getenv('URTRUCK_ENV') or os.getenv('ENV')) not in ('production','qa2','qa','test'):
         raise RuntimeError('scheduler_environment_not_explicit')
     db_path=os.getenv('DB_PATH')
     if not db_path or not os.getenv('URTRUCK_SCHEDULER_LOCK'):

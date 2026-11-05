@@ -35,6 +35,15 @@ async function gotoPhoneScreen(page) {
   await expect(page.locator(tid('auth-legal-consent'))).toBeVisible();
 }
 
+// Первый вход штатно открывает внешнюю ленту поверх Main. Возвращаемся
+// настоящей кнопкой, сохраняя все последующие проверки сделки/навигации.
+async function dismissFirstVisit(page) {
+  await expect(page.getByTestId('bottom-nav')).toBeAttached({ timeout: 20000 });
+  const back = page.getByTestId('external-feed-back');
+  if (await back.isVisible()) await back.click();
+  await expect(page.getByTestId('bottom-nav')).toBeVisible({ timeout: 20000 });
+}
+
 // Ввести код на OtpV2 и, если новый юзер, пройти канонический профиль 2/2.
 // Короткий onboarding собирает обязательные имя, телефон и компанию. Это
 // реальный контракт ProfileV2: без компании роль не должна считаться
@@ -72,6 +81,7 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester', phone = '+770
       await page.locator(tid('profile-v2-cta')).click();
     }
   }
+  await dismissFirstVisit(page);
   await nav.waitFor({ state: 'visible', timeout: 20000 });
 }
 
@@ -97,6 +107,7 @@ async function openAuthenticated(page, token, role) {
     localStorage.setItem('ur_session', JSON.stringify({ user: { id: null, role: sessionRole, phone: null } }));
   }, { sessionToken: token, sessionRole: role });
   await page.reload({ waitUntil: 'networkidle' });
+  await dismissFirstVisit(page);
   await expect(page.locator(tid('bottom-nav'))).toBeVisible({ timeout: 20000 });
 }
 
@@ -170,6 +181,6 @@ async function apiCreateBid(request, token, cargoId, amount = 400000) {
 
 module.exports = {
   BASE, API, BETA_CODE, SHOTS, tid, shot,
-  gotoPhoneScreen, passOtpAndOnboard, emailLogin, openAuthenticated,
+  dismissFirstVisit, gotoPhoneScreen, passOtpAndOnboard, emailLogin, openAuthenticated,
   apiEmailToken, apiCreateCargo, apiCreateBid, phoneForEmail,
 };

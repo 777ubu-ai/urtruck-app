@@ -1,5 +1,6 @@
 // Только loopback/synthetic fixtures; никаких production API/данных.
 const { test, expect } = require('@playwright/test');
+const { dismissFirstVisit } = require('./helpers/webflow');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -86,6 +87,7 @@ async function fixture(page, { role, initialStatus = 'at_border', failFirst = fa
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
   });
   await page.goto(base, { waitUntil: 'networkidle' });
+  await dismissFirstVisit(page);
   await expect(page.getByTestId('bottom-nav-deals')).toBeVisible({ timeout: 20000 });
   // Дожидаемся асинхронной проверки browser permission: баннер сдвигает вкладки.
   await expect(page.getByTestId('push-permission-banner')).toBeVisible();

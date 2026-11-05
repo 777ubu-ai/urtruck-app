@@ -32,3 +32,15 @@ for(const role of ['driver','client'])test(`настройки напомина�
  await page.getByRole('switch',{name:'Нет предложений',exact:true}).click();await expect(page.getByRole('switch',{name:'Нет предложений',exact:true})).not.toBeChecked();
  expect(errors).toEqual([]);
 });
+
+for(const role of ['driver','client'])test(`первый вход ${role}: внешняя лента закрывается штатной кнопкой`,async({page,request})=>{
+ const token=await H.apiEmailToken(request,`first-visit-${role}-${Date.now()}@urtruck.qa`,role);
+ const me=await(await request.get(`${H.API}/register/me`,{headers:{Authorization:`Bearer ${token}`}})).json();
+ await page.goto(H.BASE);
+ await page.evaluate(({token,me})=>{
+  localStorage.setItem('ur_reg_token',token);localStorage.setItem('ur_session',JSON.stringify({user:{id:me.id,role:me.role}}));
+  localStorage.setItem('ur_verification_level','2');localStorage.removeItem(`ur_external_feed_first_visit_v1:${me.id}`);
+ },{token,me});
+ await page.reload();await expect(page.getByTestId('external-feed-back')).toBeVisible({timeout:20000});
+ await H.dismissFirstVisit(page);await expect(page.getByTestId('bottom-nav-deals')).toBeVisible();
+});
