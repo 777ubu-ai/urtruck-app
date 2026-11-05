@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS push_outbox (
   -- Process identity is diagnostic-only and lets a lease watchdog explain
   -- which worker abandoned a claim without exposing delivery payloads.
   locked_by TEXT,
+  claim_token TEXT,
   UNIQUE(event_id, recipient_user_id)
 );
 

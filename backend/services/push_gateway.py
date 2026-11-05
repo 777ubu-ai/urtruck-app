@@ -13,6 +13,7 @@ import os
 import random
 import re
 import time
+import uuid
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -698,7 +699,7 @@ def _reclaim_stale_processing(c) -> int:
     cur = c.execute(
         "UPDATE push_outbox SET status='retry', attempt_count=attempt_count+1, "
         "next_attempt_at=datetime(CURRENT_TIMESTAMP, '+10 seconds'), "
-        "last_error='worker_lease_expired', claimed_at=NULL, locked_by=NULL "
+        "last_error='worker_lease_expired', claimed_at=NULL, locked_by=NULL, claim_token=NULL "
         "WHERE status='processing' AND id > ? AND claimed_at IS NOT NULL "
         "AND claimed_at <= datetime(CURRENT_TIMESTAMP, ?) "
         "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
@@ -717,7 +718,7 @@ def _expire_due_events(c) -> int:
     """
     cur = c.execute(
         "UPDATE push_outbox SET status='expired', failed_at=CURRENT_TIMESTAMP, "
-        "last_error='notification_expired', claimed_at=NULL, locked_by=NULL "
+        "last_error='notification_expired', claimed_at=NULL, locked_by=NULL, claim_token=NULL "
         "WHERE status IN ('pending','retry') AND expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP"
     )
     return cur.rowcount
@@ -759,13 +760,14 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
     `WHERE status='pending'` clause plus checking `rowcount` is what makes
     this safe under concurrent callers — see test for two workers racing the
     same row."""
+    token = uuid.uuid4().hex
     with get_conn() as c:
         cur = c.execute(
-            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=? "
+            "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=?, claim_token=? "
             "WHERE id=? AND status IN ('pending','retry') AND id > ? "
             "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
             "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
-            (WORKER_ID, row_id, configured_outbox_cutoff_id()),
+            (WORKER_ID, token, row_id, configured_outbox_cutoff_id()),
         )
         if cur.rowcount != 1:
             return None
@@ -782,42 +784,49 @@ def claim_inline_event(event_id: str, user_id: str):
 
 def _finish_row(
     row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False,
-    retryable: bool = True,
+    retryable: bool = True, claim_token: Optional[str] = None,
 ) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
     that always raises still hits the same MAX_OUTBOX_ATTEMPTS→dead ceiling
     instead of retrying forever with no backoff."""
+    if not claim_token:
+        return "stale"
     with get_conn() as c:
+        row = c.execute("SELECT status,attempt_count FROM push_outbox WHERE id=? AND status='processing' AND claim_token=?",
+                        (row_id, claim_token)).fetchone()
+        if not row:
+            return "stale"
+        attempt = max(int(attempt), int(row["attempt_count"] or 0))
         if sent:
             c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
-                (attempt, row_id),
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, attempt_count=?, claimed_at=NULL, locked_by=NULL, claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                (attempt, row_id, claim_token),
             )
-            return "sent"
+            return "sent" if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
         if not retryable:
             terminal_status = "sent_partial" if partially_sent else "failed"
             c.execute(
-                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
-                (terminal_status, attempt, (error or "non_retryable_provider_error")[:500], row_id),
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL, claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                (terminal_status, attempt, (error or "non_retryable_provider_error")[:500], row_id, claim_token),
             )
-            return "partial" if partially_sent else "failed"
+            return ("partial" if partially_sent else "failed") if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
         if attempt >= MAX_OUTBOX_ATTEMPTS:
             terminal_status = "sent_partial" if partially_sent else "dead"
             c.execute(
-                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
-                (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id),
+                "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, attempt_count=?, last_error=?, claimed_at=NULL, locked_by=NULL, claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                (terminal_status, attempt, (error or "delivery_not_confirmed")[:500], row_id, claim_token),
             )
-            return "partial" if partially_sent else "dead"
+            return ("partial" if partially_sent else "dead") if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
         delay = _retry_delay_seconds(attempt)
         c.execute(
-            "UPDATE push_outbox SET status='retry', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL, locked_by=NULL WHERE id=?",
-            (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id),
+            "UPDATE push_outbox SET status='retry', attempt_count=?, next_attempt_at=datetime(CURRENT_TIMESTAMP, ?), last_error=?, claimed_at=NULL, locked_by=NULL, claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+            (attempt, f"+{delay} seconds", (error or "delivery_not_confirmed")[:500], row_id, claim_token),
         )
-        return "retry"
+        return "retry" if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
 
 
-def _skip_row_without_devices(row_id: int, attempt: int) -> str:
+def _skip_row_without_devices(row_id: int, attempt: int, claim_token: str) -> str:
     """Terminate an outbox row when the recipient has no registered device.
 
     This is not a provider failure: there was no delivery target to call. The
@@ -828,10 +837,10 @@ def _skip_row_without_devices(row_id: int, attempt: int) -> str:
     with get_conn() as c:
         c.execute(
             "UPDATE push_outbox SET status='skipped_no_devices', failed_at=CURRENT_TIMESTAMP, "
-            "attempt_count=?, last_error='no_active_devices', claimed_at=NULL, locked_by=NULL WHERE id=?",
-            (attempt, row_id),
+            "attempt_count=MAX(attempt_count,?), last_error='no_active_devices', claimed_at=NULL, locked_by=NULL, claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+            (attempt, row_id, claim_token),
         )
-    return "skipped"
+        return "skipped" if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
 
 
 def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, int]:
@@ -881,16 +890,16 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             reason = delivery_block_reason(row["recipient_user_id"], payload.get("data") or {})
             if reason:
                 with get_conn() as c:
-                    c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,attempt_count=?, "
-                              "claimed_at=NULL,locked_by=NULL WHERE id=? AND locked_by=?",
-                              (reason,attempt,row["id"],WORKER_ID))
+                    c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,attempt_count=MAX(attempt_count,?), "
+                              "claimed_at=NULL,locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                              (reason,attempt,row["id"],row["claim_token"]))
                 stats["skipped"] += 1
                 continue
             if notification_already_read(row["recipient_user_id"], payload.get("data") or {}):
                 with get_conn() as c:
                     c.execute("UPDATE push_outbox SET status='skipped_read', last_error='read_before_delivery', "
-                              "attempt_count=?, claimed_at=NULL, locked_by=NULL WHERE id=? AND locked_by=?",
-                              (attempt, row["id"], WORKER_ID))
+                              "attempt_count=MAX(attempt_count,?), claimed_at=NULL, locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                              (attempt, row["id"], row["claim_token"]))
                 stats["skipped"] += 1
                 continue
 
@@ -953,7 +962,7 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             # did not yet succeed.
             total_devices = int(result.get("devices", 0) or 0)
             if total_devices == 0 and web_targets == 0:
-                outcome = _skip_row_without_devices(row["id"], attempt)
+                outcome = _skip_row_without_devices(row["id"], attempt, row["claim_token"])
             else:
                 confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
                 fully_delivered = confirmed >= total_devices and web_sent >= web_targets
@@ -968,20 +977,22 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                     error=failure_reason,
                     partially_sent=confirmed > 0 or web_sent > 0,
                     retryable=bool(result.get("retryable", True)) or web_sent < web_targets,
+                    claim_token=row["claim_token"],
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
             # its own try/except, etc.) — must not crash the worker or loop
             # forever without backoff; goes through the exact same
             # attempt/backoff/dead ladder as an ordinary delivery failure.
-            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc), retryable=True)
+            outcome = _finish_row(row["id"], attempt, sent=False, error=str(exc), retryable=True,
+                                  claim_token=row["claim_token"])
         stats[outcome] += 1
     with get_conn() as c:
         _record_worker_heartbeat(c, picked=stats["picked"])
     return stats
 
 
-def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
+def mark_event_sent(event_id: Optional[str], recipient_user_id: str, claim_token: Optional[str] = None) -> bool:
     """Called by the immediate/inline fast path right after a successful
     native send. Flips a still-pending/processing outbox row for this exact
     (event_id, recipient) straight to 'sent' so process_pending_once's
@@ -991,14 +1002,14 @@ def mark_event_sent(event_id: Optional[str], recipient_user_id: str) -> bool:
     used for this send (nothing was ever enqueued) or the row is already
     terminal (sent/dead) — never resurrects or re-marks a dead row.
     """
-    if not event_id or not recipient_user_id:
+    if not event_id or not recipient_user_id or not claim_token:
         return False
     try:
         with get_conn() as c:
             cur = c.execute(
-                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
-                "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
-                (event_id, recipient_user_id),
+                "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL,claim_token=NULL "
+                "WHERE event_id=? AND recipient_user_id=? AND status='processing' AND claim_token=?",
+                (event_id, recipient_user_id, claim_token),
             )
             return cur.rowcount > 0
     except Exception:

@@ -255,17 +255,54 @@ def test_partial_delivery_is_not_reported_as_dead_after_retry_limit():
     uid, _ = _make_user_with_device()
     ek = _enqueue(uid, "evt-partial-1")
     row = _row(ek, uid)
+    claimed = push_gateway._claim_row(row["id"])
     outcome = push_gateway._finish_row(
         row["id"],
         push_gateway.MAX_OUTBOX_ATTEMPTS,
         sent=False,
         error="InvalidCredentials:1",
         partially_sent=True,
+        claim_token=claimed["claim_token"],
     )
     assert outcome == "partial"
     row = _row(ek, uid)
     assert row["status"] == "sent_partial"
     assert row["last_error"] == "InvalidCredentials:1"
+
+
+def test_claim_lease_fences_late_failure_and_success_and_preserves_attempt_count():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-claim-fence-1")
+    row = _row(ek, uid)
+    first = push_gateway._claim_row(row["id"])
+    with get_conn() as c:
+        c.execute("UPDATE push_outbox SET claimed_at=datetime(CURRENT_TIMESTAMP,'-10 minutes') WHERE id=?",(row["id"],))
+        push_gateway._reclaim_stale_processing(c)
+        c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE id=?",(row["id"],))
+    second = push_gateway._claim_row(row["id"])
+    assert second["claim_token"] != first["claim_token"]
+    assert push_gateway._finish_row(row["id"],2,True,None,claim_token=second["claim_token"]) == "sent"
+    assert push_gateway._finish_row(row["id"],1,False,"late failure",claim_token=first["claim_token"]) == "stale"
+    assert push_gateway._finish_row(row["id"],1,True,None,claim_token=first["claim_token"]) == "stale"
+    final = _row(ek,uid)
+    assert final["status"] == "sent" and final["attempt_count"] == 2
+
+
+def test_repeated_claim_in_same_pid_gets_new_generation():
+    uid, _ = _make_user_with_device()
+    ek = _enqueue(uid, "evt-claim-generation-1")
+    row = _row(ek,uid)
+    first = push_gateway._claim_row(row["id"])
+    with get_conn() as c:
+        c.execute("UPDATE push_outbox SET claimed_at=datetime(CURRENT_TIMESTAMP,'-10 minutes') WHERE id=?",(row["id"],))
+        push_gateway._reclaim_stale_processing(c)
+        c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE id=?",(row["id"],))
+    second = push_gateway._claim_row(row["id"])
+    assert first["locked_by"] == second["locked_by"]
+    assert first["claim_token"] != second["claim_token"]
+    assert push_gateway._finish_row(row["id"],1,False,"stale",claim_token=first["claim_token"]) == "stale"
+    assert push_gateway._finish_row(row["id"],2,False,"current",claim_token=second["claim_token"]) == "retry"
+    assert _row(ek,uid)["attempt_count"] == 2
 
 
 def test_6_poison_event_does_not_block_following_event():

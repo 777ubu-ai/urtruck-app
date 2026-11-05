@@ -128,6 +128,8 @@ def _init_schema():
                 c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
             if "locked_by" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
+            if "claim_token" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN claim_token TEXT")
 
         schema_sql = schema.read_text(encoding="utf-8")
         if defer_receipt_index:
@@ -290,6 +292,8 @@ def _migrate_ownership_columns():
                 c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
             if "locked_by" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
+            if "claim_token" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN claim_token TEXT")
         except Exception:
             pass
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")

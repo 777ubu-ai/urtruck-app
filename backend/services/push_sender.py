@@ -83,6 +83,7 @@ def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[i
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE,
                 vapid_claims={"sub": VAPID_SUBJECT},
+                timeout=20,
             )
             if event_id:
                 with get_conn() as c:
@@ -163,7 +164,7 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
         web_sent = _send_web(user_id, title, body, data, badge)
         native = _send_native(user_id, title, body, data, badge, provider)
     except Exception as exc:
-        push_gateway._finish_row(claimed["id"], attempt, False, type(exc).__name__)
+        push_gateway._finish_row(claimed["id"], attempt, False, type(exc).__name__, claim_token=claimed["claim_token"])
         raise
     sent = web_sent + int(native.get("sent") or 0)
     native_devices = int(native.get("devices") or 0)
@@ -180,11 +181,12 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
     if native.get("suppressed_policy"):
         with get_conn() as c:
-            c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,claimed_at=NULL,locked_by=NULL WHERE id=?",
-                      (native["suppressed_policy"],claimed["id"]))
+            c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,claimed_at=NULL,locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                      (native["suppressed_policy"],claimed["id"],claimed["claim_token"]))
     else:
         push_gateway._finish_row(claimed["id"], attempt, fully_delivered, safe_error,
-                                 partially_sent=bool(native_sent or web_sent), retryable=native_retryable)
+                                 partially_sent=bool(native_sent or web_sent), retryable=native_retryable,
+                                 claim_token=claimed["claim_token"])
     _log(event_id, user_id, "native", "sent" if sent else "not_sent", native.get("error"))
     return {
         "sent": sent,
