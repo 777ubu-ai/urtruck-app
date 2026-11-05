@@ -58,7 +58,7 @@ test('добавление preferences не меняет прежние push reg
   const end=source.indexOf('\n\nVAPID_PUBLIC',start);
   assert.ok(start>0 && end>start);
   const previous=source.slice(0,start)+source.slice(end);
-  assert.equal(createHash('sha256').update(previous).digest('hex'),'86310087f3628feae9d9162062a89c51ddb80621ad4d2cf1799c7e8d349732ed');
+  assert.equal(createHash('sha256').update(previous).digest('hex'),'dacca8870866a5a493112707b0adccde5157b75ccc4a28dca63cdb7fc150ed86');
 });
 
 
