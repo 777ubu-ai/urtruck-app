@@ -45,6 +45,11 @@ def count(table, where='1=1'):
     with db.get_conn() as c:return c.execute('SELECT COUNT(*) FROM '+table+' WHERE '+where).fetchone()[0]
 
 
+def outbox_row(event_id, user_id):
+    with db.get_conn() as c:
+        return c.execute("SELECT * FROM push_outbox WHERE event_id=? AND recipient_user_id=?", (event_id, user_id)).fetchone()
+
+
 def test_repeat_and_after_21_hours_are_one_event_and_delivery(env):
     cargo()
     assert jobs.no_bids_job()==1
@@ -325,3 +330,123 @@ def test_web_attempt_is_bounded_below_five_minute_claim_lease(env,monkeypatch):
     assert sender._send_web('owner','Title','Body',{'event_id':'bounded-web'},1)==sender.WEB_PUSH_TARGETS_PER_ATTEMPT
     assert len(calls)==10 and all(call['timeout']==20 for call in calls)
     assert sender.WEB_PUSH_TARGETS_PER_ATTEMPT*sender.WEB_PUSH_TIMEOUT_SECONDS < 5*60
+
+
+def _insert_web_targets(user_id, count):
+    with db.get_conn() as c:
+        c.executemany(
+            "INSERT INTO push_subscriptions(user_id,endpoint,p256dh,auth,active) VALUES (?,?,?,?,1)",
+            [(user_id, f"https://example.invalid/sub-{i:03d}", "key", "auth") for i in range(count)],
+        )
+
+
+def test_web_push_advances_past_confirmed_prefix_for_eleven_subscriptions(env, monkeypatch):
+    import sys, types
+    _insert_web_targets('owner', 11)
+    calls = []
+    monkeypatch.setattr(sender, 'PUSH_MOCK_WEB', False)
+    monkeypatch.setitem(sys.modules, 'pywebpush', types.SimpleNamespace(
+        webpush=lambda **kw: calls.append(kw['subscription_info']['endpoint'])
+    ))
+
+    # Five attempts reproduce the old bug: slicing before delivery-log lookup
+    # would invoke only the first ten subscriptions on every call.
+    for _ in range(5):
+        sender._send_web('owner', 'Title', 'Body', {'event_id': 'web-11'}, 1)
+
+    assert len(calls) == 11
+    assert len(set(calls)) == 11
+    assert count('push_web_delivery_log', "event_id='web-11'") == 11
+
+
+def test_web_push_more_than_fifty_targets_resumes_from_persistent_ledger(env, monkeypatch):
+    import sys, types
+    _insert_web_targets('owner', 61)
+    calls = []
+    monkeypatch.setattr(sender, 'PUSH_MOCK_WEB', False)
+    monkeypatch.setitem(sys.modules, 'pywebpush', types.SimpleNamespace(
+        webpush=lambda **kw: calls.append(kw['subscription_info']['endpoint'])
+    ))
+
+    for batch in range(7):
+        result = sender._send_web_batch('owner', 'Title', 'Body', {'event_id': 'web-61'}, 1)
+        assert result['failed'] == 0
+        assert result['sent'] == (10 if batch < 6 else 1 if batch == 6 else 0)
+        if batch == 2:
+            # The delivery ledger, not process-local cursor state, owns progress.
+            import importlib
+            importlib.reload(sender)
+
+    assert len(calls) == 61
+    assert len(set(calls)) == 61
+    assert count('push_web_delivery_log', "event_id='web-61'") == 61
+
+
+def test_successful_web_batches_do_not_consume_provider_retry_budget(env, monkeypatch):
+    import sys, types
+    _insert_web_targets('owner', 61)
+    calls = []
+    monkeypatch.setattr(sender, 'PUSH_MOCK_WEB', False)
+    monkeypatch.setitem(sys.modules, 'pywebpush', types.SimpleNamespace(
+        webpush=lambda **kw: calls.append(kw['subscription_info']['endpoint'])
+    ))
+    event_id = 'web-progress-budget'
+    gateway.enqueue_event(event_id, 'test.event', 'owner', {'title': 'T', 'body': 'B', 'data': {}})
+
+    for batch in range(7):
+        stats = gateway.process_pending_once()
+        assert stats['picked'] == 1
+        if batch < 6:
+            assert stats['retry'] == 1
+            row = outbox_row(event_id, 'owner')
+            assert row['status'] == 'retry' and row['attempt_count'] == 0
+            with db.get_conn() as c:
+                c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE event_id=?", (event_id,))
+            if batch == 2:
+                import importlib
+                importlib.reload(sender)
+        else:
+            assert stats['sent'] == 1
+
+    row = outbox_row(event_id, 'owner')
+    assert row['status'] == 'sent' and row['attempt_count'] == 1
+    assert len(calls) == 61 and len(set(calls)) == 61
+    assert count('push_web_delivery_log', f"event_id='{event_id}'") == 61
+    assert gateway.process_pending_once()['picked'] == 0
+
+
+def test_web_partial_failure_retries_only_unconfirmed_targets(env, monkeypatch):
+    import sys, types
+    _insert_web_targets('owner', 11)
+    calls = []
+    failed_once = set()
+    monkeypatch.setattr(sender, 'PUSH_MOCK_WEB', False)
+
+    def webpush(**kw):
+        endpoint = kw['subscription_info']['endpoint']
+        calls.append(endpoint)
+        if endpoint.endswith('sub-000') and endpoint not in failed_once:
+            failed_once.add(endpoint)
+            raise TimeoutError('synthetic timeout')
+
+    monkeypatch.setitem(sys.modules, 'pywebpush', types.SimpleNamespace(webpush=webpush))
+    event_id = 'web-partial-failure'
+    gateway.enqueue_event(event_id, 'test.event', 'owner', {'title': 'T', 'body': 'B', 'data': {}})
+
+    first = gateway.process_pending_once()
+    assert first['retry'] == 1
+    row = outbox_row(event_id, 'owner')
+    assert row['attempt_count'] == 1
+    with db.get_conn() as c:
+        c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE event_id=?", (event_id,))
+
+    assert gateway.process_pending_once()['sent'] == 1
+    row = outbox_row(event_id, 'owner')
+    assert row['status'] == 'sent'
+    assert count('push_web_delivery_log', f"event_id='{event_id}'") == 11
+    # Ten targets were tried in batch one; only the failed first target and
+    # the never-tried eleventh target were eligible for the next batch.
+    assert calls.count('https://example.invalid/sub-001') == 1
+    assert calls.count('https://example.invalid/sub-010') == 1
+    assert calls.count('https://example.invalid/sub-000') == 2
+    assert len(calls) == 12

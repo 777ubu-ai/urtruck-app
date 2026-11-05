@@ -462,7 +462,7 @@ def test_11_immediate_success_prevents_worker_duplicate(monkeypatch):
         calls["native"] += 1
         return {"sent": 1, "devices": 1, "already_delivered": 0, "errors": {}}
 
-    monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
+    monkeypatch.setattr(push_sender, "_send_web_batch", lambda *a, **k: {"sent": 0, "attempted": 0, "failed": 0, "remaining": 0})
     monkeypatch.setattr(push_sender, "_send_native", fake_send_native)
 
     result = push_sender.send(
@@ -488,7 +488,7 @@ def test_12_immediate_permanent_native_error_never_enters_retry(monkeypatch):
     from services import push_sender
 
     uid, _ = _make_user_with_device()
-    monkeypatch.setattr(push_sender, "_send_web", lambda *a, **k: 0)
+    monkeypatch.setattr(push_sender, "_send_web_batch", lambda *a, **k: {"sent": 0, "attempted": 0, "failed": 0, "remaining": 0})
     monkeypatch.setattr(
         push_sender,
         "_send_native",

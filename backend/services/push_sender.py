@@ -51,36 +51,58 @@ def _log(event_id: Optional[str], user_id: str, provider: str, status: str, erro
 def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
     with get_conn() as c:
         rows = c.execute(
-            "SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ? AND active = 1",
+            "SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ? AND active = 1 ORDER BY id ASC",
             (user_id,),
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
-    # Ten bounded HTTP sends fit inside the five-minute outbox lease; any
-    # remaining subscriptions stay unlogged and are picked up on retry.
-    subs = _web_subscriptions(user_id)[:WEB_PUSH_TARGETS_PER_ATTEMPT]
+def _pending_web_subscriptions(user_id: str, event_id: Optional[str]) -> list[dict[str, Any]]:
+    """Return unresolved active endpoints in a stable order before batching."""
+    subs = _web_subscriptions(user_id)
+    if not event_id or not subs:
+        return subs
+    with get_conn() as c:
+        delivered = {
+            int(row[0]) for row in c.execute(
+                "SELECT subscription_id FROM push_web_delivery_log WHERE event_id=? AND user_id=?",
+                (event_id, user_id),
+            ).fetchall()
+        }
+    return [sub for sub in subs if int(sub["id"]) not in delivered]
+
+
+def _record_web_delivered(event_id: Optional[str], user_id: str, subscription_id: int) -> None:
+    if not event_id:
+        return
+    with get_conn() as c:
+        c.execute(
+            "INSERT OR IGNORE INTO push_web_delivery_log(event_id,user_id,subscription_id) VALUES(?,?,?)",
+            (event_id, user_id, subscription_id),
+        )
+
+
+def _send_web_batch(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> dict[str, Any]:
+    event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
+    pending = _pending_web_subscriptions(user_id, event_id)
+    subs = pending[:WEB_PUSH_TARGETS_PER_ATTEMPT]
+    result = {"sent": 0, "attempted": 0, "failed": 0, "remaining": len(pending) - len(subs)}
     if not subs:
-        return 0
+        return result
     if PUSH_MOCK_WEB:
-        return len(subs)
+        for sub in subs:
+            _record_web_delivered(event_id, user_id, int(sub["id"]))
+        result.update(sent=len(subs), attempted=len(subs))
+        return result
     try:
         from pywebpush import webpush
     except Exception:
-        return 0
+        result.update(attempted=len(subs), failed=len(subs), remaining=len(pending))
+        return result
     payload = json.dumps({"title": title, "body": body, "data": data or {},
                           "url": (data or {}).get("url") or "/", "badge": badge})
-    sent = 0
+    sent = failed = 0
     for sub in subs:
-        event_id = data.get("event_id") or data.get("event_key")
-        if event_id:
-            with get_conn() as c:
-                prior = c.execute("SELECT 1 FROM push_web_delivery_log WHERE event_id=? AND user_id=? AND subscription_id=?",
-                                  (event_id,user_id,sub["id"])).fetchone()
-            if prior:
-                sent += 1
-                continue
         try:
             webpush(
                 subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
@@ -89,14 +111,21 @@ def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[i
                 vapid_claims={"sub": VAPID_SUBJECT},
                 timeout=WEB_PUSH_TIMEOUT_SECONDS,
             )
-            if event_id:
-                with get_conn() as c:
-                    c.execute("INSERT OR IGNORE INTO push_web_delivery_log(event_id,user_id,subscription_id) VALUES(?,?,?)",
-                              (event_id,user_id,sub["id"]))
+            _record_web_delivered(event_id, user_id, int(sub["id"]))
             sent += 1
         except Exception:
             log.warning("web push failed")
-    return sent
+            failed += 1
+    # Re-read the ledger so concurrent completion or a retry after a process
+    # restart advances to the next unresolved endpoint rather than a fixed prefix.
+    remaining = len(_pending_web_subscriptions(user_id, event_id))
+    result.update(sent=sent, attempted=len(subs), failed=failed, remaining=remaining)
+    return result
+
+
+def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
+    """Compatibility wrapper: deliver one bounded batch and return its successes."""
+    return int(_send_web_batch(user_id, title, body, data, badge)["sent"])
 
 
 def _send_native(user_id: str, title: str, body: str, data: dict, badge: Optional[int], provider: Optional[str] = None) -> dict[str, Any]:
@@ -165,7 +194,8 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
         return {"sent": 0, "total": 0, "queued": True, "duplicate": True, "event_id": event_id}
     attempt = int(claimed.get("attempt_count") or 0) + 1
     try:
-        web_sent = _send_web(user_id, title, body, data, badge)
+        web_batch = _send_web_batch(user_id, title, body, data, badge)
+        web_sent = int(web_batch["sent"])
         native = _send_native(user_id, title, body, data, badge, provider)
     except Exception as exc:
         push_gateway._finish_row(claimed["id"], attempt, False, type(exc).__name__, claim_token=claimed["claim_token"])
@@ -179,10 +209,10 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     # owns the retry.  If the provider classified the remaining failure as
     # permanent, close it truthfully now instead of scheduling futile retry.
     web_targets = len(_web_subscriptions(user_id))
-    fully_delivered = (native_devices > 0 or web_targets > 0) and native_sent >= native_devices and web_sent >= web_targets
-    native_retryable = bool(native.get("retryable", True)) or web_sent < web_targets
+    fully_delivered = (native_devices > 0 or web_targets > 0) and native_sent >= native_devices and web_batch["remaining"] == 0
+    native_retryable = bool(native.get("retryable", True)) or web_batch["failed"] > 0
     native_errors = native.get("errors") or {}
-    safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
+    safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or ("web_push_failed" if web_batch["failed"] else "non_retryable_provider_error")
     if native.get("suppressed_policy"):
         with get_conn() as c:
             c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,claimed_at=NULL,locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
@@ -190,7 +220,9 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     else:
         push_gateway._finish_row(claimed["id"], attempt, fully_delivered, safe_error,
                                  partially_sent=bool(native_sent or web_sent), retryable=native_retryable,
-                                 claim_token=claimed["claim_token"])
+                                 claim_token=claimed["claim_token"],
+                                 progress_only=(web_batch["remaining"] > 0 and web_batch["failed"] == 0
+                                                and native_sent >= native_devices and not native_errors))
     _log(event_id, user_id, "native", "sent" if sent else "not_sent", native.get("error"))
     return {
         "sent": sent,

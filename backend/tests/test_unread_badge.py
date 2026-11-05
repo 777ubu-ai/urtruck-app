@@ -224,15 +224,12 @@ def test_inv6_only_chat_kind_sets_badge():
 
     captured = {}
 
-    def fake_web(uid, title, body, data, url):
-        return 0
-
     def fake_native(uid, title, body, data, badge=None, provider=None):
         captured["badge"] = badge
         return {"sent": 0, "devices": 0, "already_delivered": 0}
 
-    orig_web, orig_native = push_sender._send_web, push_sender._send_native
-    push_sender._send_web, push_sender._send_native = fake_web, fake_native
+    orig_web, orig_native = push_sender._send_web_batch, push_sender._send_native
+    push_sender._send_web_batch, push_sender._send_native = lambda *a, **k: {"sent": 0, "attempted": 0, "failed": 0, "remaining": 0}, fake_native
     try:
         # Вариант 2: badge = чат + уведомления для ЛЮБОГО kind.
         push_sender.send(o, "t", "b", kind="chat", data={"type": "chat_message"})
@@ -240,7 +237,7 @@ def test_inv6_only_chat_kind_sets_badge():
         push_sender.send(o, "t", "b", kind="bid", data={"type": "new_bid"})
         bid_badge = captured.get("badge")
     finally:
-        push_sender._send_web, push_sender._send_native = orig_web, orig_native
+        push_sender._send_web_batch, push_sender._send_native = orig_web, orig_native
 
     # У получателя o: 1 непрочитанный чат + 0 уведомлений (в тесте notifications
     # не создаются) → badge = 1 для обоих пушей (единый сигнал «всё новое»).
