@@ -16,6 +16,8 @@ from database.db import get_conn
 from services import push_gateway
 
 log = logging.getLogger(__name__)
+WEB_PUSH_TIMEOUT_SECONDS = 20
+WEB_PUSH_TARGETS_PER_ATTEMPT = 10
 PUSH_MOCK_WEB = (os.getenv("PUSH_MOCK_WEB") or "").lower() in {"1", "true", "yes"}
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
@@ -56,7 +58,9 @@ def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
 
 
 def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
-    subs = _web_subscriptions(user_id)
+    # Ten bounded HTTP sends fit inside the five-minute outbox lease; any
+    # remaining subscriptions stay unlogged and are picked up on retry.
+    subs = _web_subscriptions(user_id)[:WEB_PUSH_TARGETS_PER_ATTEMPT]
     if not subs:
         return 0
     if PUSH_MOCK_WEB:
@@ -83,7 +87,7 @@ def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[i
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE,
                 vapid_claims={"sub": VAPID_SUBJECT},
-                timeout=20,
+                timeout=WEB_PUSH_TIMEOUT_SECONDS,
             )
             if event_id:
                 with get_conn() as c:
