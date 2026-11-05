@@ -232,6 +232,20 @@ jobs:
             tests/e2e/urtruck-runtime-crash-regression.spec.js \
             tests/e2e/urtruck-deal-confirmation.spec.js \
             tests/e2e/publication-session.spec.js
+      - name: Настройки уведомлений и первый вход с внешней лентой
+        env:
+          EXPO_PUBLIC_IS_BETA: 'true'
+          EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
+          URTRUCK_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+          E2E_BASE: http://127.0.0.1:4599
+          E2E_BASE_URL: http://127.0.0.1:4599
+          E2E_BETA_CODE: '0000'
+        run: |
+          npx expo export --platform web --clear
+          node scripts/finalize-web-export.mjs
+          npx playwright test --config playwright.config.js \
+            tests/e2e/notification-preferences.spec.js \
+            tests/e2e/urtruck-deal-mvp.spec.js
       - name: Повтор публикации после потери ответа и перезапуска
         run: |
           set -euo pipefail

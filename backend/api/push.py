@@ -38,6 +38,31 @@ from services import push_sender
 push_router = APIRouter()
 
 
+class NotificationPreferencesIn(BaseModel):
+    no_bids: Optional[bool] = None
+    inactivity: Optional[bool] = None
+    listing_lifecycle: Optional[bool] = None
+
+
+@push_router.get("/preferences")
+def get_notification_preferences(user=Depends(get_user)):
+    from services.notification_policy import preferences
+    return {"preferences": preferences(user["id"])}
+
+
+@push_router.patch("/preferences")
+def update_notification_preferences(body: NotificationPreferencesIn, user=Depends(get_user)):
+    from services.notification_policy import preferences, CATEGORIES
+    values = body.model_dump(exclude_none=True, exclude_unset=True)
+    with get_conn() as c:
+        c.execute("INSERT OR IGNORE INTO notification_preferences(user_id) VALUES(?)", (user["id"],))
+        for key in CATEGORIES:
+            if key in values:
+                c.execute(f"UPDATE notification_preferences SET {key}=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
+                          (int(values[key]), user["id"]))
+        return {"preferences": preferences(user["id"], c)}
+
+
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@urtruck.kz")
@@ -103,6 +128,8 @@ def _init_schema():
                 c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
             if "locked_by" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
+            if "claim_token" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN claim_token TEXT")
 
         schema_sql = schema.read_text(encoding="utf-8")
         if defer_receipt_index:
@@ -265,6 +292,8 @@ def _migrate_ownership_columns():
                 c.execute("ALTER TABLE push_outbox ADD COLUMN collapse_key TEXT")
             if "locked_by" not in outbox_cols:
                 c.execute("ALTER TABLE push_outbox ADD COLUMN locked_by TEXT")
+            if "claim_token" not in outbox_cols:
+                c.execute("ALTER TABLE push_outbox ADD COLUMN claim_token TEXT")
         except Exception:
             pass
         c.execute("CREATE INDEX IF NOT EXISTS idx_push_outbox_status_next ON push_outbox(status, next_attempt_at)")

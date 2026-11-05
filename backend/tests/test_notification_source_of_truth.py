@@ -9,8 +9,8 @@ no_bids) и admin approve/reject документов создавали ТОЛ�
   1) create_notification(event_key=...) — идемпотентен, повторный вызов с
      тем же (user_id, event_key) не плодит вторую строку;
   2) scheduler.jobs.push_reminders_job/expired_notify_job/no_bids_notify_job
-     создают notification ДАЖЕ если push_sender.send выбрасывает исключение
-     (push недоступен) — реальным вызовом джобы с монки-патченным send;
+     создают notification при явном opt-in ДАЖЕ при отказе провайдера;
+     проверяются полный job/outbox/worker и управляемый retry;
   3) admin_approve/admin_reject создают notification с dedup на день
      (повторный клик не плодит вторую запись).
 
@@ -75,46 +75,33 @@ def test_different_event_key_not_deduped():
 
 
 def test_scheduler_reminders_job_creates_notification_even_when_push_fails():
-    """Ключевой регресс P1-8: монки-патчим push_sender.send так, чтобы он
-    ВСЕГДА падал (имитация «push недоступен») — notification обязана всё
-    равно появиться, т.к. создаётся в отдельном try/except ДО попытки push."""
+    """Явный opt-in: provider outage не удаляет inbox и задание retry."""
     from scheduler import jobs as jobs_mod
-    from services import push_sender
+    from services import push_gateway
 
-    # Реальный водитель с push-токеном, неактивный >3 дней — попадает в
-    # выборку push_reminders_job.
     guest = registration_dal.create_guest()
     uid = guest["id"] if isinstance(guest, dict) else guest
     with get_conn() as c:
-        c.execute(
-            "UPDATE drivers_registration SET status='approved', role='driver', "
-            "updated_at = datetime('now','-10 days') WHERE id = ?",
-            (uid,),
-        )
-        c.execute(
-            "INSERT INTO push_tokens_native (user_id, token, provider, active) VALUES (?,?,?,1)",
-            (uid, "ExponentPushToken[notif-truth-reminder]", "expo"),
-        )
-
-    original_send = push_sender.send
-
-    def _always_fail(*a, **k):
-        raise RuntimeError("simulated push provider outage")
-
-    push_sender.send = _always_fail
+        c.execute("UPDATE drivers_registration SET status='approved',role='driver',updated_at=datetime('now','-10 days') WHERE id=?", (uid,))
+        c.execute("INSERT INTO notification_preferences(user_id,inactivity) VALUES (?,1)", (uid,))
+        c.execute("INSERT INTO push_devices(user_id,device_id,platform,push_provider,push_token,enabled) VALUES (?,?,'android','fcm',?,1)",
+                  (uid,'synthetic-outage-'+uid,'fcm-synthetic-outage-'+uid))
+    original = push_gateway.FCMProvider.send
+    def unavailable(*args, **kwargs):
+        return push_gateway.ProviderResult('fcm','failed',error_code='network_error',retryable=True)
+    push_gateway.FCMProvider.send = unavailable
     try:
         jobs_mod.push_reminders_job()
+        stats = push_gateway.process_pending_once()
     finally:
-        push_sender.send = original_send
-
+        push_gateway.FCMProvider.send = original
     with get_conn() as c:
-        row = c.execute(
-            "SELECT * FROM notifications WHERE user_id = ? AND type = 'reminder' "
-            "ORDER BY id DESC LIMIT 1",
-            (uid,),
-        ).fetchone()
-    assert row is not None, "notification должна была создаться, даже когда push_sender.send всегда падает"
-    assert row["event_key"] is not None and row["event_key"].startswith("reminder-inactive:")
+        row = c.execute("SELECT * FROM notifications WHERE user_id=? AND type='inactivity' ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+        pending = c.execute("SELECT * FROM push_outbox WHERE recipient_user_id=?", (uid,)).fetchall()
+    assert row is not None, 'Отказ транспорта не должен удалять inbox'
+    assert row['event_key'].startswith('reminder-inactive:')
+    assert stats['retry'] == 1 and len(pending) == 1
+    assert pending[0]['status'] == 'retry' and pending[0]['attempt_count'] == 1
 
 
 def test_admin_approve_creates_notification_with_dedup():

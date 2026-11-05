@@ -16,6 +16,8 @@ from database.db import get_conn
 from services import push_gateway
 
 log = logging.getLogger(__name__)
+WEB_PUSH_TIMEOUT_SECONDS = 20
+WEB_PUSH_TARGETS_PER_ATTEMPT = 10
 PUSH_MOCK_WEB = (os.getenv("PUSH_MOCK_WEB") or "").lower() in {"1", "true", "yes"}
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
@@ -42,7 +44,8 @@ def _already_delivered(event_id: Optional[str], user_id: str) -> bool:
 
 
 def _log(event_id: Optional[str], user_id: str, provider: str, status: str, error: Optional[str] = None) -> None:
-    log.debug("push event=%s user=%s provider=%s status=%s error=%s", event_id, user_id, provider, status, error)
+    # Идентификатор пользователя и свободный текст не попадают в техлог.
+    log.debug("push provider=%s status=%s error_present=%s", provider, status, bool(error))
 
 
 def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
@@ -55,7 +58,9 @@ def _web_subscriptions(user_id: str) -> list[dict[str, Any]]:
 
 
 def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[int]) -> int:
-    subs = _web_subscriptions(user_id)
+    # Ten bounded HTTP sends fit inside the five-minute outbox lease; any
+    # remaining subscriptions stay unlogged and are picked up on retry.
+    subs = _web_subscriptions(user_id)[:WEB_PUSH_TARGETS_PER_ATTEMPT]
     if not subs:
         return 0
     if PUSH_MOCK_WEB:
@@ -64,19 +69,33 @@ def _send_web(user_id: str, title: str, body: str, data: dict, badge: Optional[i
         from pywebpush import webpush
     except Exception:
         return 0
-    payload = json.dumps({"title": title, "body": body, "data": data or {}, "badge": badge})
+    payload = json.dumps({"title": title, "body": body, "data": data or {},
+                          "url": (data or {}).get("url") or "/", "badge": badge})
     sent = 0
     for sub in subs:
+        event_id = data.get("event_id") or data.get("event_key")
+        if event_id:
+            with get_conn() as c:
+                prior = c.execute("SELECT 1 FROM push_web_delivery_log WHERE event_id=? AND user_id=? AND subscription_id=?",
+                                  (event_id,user_id,sub["id"])).fetchone()
+            if prior:
+                sent += 1
+                continue
         try:
             webpush(
                 subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}},
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE,
                 vapid_claims={"sub": VAPID_SUBJECT},
+                timeout=WEB_PUSH_TIMEOUT_SECONDS,
             )
+            if event_id:
+                with get_conn() as c:
+                    c.execute("INSERT OR IGNORE INTO push_web_delivery_log(event_id,user_id,subscription_id) VALUES(?,?,?)",
+                              (event_id,user_id,sub["id"]))
             sent += 1
         except Exception:
-            log.warning("web push failed endpoint=%s", _mask_token(sub.get("endpoint", "")))
+            log.warning("web push failed")
     return sent
 
 
@@ -117,10 +136,17 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
          url: str = "/", *, event_id: Optional[str] = None, event_type: str = "generic",
          badge: Optional[int] = None, provider: Optional[str] = None) -> dict[str, Any]:
     data = {**(data or {}), "kind": kind, "url": url}
-    event_id = event_id or data.get("event_id") or data.get("event_key") or data.get("event")
+    if event_id:
+        data["event_id"] = event_id
+    from services.notification_policy import delivery_block_reason
+    blocked = delivery_block_reason(user_id, data)
+    if blocked:
+        return {"sent": 0, "total": 0, "suppressed_policy": blocked}
+    event_id = event_id or data.get("event_id") or data.get("event_key")
     data.update(notification_reference(user_id, title, body, url, event_id))
     event_id = event_id or str(uuid.uuid4())
     event_type = event_type if event_type != "generic" else str(data.get("type") or kind)
+    event_type = push_gateway.canonical_event_type(event_type, data)
     if event_id:
         data.setdefault("event_id", event_id)
     # Freeze TTL/collapse controls once at business-event creation so the
@@ -134,8 +160,16 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
             event_id, event_type, user_id,
             {"title": title, "body": body, "data": data, "badge": badge},
         )
-    web_sent = _send_web(user_id, title, body, data, badge)
-    native = _send_native(user_id, title, body, data, badge, provider)
+    claimed = push_gateway.claim_inline_event(event_id, user_id)
+    if not claimed:
+        return {"sent": 0, "total": 0, "queued": True, "duplicate": True, "event_id": event_id}
+    attempt = int(claimed.get("attempt_count") or 0) + 1
+    try:
+        web_sent = _send_web(user_id, title, body, data, badge)
+        native = _send_native(user_id, title, body, data, badge, provider)
+    except Exception as exc:
+        push_gateway._finish_row(claimed["id"], attempt, False, type(exc).__name__, claim_token=claimed["claim_token"])
+        raise
     sent = web_sent + int(native.get("sent") or 0)
     native_devices = int(native.get("devices") or 0)
     native_sent = int(native.get("sent") or 0) + int(native.get("already_delivered") or 0)
@@ -144,28 +178,19 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     # active native target is provider-accepted; otherwise the drain worker
     # owns the retry.  If the provider classified the remaining failure as
     # permanent, close it truthfully now instead of scheduling futile retry.
-    fully_delivered = native_sent >= native_devices if native_devices > 0 else bool(web_sent)
-    native_retryable = bool(native.get("retryable", True))
+    web_targets = len(_web_subscriptions(user_id))
+    fully_delivered = (native_devices > 0 or web_targets > 0) and native_sent >= native_devices and web_sent >= web_targets
+    native_retryable = bool(native.get("retryable", True)) or web_sent < web_targets
     native_errors = native.get("errors") or {}
     safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or "non_retryable_provider_error"
-    if event_id and (fully_delivered or (native_devices > 0 and not native_retryable)):
-        try:
-            with get_conn() as c:
-                if fully_delivered:
-                    c.execute(
-                        "UPDATE push_outbox SET status='sent', sent_at=CURRENT_TIMESTAMP, claimed_at=NULL, locked_by=NULL "
-                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
-                        (event_id, user_id),
-                    )
-                else:
-                    terminal = "sent_partial" if native_sent else "failed"
-                    c.execute(
-                        "UPDATE push_outbox SET status=?, failed_at=CURRENT_TIMESTAMP, last_error=?, claimed_at=NULL, locked_by=NULL "
-                        "WHERE event_id=? AND recipient_user_id=? AND status IN ('pending','retry','processing')",
-                        (terminal, safe_error, event_id, user_id),
-                    )
-        except Exception:
-            pass
+    if native.get("suppressed_policy"):
+        with get_conn() as c:
+            c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,claimed_at=NULL,locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
+                      (native["suppressed_policy"],claimed["id"],claimed["claim_token"]))
+    else:
+        push_gateway._finish_row(claimed["id"], attempt, fully_delivered, safe_error,
+                                 partially_sent=bool(native_sent or web_sent), retryable=native_retryable,
+                                 claim_token=claimed["claim_token"])
     _log(event_id, user_id, "native", "sent" if sent else "not_sent", native.get("error"))
     return {
         "sent": sent,

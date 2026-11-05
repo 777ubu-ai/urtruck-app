@@ -221,7 +221,8 @@ def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatc
 
     rows = outbox_rows(owner)
     assert len(rows) == 1
-    assert rows[0]["status"] == "pending", "immediate send failed -> row must stay pending, not lost"
+    assert rows[0]["status"] == "retry", "Сбой немедленной попытки должен сохранить управляемый retry"
+    assert rows[0]["attempt_count"] == 1 and rows[0]["next_attempt_at"] is not None
     assert flaky.calls == 1
 
     _force_due(owner)
@@ -266,7 +267,7 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
 
     for participant in (owner, driver):
         rows = outbox_rows(participant)
-        assert len(rows) == 1 and rows[0]["status"] == "pending"
+        assert len(rows) == 1 and rows[0]["status"] == "retry"
         _force_due(participant)
     stats = push_gateway.process_pending_once(limit=10)
     assert stats["sent"] == 2
@@ -318,7 +319,7 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     # outbox is now exclusively whatever this one chat send created.
     assert outbox_rows(owner) == [], "chat message must not enqueue a push for its own sender"
     driver_rows = outbox_rows(driver)
-    assert len(driver_rows) == 1 and driver_rows[0]["status"] == "pending"
+    assert len(driver_rows) == 1 and driver_rows[0]["status"] == "retry"
     assert driver_rows[0]["event_id"].startswith("chat:")
     with get_conn() as c:
         bell_rows = c.execute(
@@ -410,12 +411,12 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
 
     rows = outbox_rows(owner)
     event_types = {row["event_type"] for row in rows}
-    assert event_types == {"deal_status"}
+    assert event_types == {"deal.status.in_progress", "deal.status.at_border", "deal.status.delivered"}
     payloads = " ".join(row["payload"] for row in rows)
     assert ":status:in_progress" in payloads
     assert ":status:at_border" in payloads
     assert ":status:delivered" in payloads
-    assert all(row["status"] == "pending" for row in rows), "provider never succeeded -> all must stay retryable, not lost"
+    assert all(row["status"] == "retry" and row["attempt_count"] == 1 for row in rows), "Неуспешные попытки остаются в retry с учётом backoff"
 
 
 # ───────────────────────── localization ─────────────────────────
@@ -520,7 +521,7 @@ def test_ordinary_bid_cancel_is_durable_and_retries_once(monkeypatch):
     monkeypatch.setattr(push_sender, "_send_native", flaky)
     assert client.post(f"/api/v1/market/bids/{bid_id}/cancel").status_code == 200
     rows = outbox_rows(owner)
-    assert len(rows) == 1 and rows[0]["status"] == "pending"
+    assert len(rows) == 1 and rows[0]["status"] == "retry"
     assert rows[0]["event_id"].startswith(f"bid:{bid_id}:cancelled:")
     _force_due(owner)
     assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 1

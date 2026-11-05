@@ -237,6 +237,10 @@ for _event, _translations in ADDITIONAL_TEMPLATES.items():
     TEMPLATES[_event].update(_translations)
 
 
+from services.scheduled_push_i18n import TEMPLATES as SCHEDULED_TEMPLATES
+TEMPLATES.update(SCHEDULED_TEMPLATES)
+
+
 def push_text(event: str, locale: Optional[str], **params) -> tuple[Optional[str], Optional[str]]:
     """Returns (title, body) localized for `locale`, or (None, None) if
     `event` is not a known system-push template — callers must fall back to

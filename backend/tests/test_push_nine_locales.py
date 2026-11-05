@@ -23,13 +23,13 @@ def test_previous_four_templates_are_unchanged():
     # PR673 добавляет отдельное подтверждение владельцу; прежний каталог
     # целиком остаётся под прежней контрольной суммой, включая удаление ключей.
     old = {event: {code: rows[code] for code in ('RU','KK','ZH','EN')}
-           for event, rows in i18n.TEMPLATES.items() if event != 'bid_accept_confirmed'}
+           for event, rows in i18n.TEMPLATES.items() if event not in {'bid_accept_confirmed','no_bids_cargo','no_bids_trip','inactive_reminder','saved_search_match','saved_search_digest','listing_expiring','listing_expired'}}
     assert hashlib.sha256(json.dumps(old,ensure_ascii=False,sort_keys=True).encode()).hexdigest() == '497ebfbfdd576dffcefdd945f3bd20220d23fef4e6c31e5ebedb291fc600d0ad'
 
 
 @pytest.mark.parametrize('locale', LOCALES)
 def test_every_template_preserves_placeholders_and_opaque_values(locale):
-    values = {'amount':'1 234,50 USD','route':'Иу → Алматы {never_translate}', 'rating':'4.5','booking':'KZ-123', 'comment':'原文: пользователь {amount}', 'filename':'договор_原文.pdf'}
+    values = {'count':'3','amount':'1 234,50 USD','route':'Иу → Алматы {never_translate}', 'rating':'4.5','booking':'KZ-123', 'comment':'原文: пользователь {amount}', 'filename':'договор_原文.pdf'}
     for event, rows in i18n.TEMPLATES.items():
         assert set(rows) == set(LOCALES), event
         for source, text in zip(rows['RU'], rows[locale]):

@@ -70,45 +70,10 @@ def _norm_city(s: str) -> str:
 
 
 def notify_matching_users(from_city: str, to_city: str, cargo_desc: str = "", cargo_id: str = None):
-    """Вызывается при публикации нового груза — пушит matching подписчикам.
-
-    Матчинг НОРМАЛИЗОВАННЫЙ (город без страны, регистронезависимо), а не по
-    точному равенству строк — раньше «Алматы» ≠ «Алматы, KZ» и петля молчала.
-    """
-    nf, nt = _norm_city(from_city), _norm_city(to_city)
-    if not nf or not nt:
+    """Стабильное событие нового груза, без обхода текущего notify=false."""
+    if not cargo_id:
         return 0
+    from services.scheduled_notifications import queue_route_match
     with get_conn() as c:
-        rows = c.execute(
-            "SELECT DISTINCT user_id, from_city, to_city FROM saved_searches WHERE notify = 1"
-        ).fetchall()
-    sent = 0
-    seen = set()
-    for r in rows:
-        if _norm_city(r["from_city"]) != nf or _norm_city(r["to_city"]) != nt:
-            continue
-        uid = r["user_id"]
-        if uid in seen:
-            continue
-        seen.add(uid)
-        title = f"📦 Новый груз: {from_city} → {to_city}"
-        text = cargo_desc[:100] if cargo_desc else "Появился груз по вашему маршруту!"
-        url = f"/cargos/{cargo_id}" if cargo_id else "/"
-        try:
-            send_to_user(uid, title, text, url=url)
-            sent += 1
-        except Exception:
-            pass
-        # P0-hotfix 28.08.2026: push шёл без записи в notifications — тот
-        # же разрыв, что чинили для reviews.py (§1: badge на иконке рос,
-        # список внутри приложения оставался пустым). event_key на
-        # (user_id, cargo_id) — повторный вызов на тот же груз не дублирует.
-        try:
-            from api.notifications import create_notification
-            create_notification(
-                uid, "saved_search", title, text, "📦", url=url,
-                event_key=f"saved_search:{cargo_id}" if cargo_id else None,
-            )
-        except Exception:
-            pass
-    return sent
+        users = [r[0] for r in c.execute("SELECT DISTINCT user_id FROM saved_searches WHERE notify=1")]
+    return sum(queue_route_match(uid, cargo_id) for uid in users)
