@@ -174,3 +174,29 @@ CREATE INDEX IF NOT EXISTS idx_push_logout_sessions_created
 -- без event_key) он падал бы «no such column». Индекс создаётся в
 -- api/push._migrate_ownership_columns СТРОГО после ADD COLUMN event_key
 -- (работает и на fresh, и на legacy). См. также notifications._migrate_event_key.
+
+-- Необязательные советы выключены до явного выбора владельца аккаунта.
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id TEXT PRIMARY KEY,
+  no_bids INTEGER NOT NULL DEFAULT 0 CHECK(no_bids IN (0,1)),
+  inactivity INTEGER NOT NULL DEFAULT 0 CHECK(inactivity IN (0,1)),
+  listing_lifecycle INTEGER NOT NULL DEFAULT 0 CHECK(listing_lifecycle IN (0,1)),
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Устойчивая история поводов, включая подавленную legacy-историю.
+CREATE TABLE IF NOT EXISTS notification_event_claims (
+  user_id TEXT NOT NULL,
+  event_key TEXT NOT NULL,
+  category TEXT NOT NULL,
+  state TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id,event_key)
+);
+-- Подтверждённый Web Push не повторяется при retry другого устройства.
+CREATE TABLE IF NOT EXISTS push_web_delivery_log (
+  event_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  subscription_id INTEGER NOT NULL,
+  sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(event_id,user_id,subscription_id)
+);

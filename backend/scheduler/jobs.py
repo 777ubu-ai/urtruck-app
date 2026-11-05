@@ -124,247 +124,21 @@ def monthly_rescore_job():
 
 
 def push_reminders_job():
-    """Ежедневное напоминание в 10:00 (по серверу):
-    - неактивные (>3 дней без логина) → "Загляните в UrTruck, есть новые грузы";
-    - по сохранённым маршрутам есть свежие грузы → "5 новых по Алматы→Иу".
-    """
-    from datetime import timedelta
-    from database.db import get_conn
-    from services import push_sender
-
-    now = datetime.utcnow()
-    threshold = (now - timedelta(days=3)).isoformat()
-    cnt = {"inactive": 0, "route_match": 0}
-
-    # 1) Неактивные водители с токенами
-    with get_conn() as c:
-        # Все юзеры у которых есть хоть один push-токен и нет активности больше 3 дней
-        rows = c.execute("""
-            SELECT DISTINCT d.id, d.full_name
-            FROM drivers_registration d
-            WHERE d.status = 'approved'
-              AND d.role IN ('driver', 'client')
-              AND (d.updated_at IS NULL OR d.updated_at < ?)
-              AND (
-                EXISTS (SELECT 1 FROM push_subscriptions WHERE user_id = d.id)
-                OR EXISTS (SELECT 1 FROM push_tokens_native WHERE user_id = d.id)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM push_log
-                WHERE user_id = d.id AND kind = 'reminder'
-                  AND created_at > ?
-              )
-            LIMIT 200
-        """, (threshold, (now - timedelta(hours=20)).isoformat())).fetchall()
-    for r in rows:
-        # Блок 6 аудита (P1-8): push может не дойти (нет permission/offline/
-        # провайдер недоступен) — notification создаём НЕЗАВИСИМО и ДО
-        # попытки push, чтобы событие не терялось молча. event_key —
-        # день+юзер, повторный прогон джобы в тот же день не задвоит запись
-        # (UNIQUE(user_id, event_key), см. api/notifications.py).
-        try:
-            from api.notifications import create_notification
-            create_notification(
-                r["id"], "reminder", "🚛 UrTruck ждёт вас",
-                "Есть новые грузы. Загляните в ленту.", "🚛", url="/",
-                event_key=f"reminder-inactive:{now.date().isoformat()}",
-            )
-        except Exception as e:
-            print(f"  reminder notif err {r['id']}: {e}")
-        try:
-            push_sender.send(
-                r["id"],
-                "🚛 UrTruck ждёт вас",
-                "Есть новые грузы. Загляните в ленту.",
-                kind="reminder",
-                url="/",
-            )
-            cnt["inactive"] += 1
-        except Exception as e:
-            print(f"  reminder err {r['id']}: {e}")
-
-    # 2) Сохранённые маршруты: новые грузы по ним за последние 24 часа
-    day_ago = (now - timedelta(hours=24)).isoformat()
-    try:
-        with get_conn() as c:
-            saved = c.execute("""
-                SELECT s.user_id, s.from_city, s.to_city,
-                       (SELECT COUNT(*) FROM cargos c
-                        WHERE c.from_city = s.from_city AND c.to_city = s.to_city
-                          AND c.created_at > ?) AS cnt
-                FROM saved_searches s
-                WHERE EXISTS (SELECT 1 FROM push_subscriptions WHERE user_id = s.user_id)
-                   OR EXISTS (SELECT 1 FROM push_tokens_native WHERE user_id = s.user_id)
-            """, (day_ago,)).fetchall()
-        for r in saved:
-            if (r["cnt"] or 0) < 1:
-                continue
-            _title = f"📦 {r['cnt']} новых грузов"
-            _body = f"{r['from_city']} → {r['to_city']}"
-            try:
-                from api.notifications import create_notification
-                create_notification(
-                    r["user_id"], "reminder", _title, _body, "📦", url="/",
-                    event_key=f"reminder-route:{r['from_city']}:{r['to_city']}:{now.date().isoformat()}",
-                )
-            except Exception as e:
-                print(f"  saved_searches notif err: {e}")
-            try:
-                push_sender.send(
-                    r["user_id"], _title, _body,
-                    kind="reminder",
-                    data={"from": r["from_city"], "to": r["to_city"]},
-                    url="/",
-                )
-                cnt["route_match"] += 1
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"  saved_searches reminder err: {e}")
-
-    print(f"[{now.isoformat()}] reminders: inactive={cnt['inactive']} route_match={cnt['route_match']}")
+    """Напоминания с серверными preferences и устойчивыми событиями."""
+    from services.scheduled_notifications import reminders_job
+    return reminders_job(now=datetime.utcnow())
 
 
 def expired_notify_job():
-    """Ежедневно (Модель А): владельцам грузов/рейсов шлём напоминания по
-    нарастающей, пока публикация «стареет» (день выезда +1, +2, +3):
-      +1 день — «Ещё актуально?» (ещё в ленте)
-      +2 дня  — «Завтра уберём из ленты»
-      +3 дня  — «Убрано из ленты — вернуть?»
-    Дальше не напоминаем (без спама). Дедуп на пользователя через push_log
-    (kind='expired'). Продление — одним тапом «Ещё актуально» в приложении."""
-    from datetime import timedelta
-    from database.db import get_conn
-    from services import push_sender
-
-    now = datetime.utcnow()
-    today = now.date()
-
-    def _pd(s):
-        s = str(s or "").strip()
-        for fmt, cut in (("%Y-%m-%d", 10), ("%d.%m.%Y", None)):
-            try:
-                return datetime.strptime(s[:cut] if cut else s, fmt).date()
-            except Exception:
-                pass
-        return None
-
-    # user_id -> самая срочная стадия (1..3) среди его стареющих публикаций
-    urgency = {}
-    try:
-        with get_conn() as c:
-            cargos = c.execute("SELECT owner_id AS uid, pickup_date AS d FROM cargos WHERE status = 'active'").fetchall()
-            trips = c.execute("SELECT driver_id AS uid, departure AS d FROM trips WHERE status = 'active'").fetchall()
-        for r in list(cargos) + list(trips):
-            dd = _pd(r["d"])
-            if not r["uid"] or not dd:
-                continue
-            days_past = (today - dd).days
-            if 1 <= days_past <= 3:
-                urgency[r["uid"]] = max(urgency.get(r["uid"], 0), days_past)
-    except Exception as e:
-        print(f"  expired-notify query err: {e}")
-        return
-
-    MSG = {
-        1: ("🕐 Ваша публикация ещё актуальна?", "Продлите одним тапом — «Ещё актуально»."),
-        2: ("⏳ Завтра уберём из ленты", "Груз/рейс скоро исчезнет из поиска. Продлить?"),
-        3: ("📭 Публикация убрана из ленты", "Хотите вернуть? Нажмите «Ещё актуально»."),
-    }
-    thresh = (now - timedelta(hours=20)).isoformat()
-    sent = 0
-    for uid, dp in urgency.items():
-        try:
-            with get_conn() as c:
-                dup = c.execute(
-                    "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'expired' AND created_at > ?",
-                    (uid, thresh)).fetchone()
-            if dup:
-                continue
-            title, body = MSG[dp]
-            # Блок 6 (P1-8): notification — до/независимо от push.
-            try:
-                from api.notifications import create_notification
-                create_notification(uid, "expired", title, body, "📭", url="/",
-                                     event_key=f"expired:stage{dp}:{now.date().isoformat()}")
-            except Exception as e:
-                print(f"  expired notif err {uid}: {e}")
-            push_sender.send(uid, title, body, kind="expired", url="/")
-            sent += 1
-        except Exception as e:
-            print(f"  expired push err {uid}: {e}")
-    print(f"[{now.isoformat()}] expired-notify: sent={sent}")
+    """Lifecycle по 30-дневной публикации, без привязки к дате маршрута."""
+    from services.scheduled_notifications import lifecycle_job
+    return lifecycle_job(now=datetime.utcnow())
 
 
 def no_bids_notify_job():
-    """Проактивная подсказка владельцу, если на груз/рейс за 18+ часов не
-    пришло ни одной ставки (стандарт бирж грузоперевозок — Della/АТИ дают
-    похожую нотификацию + предлагают поднять/скорректировать цену). Раз в
-    жизни публикации — дедуп через push_log(kind='no_bids'), не спамим."""
-    from datetime import timedelta
-    from database.db import get_conn
-    from services import push_sender
-
-    now = datetime.utcnow()
-    threshold = (now - timedelta(hours=18)).isoformat()
-    dedup_thresh = (now - timedelta(hours=20)).isoformat()  # шире окна проверки — шлём 1 раз
-    sent = 0
-
-    with get_conn() as c:
-        cargos = c.execute("""
-            SELECT id, owner_id, from_city, to_city FROM cargos
-            WHERE status = 'active' AND bids_count = 0 AND created_at < ?
-        """, (threshold,)).fetchall()
-        trips = c.execute("""
-            SELECT t.id, t.driver_id, t.from_city, t.to_city FROM trips t
-            WHERE t.status = 'active' AND t.created_at < ?
-              AND NOT EXISTS (SELECT 1 FROM bids b WHERE b.trip_id = t.id)
-        """, (threshold,)).fetchall()
-
-    def already_sent(uid, entity_id):
-        with get_conn() as c:
-            return bool(c.execute(
-                "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'no_bids' "
-                "AND data_json LIKE ? AND created_at > ?",
-                (uid, f"%{entity_id}%", dedup_thresh)).fetchone())
-
-    for cid, owner_id, fr, to in cargos:
-        if not owner_id or already_sent(owner_id, cid):
-            continue
-        _title = "📦 Пока нет предложений"
-        _body = f"{fr} → {to} · 18 часов без ставок. Возможно, стоит скорректировать цену?"
-        # Блок 6 (P1-8): notification — до/независимо от push. event_key
-        # привязан к сущности (не ко времени) — «раз в жизни публикации».
-        try:
-            from api.notifications import create_notification
-            create_notification(owner_id, "no_bids", _title, _body, "📦",
-                                 url=f"/cargos/{cid}", event_key=f"no_bids:cargo:{cid}")
-        except Exception as e:
-            print(f"  no_bids cargo notif err {cid}: {e}")
-        try:
-            push_sender.send(owner_id, _title, _body, kind="no_bids", data={"cargo_id": cid}, url="/")
-            sent += 1
-        except Exception as e:
-            print(f"  no_bids cargo err {cid}: {e}")
-
-    for tid, driver_id, fr, to in trips:
-        if not driver_id or already_sent(driver_id, tid):
-            continue
-        _title = "🚛 Пока нет предложений"
-        _body = f"{fr} → {to} · 18 часов без предложений на рейс. Возможно, стоит скорректировать цену?"
-        try:
-            from api.notifications import create_notification
-            create_notification(driver_id, "no_bids", _title, _body, "🚛",
-                                 url=f"/trips/{tid}", event_key=f"no_bids:trip:{tid}")
-        except Exception as e:
-            print(f"  no_bids trip notif err {tid}: {e}")
-        try:
-            push_sender.send(driver_id, _title, _body, kind="no_bids", data={"trip_id": tid}, url="/")
-            sent += 1
-        except Exception as e:
-            print(f"  no_bids trip err {tid}: {e}")
-
-    print(f"[{now.isoformat()}] no-bids-notify: sent={sent}")
+    """Один согласованный inbox/outbox повод на ID публикации."""
+    from services.scheduled_notifications import no_bids_job
+    return no_bids_job(now=datetime.utcnow())
 
 
 # P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
@@ -430,7 +204,7 @@ def start_scheduler():
     if not _acquire_singleton_lock():
         print("[scheduler] another process holds the singleton lock, skip")
         return None
-    sched = BackgroundScheduler(job_defaults={
+    sched = BackgroundScheduler(timezone="UTC", job_defaults={
         "max_instances": 1,   # не запускать джобу, если предыдущий прогон ещё идёт
         "coalesce": True,      # пропущенные тики схлопнуть в один
         "misfire_grace_time": 3600,
@@ -488,9 +262,13 @@ def stop_scheduler():
         _lock_fh = None
 
 
-if __name__ == "__main__":
+def run_scheduler_process():
     db.init_db()
     sched = start_scheduler()
+    if sched is None:
+        # Процесс без lock не исполняет даже первоначальный parser и не
+        # остаётся живым с ложным впечатлением работающего scheduler.
+        return 1
     # Первый запуск парсера сразу
     parse_telegram_job()
     try:
@@ -498,3 +276,8 @@ if __name__ == "__main__":
             time.sleep(60)
     except KeyboardInterrupt:
         sched.shutdown()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_scheduler_process())

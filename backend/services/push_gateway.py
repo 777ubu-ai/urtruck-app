@@ -450,9 +450,17 @@ def get_recipient_locale(user_id: str) -> str:
     return normalize_locale(None)
 
 
+def canonical_event_type(event_type, data):
+    event = str((data or {}).get("event") or "")
+    return event if event in PUSH_EVENT_CATALOG else event_type
+
+
 def enqueue_event(event_id: str, event_type: str, recipient_user_id: str, payload: dict, priority: Optional[str] = None, *, conn=None) -> bool:
     if not (event_id and event_type and recipient_user_id):
         return False
+    # Старые producer передают общую метку, но точный переход уже есть в data.
+    details = (payload or {}).get("data") or {}
+    event_type = canonical_event_type(event_type, details)
     prio = priority or ("critical" if event_type in CRITICAL_EVENTS else "normal")
     safe_payload = dict(payload or {})
     data = safe_payload.get("data")
@@ -569,6 +577,10 @@ def send_to_devices(
         # Never turn a typo/misconfiguration into an implicit provider fallback.
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
+    from services.notification_policy import delivery_block_reason
+    reason = delivery_block_reason(user_id, data)
+    if reason:
+        return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "suppressed_policy": reason}
     if notification_already_read(user_id, data):
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "suppressed_read": True}
 
@@ -588,7 +600,7 @@ def send_to_devices(
     already_delivered = 0
     by_provider: dict[str, int] = {}
     errors: dict[str, int] = {}
-    retryable = True
+    retryable = False
     event_id = (data or {}).get("event_id") or (data or {}).get("event_key")
     for device in devices:
         if _already_sent_to_device(event_id, device.get("id")):
@@ -640,8 +652,8 @@ def send_to_devices(
         else:
             error_code = result.error_code or "provider_send_failed"
             errors[error_code] = errors.get(error_code, 0) + 1
-            if not result.retryable:
-                retryable = False
+            if result.retryable:
+                retryable = True
     return {
         "sent": sent,
         "already_delivered": already_delivered,
@@ -649,10 +661,9 @@ def send_to_devices(
         "devices": len(devices),
         "mode": mode,
         "errors": errors,
-        # All failures must be transient before the outbox is allowed to
-        # retry. A mixed multi-device send remains retryable only when the
-        # outstanding devices have transient errors; invalid tokens are
-        # deactivated by log_delivery and never reselected.
+        # Ошибка одной постоянной регистрации не лишает другое устройство
+        # его retry. Невалидные токены уже отключены в log_delivery; все
+        # оставшиеся попытки ограничены общей политикой outbox.
         "retryable": retryable,
     }
 
@@ -751,13 +762,22 @@ def _claim_row(row_id: int) -> Optional[dict[str, Any]]:
     with get_conn() as c:
         cur = c.execute(
             "UPDATE push_outbox SET status='processing', claimed_at=CURRENT_TIMESTAMP, locked_by=? "
-            "WHERE id=? AND status IN ('pending','retry')",
-            (WORKER_ID, row_id),
+            "WHERE id=? AND status IN ('pending','retry') AND id > ? "
+            "AND (next_attempt_at IS NULL OR next_attempt_at <= CURRENT_TIMESTAMP) "
+            "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+            (WORKER_ID, row_id, configured_outbox_cutoff_id()),
         )
         if cur.rowcount != 1:
             return None
         row = c.execute("SELECT * FROM push_outbox WHERE id=?", (row_id,)).fetchone()
         return dict(row) if row else None
+
+
+def claim_inline_event(event_id: str, user_id: str):
+    """Немедленная отправка и worker используют один и тот же атомарный claim."""
+    with get_conn() as c:
+        row = c.execute("SELECT id FROM push_outbox WHERE event_id=? AND recipient_user_id=?", (event_id,user_id)).fetchone()
+    return _claim_row(row["id"]) if row else None
 
 
 def _finish_row(
@@ -857,6 +877,15 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
         attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
+            from services.notification_policy import delivery_block_reason
+            reason = delivery_block_reason(row["recipient_user_id"], payload.get("data") or {})
+            if reason:
+                with get_conn() as c:
+                    c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,attempt_count=?, "
+                              "claimed_at=NULL,locked_by=NULL WHERE id=? AND locked_by=?",
+                              (reason,attempt,row["id"],WORKER_ID))
+                stats["skipped"] += 1
+                continue
             if notification_already_read(row["recipient_user_id"], payload.get("data") or {}):
                 with get_conn() as c:
                     c.execute("UPDATE push_outbox SET status='skipped_read', last_error='read_before_delivery', "
@@ -880,6 +909,7 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             title = payload.get("title") or "UrTruck"
             body = payload.get("body") or ""
             data = payload.get("data") or payload
+            web_targets = web_sent = 0
             if provider_send_one is not None:
                 # Compatibility seam for deterministic unit tests only. The
                 # runtime path uses the verified device transport below.
@@ -907,6 +937,9 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                 }
             else:
                 data = {**data, "event_id": row["event_id"]}
+                from services.push_sender import _send_web, _web_subscriptions
+                web_targets = len(_web_subscriptions(row["recipient_user_id"]))
+                web_sent = _send_web(row["recipient_user_id"], title, body, data, badge)
                 result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at
@@ -919,11 +952,11 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             # same row on the next tick only re-targets the device(s) that
             # did not yet succeed.
             total_devices = int(result.get("devices", 0) or 0)
-            if total_devices == 0:
+            if total_devices == 0 and web_targets == 0:
                 outcome = _skip_row_without_devices(row["id"], attempt)
             else:
                 confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
-                fully_delivered = confirmed >= total_devices
+                fully_delivered = confirmed >= total_devices and web_sent >= web_targets
                 failure_counts = result.get("errors") or {}
                 failure_reason = ",".join(
                     f"{code}:{count}" for code, count in sorted(failure_counts.items())
@@ -933,8 +966,8 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                     attempt,
                     sent=fully_delivered,
                     error=failure_reason,
-                    partially_sent=confirmed > 0,
-                    retryable=bool(result.get("retryable", True)),
+                    partially_sent=confirmed > 0 or web_sent > 0,
+                    retryable=bool(result.get("retryable", True)) or web_sent < web_targets,
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside

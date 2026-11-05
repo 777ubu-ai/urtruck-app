@@ -38,6 +38,31 @@ from services import push_sender
 push_router = APIRouter()
 
 
+class NotificationPreferencesIn(BaseModel):
+    no_bids: Optional[bool] = None
+    inactivity: Optional[bool] = None
+    listing_lifecycle: Optional[bool] = None
+
+
+@push_router.get("/preferences")
+def get_notification_preferences(user=Depends(get_user)):
+    from services.notification_policy import preferences
+    return {"preferences": preferences(user["id"])}
+
+
+@push_router.patch("/preferences")
+def update_notification_preferences(body: NotificationPreferencesIn, user=Depends(get_user)):
+    from services.notification_policy import preferences, CATEGORIES
+    values = body.model_dump(exclude_none=True, exclude_unset=True)
+    with get_conn() as c:
+        c.execute("INSERT OR IGNORE INTO notification_preferences(user_id) VALUES(?)", (user["id"],))
+        for key in CATEGORIES:
+            if key in values:
+                c.execute(f"UPDATE notification_preferences SET {key}=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=?",
+                          (int(values[key]), user["id"]))
+        return {"preferences": preferences(user["id"], c)}
+
+
 VAPID_PUBLIC = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:admin@urtruck.kz")

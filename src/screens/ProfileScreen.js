@@ -135,6 +135,7 @@ export default function ProfileScreen({ navigation, route }) {
   const menuItems = [
     ...(session?.user?.id ? [
       { icon: 'inbox', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications' },
+      { icon: 'sliders', label: `${t('push_title')}: ${t('push_categories')}`, screen: 'PushFilter', testID: 'profile-notification-settings' },
     ] : []),
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },

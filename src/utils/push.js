@@ -116,6 +116,19 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export const push = {
+  async notificationPreferences(update = null) {
+    const token = await storage.get(TOKEN_KEY);
+    if (!token) return { ok: false };
+    try {
+      const response = await fetch(`${BASE}/preferences`, {
+        method: update ? 'PATCH' : 'GET',
+        headers: { Authorization: `Bearer ${token}`, ...(update ? { 'Content-Type': 'application/json' } : {}) },
+        ...(update ? { body: JSON.stringify(update) } : {}),
+      });
+      const result = await response.json();
+      return { ok: response.ok && !!result.preferences, preferences: result.preferences };
+    } catch { return { ok: false }; }
+  },
   isSupported() {
     return Platform.OS === 'web'
       && typeof window !== 'undefined'
