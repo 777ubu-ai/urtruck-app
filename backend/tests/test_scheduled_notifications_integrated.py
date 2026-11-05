@@ -314,3 +314,14 @@ def test_invalid_device_does_not_cancel_other_devices_transient_retry(env,monkey
     assert count('push_outbox',"status='retry'")==1
     force_due();assert gateway.process_pending_once()['sent']==1
     assert attempts=={'fcm':1,'apns':2}
+
+
+def test_web_attempt_is_bounded_below_five_minute_claim_lease(env,monkeypatch):
+    import sys,types
+    calls=[]
+    monkeypatch.setattr(sender,'PUSH_MOCK_WEB',False)
+    monkeypatch.setattr(sender,'_web_subscriptions',lambda _uid:[{'id':str(i),'endpoint':'https://example.invalid','p256dh':'x','auth':'y'} for i in range(25)])
+    monkeypatch.setitem(sys.modules,'pywebpush',types.SimpleNamespace(webpush=lambda **kw:calls.append(kw)))
+    assert sender._send_web('owner','Title','Body',{'event_id':'bounded-web'},1)==sender.WEB_PUSH_TARGETS_PER_ATTEMPT
+    assert len(calls)==10 and all(call['timeout']==20 for call in calls)
+    assert sender.WEB_PUSH_TARGETS_PER_ATTEMPT*sender.WEB_PUSH_TIMEOUT_SECONDS < 5*60
