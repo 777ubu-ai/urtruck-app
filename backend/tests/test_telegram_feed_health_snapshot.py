@@ -48,8 +48,8 @@ def _adapter_db(path, now, *, add_terminal_columns=True):
         source_queue_id INTEGER,source_revision TEXT,processed_at TEXT,reason TEXT,
         PRIMARY KEY(source_queue_id))''')
 
-    def add(identity, published, *, next_attempt=None, delivered=None, quarantined=None, terminal=None):
-        payload = json.dumps({'source_published_at': published})
+    def add(identity, published, *, kind='cargo', next_attempt=None, delivered=None, quarantined=None, terminal=None):
+        payload = json.dumps({'source_published_at': published, 'kind': kind})
         values = [identity, 'm'+identity, '0', payload, 0,
                   now if next_attempt is None else next_attempt, delivered, None,
                   quarantined, 'test' if quarantined else None]
@@ -62,11 +62,11 @@ def _adapter_db(path, now, *, add_terminal_columns=True):
     iso = lambda seconds: datetime.fromtimestamp(now-seconds, timezone.utc).isoformat()
     add('ready', iso(24*3600))
     add('backoff', iso(2*3600), next_attempt=now+60)
-    add('expired', iso(11*24*3600))
+    add('expired', iso(31*24*3600))
     add('delivered', iso(2*3600), delivered=iso(20*60))
     add('quarantined', iso(2*3600), quarantined=iso(10*60))
     if add_terminal_columns:
-        add('terminal', iso(11*24*3600), terminal='source_retention_expired')
+        add('terminal', iso(31*24*3600), terminal='source_retention_expired')
     db.execute('INSERT INTO incoming_bridge_seen VALUES(?,?,?,?)',
                (1, 'current-message:current-parser', iso(60), 'accepted'))
     db.execute('CREATE TABLE incoming_bridge_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
@@ -122,6 +122,23 @@ def test_snapshot_supports_pre_terminal_adapter_schema(tmp_path):
     assert result['incoming']['backoff'] == 1
     assert result['incoming']['expired_pending'] == 1
     assert result['incoming']['terminal_expired'] == 0
+
+
+def test_snapshot_applies_cargo_30_day_and_vehicle_10_day_windows(tmp_path):
+    now = datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc).timestamp()
+    collector, qa_root = _fixture(tmp_path, now)
+    for directory in ('external-feed', 'external-feed-owned'):
+        db = sqlite3.connect(qa_root / directory / 'adapter.sqlite3')
+        stamp = lambda days: datetime.fromtimestamp(now-days*24*3600, timezone.utc).isoformat()
+        db.execute('INSERT INTO selected_outbox VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                   ('cargo20','cargo20','0',json.dumps({'kind':'cargo','source_published_at':stamp(20)}),0,now,None,None,None,None,None,None))
+        db.execute('INSERT INTO selected_outbox VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                   ('vehicle20','vehicle20','0',json.dumps({'kind':'vehicle','source_published_at':stamp(20)}),0,now,None,None,None,None,None,None))
+        db.commit(); db.close()
+
+    result = health.snapshot(root=collector, qa_root=qa_root, now=now)
+    assert result['incoming']['ready'] == 2  # original 1 + 20-day cargo
+    assert result['incoming']['expired_pending'] == 2  # original 31-day cargo + 20-day vehicle
 
 
 def test_backlog_growth_alarm_survives_recent_delivery_progress():
