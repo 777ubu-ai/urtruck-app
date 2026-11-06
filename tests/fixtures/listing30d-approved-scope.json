@@ -1,7 +1,7 @@
 {
-  "reason": "Решения владельца PR673 (04.11.2026) и 07.11.2026: груз 30 суток UTC, активный собственный рейс автоматически продлевается на 30 суток, ставки 48 часов. Архив, исходная дата маршрута и атомарное принятие сохранены. Behavioral regression: test_listing30d_acceptance.py, test_driver_listing_auto_renew.py, test_listing_lifetime.mjs.",
+  "reason": "Решение владельца от 07.11.2026 (дополнение к выпуску): активные собственные объявления водителя И грузоотправителя автоматически продлеваются циклами 30 суток UTC; ставки сохраняют TTL48ч. Архив и конечные состояния не восстанавливаются. Behavioral regression обеих ролей: test_driver_listing_auto_renew.py, test_listing30d_acceptance.py, test_publish_time.py, test_listing_lifetime.mjs.",
   "sha256": {
-    "backend/api/marketplace.py": "672f7d4ccd0323b7448d09b7c2ba8c5943277f3fe557cf9e3125b9996343d3d8",
+    "backend/api/marketplace.py": "734ed7b197dba2a91172591a99fdca81aba8d57f3e0684d00da51f8ecfb28b0a",
     "backend/database/db.py": "6af0b66e18afba35ad7b82550b029b80b7437fd03ee4ab0ef35206fcff65100d",
     "src/screens/MyTripsScreen.js": "77be3c13379786055e1a9931ff272b3e678ca12104553bd188a9951de9b810f2"
   }

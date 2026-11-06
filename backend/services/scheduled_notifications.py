@@ -141,7 +141,7 @@ def lifecycle_job(*, now=None):
         with get_conn() as c:
             c.execute("BEGIN IMMEDIATE")
             row=policy.listing(c,kind,eid)
-            if row and policy.auto_renewing_trip(row):
+            if row and policy.auto_renewing_listing(row):
                 continue
             published=policy.publication_time(row) if row else None
             if not published:

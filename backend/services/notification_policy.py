@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from database.db import get_conn
-from services.bid_expiry import listing_deadline, parse_market_timestamp, auto_renewing_trip
+from services.bid_expiry import listing_deadline, parse_market_timestamp, auto_renewing_listing
 
 CATEGORIES = ("no_bids", "inactivity", "listing_lifecycle")
 
@@ -37,7 +37,7 @@ def publication_time(row):
 
 
 def active_listing(row, now):
-    if row and auto_renewing_trip(row):
+    if row and auto_renewing_listing(row):
         return True
     deadline = listing_deadline(row.get("published_at"), row.get("created_at")) if row else None
     return bool(row and row.get("status") == "active" and deadline and utc_now(now) < deadline)
@@ -101,7 +101,7 @@ def delivery_block_reason(user_id, data, *, conn=None, now=None):
             return "publication_too_recent"
         return "bid_exists" if has_bids(conn, entity_type, entity_id) else None
     if category == "listing_lifecycle":
-        if auto_renewing_trip(row):
+        if auto_renewing_listing(row):
             return "listing_auto_renewed"
         deadline = listing_deadline(row.get("published_at"), row.get("created_at"))
         # Новая публикация не должна получать отложенное напоминание старого срока.

@@ -2,8 +2,8 @@
 
 Product rule (2026-08-20):
 - an unaccepted bid is actionable for at most 48 hours since its last activity;
-- собственный груз действует 30 суток с публикации; активный рейс водителя
-  автоматически продлевается циклами по 30 суток (решение 07.11.2026);
+- активные собственные грузы и рейсы автоматически продлеваются циклами
+  по 30 суток (дополнение владельца от 07.11.2026);
 - past route dates do not shorten the publication window;
 - accepted deals are never deleted or auto-cancelled by this cleanup;
 - expired rows stay in the database for history/audit.
@@ -92,9 +92,10 @@ def listing_deadline(published_at, created_at, ttl_days: int = LISTING_TTL_DAYS)
     return published + timedelta(days=ttl_days) if published else None
 
 
-def auto_renewing_trip(row):
-    """Собственный активный рейс продлевается, архив и внешняя лента — нет."""
-    return bool(row.get("driver_id") and row.get("status", "active") == "active")
+def auto_renewing_listing(row):
+    """Собственное активное объявление продлевается; архив и внешняя лента — нет."""
+    return bool((row.get("driver_id") or row.get("owner_id"))
+                and row.get("status", "active") == "active")
 
 
 def _has_active_deal(conn, *, cargo_id=None, trip_id=None) -> bool:
@@ -180,11 +181,12 @@ def _queue_expired_bid_notifications(conn, bid):
 def _expire_with_conn(conn, now: datetime) -> dict:
     expired_cargos = []
     expired_trips = []
+    renewed_cargos = []
     renewed_trips = []
     expired_bids = []
     reasons = {}
 
-    # Груз истекает через 30 суток; рейс продлевается с сохранением ID.
+    # Груз и рейс продлеваются циклами 30 суток с сохранением ID.
     # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
     # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
@@ -195,13 +197,15 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         if has_deal or deadline is None:
             continue
         if deadline <= now:
+            period = timedelta(days=LISTING_TTL_DAYS)
+            cycle_start = deadline + ((now - deadline) // period) * period
             cur = conn.execute(
-                "UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active'",
-                (row["id"],),
+                "UPDATE cargos SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND status='active' AND published_at IS ?",
+                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
             )
             if cur.rowcount:
-                expired_cargos.append(row["id"])
+                renewed_cargos.append(row["id"])
 
     for row in conn.execute(
         "SELECT id, status, published_at, created_at FROM trips WHERE status='active'"
@@ -291,6 +295,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         "expired_bids": expired_bids,
         "expired_cargos": expired_cargos,
         "expired_trips": expired_trips,
+        "renewed_cargos": renewed_cargos,
         "renewed_trips": renewed_trips,
         "reasons": reasons,
         "now": now.isoformat(timespec="seconds") + "Z",
@@ -298,7 +303,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
 
 
 def expire_stale_marketplace(now: Optional[datetime] = None, conn=None) -> dict:
-    """Expire stale listings/offers atomically.
+    """Атомарно продлить активные объявления и закрыть истёкшие ставки.
 
     `conn` is injectable for deterministic unit tests. Production callers omit
     it and use the normal DB context manager, which commits on success.

@@ -291,8 +291,8 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
     Hides:
       - dirty tokens in cargo_desc/from_city/to_city/cargo_type
-      - listings whose 30-day publication window has elapsed
-    Pickup dates describe the job, not publication lifetime. Never deletes;
+      - архивные/закрытые объявления исключаются SQL-фильтром статуса
+    Активный собственный груз продлевается циклами 30 суток. Never deletes;
     inactive/deal listings are already excluded by the public SQL query.
     """
     if _is_dirty_text(row.get("cargo_desc"), row.get("from_city"),
@@ -303,9 +303,9 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
 
 def _within_publication_window(row: dict, today=None) -> bool:
-    """Груз: 30 суток UTC; активный собственный рейс продлевается автоматически."""
-    from services.bid_expiry import listing_deadline, _utc_naive, auto_renewing_trip
-    if auto_renewing_trip(dict(row)):
+    """Активные собственные грузы и рейсы продлеваются автоматически каждые 30 суток UTC."""
+    from services.bid_expiry import listing_deadline, _utc_naive, auto_renewing_listing
+    if auto_renewing_listing(dict(row)):
         return True
     now = today if today is not None else datetime.utcnow()
     if now is not None and not isinstance(now, datetime):
@@ -1734,7 +1734,7 @@ def list_trips(
     trips = [t for t in trips if _within_publication_window(t)]
     if not show_demo:
         # Дата отправления описывает рейс. Срок публикации считается от
-        # published_at и совпадает с карточками грузов: 30 дней.
+        # published_at; активные собственные грузы/рейсы продлеваются циклами 30 суток.
         trips = [t for t in trips if _public_trip_ok(t)]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
@@ -1824,11 +1824,11 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 # ═══ Bids ═══
 
 def _require_current_bid_listing(row):
-    """Срок груза — 30 суток; рейс продлевается, TTL самой ставки проверяется отдельно."""
-    from services.bid_expiry import listing_deadline, auto_renewing_trip
+    """Собственный груз/рейс продлевается; TTL самой ставки проверяется отдельно."""
+    from services.bid_expiry import listing_deadline, auto_renewing_listing
 
     value = dict(row)
-    if auto_renewing_trip(value):
+    if auto_renewing_listing(value):
         return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
     if deadline is not None and deadline <= datetime.utcnow():

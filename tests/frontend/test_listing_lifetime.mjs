@@ -18,10 +18,11 @@ test('Повторная публикация использует published_at;
   assert.equal(isListingExpired({ published_at: '2026-11-01', created_at: '2020-01-01' }, boundary), false);
   assert.equal(isListingExpired({ published_at: '2020-01-01', departure: '2099-01-01' }, boundary), true);
 });
-test('Активный собственный рейс продлевается; груз, архив и внешний vehicle сохраняют TTL', () => {
+test('Активные собственные груз/рейс продлеваются; архив и внешняя лента сохраняют TTL', () => {
   const old = { published_at: '2020-01-01', status: 'active' };
   assert.equal(isListingExpired({ ...old, driver_id: 'driver' }, boundary), false);
-  assert.equal(isListingExpired({ ...old, owner_id: 'client' }, boundary), true);
+  assert.equal(isListingExpired({ ...old, owner_id: 'client' }, boundary), false);
+  assert.equal(isListingExpired({ ...old, owner_id: 'client', status: 'expired' }, boundary), true);
   assert.equal(isListingExpired({ ...old, driver_id: 'driver', status: 'expired' }, boundary), true);
   assert.equal(isListingExpired({ ...old, kind: 'vehicle' }, boundary), true);
 });

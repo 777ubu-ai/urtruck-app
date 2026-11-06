@@ -31,22 +31,19 @@ def seed(kind, age=timedelta(days=1), status="active", bid_age=timedelta(hours=1
     return table, listing, owner, bidder, bid
 
 @pytest.mark.parametrize("kind", ["cargo", "trip"])
-@pytest.mark.parametrize("offset,active", [(-1, True), (0, False), (1, False)])
+@pytest.mark.parametrize("offset,was_due", [(-1, False), (0, True), (1, True)])
 @pytest.mark.parametrize("fallback", [False, True])
-def test_exact_deadline_in_feed_guard_and_cleanup(kind, offset, active, fallback):
-    active = active or kind == "trip"
+def test_exact_deadline_in_feed_guard_and_cleanup(kind, offset, was_due, fallback):
     table, listing, owner, bidder, bid = seed(kind)
     published = (NOW-timedelta(days=30, microseconds=offset)).isoformat()+"Z"
     with db.get_conn() as c:
         c.execute(f"UPDATE {table} SET published_at=?,created_at=? WHERE id=?", (None if fallback else published, published, listing))
         row = dict(c.execute(f"SELECT * FROM {table} WHERE id=?", (listing,)).fetchone())
-        assert market._within_publication_window(row, today=Clock(2026, 11, 4, 12)) is active
-        if active:
-            market._require_current_bid_listing(row)
-        else:
-            with pytest.raises(HTTPException): market._require_current_bid_listing(row)
-        expire_stale_marketplace(now=NOW, conn=c)
-        assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == ("active" if active else "expired")
+        assert market._within_publication_window(row, today=Clock(2026, 11, 4, 12))
+        market._require_current_bid_listing(row)
+        result = expire_stale_marketplace(now=NOW, conn=c)
+        assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == "active"
+        assert (listing in result["renewed_" + table]) is was_due
 
 def test_timezone_and_invalid_publication_fallback():
     assert listing_deadline("2026-10-05T17:00:00+05:00", None) == NOW
@@ -73,8 +70,8 @@ def test_reject_stale_mutation_without_periodic_cleanup(kind, action, reason):
     if action == "create" and reason == "bid_deadline":
         assert calls[action]()["ok"]
         return
-    if kind == "trip" and reason == "listing_deadline":
-        assert calls[action]()["ok"], "Активный собственный рейс продлевается без ручного действия"
+    if reason == "listing_deadline":
+        assert calls[action]()["ok"], "Активный собственный груз/рейс продлевается без ручного действия"
         return
     with pytest.raises(HTTPException) as caught: calls[action]()
     assert caught.value.status_code == 409
@@ -145,9 +142,9 @@ def test_explicit_republish_preserves_route_date(kind):
 @pytest.mark.parametrize("accepted", [False, True])
 def test_expired_or_accepted_disappears_from_public_api(kind, accepted):
     table, listing, owner, bidder, bid = seed(kind, age=timedelta(days=1 if accepted else 30))
-    if kind == "trip" and not accepted:
+    if not accepted:
         with db.get_conn() as c:
-            c.execute("UPDATE trips SET status='expired' WHERE id=?", (listing,))
+            c.execute(f"UPDATE {table} SET status='expired' WHERE id=?", (listing,))
     if accepted: market.accept_bid(bid, user={"id": owner})
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -169,10 +166,13 @@ def test_ttl_activity_does_not_extend_parent(kind):
         assert c.execute(f"SELECT published_at FROM {table} WHERE id=?", (listing,)).fetchone()[0] == before
         activity = c.execute("SELECT updated_at FROM bids WHERE id=?", (bid,)).fetchone()[0]
         assert activity is not None
-        # Груз истекает; активный рейс продлевается, ставка сохраняет своё окно.
+        # Активное объявление продлевается; ставка сохраняет собственное окно.
         expire_stale_marketplace(now=NOW+timedelta(days=1), conn=c)
-        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == ("countered" if kind == "trip" else "expired")
-        assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == ("active" if kind == "trip" else "expired")
+        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == "countered"
+        assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing,)).fetchone()[0] == "active"
+        from services.bid_expiry import parse_market_timestamp
+        expire_stale_marketplace(now=parse_market_timestamp(activity)+timedelta(hours=48), conn=c)
+        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == "expired"
 
 @pytest.mark.parametrize("kind", ["cargo", "trip"])
 def test_request_probe_uses_valid_created_at_when_publication_is_invalid(kind):
