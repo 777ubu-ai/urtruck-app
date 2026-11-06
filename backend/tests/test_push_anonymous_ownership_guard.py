@@ -29,15 +29,7 @@ from api.push import push_router
 
 app = FastAPI()
 app.include_router(push_router, prefix="/api/v1/push")
-_raw_client = TestClient(app)
-class _NativeClient:
-    def __getattr__(self, name): return getattr(_raw_client, name)
-    def post(self, url, *args, **kwargs):
-        payload = kwargs.get("json")
-        if url.endswith("/register-native") and isinstance(payload, dict):
-            payload.setdefault("provider", "fcm"); payload.setdefault("platform", "android")
-        return _raw_client.post(url, *args, **kwargs)
-client = _NativeClient()
+client = TestClient(app)
 
 
 def _new_user_token():
@@ -93,10 +85,10 @@ def test_anonymous_cannot_mutate_owned_web_subscription():
 
 def test_invalid_bearer_cannot_reactivate_owned_native_token():
     uid, auth = _new_user_token()
-    token = "fcm-owned-native-anon-guard"
+    token = "ExponentPushToken[owned-native-anon-guard]"
     created = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "apns",
+        "provider": "expo",
         "platform": "ios",
         "device_name": "Owner iPhone",
         "device_id": "device-owned-native-guard",
@@ -111,8 +103,8 @@ def test_invalid_bearer_cannot_reactivate_owned_native_token():
 
     attacked = client.post("/api/v1/push/register-native", headers=_auth("invalid-session-token"), json={
         "token": token,
-        "provider": "apns",
-        "platform": "ios",
+        "provider": "fcm",
+        "platform": "android",
         "device_name": "Attacker Phone",
         "device_id": "device-attacker-native",
     })
@@ -121,7 +113,7 @@ def test_invalid_bearer_cannot_reactivate_owned_native_token():
 
     row = _native_row(token)
     assert row["user_id"] == uid
-    assert row["provider"] == "apns"
+    assert row["provider"] == "expo"
     assert row["platform"] == "ios"
     assert row["device_name"] == "Owner iPhone"
     assert row["device_id"] == "device-owned-native-guard"
@@ -149,10 +141,10 @@ def test_anonymous_can_update_truly_anonymous_web_row():
 
 def test_authenticated_owner_can_still_refresh_own_native_metadata():
     uid, auth = _new_user_token()
-    token = "fcm-owner-refresh-native"
+    token = "ExponentPushToken[owner-refresh-native]"
     first = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "apns",
+        "provider": "expo",
         "platform": "ios",
         "device_name": "Old Name",
         "device_id": "device-owner-refresh",
@@ -160,7 +152,7 @@ def test_authenticated_owner_can_still_refresh_own_native_metadata():
     assert first.status_code == 200, first.text
     second = client.post("/api/v1/push/register-native", headers=_auth(auth), json={
         "token": token,
-        "provider": "apns",
+        "provider": "expo",
         "platform": "ios",
         "device_name": "New Name",
         "device_id": "device-owner-refresh",
