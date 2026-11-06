@@ -261,14 +261,14 @@ def test_adapter_keeps_long_unicode_source_post_with_segment(tmp_path):
 
 def test_cargo_listing_expires_thirty_days_after_source_publication():
     published = datetime.now(timezone.utc) - timedelta(days=1)
-    record = _record(source="ten-day-ttl", published=published)
+    record = _record(source="thirty-day-ttl", published=published)
     response = _import(record)
     assert response.status_code == 200
     result = response.json()["results"][0]
     assert result["status"] == "active"
     with get_conn() as c:
         expires = datetime.fromisoformat(c.execute(
-            "SELECT expires_at FROM external_freight_items WHERE source_id='ten-day-ttl'"
+            "SELECT expires_at FROM external_freight_items WHERE source_id='thirty-day-ttl'"
         ).fetchone()[0])
     assert expires == published + timedelta(days=30)
 
@@ -291,11 +291,43 @@ def test_old_route_date_does_not_change_external_cargo_publication_ttl():
     assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=30)
 
 
-def test_external_vehicle_retention_remains_ten_days():
-    published = datetime.now(timezone.utc) - timedelta(days=9)
+def test_external_vehicle_retention_is_thirty_days():
+    published = datetime.now(timezone.utc) - timedelta(days=29)
     record = _record(kind="vehicle", published=published, text="Есть свободная машина")
     normalized = dal.normalize_record(record, require_reviewed=False)
-    assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=10)
+    assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=30)
+
+
+@pytest.mark.parametrize(("age_days", "expected"), [(29, "active"), (30, "expired"), (31, "expired")])
+def test_vehicle_retention_uses_same_exact_utc_30_day_boundary(age_days, expected):
+    now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+    published = now - timedelta(days=age_days)
+    raw = _record(kind="vehicle", source=f"vehicle-retention-boundary-{age_days}",
+                  published=published, text="Есть свободная машина")
+    result = dal.normalize_record(raw, require_reviewed=False)
+    assert result["status"] == expected
+    assert datetime.fromisoformat(result["expires_at"]) == published + timedelta(days=30)
+
+
+def test_vehicle_cleanup_keeps_29_day_row_and_purges_at_30_days():
+    published = datetime.now(timezone.utc) - timedelta(days=29)
+    raw = _record(kind="vehicle", source="vehicle-cleanup-boundary", published=published,
+                  text="Есть свободная машина")
+    raw["classification_status"] = "approved"
+    result = _import(raw).json()["results"][0]
+    item_id = result["id"]
+    assert result["status"] == "active"
+    assert dal.purge_expired_items() == 0
+    old_published = datetime.now(timezone.utc) - timedelta(days=30)
+    deadline = (old_published + timedelta(days=30)).isoformat()
+    with get_conn() as c:
+        c.execute("UPDATE external_freight_items SET source_published_at=?,expires_at=? WHERE id=?",
+                  (old_published.isoformat(), deadline, item_id))
+    assert dal.count_active_items("vehicle") == 0
+    assert dal.purge_expired_items() == 1
+    with get_conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM external_freight_expired_sources").fetchone()[0] == 1
 
 
 def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
@@ -310,7 +342,7 @@ def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
 
 def test_replaying_recent_card_uses_source_based_thirty_day_expiry():
     published = datetime.now(timezone.utc) - timedelta(days=3)
-    record = _record(source="replay-ten-day-ttl", published=published)
+    record = _record(source="replay-thirty-day-ttl", published=published)
     with get_conn() as c:
         c.execute("INSERT INTO external_freight_items(id,source_id,source_message_id,segment_id,kind,source_published_at,ingested_at,updated_at,expires_at,original_text,source_revision,origin,destination,body_types,price_state,contacts,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             ("old-ttl", record["source_id"], record["source_message_id"], record["segment_id"], record["kind"], published.isoformat(), published.isoformat(), published.isoformat(), (published+timedelta(days=7)).isoformat(), record["original_text"], "old", record["origin"], record["destination"], "[]", "unknown", '["+7 777 000 00 00"]', "expired"))
@@ -327,6 +359,10 @@ def test_schema_migration_applies_thirty_day_cargo_ttl_and_preserves_explicit_cl
     ids = {}
     for status in ("active", "expired", "hidden", "closed", "review"):
         ids[status] = _import(_record(source=f"migration-{status}", published=published)).json()["results"][0]["id"]
+    vehicle = _record(kind="vehicle", source="migration-vehicle", published=published,
+                      text="Есть свободная машина")
+    vehicle["classification_status"] = "approved"
+    ids["vehicle"] = _import(vehicle).json()["results"][0]["id"]
     old_expiry = (published + timedelta(days=7)).isoformat()
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET expires_at=? WHERE id IN (?,?)", (old_expiry, ids["active"], ids["expired"]))
@@ -334,10 +370,12 @@ def test_schema_migration_applies_thirty_day_cargo_ttl_and_preserves_explicit_cl
         c.execute("UPDATE external_freight_items SET status='hidden' WHERE id=?", (ids["hidden"],))
         c.execute("UPDATE external_freight_items SET status='closed' WHERE id=?", (ids["closed"],))
         c.execute("UPDATE external_freight_items SET status='review' WHERE id=?", (ids["review"],))
+        c.execute("UPDATE external_freight_items SET expires_at=?,status='expired' WHERE id=?",
+                  ((published + timedelta(days=7)).isoformat(), ids["vehicle"]))
     dal.init_schema()
     with get_conn() as c:
         rows = {r["id"]: dict(r) for r in c.execute(
-            "SELECT id,status,expires_at FROM external_freight_items WHERE id IN (?,?,?,?,?)",
+            "SELECT id,status,expires_at FROM external_freight_items WHERE id IN (?,?,?,?,?,?)",
             tuple(ids.values()),
         )}
     assert rows[ids["active"]]["status"] == "active"
@@ -347,6 +385,8 @@ def test_schema_migration_applies_thirty_day_cargo_ttl_and_preserves_explicit_cl
     assert rows[ids["hidden"]]["status"] == "hidden"
     assert rows[ids["closed"]]["status"] == "closed"
     assert rows[ids["review"]]["status"] == "review"
+    assert rows[ids["vehicle"]]["status"] == "active"
+    assert datetime.fromisoformat(rows[ids["vehicle"]]["expires_at"]) == published + timedelta(days=30)
 
 
 def test_expired_external_item_is_physically_purged_after_thirty_days_and_replay_stays_purged():
@@ -769,7 +809,7 @@ def test_source_expired_rows_become_terminal_but_are_not_deleted(tmp_path, monke
     assert "original_text" in row["payload"]
 
 
-def test_import_adapter_keeps_cargo_for_thirty_days_but_vehicle_for_ten(tmp_path, monkeypatch):
+def test_import_adapter_keeps_cargo_and_vehicle_for_thirty_days(tmp_path, monkeypatch):
     import json
     from datetime import datetime, timedelta, timezone
     from services.external_freight_import_adapter import ExternalFreightFeedAdapter
@@ -796,11 +836,11 @@ def test_import_adapter_keeps_cargo_for_thirty_days_but_vehicle_for_ten(tmp_path
     adapter.enqueue(cargo)
     adapter.enqueue(vehicle)
     result = adapter.flush_once()
-    assert result["status"] == "delivered" and result["sent"] == 1
-    assert [r["source_message_id"] for r in sent[0]["records"]] == ["cargo"]
+    assert result["status"] == "delivered" and result["sent"] == 2
+    assert {r["source_message_id"] for r in sent[0]["records"]} == {"cargo", "vehicle"}
     with adapter._connect() as db:
         rows = {r["source_message_id"]: r for r in db.execute("SELECT source_message_id,terminal_reason FROM selected_outbox")}
-    assert rows["vehicle"]["terminal_reason"] == "source_retention_expired"
+    assert rows["vehicle"]["terminal_reason"] is None
     assert rows["cargo"]["terminal_reason"] is None
 
 
@@ -861,7 +901,7 @@ def test_agent_adapter_maps_private_queue_shape_without_forwarding_queue_fields(
     adapter = ExternalFreightFeedAdapter(
         db_path=str(tmp_path / "queue-adapter.db"), api_url="https://isolated.invalid",
         importer_key="local-test-only", opener=opener,
-        # Keep this contract fixture inside its 10-day retention window regardless
+        # Keep this contract fixture inside its 30-day retention window regardless
         # of the wall clock when the suite is run.
         clock=lambda: datetime(2026, 10, 30, tzinfo=timezone.utc).timestamp(),
     )

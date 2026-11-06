@@ -124,7 +124,7 @@ def test_snapshot_supports_pre_terminal_adapter_schema(tmp_path):
     assert result['incoming']['terminal_expired'] == 0
 
 
-def test_snapshot_applies_cargo_30_day_and_vehicle_10_day_windows(tmp_path):
+def test_snapshot_applies_30_day_window_to_cargo_and_vehicle(tmp_path):
     now = datetime(2026, 10, 31, 10, 0, tzinfo=timezone.utc).timestamp()
     collector, qa_root = _fixture(tmp_path, now)
     for directory in ('external-feed', 'external-feed-owned'):
@@ -137,8 +137,8 @@ def test_snapshot_applies_cargo_30_day_and_vehicle_10_day_windows(tmp_path):
         db.commit(); db.close()
 
     result = health.snapshot(root=collector, qa_root=qa_root, now=now)
-    assert result['incoming']['ready'] == 2  # original 1 + 20-day cargo
-    assert result['incoming']['expired_pending'] == 2  # original 31-day cargo + 20-day vehicle
+    assert result['incoming']['ready'] == 3  # original 1 + 20-day cargo + 20-day vehicle
+    assert result['incoming']['expired_pending'] == 1  # original 31-day cargo only
 
 
 def test_backlog_growth_alarm_survives_recent_delivery_progress():

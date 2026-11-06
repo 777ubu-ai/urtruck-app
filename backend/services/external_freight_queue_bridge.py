@@ -20,8 +20,7 @@ from services.external_freight_parser import apply_core_review, map_selected_mes
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 from services.external_freight_retention import CARGO_RETENTION_SECONDS
 
-# Scan the cargo month requested by product. The importer independently keeps
-# vehicle offers at ten days and rejects expired source timestamps.
+# Scan the 30-day publication lifetime requested for cargo and vehicle offers.
 ACTIVE_SECONDS = CARGO_RETENTION_SECONDS
 MAX_SCAN = 50
 VEHICLE_RESERVE_LOOKAHEAD = 500

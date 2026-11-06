@@ -134,8 +134,8 @@ def purge_expired_items(now=None):
     """Delete external offers after their kind-specific source-based lifetime."""
     now = _utc(now)
     cargo_cutoff = now - timedelta(days=30)
-    vehicle_cutoff = now - timedelta(days=10)
-    undated_cutoff = vehicle_cutoff
+    vehicle_cutoff = now - timedelta(days=active_days("vehicle"))
+    undated_cutoff = now - timedelta(days=max(active_days("cargo"), active_days("vehicle")))
     started = time.monotonic()
     with get_conn() as c:
         # Split dated and undated retention queries so both can use their
@@ -302,7 +302,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published_deadline(published, kind) if published else now + timedelta(days=10)).isoformat(),
+        "updated_at": now.isoformat(), "expires_at": (published_deadline(published, kind) if published else now + timedelta(days=active_days(kind))).isoformat(),
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -367,7 +367,7 @@ def import_records(records):
                             current["source_published_at"], current["kind"]
                         ).isoformat()
                     else:
-                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=10)).isoformat()
+                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=active_days(current["kind"]))).isoformat()
                     unchanged = all(values[key] == current[key] for key in columns
                                     if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                     if current["status"] in {"hidden", "closed"} or (
