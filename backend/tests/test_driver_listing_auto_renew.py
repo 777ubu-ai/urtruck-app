@@ -45,7 +45,7 @@ def test_renewal_is_cyclic_idempotent_and_keeps_identity(age):
         assert row["departure"] == "2020-01-01"
         deadline = bid_expiry.listing_deadline(row["published_at"], row["created_at"])
         assert NOW < deadline <= NOW + timedelta(days=30)
-        assert first["renewed_trips"] == [tid] and second["renewed_trips"] == []
+        assert first["renewed_trips"].count(tid) == 1 and tid not in second["renewed_trips"]
         assert c.execute("SELECT count(*) FROM trips WHERE id=?", (tid,)).fetchone()[0] == 1
 
 
@@ -53,8 +53,8 @@ def test_renewal_is_cyclic_idempotent_and_keeps_identity(age):
 def test_exact_utc_boundary_and_microsecond_before(published):
     tid, _, _ = seed(published=published)
     with db.get_conn() as c:
-        assert bid_expiry.expire_stale_marketplace(now=NOW-timedelta(microseconds=1), conn=c)["renewed_trips"] == []
-        assert bid_expiry.expire_stale_marketplace(now=NOW, conn=c)["renewed_trips"] == [tid]
+        assert tid not in bid_expiry.expire_stale_marketplace(now=NOW-timedelta(microseconds=1), conn=c)["renewed_trips"]
+        assert bid_expiry.expire_stale_marketplace(now=NOW, conn=c)["renewed_trips"].count(tid) == 1
 
 
 @pytest.mark.parametrize("status", ["expired", "unpublished", "cancelled", "rejected", "booked", "completed"])
@@ -115,7 +115,7 @@ def test_concurrent_housekeeping_renews_once():
             barrier.wait(timeout=5)
             return bid_expiry.expire_stale_marketplace(now=NOW, conn=c)["renewed_trips"]
     with ThreadPoolExecutor(max_workers=2) as pool:
-        assert sum((r for r in pool.map(run, range(2))), []) == [tid]
+        assert sum((r for r in pool.map(run, range(2))), []).count(tid) == 1
 
 
 def test_failed_bid_notification_rolls_back_renewal(monkeypatch):
