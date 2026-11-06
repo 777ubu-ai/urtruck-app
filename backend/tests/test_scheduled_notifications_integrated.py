@@ -284,6 +284,20 @@ def test_auto_renewed_publication_keeps_no_bids_identity_and_fallback(env,monkey
     assert jobs.no_bids_job(now=now)==0
 
 
+def test_deleted_owner_is_absent_from_digest_and_bound_search_delivery(env):
+    cargo(age=1)
+    assert registration_dal.delete_account('owner')
+    with db.get_conn() as c:
+        c.execute("INSERT INTO saved_searches(user_id,from_city,to_city,notify) VALUES ('driver','Город A','Город B',1)")
+    assert jobs.reminders_job()['route_match']==0
+    assert count('notifications',"type='saved_search'")==0
+    with db.get_conn() as c:
+        data={'notification_category':'saved_search','cargo_id':'cargo','from':'Город A','to':'Город B'}
+        assert policy.delivery_block_reason('driver',data,conn=c)=='listing_inactive'
+        data.pop('cargo_id')
+        assert policy.delivery_block_reason('driver',data,conn=c) is None
+
+
 def test_queue_failure_rolls_back_claim_and_inbox(env,monkeypatch):
     cargo()
     def unavailable(*a,**kw):raise RuntimeError('synthetic-outbox-failure')

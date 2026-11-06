@@ -81,6 +81,8 @@ def delivery_block_reason(user_id, data, *, conn=None, now=None):
     entity_id = data.get("cargo_id") or data.get("trip_id")
     row = listing(conn, entity_type, entity_id) if entity_id else None
     if category == "saved_search":
+        if entity_id and not row:
+            return "listing_inactive"
         if row:
             if not active_listing(row, now):
                 return "listing_inactive"
