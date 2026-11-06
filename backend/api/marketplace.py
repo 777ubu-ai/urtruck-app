@@ -303,8 +303,10 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
 
 def _within_publication_window(row: dict, today=None) -> bool:
-    """Единый срок UTC: в момент published_at + 30 суток публикация истекла."""
-    from services.bid_expiry import listing_deadline, _utc_naive
+    """Груз: 30 суток UTC; активный собственный рейс продлевается автоматически."""
+    from services.bid_expiry import listing_deadline, _utc_naive, auto_renewing_trip
+    if auto_renewing_trip(dict(row)):
+        return True
     now = today if today is not None else datetime.utcnow()
     if now is not None and not isinstance(now, datetime):
         now = datetime.combine(now, datetime.min.time())
@@ -313,7 +315,7 @@ def _within_publication_window(row: dict, today=None) -> bool:
 
 
 def _public_trip_ok(row: dict, today=None) -> bool:
-    """Public trip eligibility mirrors cargo: 30 days from publication."""
+    """Активный собственный рейс остаётся в выдаче при продлении цикла."""
     if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
                       row.get("to_city"), row.get("truck_type")):
         return False
@@ -1822,10 +1824,12 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 # ═══ Bids ═══
 
 def _require_current_bid_listing(row):
-    """Предложения действуют в течение 30 дней публикации, независимо от даты маршрута."""
-    from services.bid_expiry import listing_deadline
+    """Срок груза — 30 суток; рейс продлевается, TTL самой ставки проверяется отдельно."""
+    from services.bid_expiry import listing_deadline, auto_renewing_trip
 
     value = dict(row)
+    if auto_renewing_trip(value):
+        return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
     if deadline is not None and deadline <= datetime.utcnow():
         raise HTTPException(status_code=409, detail="Срок публикации объявления истёк")
@@ -1839,7 +1843,8 @@ def _require_actionable_bid(c, bid):
         raise HTTPException(status_code=409, detail="Срок предложения истёк")
     for key, table in (("cargo_id", "cargos"), ("trip_id", "trips")):
         if bid.get(key):
-            row = c.execute(f"SELECT status,published_at,created_at FROM {table} WHERE id=?", (bid[key],)).fetchone()
+            owner_column = "owner_id" if table == "cargos" else "driver_id"
+            row = c.execute(f"SELECT status,published_at,created_at,{owner_column} FROM {table} WHERE id=?", (bid[key],)).fetchone()
             if not row or row["status"] != "active":
                 raise HTTPException(status_code=409, detail="Объявление больше не доступно для предложений")
             _require_current_bid_listing(row)

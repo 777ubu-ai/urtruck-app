@@ -2,8 +2,8 @@
 
 Product rule (2026-08-20):
 - an unaccepted bid is actionable for at most 48 hours since its last activity;
-- a user's own listing stays in their management list for 30 days from its
-  latest publication; public feed date filters remain separate;
+- собственный груз действует 30 суток с публикации; активный рейс водителя
+  автоматически продлевается циклами по 30 суток (решение 07.11.2026);
 - past route dates do not shorten the publication window;
 - accepted deals are never deleted or auto-cancelled by this cleanup;
 - expired rows stay in the database for history/audit.
@@ -92,6 +92,11 @@ def listing_deadline(published_at, created_at, ttl_days: int = LISTING_TTL_DAYS)
     return published + timedelta(days=ttl_days) if published else None
 
 
+def auto_renewing_trip(row):
+    """Собственный активный рейс продлевается, архив и внешняя лента — нет."""
+    return bool(row.get("driver_id") and row.get("status", "active") == "active")
+
+
 def _has_active_deal(conn, *, cargo_id=None, trip_id=None) -> bool:
     if not cargo_id and not trip_id:
         return False
@@ -175,12 +180,12 @@ def _queue_expired_bid_notifications(conn, bid):
 def _expire_with_conn(conn, now: datetime) -> dict:
     expired_cargos = []
     expired_trips = []
+    renewed_trips = []
     expired_bids = []
     reasons = {}
 
-    # Keep owned listings available in «Мои грузы»/«Мои рейсы» for 30 days
-    # from publication, regardless of the route's date. Bids use the same
-    # publication lifetime, while their own 48h TTL stays separate.
+    # Груз истекает через 30 суток; рейс продлевается с сохранением ID.
+    # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
     # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
         "SELECT id, status, published_at, created_at FROM cargos WHERE status='active'"
@@ -206,13 +211,17 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         if has_deal or deadline is None:
             continue
         if deadline <= now:
+            # Пропущенные циклы сворачиваем одним UPDATE; исходный created_at
+            # и дата выезда сохраняются. Ставки ниже по-прежнему имеют TTL 48ч.
+            period = timedelta(days=LISTING_TTL_DAYS)
+            cycle_start = deadline + ((now - deadline) // period) * period
             cur = conn.execute(
-                "UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active'",
-                (row["id"],),
+                "UPDATE trips SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND status='active' AND published_at IS ?",
+                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
             )
             if cur.rowcount:
-                expired_trips.append(row["id"])
+                renewed_trips.append(row["id"])
 
     # Now close every still-open bid whose 48h activity window ended or whose
     # parent is no longer actionable. Accepted/rejected/cancelled rows are not
@@ -282,6 +291,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         "expired_bids": expired_bids,
         "expired_cargos": expired_cargos,
         "expired_trips": expired_trips,
+        "renewed_trips": renewed_trips,
         "reasons": reasons,
         "now": now.isoformat(timespec="seconds") + "Z",
     }

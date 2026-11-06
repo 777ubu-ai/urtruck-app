@@ -148,9 +148,10 @@ def test_listing_expires_after_30_days_from_publication_not_route_date():
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
     assert result["expired_cargos"] == ["old-cargo"]
-    assert result["expired_trips"] == ["old-trip"]
+    assert result["expired_trips"] == []
+    assert result["renewed_trips"] == ["old-trip"]
     assert conn.execute("SELECT status FROM cargos WHERE id='old-cargo'").fetchone()[0] == "expired"
-    assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "expired"
+    assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "active"
 
 
 def test_terminal_listing_is_not_automatically_republished():
