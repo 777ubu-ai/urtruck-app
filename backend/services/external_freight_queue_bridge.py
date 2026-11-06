@@ -20,6 +20,9 @@ from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
 
 ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
+# Сколько свежих необработанных сообщений проверять на «машину» в Python
+# (перенесено из 014618ed, QA2).
+VEHICLE_RESERVE_LOOKAHEAD = 500
 PARSER_REVISION = '20261027-delivery-fair-v12'
 
 
@@ -231,12 +234,16 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 arguments += (OWNED_SOURCE.lower(),)
             # Отдельный резерв кандидатов машин: большой грузовой хвост не
             # расходует всю квоту. Окончательный тип определяет общий парсер.
-            # SQLite может вызывать функцию до NOT EXISTS. CASE не позволяет
-            # повторно разбирать уже подтверждённые посты или чужой поток.
-            scope='lower(q.source)=?' if self.source_name else 'lower(q.source)<>?'
-            hint=f"CASE WHEN {scope} AND {unseen} THEN bridge_vehicle_hint(q.text) ELSE 0 END"
-            vehicles=source.execute(query+f" AND {hint} ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",
-                (*arguments,(self.source_name or OWNED_SOURCE).lower(),self.parser_revision)).fetchall()
+            # Python-классификатор внутри SQLite вызывался для КАЖДОЙ
+            # необработанной строки окна (61 тыс. на 2026-11-06, ~60 с при
+            # лимите systemd 45 с) — служба погибала до отправки. Классифицируем
+            # только ограниченное свежее окно; старые объявления по-прежнему
+            # продвигаются через индексированную выборку oldest ниже.
+            vehicle_lookahead=source.execute(
+                query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT ?",
+                (*arguments,VEHICLE_RESERVE_LOOKAHEAD)).fetchall()
+            vehicles=[row for row in vehicle_lookahead
+                      if has_vehicle_supply_signal(row["text"] or "")][:10]
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
             oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
