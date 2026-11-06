@@ -52,6 +52,81 @@ def test_control_cargo_persists_and_is_published_for_shipper(monkeypatch):
     assert client.get('/api/v1/market/cargos/' + cid).json()['id'] == cid
 
 
+def test_cargo_creation_retry_is_visible_to_counterparty_in_public_feed(monkeypatch):
+    """A lost response retry must preserve one real listing visible to drivers."""
+    from api import saved_searches
+    monkeypatch.setattr(saved_searches, 'notify_matching_users', lambda *a, **k: None)
+    owner, uid = _client('client')
+    driver, _ = _client('driver')
+    payload = {
+        **_body(),
+        'from_city': 'Алматы',
+        'to_city': 'Астана',
+        'cargo_desc': 'Оборудование в деревянных ящиках',
+        'pickup_date': '2026-10-25',
+        'client_id': 'device-feed-chain-cargo-1',
+    }
+
+    created = owner.post('/api/v1/market/cargos', json=payload)
+    assert created.status_code == 200, created.text
+    cargo_id = created.json()['id']
+
+    # Simulate an HTTP response lost on the client and a retry with the same
+    # operation key. The retry must not create a second listing or push event.
+    replay = owner.post('/api/v1/market/cargos', json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == created.json()
+    with get_conn() as c:
+        row = dict(c.execute('SELECT * FROM cargos WHERE id=?', (cargo_id,)).fetchone())
+        assert c.execute('SELECT count(*) FROM cargos WHERE owner_id=?', (uid,)).fetchone()[0] == 1
+    assert row['status'] == 'active'
+    assert row['published_at'] is not None
+    assert row['owner_id'] == uid
+
+    feed = driver.get('/api/v1/market/cargos?from_city=Алматы&to_city=Астана&limit=200')
+    assert feed.status_code == 200, feed.text
+    assert cargo_id in {item['id'] for item in feed.json()['cargos']}
+    detail = driver.get('/api/v1/market/cargos/' + cargo_id)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()['id'] == cargo_id
+    assert detail.json()['cargo_desc'] == payload['cargo_desc']
+
+
+def test_driver_trip_creation_is_visible_to_shipper_in_public_feed():
+    """The symmetric driver publication path must reach the public feed."""
+    driver, uid = _client('driver')
+    shipper, _ = _client('client')
+    payload = {
+        'from_city': 'Алматы',
+        'to_city': 'Астана',
+        'truck_type': 'tent',
+        'capacity_tons': 20,
+        'available_m3': 80,
+        'price': 300,
+        'currency': 'USD',
+        'departure': '2026-10-25',
+        'client_id': 'device-feed-chain-trip-1',
+    }
+    created = driver.post('/api/v1/market/trips', json=payload)
+    assert created.status_code == 200, created.text
+    trip_id = created.json()['id']
+    replay = driver.post('/api/v1/market/trips', json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == created.json()
+    with get_conn() as c:
+        row = dict(c.execute('SELECT * FROM trips WHERE id=?', (trip_id,)).fetchone())
+        assert c.execute('SELECT count(*) FROM trips WHERE driver_id=?', (uid,)).fetchone()[0] == 1
+    assert row['status'] == 'active'
+    assert row['published_at'] is not None
+
+    feed = shipper.get('/api/v1/market/trips?from_city=Алматы&to_city=Астана&limit=200')
+    assert feed.status_code == 200, feed.text
+    assert trip_id in {item['id'] for item in feed.json()['trips']}
+    detail = shipper.get('/api/v1/market/trips/' + trip_id)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()['id'] == trip_id
+
+
 def test_driver_control_cargo_rejected_without_writes():
     client, uid = _client('driver')
     result = client.post('/api/v1/market/cargos', json=_body())
