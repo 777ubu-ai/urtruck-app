@@ -4,11 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from api import marketplace as market
-from database import db
+from database import db, registration_dal
 from services import bid_expiry, notification_policy, scheduled_notifications
 
 NOW = datetime(2026, 11, 7, 12)
@@ -160,3 +160,74 @@ def test_renewal_does_not_replay_no_bids(kind):
     assert not scheduled_notifications.queue_no_bids(kind, iid, now=NOW+timedelta(days=31))
     with db.get_conn() as c:
         assert c.execute("SELECT count(*) FROM notification_event_claims WHERE event_key=?", (f"no_bids:{kind}:{iid}",)).fetchone()[0] == 1
+
+
+def deleted_listing(kind, age=95):
+    table, iid, owner, original = seed(kind, age)
+    with db.get_conn() as c:
+        c.execute("INSERT INTO drivers_registration(id,phone,full_name,role,status) VALUES(?,?,?,?,?)", (owner, owner, "Владелец fixture", "client" if kind == "cargo" else "driver", "approved"))
+    assert registration_dal.delete_account(owner)
+    return table, iid, owner, original
+
+
+@pytest.mark.parametrize("age", [1, 95])
+def test_deleted_owner_never_renews_or_appears_public(kind, age):
+    table, iid, owner, original = deleted_listing(kind, age)
+    app = FastAPI()
+    app.include_router(market.mp_router, prefix="/market")
+    client = TestClient(app)
+    # Проверяем до housekeeping: ни задержка, ни show_demo не раскрывают запись.
+    for demo in (False, True):
+        response = client.get("/market/" + table, params={"show_demo": demo, "limit": 200})
+        assert response.status_code == 200
+        assert iid not in {r["id"] for r in response.json()[table]}
+    assert client.get("/market/" + table + "/" + iid).status_code == 404
+    with pytest.raises(HTTPException) as caught:
+        market.create_bid(market.BidIn(**{kind + "_id": iid}, amount=100), user={"id": db.new_id(), "role": "driver" if kind == "cargo" else "client"})
+    assert caught.value.status_code == 409
+    with db.get_conn() as c:
+        assert notification_policy.listing(c, kind, iid) is None
+        result = bid_expiry.expire_stale_marketplace(now=NOW, conn=c)
+        assert iid not in renewed(result, table)
+        assert tuple(c.execute(f"SELECT status,published_at FROM {table} WHERE id=?", (iid,)).fetchone()) == ("expired" if age >= 30 else "active", original)
+        assert c.execute(f"SELECT count(*) FROM {table} WHERE id=?", (iid,)).fetchone()[0] == 1
+
+
+def test_deleted_owner_keeps_existing_deal_participant_history(kind, monkeypatch):
+    table, iid, owner, original = deleted_listing(kind)
+    participant = db.new_id()
+    with db.get_conn() as c:
+        c.execute(f"INSERT INTO deals(id,bid_id,shipper_id,driver_id,{kind}_id,from_city,to_city,amount,status) VALUES(?,?,?,?,?,'Алматы','Астана',100,'in_progress')", (db.new_id(), db.new_id(), owner if kind == "cargo" else participant, participant if kind == "cargo" else owner, iid))
+        bid_expiry.expire_stale_marketplace(now=NOW, conn=c)
+        assert tuple(c.execute(f"SELECT status,published_at FROM {table} WHERE id=?", (iid,)).fetchone()) == ("active", original)
+        assert notification_policy.delivery_block_reason(participant, {"event": "deal.status.in_progress"}, conn=c, now=NOW) is None
+    app = FastAPI()
+    app.include_router(market.mp_router, prefix="/market")
+    monkeypatch.setattr(market, "_maybe_user", lambda token: {"id": participant} if token == "participant" else {"id": "outsider"})
+    client = TestClient(app)
+    endpoint = "/market/" + table + "/" + iid
+    assert client.get(endpoint, headers={"Authorization": "outsider"}).status_code == 404
+    assert client.get(endpoint, headers={"Authorization": "participant"}).status_code == 200
+
+
+@pytest.mark.parametrize("action", ["update", "counter", "accept", "accept_counter"])
+def test_deleted_owner_blocks_existing_bid_mutations_without_side_effects(kind, action):
+    table, iid, owner, original = deleted_listing(kind, age=1)
+    bidder, bid = db.new_id(), db.new_id()
+    state = "countered" if action == "accept_counter" else "pending"
+    with db.get_conn() as c:
+        stamp=(NOW-timedelta(hours=1)).isoformat()
+        c.execute(f"INSERT INTO bids(id,{kind}_id,bidder_id,amount,status,created_at,updated_at,counter_amount) VALUES(?,?,?,100,?,?,?,150)", (bid, iid, bidder, state, stamp, stamp))
+    calls = {
+        "update": lambda: market.update_bid(bid, market.BidUpdateIn(amount=150), user={"id": bidder}),
+        "counter": lambda: market.counter_bid(bid, market.BidCounterIn(amount=150), user={"id": owner}),
+        "accept": lambda: market.accept_bid(bid, user={"id": owner}),
+        "accept_counter": lambda: market.accept_counter(bid, user={"id": bidder}),
+    }
+    with pytest.raises(HTTPException) as caught:
+        calls[action]()
+    assert caught.value.status_code == 409
+    with db.get_conn() as c:
+        assert c.execute(f"SELECT count(*) FROM deals WHERE {kind}_id=?", (iid,)).fetchone()[0] == 0
+        assert c.execute("SELECT status FROM bids WHERE id=?", (bid,)).fetchone()[0] == state
+        assert c.execute(f"SELECT published_at FROM {table} WHERE id=?", (iid,)).fetchone()[0] == original

@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from database.db import get_conn
-from services.bid_expiry import listing_deadline, parse_market_timestamp, auto_renewing_listing
+from services.bid_expiry import listing_deadline, parse_market_timestamp, auto_renewing_listing, owner_is_deleted
 
 CATEGORIES = ("no_bids", "inactivity", "listing_lifecycle")
 
@@ -29,6 +29,8 @@ def listing(conn, entity_type, entity_id):
     if not table:
         return None
     row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (entity_id,)).fetchone()
+    if row and owner_is_deleted(conn, dict(row).get("owner_id") or dict(row).get("driver_id")):
+        return None
     return dict(row) if row else None
 
 

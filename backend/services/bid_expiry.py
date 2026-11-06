@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import re
+import sqlite3
 import uuid
 from typing import Optional
 
@@ -96,6 +97,24 @@ def auto_renewing_listing(row):
     """Собственное активное объявление продлевается; архив и внешняя лента — нет."""
     return bool((row.get("driver_id") or row.get("owner_id"))
                 and row.get("status", "active") == "active")
+
+
+def owner_is_deleted(conn, user_id):
+    """Проверка тем же соединением, без вложенного housekeeping под write lock."""
+    if not user_id:
+        return False
+    try:
+        return bool(conn.execute(
+            "SELECT 1 FROM drivers_registration WHERE id=? "
+            "AND (lower(status)='deleted' OR lower(role)='deleted') LIMIT 1",
+            (user_id,),
+        ).fetchone())
+    except sqlite3.OperationalError as exc:
+        # Изолированные legacy схемы expiry не содержат account registry.
+        # Полное приложение создаёт registration до готовности HTTP.
+        if str(exc) == "no such table: drivers_registration":
+            return False
+        raise
 
 
 def _has_active_deal(conn, *, cargo_id=None, trip_id=None) -> bool:
@@ -190,13 +209,18 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
     # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM cargos WHERE status='active'"
+        "SELECT * FROM cargos WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, cargo_id=row["id"])
         if has_deal or deadline is None:
             continue
         if deadline <= now:
+            if owner_is_deleted(conn, dict(row).get("owner_id")):
+                cur = conn.execute("UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                if cur.rowcount:
+                    expired_cargos.append(row["id"])
+                continue
             period = timedelta(days=LISTING_TTL_DAYS)
             cycle_start = deadline + ((now - deadline) // period) * period
             cur = conn.execute(
@@ -208,13 +232,18 @@ def _expire_with_conn(conn, now: datetime) -> dict:
                 renewed_cargos.append(row["id"])
 
     for row in conn.execute(
-        "SELECT id, status, published_at, created_at FROM trips WHERE status='active'"
+        "SELECT * FROM trips WHERE status='active'"
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, trip_id=row["id"])
         if has_deal or deadline is None:
             continue
         if deadline <= now:
+            if owner_is_deleted(conn, dict(row).get("driver_id")):
+                cur = conn.execute("UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                if cur.rowcount:
+                    expired_trips.append(row["id"])
+                continue
             # Пропущенные циклы сворачиваем одним UPDATE; исходный created_at
             # и дата выезда сохраняются. Ставки ниже по-прежнему имеют TTL 48ч.
             period = timedelta(days=LISTING_TTL_DAYS)

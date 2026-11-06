@@ -88,7 +88,9 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
     if caller_id and caller_id == row.get(owner_field):
         return True
 
-    is_public = str(row.get("status") or "") == "active"
+    from services.bid_expiry import owner_is_deleted
+    is_public = (str(row.get("status") or "") == "active"
+                 and not owner_is_deleted(c, row.get(owner_field)))
     if is_public:
         if table == "cargos":
             return _public_cargo_ok(row)
@@ -830,6 +832,9 @@ def list_cargos(
     where.extend(search_where)
     params.extend(search_params)
 
+    where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
+                 "deleted_owner.id=cargos.owner_id AND "
+                 "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1713,6 +1718,9 @@ def list_trips(
     where.extend(search_where)
     params.extend(search_params)
 
+    where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
+                 "deleted_owner.id=trips.driver_id AND "
+                 "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1823,11 +1831,13 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 
 # ═══ Bids ═══
 
-def _require_current_bid_listing(row):
+def _require_current_bid_listing(row, conn=None):
     """Собственный груз/рейс продлевается; TTL самой ставки проверяется отдельно."""
-    from services.bid_expiry import listing_deadline, auto_renewing_listing
+    from services.bid_expiry import listing_deadline, auto_renewing_listing, owner_is_deleted
 
     value = dict(row)
+    if conn is not None and owner_is_deleted(conn, value.get("owner_id") or value.get("driver_id")):
+        raise HTTPException(status_code=409, detail="Объявление владельца больше недоступно")
     if auto_renewing_listing(value):
         return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
@@ -1847,7 +1857,7 @@ def _require_actionable_bid(c, bid):
             row = c.execute(f"SELECT status,published_at,created_at,{owner_column} FROM {table} WHERE id=?", (bid[key],)).fetchone()
             if not row or row["status"] != "active":
                 raise HTTPException(status_code=409, detail="Объявление больше не доступно для предложений")
-            _require_current_bid_listing(row)
+            _require_current_bid_listing(row, c)
 
 
 # Символы валют для человеко-читаемых строк (push/уведомления). Зеркало
@@ -2013,7 +2023,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "message": "Нельзя ставить на собственный груз",
                 })
             if cg:
-                _require_current_bid_listing(cg)
+                _require_current_bid_listing(cg, c)
         if body.trip_id:
             tr = c.execute("SELECT status, driver_id, departure, published_at, created_at FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if not tr:
@@ -2027,7 +2037,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "message": "Нельзя ставить на собственный рейс",
                 })
             if tr:
-                _require_current_bid_listing(tr)
+                _require_current_bid_listing(tr, c)
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
         # Возвращаем id/сумму/сообщение старой ставки в теле 409 — фронт
@@ -2808,7 +2818,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        _require_current_bid_listing(cargo)
+        _require_current_bid_listing(cargo, c)
         # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
         # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
         # rollback транзакции при его провале) в итоге откатит и эту запись
@@ -2845,7 +2855,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         driver_id = trip["driver_id"]
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        _require_current_bid_listing(trip)
+        _require_current_bid_listing(trip, c)
         # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
         cur = c.execute(
             "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",
