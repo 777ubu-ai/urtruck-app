@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from database.db import get_conn
-from services.bid_expiry import listing_deadline, parse_market_timestamp
+from services.bid_expiry import listing_deadline, parse_market_timestamp, auto_renewing_listing, owner_is_deleted
 
 CATEGORIES = ("no_bids", "inactivity", "listing_lifecycle")
 
@@ -29,6 +29,8 @@ def listing(conn, entity_type, entity_id):
     if not table:
         return None
     row = conn.execute(f"SELECT * FROM {table} WHERE id=?", (entity_id,)).fetchone()
+    if row and owner_is_deleted(conn, dict(row).get("owner_id") or dict(row).get("driver_id")):
+        return None
     return dict(row) if row else None
 
 
@@ -37,6 +39,8 @@ def publication_time(row):
 
 
 def active_listing(row, now):
+    if row and auto_renewing_listing(row):
+        return True
     deadline = listing_deadline(row.get("published_at"), row.get("created_at")) if row else None
     return bool(row and row.get("status") == "active" and deadline and utc_now(now) < deadline)
 
@@ -77,6 +81,8 @@ def delivery_block_reason(user_id, data, *, conn=None, now=None):
     entity_id = data.get("cargo_id") or data.get("trip_id")
     row = listing(conn, entity_type, entity_id) if entity_id else None
     if category == "saved_search":
+        if entity_id and not row:
+            return "listing_inactive"
         if row:
             if not active_listing(row, now):
                 return "listing_inactive"
@@ -99,6 +105,8 @@ def delivery_block_reason(user_id, data, *, conn=None, now=None):
             return "publication_too_recent"
         return "bid_exists" if has_bids(conn, entity_type, entity_id) else None
     if category == "listing_lifecycle":
+        if auto_renewing_listing(row):
+            return "listing_auto_renewed"
         deadline = listing_deadline(row.get("published_at"), row.get("created_at"))
         # Новая публикация не должна получать отложенное напоминание старого срока.
         if not deadline or data.get("publication_at") != publication_time(row).isoformat():
