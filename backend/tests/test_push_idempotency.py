@@ -5,7 +5,7 @@ def test_push_sender_skips_successfully_delivered_event(monkeypatch):
     monkeypatch.setattr(push_sender, "_already_delivered", lambda event_id, user_id: True)
     monkeypatch.setattr(
         push_sender,
-        "_send_web",
+        "_send_web_batch",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("web provider must not run")),
     )
     monkeypatch.setattr(

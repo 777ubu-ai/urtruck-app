@@ -784,7 +784,7 @@ def claim_inline_event(event_id: str, user_id: str):
 
 def _finish_row(
     row_id: int, attempt: int, sent: bool, error: Optional[str], *, partially_sent: bool = False,
-    retryable: bool = True, claim_token: Optional[str] = None,
+    retryable: bool = True, claim_token: Optional[str] = None, progress_only: bool = False,
 ) -> str:
     """Apply the terminal/retry decision for one claimed row. Shared by both
     the normal (no delivery) and exception (poison event) paths so a handler
@@ -804,6 +804,17 @@ def _finish_row(
                 (attempt, row_id, claim_token),
             )
             return "sent" if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
+        if progress_only:
+            # A bounded batch succeeded but more independent targets remain.
+            # Requeue immediately without spending the retry budget reserved
+            # for provider failures. The same claim-token fence applies.
+            c.execute(
+                "UPDATE push_outbox SET status='retry', next_attempt_at=CURRENT_TIMESTAMP, last_error=NULL, "
+                "claimed_at=NULL, locked_by=NULL, claim_token=NULL "
+                "WHERE id=? AND status='processing' AND claim_token=?",
+                (row_id, claim_token),
+            )
+            return "retry" if c.execute("SELECT changes()").fetchone()[0] == 1 else "stale"
         if not retryable:
             terminal_status = "sent_partial" if partially_sent else "failed"
             c.execute(
@@ -918,7 +929,9 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
             title = payload.get("title") or "UrTruck"
             body = payload.get("body") or ""
             data = payload.get("data") or payload
-            web_targets = web_sent = 0
+            web_sent = 0
+            web_targets = 0
+            web_batch = {"sent": 0, "attempted": 0, "failed": 0, "remaining": 0}
             if provider_send_one is not None:
                 # Compatibility seam for deterministic unit tests only. The
                 # runtime path uses the verified device transport below.
@@ -946,9 +959,10 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                 }
             else:
                 data = {**data, "event_id": row["event_id"]}
-                from services.push_sender import _send_web, _web_subscriptions
+                from services.push_sender import _send_web_batch, _web_subscriptions
                 web_targets = len(_web_subscriptions(row["recipient_user_id"]))
-                web_sent = _send_web(row["recipient_user_id"], title, body, data, badge)
+                web_batch = _send_web_batch(row["recipient_user_id"], title, body, data, badge)
+                web_sent = int(web_batch["sent"])
                 result = send_to_devices(row["recipient_user_id"], title, body, data, badge)
             # Multi-device fix (push-closure track): "sent" here must mean
             # EVERY currently-active device was reached, not merely at
@@ -965,19 +979,27 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
                 outcome = _skip_row_without_devices(row["id"], attempt, row["claim_token"])
             else:
                 confirmed = int(result.get("sent", 0) or 0) + int(result.get("already_delivered", 0) or 0)
-                fully_delivered = confirmed >= total_devices and web_sent >= web_targets
+                fully_delivered = confirmed >= total_devices and web_batch["remaining"] == 0
                 failure_counts = result.get("errors") or {}
                 failure_reason = ",".join(
                     f"{code}:{count}" for code, count in sorted(failure_counts.items())
                 ) or result.get("error")
+                if web_batch["failed"]:
+                    failure_reason = failure_reason or "web_push_failed"
                 outcome = _finish_row(
                     row["id"],
                     attempt,
                     sent=fully_delivered,
                     error=failure_reason,
                     partially_sent=confirmed > 0 or web_sent > 0,
-                    retryable=bool(result.get("retryable", True)) or web_sent < web_targets,
+                    retryable=bool(result.get("retryable", True)) or web_batch["failed"] > 0,
                     claim_token=row["claim_token"],
+                    progress_only=(
+                        web_batch["remaining"] > 0
+                        and web_batch["failed"] == 0
+                        and confirmed >= total_devices
+                        and not failure_counts
+                    ),
                 )
         except Exception as exc:
             # Poison event (malformed payload, provider client raising outside
