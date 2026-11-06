@@ -16,7 +16,9 @@ STALL_SECONDS = 120
 HEARTBEAT_SECONDS = 180
 BACKLOG_GROWTH_SECONDS = 600
 BACKLOG_GROWTH_MIN_ROWS = 20
-RETENTION_SECONDS = 10 * 24 * 3600
+CARGO_RETENTION_SECONDS = 30 * 24 * 3600
+VEHICLE_RETENTION_SECONDS = 30 * 24 * 3600
+RETENTION_SECONDS = CARGO_RETENTION_SECONDS
 
 
 def readonly(path):
@@ -54,24 +56,28 @@ def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
             result[name] = {'error': 'state_missing'}
             continue
         with readonly(path) as db:
-            cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
+            cargo_cutoff = datetime.fromtimestamp(now - CARGO_RETENTION_SECONDS, timezone.utc).isoformat()
+            vehicle_cutoff = datetime.fromtimestamp(now - VEHICLE_RETENTION_SECONDS, timezone.utc).isoformat()
             columns = {row[1] for row in db.execute('PRAGMA table_info(selected_outbox)')}
             terminal_clause = ' AND terminal_at IS NULL' if 'terminal_at' in columns else ''
-            eligible = f'''delivered_at IS NULL AND quarantined_at IS NULL{terminal_clause}
-                AND (json_extract(payload,'$.source_published_at') IS NULL
-                    OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))'''
+            within_retention = '''(json_extract(payload,'$.source_published_at') IS NULL
+                OR julianday(json_extract(payload,'$.source_published_at')) > julianday(
+                    CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END))'''
+            outside_retention = '''json_extract(payload,'$.source_published_at') IS NOT NULL
+                AND julianday(json_extract(payload,'$.source_published_at')) <= julianday(
+                    CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END)'''
+            eligible = f'delivered_at IS NULL AND quarantined_at IS NULL{terminal_clause} AND {within_retention}'
             ready_query = f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?'
-            ready = db.execute(ready_query, (cutoff, now)).fetchone()[0]
+            ready = db.execute(ready_query, (cargo_cutoff, vehicle_cutoff, now)).fetchone()[0]
             backoff = db.execute(
                 f'SELECT count(*) FROM selected_outbox WHERE {eligible} AND next_attempt_at>?',
-                (cutoff, now)).fetchone()[0]
+                (cargo_cutoff, vehicle_cutoff, now)).fetchone()[0]
             progress = db.execute('SELECT max(delivered_at) FROM selected_outbox').fetchone()[0]
             pending = db.execute(f'SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL '
                                  f'AND quarantined_at IS NULL{terminal_clause}').fetchone()[0]
             expired_pending = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE delivered_at IS NULL
-                AND quarantined_at IS NULL{terminal_clause} AND json_extract(payload,'$.source_published_at') IS NOT NULL
-                AND julianday(json_extract(payload,'$.source_published_at')) <
-                    julianday(?)''', (cutoff,)).fetchone()[0]
+                AND quarantined_at IS NULL{terminal_clause} AND {outside_retention}''',
+                (cargo_cutoff, vehicle_cutoff)).fetchone()[0]
             quarantined = db.execute('SELECT count(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL').fetchone()[0]
             terminal_expired = 0
             if {'terminal_at', 'terminal_reason'} <= columns:
@@ -88,7 +94,7 @@ def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
                 unknown_last_hour = db.execute("SELECT count(*) FROM selected_outbox WHERE delivered_at>=? AND (api_item_status IS NULL OR api_item_status='unknown')", (hour_start,)).fetchone()[0]
             oldest_ready = db.execute(f'''SELECT min(json_extract(payload,'$.source_published_at'))
                 FROM selected_outbox WHERE {eligible} AND next_attempt_at<=?
-                AND json_extract(payload,'$.source_published_at') IS NOT NULL''', (cutoff, now)).fetchone()[0]
+                AND json_extract(payload,'$.source_published_at') IS NOT NULL''', (cargo_cutoff, vehicle_cutoff, now)).fetchone()[0]
             oldest_ready_age = None
             if oldest_ready:
                 try:
@@ -96,11 +102,11 @@ def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
                     oldest_ready_age = max(0, round(now-oldest_dt.timestamp()))
                 except (TypeError, ValueError):
                     pass
-            oldest_identity = db.execute(f"SELECT source_id,source_message_id,segment_id FROM selected_outbox WHERE {eligible} AND next_attempt_at<=? ORDER BY COALESCE(julianday(json_extract(payload,'$.source_published_at')),0),source_id,source_message_id,segment_id LIMIT 1", (cutoff, now)).fetchone()
+            oldest_identity = db.execute(f"SELECT source_id,source_message_id,segment_id FROM selected_outbox WHERE {eligible} AND next_attempt_at<=? ORDER BY COALESCE(julianday(json_extract(payload,'$.source_published_at')),0),source_id,source_message_id,segment_id LIMIT 1", (cargo_cutoff, vehicle_cutoff, now)).fetchone()
             oldest_key = hashlib.sha256(json.dumps(tuple(oldest_identity)).encode()).hexdigest() if oldest_identity else None
             missing_publish_time = db.execute(f'''SELECT count(*) FROM selected_outbox WHERE {eligible}
                 AND next_attempt_at<=? AND json_extract(payload,'$.source_published_at') IS NULL''',
-                (cutoff, now)).fetchone()[0]
+                (cargo_cutoff, vehicle_cutoff, now)).fetchone()[0]
             result[name] = {'ready': ready, 'pending': pending, 'quarantined': quarantined,
                             'backoff': backoff, 'backlog': ready + backoff,
                             'expired_pending': expired_pending, 'terminal_expired': terminal_expired,
@@ -137,7 +143,7 @@ def snapshot(root=ROOT, now=None, qa_root='/home/ubuntu/urtruck-qa2'):
                 if revision_known:
                     unseen = f"NOT EXISTS (SELECT 1 FROM {alias}.incoming_bridge_seen s WHERE s.source_queue_id=m.id AND s.source_revision=m.revision || ':' || ?)"
                     parameters.append(parser_revision)
-                waiting, oldest_source = source.execute(f'SELECT count(*),min(m.source_date) FROM app_messages m WHERE m.source_date>=? AND m.source_date<=? AND {scope} AND {unseen}', parameters).fetchone()
+                waiting, oldest_source = source.execute(f'SELECT count(*),min(m.source_date) FROM app_messages m WHERE m.source_date>? AND m.source_date<=? AND {scope} AND {unseen}', parameters).fetchone()
                 flow = result[name]
                 flow['source_revision_known'] = revision_known
                 flow['source_waiting'] = flow['source_backlog'] = waiting

@@ -66,3 +66,7 @@ def test_qa2_fcm_cutoff_reads_only_the_runtime_qa2_database():
     assert "QA2_RUNTIME_DB_PATH_INVALID" in raw
     assert 'sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)' in raw
     assert "from database.db import get_conn" not in raw
+    assert 'elif key == "PUSH_OUTBOX_CUTOFF_ID":' in raw
+    assert 'existing_cutoff.isdecimal()' in raw
+    assert "Preserve an established QA2 cutoff during credential rotation." in raw
+    assert "Only a first-time setup without a cutoff derives one from QA2 DB." in raw
