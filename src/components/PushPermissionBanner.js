@@ -1,6 +1,6 @@
 import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppState, Platform, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { push } from '../utils/push';
@@ -61,6 +61,8 @@ export default function PushPermissionBanner({ enabled }) {
   const { lang } = useI18n();
   const colors = useV1Colors();
   const { isDark } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width < 360 || fontScale > 1.15;
   const accentColor = isDark ? colors.success : colors.driver;
   const c = COPY[lang] || COPY.RU;
   const native = push.isNative();
@@ -127,14 +129,14 @@ export default function PushPermissionBanner({ enabled }) {
 
   return (
     <SafeAreaView edges={['top']}>
-    <View style={[s.wrap, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
+    <View style={[s.wrap, compact && s.wrapCompact, { backgroundColor: colors.surface, borderColor: colors.border }]} testID="push-permission-banner">
       <View style={[s.icon, { backgroundColor: colors.driverSoft }]}><Feather name="bell" size={18} color={accentColor} /></View>
-      <View style={s.copy}>
+      <View style={[s.copy, compact && s.copyCompact]}>
         <Text style={[s.title, { color: colors.text }]}>{c.title}</Text>
         <Text style={[s.body, { color: colors.textMuted }]}>{denied ? deniedCopy : c.body}</Text>
       </View>
       <TouchableOpacity
-        style={[s.action, { borderColor: accentColor }]}
+        style={[s.action, compact && s.actionCompact, { borderColor: accentColor }]}
         onPress={denied && !native ? refresh : enablePush}
         disabled={busy}
         testID="push-permission-enable"
@@ -162,6 +164,9 @@ const s = StyleSheet.create({
   },
   icon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, minWidth: 0 },
+  wrapCompact: { flexWrap: 'wrap' },
+  copyCompact: { minWidth: 180 },
+  actionCompact: { marginLeft: 'auto' },
   title: { fontSize: 13, lineHeight: 17, fontWeight: '700' },
   body: { fontSize: 11.5, lineHeight: 15, marginTop: 2 },
   action: { minHeight: 38, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

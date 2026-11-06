@@ -231,7 +231,8 @@ jobs:
             tests/e2e/profile-save-recovery.spec.js \
             tests/e2e/urtruck-runtime-crash-regression.spec.js \
             tests/e2e/urtruck-deal-confirmation.spec.js \
-            tests/e2e/publication-session.spec.js
+            tests/e2e/publication-session.spec.js \
+            tests/e2e/push-permission-layout.spec.js
       - name: Настройки уведомлений и первый вход с внешней лентой
         env:
           EXPO_PUBLIC_IS_BETA: 'true'
