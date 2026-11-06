@@ -18,8 +18,11 @@ from services.external_freight_classifier import classify_message, has_vehicle_s
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
 from services.external_freight_parser import apply_core_review, map_selected_messages, _phone_identity
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
+from services.external_freight_retention import CARGO_RETENTION_SECONDS
 
-ACTIVE_SECONDS = 10 * 24 * 3600
+# Scan the cargo month requested by product. The importer independently keeps
+# vehicle offers at ten days and rejects expired source timestamps.
+ACTIVE_SECONDS = CARGO_RETENTION_SECONDS
 MAX_SCAN = 50
 VEHICLE_RESERVE_LOOKAHEAD = 500
 PARSER_REVISION = '20261101-core-fields-v17'
@@ -128,7 +131,7 @@ class PublishedQueueBridge:
             revision_key = f"({revision} || ':{self.parser_revision}')"
             rows = source.execute(f"""SELECT q.*, {revision_key} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
-                AND source_date>=? AND source_date<=?
+                AND source_date>? AND source_date<=?
                 AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
                                 WHERE s.source_queue_id=q.id
                                 AND s.source_revision={revision_key})
@@ -292,7 +295,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
             unseen="""NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
                   WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
             query=f"""SELECT q.* FROM app_messages q
-                WHERE source_date>=? AND source_date<=? AND {unseen}"""
+                WHERE source_date>? AND source_date<=? AND {unseen}"""
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
             # Историческая загрузка имеет новый updated_at, но не должна вытеснять
             # свежие исходные публикации. Правки/старый хвост обслуживаются ниже.
@@ -306,7 +309,7 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 query += ' AND lower(q.source)<>?'
                 arguments += (OWNED_SOURCE.lower(),)
             # Keep the vehicle reserve, but never run Python classification
-            # inside SQLite over the full 10-day history. QA2 measured 137-146s
+            # inside SQLite over the full 30-day history. QA2 measured 137-146s
             # in source_scan for only 50 selected rows because the UDF was
             # evaluated before LIMIT. Classify a bounded recent window in Python;
             # older offers still progress through the indexed oldest-first scan.
@@ -453,7 +456,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory = sqlite3.Row
             raw = source.execute("SELECT * FROM app_messages WHERE source_id=? AND source_message=? "
-                                 "AND lower(source)=? AND source_date>=? AND source_date<=?",
+                                 "AND lower(source)=? AND source_date>? AND source_date<=?",
                                  (source_id, message_id, self.source_name.lower(), now-ACTIVE_SECONDS, now+300)).fetchone()
         if raw:
             try:

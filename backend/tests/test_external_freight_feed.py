@@ -259,7 +259,7 @@ def test_adapter_keeps_long_unicode_source_post_with_segment(tmp_path):
     assert saved['source_text'] == record['source_text']
 
 
-def test_active_listing_expires_ten_days_after_source_publication():
+def test_cargo_listing_expires_thirty_days_after_source_publication():
     published = datetime.now(timezone.utc) - timedelta(days=1)
     record = _record(source="ten-day-ttl", published=published)
     response = _import(record)
@@ -270,7 +270,32 @@ def test_active_listing_expires_ten_days_after_source_publication():
         expires = datetime.fromisoformat(c.execute(
             "SELECT expires_at FROM external_freight_items WHERE source_id='ten-day-ttl'"
         ).fetchone()[0])
-    assert expires == published + timedelta(days=10)
+    assert expires == published + timedelta(days=30)
+
+
+@pytest.mark.parametrize(("age_days", "expected"), [(29, "active"), (30, "expired"), (31, "expired")])
+def test_cargo_retention_has_exact_utc_30_day_boundary(age_days, expected):
+    now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
+    published = now - timedelta(days=age_days)
+    record = _record(source=f"retention-boundary-{age_days}", published=published)
+    record["classification_status"] = "approved"
+    result = dal.normalize_record(record)
+    assert result["status"] == expected
+    assert datetime.fromisoformat(result["expires_at"]) == published + timedelta(days=30)
+
+
+def test_old_route_date_does_not_change_external_cargo_publication_ttl():
+    published = datetime.now(timezone.utc) - timedelta(days=2)
+    normalized = dal.normalize_record(_record(published=published, text="Нужен тент, груз готов"), require_reviewed=False)
+    assert normalized["status"] == "active"
+    assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=30)
+
+
+def test_external_vehicle_retention_remains_ten_days():
+    published = datetime.now(timezone.utc) - timedelta(days=9)
+    record = _record(kind="vehicle", published=published, text="Есть свободная машина")
+    normalized = dal.normalize_record(record, require_reviewed=False)
+    assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=10)
 
 
 def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
@@ -283,7 +308,7 @@ def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
         assert normalized["status"] == status
 
 
-def test_replaying_recent_card_uses_source_based_ten_day_expiry():
+def test_replaying_recent_card_uses_source_based_thirty_day_expiry():
     published = datetime.now(timezone.utc) - timedelta(days=3)
     record = _record(source="replay-ten-day-ttl", published=published)
     with get_conn() as c:
@@ -294,10 +319,10 @@ def test_replaying_recent_card_uses_source_based_ten_day_expiry():
     assert response.json()["results"][0]["status"] == "active"
     with get_conn() as c:
         row = c.execute("SELECT expires_at FROM external_freight_items WHERE id='old-ttl'").fetchone()
-    assert datetime.fromisoformat(row[0]) == published + timedelta(days=10)
+    assert datetime.fromisoformat(row[0]) == published + timedelta(days=30)
 
 
-def test_schema_migration_applies_ten_day_ttl_and_preserves_explicit_closures():
+def test_schema_migration_applies_thirty_day_cargo_ttl_and_preserves_explicit_closures():
     published = datetime.now(timezone.utc) - timedelta(days=3)
     ids = {}
     for status in ("active", "expired", "hidden", "closed", "review"):
@@ -316,22 +341,22 @@ def test_schema_migration_applies_ten_day_ttl_and_preserves_explicit_closures():
             tuple(ids.values()),
         )}
     assert rows[ids["active"]]["status"] == "active"
-    assert datetime.fromisoformat(rows[ids["active"]]["expires_at"]) == published + timedelta(days=10)
+    assert datetime.fromisoformat(rows[ids["active"]]["expires_at"]) == published + timedelta(days=30)
     assert rows[ids["expired"]]["status"] == "active"
-    assert datetime.fromisoformat(rows[ids["expired"]]["expires_at"]) == published + timedelta(days=10)
+    assert datetime.fromisoformat(rows[ids["expired"]]["expires_at"]) == published + timedelta(days=30)
     assert rows[ids["hidden"]]["status"] == "hidden"
     assert rows[ids["closed"]]["status"] == "closed"
     assert rows[ids["review"]]["status"] == "review"
 
 
-def test_expired_external_item_is_physically_purged_and_replay_stays_purged():
-    record = _record(source="purge-after-ten-days", text="Нужен тент, груз готов")
+def test_expired_external_item_is_physically_purged_after_thirty_days_and_replay_stays_purged():
+    record = _record(source="purge-after-thirty-days", text="Нужен тент, груз готов")
     item_id = _import(record).json()["results"][0]["id"]
-    old_publication = datetime.now(timezone.utc) - timedelta(days=11)
+    old_publication = datetime.now(timezone.utc) - timedelta(days=31)
     record["source_published_at"] = old_publication.isoformat()
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET source_published_at=?,expires_at=?,status='expired' WHERE id=?",
-                  (old_publication.isoformat(), (old_publication + timedelta(days=10)).isoformat(), item_id))
+                  (old_publication.isoformat(), (old_publication + timedelta(days=30)).isoformat(), item_id))
         c.execute("INSERT INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES('saved-driver',?,?)",
                   (item_id, datetime.now(timezone.utc).isoformat()))
     assert dal.purge_expired_items() == 1
@@ -696,7 +721,7 @@ def test_real_importer_expired_replay_is_terminal_not_a_batch_retry(tmp_path, mo
     from services.external_freight_import_adapter import ExternalFreightFeedAdapter
     monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
     now = datetime.now(timezone.utc)
-    source = _record(source="expired-replay", message="stable-id", published=now-timedelta(days=11))
+    source = _record(source="expired-replay", message="stable-id", published=now-timedelta(days=31))
     assert _import(source).json()["results"][0]["result"] == "expired"
     fresh_revision = {**source, "source_published_at": now.isoformat(), "original_text": "Обновленная заявка"}
     requests = []
@@ -731,7 +756,7 @@ def test_source_expired_rows_become_terminal_but_are_not_deleted(tmp_path, monke
     adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "source-expired.db"),
         api_url="https://qa.example", importer_key="test-only",
         opener=lambda *a, **k: calls.append(a), clock=lambda: now)
-    old = _record(source="retention", message="kept", published=datetime.fromtimestamp(now, timezone.utc)-timedelta(days=11))
+    old = _record(source="retention", message="kept", published=datetime.fromtimestamp(now, timezone.utc)-timedelta(days=31))
     adapter.enqueue(old)
     result = adapter.flush_once()
     assert result["status"] == "idle" and result["sent"] == 0
@@ -742,6 +767,41 @@ def test_source_expired_rows_become_terminal_but_are_not_deleted(tmp_path, monke
         row = db.execute("SELECT payload,terminal_reason FROM selected_outbox WHERE source_message_id='kept'").fetchone()
     assert row is not None and row["terminal_reason"] == "source_retention_expired"
     assert "original_text" in row["payload"]
+
+
+def test_import_adapter_keeps_cargo_for_thirty_days_but_vehicle_for_ten(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timedelta, timezone
+    from services.external_freight_import_adapter import ExternalFreightFeedAdapter
+    monkeypatch.setenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "true")
+    now = datetime(2026, 10, 31, tzinfo=timezone.utc)
+    sent = []
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self):
+            return json.dumps({"results": [{"id": str(i), "result": "created"} for i in range(len(sent[-1]["records"]))]}).encode()
+
+    def send(request, timeout):
+        sent.append(json.loads(request.data))
+        return Response()
+
+    adapter = ExternalFreightFeedAdapter(db_path=str(tmp_path / "kind-retention.db"),
+        api_url="https://qa.example", importer_key="test-only", opener=send, clock=lambda: now.timestamp())
+    cargo = _record(source="retention-cargo", message="cargo", published=now-timedelta(days=20))
+    vehicle = _record(source="retention-vehicle", message="vehicle", kind="vehicle",
+                      text="Есть свободная машина", published=now-timedelta(days=20))
+    adapter.enqueue(cargo)
+    adapter.enqueue(vehicle)
+    result = adapter.flush_once()
+    assert result["status"] == "delivered" and result["sent"] == 1
+    assert [r["source_message_id"] for r in sent[0]["records"]] == ["cargo"]
+    with adapter._connect() as db:
+        rows = {r["source_message_id"]: r for r in db.execute("SELECT source_message_id,terminal_reason FROM selected_outbox")}
+    assert rows["vehicle"]["terminal_reason"] == "source_retention_expired"
+    assert rows["cargo"]["terminal_reason"] is None
 
 
 def test_retry_result_has_private_identifier_and_operational_metrics(tmp_path, monkeypatch):
