@@ -64,6 +64,9 @@ jobs:
       - name: Регрессии production STT timeout
         if: ${{ hashFiles('tests/ops/test_production_voice_timeout_sync.py') != '' }}
         run: python -m pytest tests/ops/test_production_voice_timeout_sync.py -q
+      - name: Регрессии адресного восстановления и review production
+        run: python -m pytest tests/ops/test_owned_listing_production_overlay.py tests/ops/test_owned_listing_review_gate.py -q
+
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend

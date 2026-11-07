@@ -1,0 +1,52 @@
+name: Адресное восстановление собственных объявлений
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_pr:
+        description: "Номер merged PR с независимым approval текущего HEAD"
+        required: true
+        type: number
+      mode:
+        description: "Проверка без записи либо применение после всех условий"
+        required: true
+        type: choice
+        default: preflight
+        options: [preflight, apply]
+      backup_proof:
+        description: "Для apply: закрытый server result.json свежего полного backup/restore"
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить защищённую ветку
+        env:
+          CALLER_REF: ${{ github.ref }}
+        run: test "$CALLER_REF" = refs/heads/main
+  quality:
+    needs: source
+    uses: ./.github/workflows/quality-gate-reusable.yml
+    with:
+      source_ref: ${{ github.sha }}
+  deploy:
+    needs: quality
+    uses: 777ubu-ai/urtruck-app/.github/workflows/production-deploy-execute.yml@main
+    with:
+      deploy_sha: ${{ github.sha }}
+      deploy_scope: owned_listing_overlay
+      owned_mode: ${{ inputs.mode }}
+      owned_source_pr: ${{ inputs.source_pr }}
+      owned_backup_proof: ${{ inputs.backup_proof }}
+    secrets:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
