@@ -133,6 +133,9 @@ def test_deploy_push_ignores_only_the_reviewed_push_mode_operations_files():
         "vendor/braces-3.0.4-28d440b/**",
         "backend/tests/test_production_push_mode_backup.py",
         "scripts/ops/production_push_mode_backup.py",
+        # Защита Production (паспорт кода) сама по себе не повод для deploy.
+        "scripts/ops/prod_release_guard.py",
+        "backend/tests/test_prod_release_guard.py",
     }
     assert ignored == expected
     # Model every path currently changed by PR #533. GitHub's paths-ignore

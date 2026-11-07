@@ -133,6 +133,7 @@ jobs:
       TRANSLATE_PROVIDER: ${{ secrets.TRANSLATE_PROVIDER || 'openai' }}
       TRANSLATE_MODEL: ${{ secrets.TRANSLATE_MODEL || 'gpt-5.6-luna' }}
       PM2_PROC: urtruck-security-api
+      GUARD_BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
 
     steps:
       - name: Audit trail — who/what/why
@@ -179,6 +180,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
+          # Полная история нужна защите: проверка «DEPLOY_SHA содержит Production».
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -247,6 +250,22 @@ jobs:
           echo 'SSH_MODE=key+pinned-known-hosts'
           bash scripts/deploy-ssh.sh ssh "echo SSH_TRANSPORT=ok"
 
+      - name: Защита Production от затирания (паспорт кода + версия-предок)
+        run: |
+          set -euo pipefail
+          # Деплой разрешён, только если (1) код на сервере совпадает с паспортом
+          # (нет ручных правок вне Git) и (2) DEPLOY_SHA содержит коммит, который
+          # сейчас на Production. Иначе останавливаемся ДО любой записи.
+          bash scripts/deploy-ssh.sh scp scripts/ops/prod_release_guard.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py"
+          out=$(bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py verify --backend-dir '$GUARD_BACKEND_DIR'; rc=\$?; rm -f /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py; exit \$rc") || { printf '%s\n' "${out:-}"; echo '::error::Паспорт Production не подтверждён — деплой остановлен'; exit 1; }
+          printf '%s\n' "$out"
+          prod_sha=$(printf '%s\n' "$out" | sed -n 's/^PROD_RELEASE_SHA=//p' | tail -1)
+          test -n "$prod_sha" || { echo '::error::Паспорт не вернул коммит Production'; exit 1; }
+          git cat-file -e "${prod_sha}^{commit}" 2>/dev/null || git fetch --no-tags --quiet origin "$prod_sha" || true
+          git cat-file -e "${prod_sha}^{commit}" || { echo "::error::Коммит Production $prod_sha недоступен в репозитории"; exit 1; }
+          git merge-base --is-ancestor "$prod_sha" "$DEPLOY_SHA" || { echo "::error::$DEPLOY_SHA не содержит текущую версию Production ($prod_sha). Сначала влейте её: git merge $prod_sha"; exit 1; }
+          echo 'PROD_RELEASE_ANCESTRY=OK'
+
       - name: Backup current production
         run: |
           set -euo pipefail
@@ -302,6 +321,12 @@ jobs:
           bash scripts/deploy-ssh.sh scp -C -r backend/* "$SERVER_USER@$SERVER_HOST:$BACKEND_DIR/"
           bash scripts/deploy-ssh.sh scp scripts/remote_health_check.sh "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_health.sh"
           bash scripts/deploy-ssh.sh ssh "chmod 700 /tmp/urtruck_health.sh; bash /tmp/urtruck_health.sh '$PM2_PROC'; rc=\$?; rm -f /tmp/urtruck_health.sh; exit \$rc"
+
+      - name: Записать паспорт Production
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/ops/prod_release_guard.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py record --backend-dir '$GUARD_BACKEND_DIR' --source-sha '$DEPLOY_SHA'; rc=\$?; rm -f /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py; exit \$rc"
 
       - name: Verify optional Yandex Router from production server
         run: |
@@ -527,12 +552,14 @@ jobs:
       SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       URTRUCK_REQUIRE_KEY: "1"
+      GUARD_BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck/backend' }}
     steps:
       - name: Получить точный защищённый источник
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
+          fetch-depth: 0
       - name: Проверить режим и собрать адресный пакет
         id: payload-source
         run: |
@@ -573,6 +600,22 @@ jobs:
               for name in (('manifest.json',) if compatibility else ('main.patch','manifest.json')):
                   archive.add(root/name,arcname=name,recursive=False)
           PY
+      - name: Защита Production от затирания (паспорт кода + версия-предок)
+        run: |
+          set -euo pipefail
+          # Деплой разрешён, только если (1) код на сервере совпадает с паспортом
+          # (нет ручных правок вне Git) и (2) DEPLOY_SHA содержит коммит, который
+          # сейчас на Production. Иначе останавливаемся ДО любой записи.
+          bash scripts/deploy-ssh.sh scp scripts/ops/prod_release_guard.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py"
+          out=$(bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py verify --backend-dir '$GUARD_BACKEND_DIR'; rc=\$?; rm -f /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py; exit \$rc") || { printf '%s\n' "${out:-}"; echo '::error::Паспорт Production не подтверждён — деплой остановлен'; exit 1; }
+          printf '%s\n' "$out"
+          prod_sha=$(printf '%s\n' "$out" | sed -n 's/^PROD_RELEASE_SHA=//p' | tail -1)
+          test -n "$prod_sha" || { echo '::error::Паспорт не вернул коммит Production'; exit 1; }
+          git cat-file -e "${prod_sha}^{commit}" 2>/dev/null || git fetch --no-tags --quiet origin "$prod_sha" || true
+          git cat-file -e "${prod_sha}^{commit}" || { echo "::error::Коммит Production $prod_sha недоступен в репозитории"; exit 1; }
+          git merge-base --is-ancestor "$prod_sha" "$DEPLOY_SHA" || { echo "::error::$DEPLOY_SHA не содержит текущую версию Production ($prod_sha). Сначала влейте её: git merge $prod_sha"; exit 1; }
+          echo 'PROD_RELEASE_ANCESTRY=OK'
+
       - name: Выполнить единственный узкий writer с backup и откатом
         run: |
           set -euo pipefail
@@ -586,3 +629,9 @@ jobs:
           bash scripts/deploy-ssh.sh scp "$bundle" "$SERVER_USER@$SERVER_HOST:${remote}.tar.gz"
           bash scripts/deploy-ssh.sh scp scripts/ops/external_feed_production_overlay.py "$SERVER_USER@$SERVER_HOST:${remote}.py"
           bash scripts/deploy-ssh.sh ssh "python3 '${remote}.py' --bundle '${remote}.tar.gz' --bundle-sha256 '$checksum' --source-sha '$DEPLOY_SHA'"
+
+      - name: Записать паспорт Production
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/ops/prod_release_guard.py "$SERVER_USER@$SERVER_HOST:/tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py"
+          bash scripts/deploy-ssh.sh ssh "python3 /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py record --backend-dir '$GUARD_BACKEND_DIR' --source-sha '$DEPLOY_SHA'; rc=\$?; rm -f /tmp/urtruck_release_guard_${GITHUB_RUN_ID}.py; exit \$rc"
