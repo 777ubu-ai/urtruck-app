@@ -21,6 +21,7 @@ Run from backend/:
 """
 import contextvars
 import os
+import sqlite3
 import sys
 import threading
 import uuid
@@ -37,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from database import db as dbm
 from database import registration_dal
+SHARED_TEST_DB = dbm.config.DB_PATH
 
 dbm.init_db()
 registration_dal.init_registration_schema()
@@ -184,29 +186,64 @@ def _force_due(recipient_user_id):
         c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE recipient_user_id=?", (recipient_user_id,))
 
 
-def _reset_outbox():
-    """Every test in this file shares one process-wide SQLite DB (same
-    pattern as every other test file here) — process_pending_once() has no
-    per-recipient filter, so a prior test's still-pending row (e.g. one that
-    deliberately never succeeds) would otherwise be picked up by a LATER
-    test's own process_pending_once() call and processed through that
-    test's unrelated _FlakyNative instance. Starting every test from a clean
-    outbox is the simplest correct isolation — not a workaround for a
-    product bug, purely test hygiene for this shared-DB harness."""
-    # send_to_user() может вернуть управление до фонового повторного enqueue.
-    # Сначала завершаем такие отправки, затем очищаем общую тестовую БД.
+def _wait_for_push_senders():
+    """Не переключать тестовую БД, пока прежний sender ещё использует get_conn."""
     for sender in threading.enumerate():
         target = getattr(sender, "_target", None)
         if (getattr(target, "__module__", "") == "api.push" and
                 getattr(target, "__qualname__", "") == "send_to_user.<locals>._bg"):
             sender.join(timeout=10)
             assert not sender.is_alive(), "Фоновая отправка push не завершилась перед очисткой тестовой очереди"
+
+
+@pytest.fixture(autouse=True)
+def _separate_delivery_database(monkeypatch, tmp_path, _ensure_full_schema):
+    """Housekeeping чужих ставок не должен пополнять очередь текущего сценария."""
+    _wait_for_push_senders()
+    isolated = str(tmp_path / 'durable-delivery.sqlite3')
+    monkeypatch.setattr(dbm.config, 'DB_PATH', isolated)
+    monkeypatch.setenv('DB_PATH', isolated)
+    monkeypatch.setenv('URTRUCK_DB_PATH', isolated)
+    monkeypatch.setattr(dbm, '_WAL_INITIALIZED', False)
+    monkeypatch.setattr(dbm, '_MARKET_EXPIRY_LAST_RUN', 0.0)
+    monkeypatch.setattr(dbm, '_MARKET_EXPIRY_LAST_PROBE', 0.0)
+    from tests.conftest import _rebuild_all_schemas
+    _rebuild_all_schemas()
+    try:
+        yield
+    finally:
+        _wait_for_push_senders()
+
+
+def _reset_outbox():
+    """Очистить только очередь своей изолированной тестовой БД после setup."""
+    _wait_for_push_senders()
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_delivery_log")
 
 
 # ───────────────────────── new bid: fail then retry ─────────────────────────
+def test_delivery_queue_does_not_process_another_scenarios_database(monkeypatch):
+    """Реальный worker сценария не должен забирать чужие тестовые события."""
+    _reset_outbox()
+    event_id = 'foreign-scenario-' + uuid.uuid4().hex
+    monkeypatch.setattr(push_gateway, 'configured_outbox_cutoff_id', lambda: 0)
+    with sqlite3.connect(SHARED_TEST_DB) as connection:
+        connection.execute(
+            "INSERT INTO push_outbox(event_id,event_type,recipient_user_id,payload) VALUES(?,?,?,?)",
+            (event_id, 'test.other_scenario', 'other-scenario-user', '{}'),
+        )
+    try:
+        stats = push_gateway.process_pending_once(limit=10)
+        assert stats['picked'] == 0, 'Очередь другого сценария попала в текущий worker'
+        with sqlite3.connect(SHARED_TEST_DB) as connection:
+            assert connection.execute('SELECT status FROM push_outbox WHERE event_id=?', (event_id,)).fetchone()[0] == 'pending'
+    finally:
+        with sqlite3.connect(SHARED_TEST_DB) as connection:
+            connection.execute('DELETE FROM push_outbox WHERE event_id=?', (event_id,))
+
+
 def test_reset_outbox_waits_for_previous_push_sender(monkeypatch):
     """Поздний sender предыдущего сценария не должен заново заполнить очищенную очередь."""
     import api.push as push_api
