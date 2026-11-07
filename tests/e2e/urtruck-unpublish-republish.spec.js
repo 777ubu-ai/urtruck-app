@@ -45,6 +45,8 @@ for (const role of ['client', 'driver']) {
       let data = {};
       if (url.pathname === '/api/v1/register/me') data = user;
       else if (url.pathname === '/api/v1/users/me') data = { ...user, name: user.full_name };
+      else if (/\/market\/cargos\/history-\d+\/bids$/.test(url.pathname)) data = { bids: [], count: 0, is_owner: true };
+      else if (/\/market\/cargos\/history-\d+$/.test(url.pathname)) data = history.find(item => url.pathname.endsWith('/' + item.id));
       else if (url.pathname === '/api/v1/market/my/listings') {
         const items = url.searchParams.get('section') === 'history' ? history : [];
         data = { items, total: items.length, archive_total: 2, history_total: history.length, next_offset: null };
@@ -76,6 +78,15 @@ for (const role of ['client', 'driver']) {
     await expect(page.getByTestId('my-history-card')).toHaveCount(0);
     await page.getByTestId('my-work-archive-toggle').click();
     await expect(page.getByTestId('my-history-card')).toHaveCount(5);
+    if (role === 'client') {
+      for (const index of [0, 3]) {
+        await page.getByTestId('my-history-card').nth(index).click();
+        await expect(page.getByTestId('cargo-share-btn')).toBeVisible();
+        await expect(page.getByText('Удалить мой груз', { exact: false })).toHaveCount(0);
+        await page.getByTestId('brand-back').click();
+        await expect(page.getByTestId('my-history-card')).toHaveCount(5);
+      }
+    }
     expect(mutations).toEqual([]);
     expect(errors).toEqual([]);
   });
