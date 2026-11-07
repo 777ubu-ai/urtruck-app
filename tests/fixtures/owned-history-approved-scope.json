@@ -1,8 +1,8 @@
 {
-  "reason": "Решение владельца от 07.11.2026: личная история собственных объявлений всех статусов без повторной публикации занятых и завершённых; старые active/archive контракты сохранены. Регрессии: test_my_listings_pagination.py, test_mywork_pagination.mjs, test_owned_listing_history.mjs. Уточнение владельца: ручная повторная публикация и продление убраны для всех статусов; компактная история доступна только для просмотра.",
+  "reason": "Решение владельца от 07.11.2026: личная история собственных объявлений всех статусов без повторной публикации занятых и завершённых; старые active/archive контракты сохранены. Регрессии: test_my_listings_pagination.py, test_mywork_pagination.mjs, test_owned_listing_history.mjs. Уточнение владельца: ручная повторная публикация и продление убраны для всех статусов; компактная история доступна только для просмотра. Адресное устранение подтверждённого P2 независимого security-review: ошибочно active объявления с действующей сделкой или ссылкой занятости исключены из public list/detail и новых/изменяемых ставок; owner/deal history сохранена. Регрессия: test_driver_listing_auto_renew.py, HTTP/SQLite обеих ролей, historical terminal deals и сохранность полей/связей.",
   "sha256": {
     "src/utils/marketAPI.js": "6d7276fdd4656f0b340cf3b004d7c36fd63b8fb9ea1f1b307275cfcf44f86ed0",
     "src/screens/MyTripsScreen.js": "0d394022241787552a1b6a20b0bb6ca79c629ec99967d27f24efa67d3aa496ba",
-    "backend/api/marketplace.py": "b221c377b4c1becfdcf651b1c2cc893700b75b590af0b232c63a4bc79a4bdb64"
+    "backend/api/marketplace.py": "d09ec1d582425683da54ba4ae93569d80a2359177e4277de6e0a028382b9c5d7"
   }
 }
