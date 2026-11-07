@@ -110,6 +110,54 @@ def gps_heartbeat_check_job():
         print(f"[gps-heartbeat] check failed (continuing): {e}", flush=True)
 
 
+_external_feed_schema_ready = False
+
+
+def _external_feed_db_path_from_env_file():
+    """Процесс планировщика под PM2 получил окружение без EXTERNAL_FREIGHT_DB_PATH.
+    Берём только эту одну переменную из backend/.env (остальное не трогаем),
+    чтобы очистка шла по настоящей базе Ленты грузов, а не по пустому файлу."""
+    import os
+    if os.getenv("EXTERNAL_FREIGHT_DB_PATH", "").strip():
+        return
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    try:
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.strip().partition("=")
+            if sep and key.strip() == "EXTERNAL_FREIGHT_DB_PATH":
+                value = value.strip().strip("\"'")
+                if value:
+                    os.environ["EXTERNAL_FREIGHT_DB_PATH"] = value
+                return
+    except OSError:
+        return
+
+
+def external_freight_retention_job():
+    """Удаляет ограниченную партию карточек Ленты грузов старше 10 дней.
+
+    Перенесено из QA2 (#647, #665, 2673443f): до 500 карточек за запуск,
+    отпечаток источника сохраняется для защиты от повторного импорта.
+    Если база ленты не найдена — ничего не создаём и пропускаем запуск.
+    """
+    global _external_feed_schema_ready
+    try:
+        _external_feed_db_path_from_env_file()
+        from database.external_freight_connection import database_path
+        if not database_path().exists():
+            print("[external-feed-retention] skipped: feed database not found", flush=True)
+            return
+        from database.external_freight_dal import init_schema, purge_expired_items
+        if not _external_feed_schema_ready:
+            init_schema()
+            _external_feed_schema_ready = True
+        removed = purge_expired_items()
+        if removed:
+            print(f"[external-feed-retention] purged={removed} batch_limit=500", flush=True)
+    except Exception as e:
+        print(f"[external-feed-retention] cleanup failed (continuing): {type(e).__name__}", flush=True)
+
+
 def monthly_rescore_job():
     """Переоценка всех водителей — раз в месяц."""
     print(f"[{datetime.now().isoformat()}] Monthly rescore start")
@@ -464,10 +512,12 @@ def start_scheduler():
     # каждая строка push_delivery_log проверяется РОВНО один раз (см.
     # receipt_checked_at в poll_pending_receipts), окно 15 минут..1 сутки.
     sched.add_job(push_receipts_poll_job, IntervalTrigger(minutes=20), id="push_receipts_poll")
+    # Лента грузов: физическое удаление карточек старше 10 дней, партиями по 500.
+    sched.add_job(external_freight_retention_job, IntervalTrigger(minutes=5), id="external_freight_retention")
     sched.add_job(voice_processing_drain_job, IntervalTrigger(seconds=10), id="voice_processing_drain")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, push-receipts-poll 20m")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, push-receipts-poll 20m, external-feed-retention 5m")
     return sched
 
 

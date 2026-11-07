@@ -1,8 +1,10 @@
 """Отдельное SQLite-хранилище для внешней ленты. Таблицы не затрагивают сделки UrTruck."""
 import hashlib
 import json
+import logging
 import math
 import re
+import time
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
@@ -10,8 +12,10 @@ from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_DAYS = 30
+ACTIVE_DAYS = 10
+PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
+logger = logging.getLogger(__name__)
 
 
 def _utc(value=None):
@@ -46,6 +50,8 @@ def init_schema():
           ON external_freight_items(kind,status,source_published_at DESC,id DESC,expires_at,ingested_at);
         CREATE INDEX IF NOT EXISTS ix_external_freight_expiry
           ON external_freight_items(status, expires_at);
+        CREATE INDEX IF NOT EXISTS ix_external_freight_ingested_purge
+          ON external_freight_items(ingested_at,id);
         CREATE INDEX IF NOT EXISTS ix_external_freight_price
           ON external_freight_items(status,currency,amount,id);
         CREATE TABLE IF NOT EXISTS external_freight_item_body_types (
@@ -65,10 +71,15 @@ def init_schema():
           id TEXT PRIMARY KEY, item_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
           created_at TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE INDEX IF NOT EXISTS ix_external_freight_audit_item
+          ON external_freight_audit(item_id);
         CREATE TABLE IF NOT EXISTS external_freight_delivery (
           source_id TEXT NOT NULL, source_message_id TEXT NOT NULL, segment_id TEXT NOT NULL,
           attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, delivered_at TEXT, last_error TEXT,
           PRIMARY KEY(source_id, source_message_id, segment_id)
+        );
+        CREATE TABLE IF NOT EXISTS external_freight_expired_sources (
+          source_fingerprint TEXT PRIMARY KEY, expired_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS external_freight_metrics (
           event_day TEXT NOT NULL, event_name TEXT NOT NULL, event_count INTEGER NOT NULL DEFAULT 0,
@@ -83,23 +94,25 @@ def init_schema():
             c.execute("ALTER TABLE external_freight_items ADD COLUMN source_contacts TEXT NOT NULL DEFAULT '[]'")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_origin_route ON external_freight_items(kind,status,origin_folded,source_published_at DESC,id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_destination_route ON external_freight_items(kind,status,destination_folded,source_published_at DESC,id DESC)")
-        _extend_existing_publication_window(c)
+        c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_source_purge ON external_freight_items(source_published_at,id)")
+        _apply_publication_retention(c)
 
 
-def _extend_existing_publication_window(c, now=None):
-    """Apply the 30-day policy to existing rows without reopening manual closures.
+def _source_fingerprint(source_id, source_message_id, segment_id):
+    value = "\0".join((str(source_id), str(source_message_id), str(segment_id)))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
-    `expired` is only assigned by the publication TTL in this DAL. Explicit
-    owner/moderator closures use `closed`/`hidden` and are intentionally left
-    alone. Reviews are not promoted by a retention-policy change.
+
+def _apply_publication_retention(c, now=None):
+    """Recompute the 10-day source-based expiry without reopening closures.
+
+    The subsequent purge removes expired feed content and leaves only a
+    one-way source-identity digest to prevent a delayed replay from restoring it.
     """
     now = _utc(now)
-    cutoff = now - timedelta(days=ACTIVE_DAYS)
     rows = c.execute(
         "SELECT id,source_published_at,status,expires_at FROM external_freight_items "
-        "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL "
-        "AND julianday(source_published_at) >= julianday(?)",
-        (cutoff.isoformat(),),
+        "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL",
     ).fetchall()
     for row in rows:
         try:
@@ -107,19 +120,61 @@ def _extend_existing_publication_window(c, now=None):
         except (TypeError, ValueError):
             continue
         expires = published + timedelta(days=ACTIVE_DAYS)
-        if expires <= now:
-            continue
         expires_at = expires.isoformat()
-        if row["status"] == "expired":
+        status = "expired" if expires <= now else "active"
+        if row["status"] != status or row["expires_at"] != expires_at:
             c.execute(
-                "UPDATE external_freight_items SET status='active',expires_at=? WHERE id=? AND status='expired'",
-                (expires_at, row["id"]),
+                "UPDATE external_freight_items SET status=?,expires_at=? WHERE id=? AND status IN ('active','expired')",
+                (status, expires_at, row["id"]),
             )
-        elif row["expires_at"] != expires_at:
-            c.execute(
-                "UPDATE external_freight_items SET expires_at=? WHERE id=? AND status='active'",
-                (expires_at, row["id"]),
-            )
+
+
+def purge_expired_items(now=None):
+    """Delete external feed content after its 10-day source-based lifetime."""
+    now = _utc(now)
+    cutoff = now - timedelta(days=ACTIVE_DAYS)
+    started = time.monotonic()
+    with get_conn() as c:
+        # Split dated and undated retention queries so both can use their
+        # ordered indexes; the previous OR + COALESCE sort scanned all cards.
+        dated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items WHERE source_published_at IS NOT NULL "
+            "AND source_published_at<=? ORDER BY source_published_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+        ).fetchall()
+        undated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
+            "WHERE source_published_at IS NULL "
+            "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+        ).fetchall()
+        rows = sorted(
+            (*dated, *undated),
+            key=lambda row: (row["source_published_at"] or row["ingested_at"], row["id"]),
+        )[:PURGE_BATCH_SIZE]
+        if not rows:
+            return 0
+        item_ids = [row["id"] for row in rows]
+        c.executemany(
+            "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+            [(_source_fingerprint(row["source_id"], row["source_message_id"], row["segment_id"]), now.isoformat())
+             for row in rows],
+        )
+        placeholders = ",".join("?" for _ in item_ids)
+        for table in ("external_freight_bookmarks", "external_freight_item_body_types",
+                      "external_freight_audit"):
+            c.execute(f"DELETE FROM {table} WHERE item_id IN ({placeholders})", item_ids)
+        c.executemany(
+            "DELETE FROM external_freight_delivery WHERE source_id=? AND source_message_id=? AND segment_id=?",
+            [(row["source_id"], row["source_message_id"], row["segment_id"]) for row in rows],
+        )
+        c.execute(f"DELETE FROM external_freight_items WHERE id IN ({placeholders})", item_ids)
+        removed = len(rows)
+    duration_ms = round((time.monotonic() - started) * 1000)
+    logger.info("external_feed_retention_batch removed=%d duration_ms=%d", removed, duration_ms)
+    return removed
 
 
 def count_active_items(kind: str) -> int:
@@ -245,6 +300,19 @@ def import_records(records):
     columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
     with get_conn() as c:
         for values in normalized_batch:
+            fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
+            too_old = (values["source_published_at"] and
+                       _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
+            previously_expired = c.execute(
+                "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
+            ).fetchone()
+            if too_old or previously_expired:
+                c.execute(
+                    "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+                    (fingerprint, _utc().isoformat()),
+                )
+                results.append({"id": values["id"], "result": "expired", "status": "expired"})
+                continue
             current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
             if current:
                 values["id"] = current["id"]
