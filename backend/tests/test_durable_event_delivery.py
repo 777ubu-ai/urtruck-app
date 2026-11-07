@@ -22,6 +22,7 @@ Run from backend/:
 import contextvars
 import os
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -192,12 +193,67 @@ def _reset_outbox():
     test's unrelated _FlakyNative instance. Starting every test from a clean
     outbox is the simplest correct isolation — not a workaround for a
     product bug, purely test hygiene for this shared-DB harness."""
+    # send_to_user() может вернуть управление до фонового повторного enqueue.
+    # Сначала завершаем такие отправки, затем очищаем общую тестовую БД.
+    for sender in threading.enumerate():
+        target = getattr(sender, "_target", None)
+        if (getattr(target, "__module__", "") == "api.push" and
+                getattr(target, "__qualname__", "") == "send_to_user.<locals>._bg"):
+            sender.join(timeout=10)
+            assert not sender.is_alive(), "Фоновая отправка push не завершилась перед очисткой тестовой очереди"
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_delivery_log")
 
 
 # ───────────────────────── new bid: fail then retry ─────────────────────────
+def test_reset_outbox_waits_for_previous_push_sender(monkeypatch):
+    """Поздний sender предыдущего сценария не должен заново заполнить очищенную очередь."""
+    import api.push as push_api
+
+    _reset_outbox()
+    user_id = "late-sender-" + uuid.uuid4().hex
+    seed_device(user_id)
+    started, release = threading.Event(), threading.Event()
+    real_send, real_join = push_sender.send, threading.Thread.join
+    errors = []
+
+    def delayed_send(*args, **kwargs):
+        started.set()
+        if not release.wait(timeout=5):
+            errors.append("sender не получил сигнал продолжения")
+            return
+        try:
+            return real_send(*args, **kwargs)
+        except Exception as error:
+            errors.append(str(error))
+
+    monkeypatch.setattr(push_sender, "send", delayed_send)
+    monkeypatch.setattr(push_sender, "_send_native", lambda *a, **k: {"sent": 1, "devices": 1})
+    existing_threads = set(threading.enumerate())
+    push_api.send_to_user(user_id, "Проверка изоляции", "Поздняя отправка")
+    assert started.wait(timeout=5)
+    senders = [thread for thread in threading.enumerate() if thread not in existing_threads]
+    assert len(senders) == 1
+    sender = senders[0]
+
+    def join_releasing_sender(thread, *args, **kwargs):
+        # Управляем порядок без sleep: новый helper отпускает sender ДО очистки.
+        if thread is sender:
+            release.set()
+        return real_join(thread, *args, **kwargs)
+
+    monkeypatch.setattr(threading.Thread, "join", join_releasing_sender)
+    try:
+        _reset_outbox()
+    finally:
+        # Старый helper вернётся раньше sender: тот повторно enqueue ПОСЛЕ очистки.
+        release.set()
+        real_join(sender, timeout=5)
+    assert not sender.is_alive() and not errors
+    assert outbox_rows(user_id) == []
+
+
 def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatch):
     _reset_outbox()
     install_synchronous_send_to_user(monkeypatch)
