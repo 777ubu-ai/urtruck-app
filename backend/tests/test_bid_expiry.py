@@ -134,7 +134,7 @@ def test_departure_today_remains_actionable():
     assert conn.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == "active"
 
 
-def test_listing_expires_after_30_days_from_publication_not_route_date():
+def test_listing_renews_after_30_days_from_publication_not_route_date():
     conn = _db()
     conn.execute(
         "INSERT INTO cargos (id,status,pickup_date,published_at,created_at) "
@@ -147,10 +147,12 @@ def test_listing_expires_after_30_days_from_publication_not_route_date():
 
     result = expire_stale_marketplace(now=NOW, conn=conn)
 
-    assert result["expired_cargos"] == ["old-cargo"]
-    assert result["expired_trips"] == ["old-trip"]
-    assert conn.execute("SELECT status FROM cargos WHERE id='old-cargo'").fetchone()[0] == "expired"
-    assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "expired"
+    assert result["expired_cargos"] == []
+    assert result["renewed_cargos"] == ["old-cargo"]
+    assert result["expired_trips"] == []
+    assert result["renewed_trips"] == ["old-trip"]
+    assert conn.execute("SELECT status FROM cargos WHERE id='old-cargo'").fetchone()[0] == "active"
+    assert conn.execute("SELECT status FROM trips WHERE id='old-trip'").fetchone()[0] == "active"
 
 
 def test_terminal_listing_is_not_automatically_republished():

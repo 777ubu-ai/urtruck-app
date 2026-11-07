@@ -77,7 +77,7 @@ test('поздний ответ active не заменяет архив; отв�
   const archive = h.render('archive')(); await tick();
   h.calls[1].resolve(page(['archive'])); await archive;
   h.calls[0].resolve(page(['old-active'])); await old;
-  assert.equal(h.state.data.section, 'archive');
+  assert.equal(h.state.data.section, 'history');
   assert.equal(h.state.data.my_cargos[0].id, 'archive');
   const pending = h.render('archive')(); await tick();
   h.env.mounted.current = false; h.calls[2].resolve(page(['unmounted'])); await pending;
@@ -197,4 +197,13 @@ test('fallback только для 404; 500, malformed и отсутствие �
   }
   assert.equal(h.fallbackCalls(), 1);
   h.identity(null); assert.equal((await h.load()).authRequired, true);
+});
+
+test('личный архив обеих ролей запрашивает историю всех статусов', async () => {
+  for (const driver of [false, true]) {
+    const h = harness({ driver });
+    const pending = h.render('archive')(); await tick();
+    assert.equal(h.calls[0].args.section, 'history');
+    h.calls[0].resolve(page(['history'])); await pending;
+  }
 });

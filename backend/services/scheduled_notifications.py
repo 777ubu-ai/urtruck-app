@@ -120,6 +120,8 @@ def reminders_job(*, now=None):
                 continue
             matches=[]
             for rr in c.execute("SELECT * FROM cargos WHERE status='active'"):
+                if policy.owner_is_deleted(c,rr["owner_id"]):
+                    continue
                 row=dict(rr);published=policy.publication_time(row)
                 if policy.active_listing(row,now) and published and now-timedelta(days=1) <= published <= now and policy.city_key(row.get("from_city"))==policy.city_key(route["from_city"]) and policy.city_key(row.get("to_city"))==policy.city_key(route["to_city"]):
                     matches.append(row)
@@ -141,6 +143,8 @@ def lifecycle_job(*, now=None):
         with get_conn() as c:
             c.execute("BEGIN IMMEDIATE")
             row=policy.listing(c,kind,eid)
+            if row and policy.auto_renewing_listing(row):
+                continue
             published=policy.publication_time(row) if row else None
             if not published:
                 continue

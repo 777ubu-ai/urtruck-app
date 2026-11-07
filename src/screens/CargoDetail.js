@@ -518,6 +518,7 @@ export default function CargoDetail({ navigation, route }) {
   }, [dealStatus, reviewTargetId, reviewReferenceId]));
 
   const onDeleteCargo = () => {
+    if (readOnly) return;
     const doDel = async () => {
       if (c._server) {
         await marketAPI.deleteCargo(c.id).catch(() => {});
@@ -1174,7 +1175,7 @@ export default function CargoDetail({ navigation, route }) {
       {/* Legacy "Open chat with driver" button removed: deal-block above
           already renders the single "Написать сообщение" CTA for both sides
           to avoid duplicate buttons. */}
-      {c.isMine && !chatRoomId && (
+      {!readOnly && c.isMine && !chatRoomId && (
         <View style={{ padding: 16, paddingTop: 0 }}>
           <TouchableOpacity style={s.deleteMyBtn} onPress={onDeleteCargo}>
             <Text style={s.deleteMyBtnText}>🗑 {t('delete_cargo')}</Text>
