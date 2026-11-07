@@ -14,6 +14,8 @@ function withoutFeedHooks(path, source) {
     .replace("import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';\n", '')
     .replace(/^.*<Stack.Screen name="ExternalFreightFeed".*\n/m, '');
   if (['src/screens/CargoFeedScreen.js', 'src/screens/FeedScreen.js'].includes(path)) return source
+    // Отдельная регрессия проверяет обновление при выборе нижней вкладки.
+    .replace("  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.\n  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);\n", '')
     .replace("import ExternalFreightEntry from '../components/externalFreight/ExternalFreightEntry';\n", '')
     .replace(/^      <ExternalFreightEntry[^\n]*\n/m, '')
     .replace(/^      <\/ExternalFreightEntry>\n/m, '')

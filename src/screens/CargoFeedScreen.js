@@ -354,6 +354,8 @@ export default function CargoFeedScreen({ navigation }) {
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
+  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
     // Preserve the current server pages and list position when returning from
