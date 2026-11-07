@@ -482,52 +482,11 @@ def send_native_debug(user_id: str, title: str, body: str, data: Optional[dict] 
 
 
 def _compute_recipient_badge(user_id: str) -> int:
-    """Бейдж на иконке (вариант 2): единый сигнал «всё новое» = непрочитанные
-    chat-сообщения + непрочитанные уведомления (колокол). iOS APNs рисует это
-    число на иконке. Чат-точка и колокол внутри приложения остаются раздельными;
-    суммарный счётчик — только на home-иконке, чтобы получатель ничего не
-    пропустил. Каждый источник считаем независимо (одна таблица может
-    отсутствовать на старой/тестовой БД — не теряем второй счётчик).
-    """
-    total = 0
-    try:
-        with get_conn() as c:
-            try:
-                # Блок 5 аудита (P1-1, вариант B): system-сообщения исключены
-                # — тот же фильтр, что в api/chat.py unread_count(), иначе
-                # APNs-бейдж на иконке расходился бы с in-app бейджем
-                # «Сделки» (двойной счёт одного события).
-                active_statuses = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
-                placeholders = ",".join("?" for _ in active_statuses)
-                row = c.execute(
-                    "SELECT COUNT(*) FROM chat_messages m "
-                    "JOIN chat_rooms r ON r.id = m.room_id "
-                    "WHERE (r.participant_1 = ? OR r.participant_2 = ?) "
-                    "AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0 "
-                    "AND ((r.cargo_id IS NULL AND r.trip_id IS NULL "
-                    "AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id)) "
-                    "OR EXISTS (SELECT 1 FROM deals d WHERE d.status IN (" + placeholders + ") "
-                    "AND (d.chat_room_id = r.id OR (d.chat_room_id IS NULL AND "
-                    "((r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id) "
-                    "OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id))))))",
-                    (user_id, user_id, user_id, *active_statuses),
-                ).fetchone()
-                total += int(row[0]) if row else 0
-            except Exception:
-                pass
-            try:
-                row = c.execute(
-                    "SELECT COUNT(*) FROM notifications "
-                    "WHERE user_id = ? AND is_read = 0 "
-                    "AND type NOT IN ('chat_message', 'chat_attachment')",
-                    (user_id,),
-                ).fetchone()
-                total += int(row[0]) if row else 0
-            except Exception:
-                pass
-    except Exception:
-        return 0
-    return total
+    # Native APNs/FCM badge must equal the mobile client's combined unread
+    # formula.  In particular, completed-deal chat rows must not resurrect a
+    # stale launcher badge after the user has returned to the app.
+    from api.notifications import unread_badge_count
+    return unread_badge_count(user_id)
 
 
 # ───────────────────────── Public API ─────────────────────────

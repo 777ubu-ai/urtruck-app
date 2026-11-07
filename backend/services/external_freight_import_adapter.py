@@ -64,10 +64,10 @@ class ExternalFreightFeedAdapter:
         record = map_selected_message(source)
         contract_keys = {
             "kind", "source_id", "source_message_id", "segment_id", "source_published_at",
-            "original_text", "source_revision", "status", "classification_status", "origin", "destination",
+            "original_text", "source_text", "source_revision", "status", "classification_status", "origin", "destination",
             "origin_country", "destination_country", "cargo_name", "body_types", "weight", "volume",
             "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state",
-            "contacts", "origin_source", "created_by",
+            "contacts", "source_contacts", "origin_source", "created_by",
         }
         explicit = {key: value for key, value in source.items() if key in contract_keys and value not in (None, "")}
         if explicit.get("status") not in {"active", "review", "closed", "hidden"}:
@@ -75,7 +75,8 @@ class ExternalFreightFeedAdapter:
         record.update(explicit)
         identity = self._identity(record)
         encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
-        if len(encoded.encode("utf-8")) > 30000:
+        # Контракт допускает блок и полный пост по 20 000 символов Unicode.
+        if len(encoded.encode("utf-8")) > 200000:
             raise ValueError("record_too_large")
         with self._connect() as db:
             existing = db.execute("SELECT payload,delivered_at FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?", identity).fetchone()
@@ -189,7 +190,21 @@ class ExternalFreightFeedAdapter:
         with self._connect() as db:
             rows = db.execute("""SELECT * FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
-                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, MAX_BATCH)).fetchall()
+                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, MAX_BATCH+1)).fetchall()
+            if len(rows) > MAX_BATCH:
+                due = 'delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?'
+                newest = "json_extract(payload,'$.source_published_at') DESC,source_id,source_message_id,segment_id"
+                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
+                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
+                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now,)).fetchall()
+                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now,)).fetchall()
+                # Квоты не вытесняют весь хвост: оставшиеся места берут старую
+                # выдачу. Пакет по-прежнему не больше 50, ACK привязан к generation.
+                selected = {}
+                for row in (*controls, *vehicles, *fresh, *retries, *rows):
+                    identity = (row['source_id'], row['source_message_id'], row['segment_id'])
+                    selected.setdefault(identity, row)
+                rows = list(selected.values())[:MAX_BATCH]
         if not rows:
             return {"status": "idle", "sent": 0, "pending": self.pending_count(),
                     "quarantined": self.quarantined_count()}

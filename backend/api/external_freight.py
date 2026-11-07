@@ -9,8 +9,10 @@ from pydantic import BaseModel, Field
 from api.verification_gate import require_level, require_admin
 from database import external_freight_dal as dal
 from services.external_freight_classifier import classify_message
+from services.owned_telegram_feed import OWNED_SOURCE
 
 router = APIRouter(tags=["external-freight"])
+OWNED_TELEGRAM_SOURCE_ID = "4325478296"  # Telethon peer id; marked Telegram id is -1004325478296.
 
 
 def feature_enabled():
@@ -56,7 +58,8 @@ def count_external_feed(include_carriers: bool = Query(False), user: dict = Depe
     kind = _user_kind(user)
     from services.carrier_directory import list_contacts
     extra = list_contacts(limit=1)["total"] if include_carriers and kind == "vehicle" else 0
-    return {"kind": kind, "count": dal.count_active_items(kind) + extra}
+    offers = dal.count_active_items(kind)
+    return {"kind": kind, "count": offers + extra, "offer_count": offers, "carrier_count": extra}
 
 
 @router.get("")
@@ -64,7 +67,7 @@ def list_external_feed(
     origin: str | None = Query(None, max_length=240), destination: str | None = Query(None, max_length=240),
     origin_country: str | None = Query(None, min_length=2, max_length=3),
     destination_country: str | None = Query(None, min_length=2, max_length=3),
-    body_type: str | None = Query(None, max_length=40), published_from: str | None = Query(None, max_length=40),
+    body_type: str | None = Query(None, max_length=40), body_query: str | None = Query(None, max_length=80), published_from: str | None = Query(None, max_length=40),
     published_to: str | None = Query(None, max_length=40), currency: str | None = Query(None, min_length=3, max_length=3),
     min_price: float | None = Query(None, ge=0), max_price: float | None = Query(None, ge=0),
     sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
@@ -90,7 +93,7 @@ def list_external_feed(
             raise HTTPException(status_code=422, detail={"error": "invalid_date_range"}) from exc
     kind = _user_kind(user)
     use_carriers = include_carriers and kind == "vehicle" and not saved_only and sort == "newest" and not any((
-        origin, destination, origin_country, destination_country, body_type, published_from, published_to, currency,
+        origin, destination, origin_country, destination_country, body_type, body_query, published_from, published_to, currency,
         min_price is not None, max_price is not None))
     try:
         if cursor and cursor.startswith("carrier:"):
@@ -99,7 +102,7 @@ def list_external_feed(
             from services.carrier_directory import list_contacts
             page = list_contacts(cursor=int(cursor[8:]), limit=limit)
             return {"kind": kind, "items": page["items"], "next_cursor": "carrier:" + str(page["next_cursor"]) if page["next_cursor"] is not None else None}
-        result = dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type,
+        result = dal.list_items(kind=kind, origin=origin, destination=destination, body_type=body_type, body_query=body_query,
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
@@ -168,10 +171,16 @@ def import_external_batch(batch: ImportBatch, importer_key: str | None = Header(
     if not configured or not importer_key or not hmac.compare_digest(configured, importer_key):
         raise HTTPException(status_code=401, detail={"error": "importer_auth_required"})
     # Never trust a client-provided kind alone. Classify the preserved source
-    # text. Only explicitly approved, unambiguous records can become visible.
+    # text. The owner's confirmed group is the one explicit pass-through source;
+    # its imported posts remain visible even when route/type/contact parsing is
+    # incomplete. Other sources still require an unambiguous classification.
     for record in batch.records:
         classification = classify_message(record.get("original_text", ""))
-        record["classification_status"] = "approved" if (
+        owned_source = (
+            str(record.get("origin_source") or "").casefold() == OWNED_SOURCE.casefold()
+            and str(record.get("source_id") or "") == OWNED_TELEGRAM_SOURCE_ID
+        )
+        record["classification_status"] = "approved" if owned_source or (
             classification["status"] == "active" and classification["kind"] == record.get("kind")
         ) else "review"
         if classification["status"] == "closed":

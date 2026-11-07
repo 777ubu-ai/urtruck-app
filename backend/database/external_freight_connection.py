@@ -52,6 +52,7 @@ def get_conn():
     conn = sqlite3.connect(str(path), timeout=5)
     conn.row_factory = sqlite3.Row
     try:
+        conn.create_function("CASEFOLD", 1, lambda value: str(value or "").casefold(), deterministic=True)
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
