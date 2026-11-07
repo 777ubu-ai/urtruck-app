@@ -34,7 +34,7 @@ on:
         description: Enable the external freight feed in this QA-only APK
         required: false
         type: boolean
-        default: false
+        default: true
       qa_abi:
         description: Архитектура тестовых телефонов; all сохраняет универсальный APK
         required: false
@@ -62,7 +62,7 @@ on:
       enable_external_freight_feed:
         required: false
         type: boolean
-        default: false
+        default: true
       qa_abi:
         required: false
         type: string
@@ -99,9 +99,7 @@ jobs:
           QA2_API_URL: ${{ secrets.QA2_API_URL }}
           API_TARGET: ${{ inputs.api_target || 'qa2' }}
           LAB_CONFIRMATION: ${{ inputs.lab_confirmation || '' }}
-          # Разовая ветка PR605 использует существующий push-триггер APK.
-          # Остальные push/manual сборки сохраняют прежний выбор флага.
-          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ inputs.enable_external_freight_feed || (github.event_name == 'push' && github.ref_name == 'claude/pr605-device-apk-20261025') }}
+          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ github.event_name == 'push' || inputs.enable_external_freight_feed }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -181,7 +179,12 @@ jobs:
           }
           echo "URTRUCK_VERSION_CODE=$qa2_version_code" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
+          echo "URTRUCK_QA_API_TARGET=$API_TARGET" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
+          if [ "$API_TARGET" = qa2 ] && [ "$ENABLE_EXTERNAL_FREIGHT_FEED" != true ]; then
+            echo '::error::QA2 APK requires external freight feed'
+            exit 1
+          fi
           if [ "$ENABLE_EXTERNAL_FREIGHT_FEED" = "true" ]; then
             test "$API_TARGET" = "qa2" || {
               echo "::error::External freight feed is enabled only for a QA2 API build"
@@ -195,7 +198,7 @@ jobs:
           fi
 
       - name: Verify QA2 build regression contract
-        run: node --test tests/frontend/test_qa2_live_build_contract.mjs
+        run: node --test tests/frontend/test_qa2_live_build_contract.mjs tests/frontend/test_qa2_feed_apk_guard.mjs
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.
@@ -393,6 +396,10 @@ jobs:
           echo "sourceSHA=${URTRUCK_SOURCE_SHA}"
           echo "apkSHA256=$SHA256"
           echo "certificateSHA256=$CERT"
+
+      - name: Verify embedded QA2 feed and source identity
+        if: env.URTRUCK_QA_API_TARGET == 'qa2'
+        run: python3 scripts/verify_qa2_apk_feed.py android/app/build/outputs/apk/release/UrTruck.apk "$URTRUCK_SOURCE_SHA" "$EXPO_PUBLIC_API_URL"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
