@@ -62,10 +62,10 @@ for (const role of ['client', 'driver']) {
           failSecond = false;
           return route.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"fixture transient"}' });
         }
-        const total = section === 'archive' ? 70 : 5000;
+        const total = section === 'history' ? 70 : 5000;
         data = { items: Array.from({ length: Math.min(limit, Math.max(0, total - offset)) },
-          (_, n) => item(offset + n, section === 'archive' ? 'unpublished' : 'active')),
-          total, archive_total: 70, next_offset: offset + limit < total ? offset + limit : null };
+          (_, n) => item(offset + n, section === 'history' ? 'unpublished' : 'active')),
+          total, archive_total: 70, history_total: 70, next_offset: offset + limit < total ? offset + limit : null };
       } else if (url.pathname === '/api/v1/market/my') {
         data = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
       } else if (['/api/v1/market/trips', '/api/v1/market/cargos'].includes(url.pathname)) {
@@ -122,7 +122,8 @@ for (const role of ['client', 'driver']) {
     expect(mountedCards).toBeLessThan(5000);
     expect(calls.every(x => x.limit === 50 && x.kind === kind)).toBe(true);
     await page.getByTestId('my-work-archive-toggle').click();
-    await expect(page.getByTestId('republish-btn').first()).toBeVisible();
+    await expect(page.getByTestId('my-history-card').first()).toBeVisible();
+    await expect(page.getByTestId('republish-btn')).toHaveCount(0);
     await expect(more).toContainText('Показать ещё');
     await more.click();
     await expect(more).toHaveCount(0);

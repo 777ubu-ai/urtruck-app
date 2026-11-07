@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canRepublishOwnedHistory, isOwnedHistory } from '../../src/utils/ownedListingHistory.js';
+import { isOwnedHistory } from '../../src/utils/ownedListingHistory.js';
 
 test('история содержит все закрытые и занятые статусы без изменения данных', () => {
   for (const driver of [false, true]) {
@@ -13,9 +13,10 @@ test('история содержит все закрытые и занятые 
   assert.equal(isOwnedHistory({ status: 'draft' }, true), false);
 });
 
-test('истёкшие, занятые и завершённые объявления нельзя повторно публиковать из истории', () => {
-  for (const status of ['expired', 'taken', 'booked', 'in_transit', 'completed', 'delivered']) {
-    assert.equal(canRepublishOwnedHistory(status), false, status);
+import { readFileSync } from 'node:fs';
+test('личные разделы не предлагают ручное восстановление или продление', () => {
+  const source = readFileSync('src/screens/MyTripsScreen.js', 'utf8');
+  for (const action of ['republish-btn', 'extend-oneclick-btn', 'extend-editdate-btn', 'marketAPI.republishCargo(', 'marketAPI.republishTrip(', 'marketAPI.extendCargo(', 'marketAPI.extendTrip(']) {
+    assert.equal(source.includes(action), false, action);
   }
-  for (const status of ['unpublished', 'cancelled', 'rejected']) assert.equal(canRepublishOwnedHistory(status), true);
 });

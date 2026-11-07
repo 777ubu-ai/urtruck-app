@@ -1,6 +1,3 @@
-// Архив не должен предлагать повторную публикацию объявлений, занятых сделкой.
-export const canRepublishOwnedHistory = (status) =>
-  ['unpublished', 'cancelled', 'rejected'].includes(status);
-
+// История сохраняет исходный статус; ручной повторной публикации здесь нет.
 export const isOwnedHistory = (item, isDriver) =>
   !!item.status && item.status !== 'active' && !(isDriver && item.status === 'draft');

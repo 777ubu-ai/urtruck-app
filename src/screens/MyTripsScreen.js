@@ -21,7 +21,7 @@ import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { reconcileCreatedCargoOverlay } from '../utils/createdCargoOverlay';
-import { canRepublishOwnedHistory, isOwnedHistory } from '../utils/ownedListingHistory';
+import { isOwnedHistory } from '../utils/ownedListingHistory';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -113,13 +113,8 @@ export default function MyTripsScreen({ navigation, route }) {
   cargoActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
   cargoActionBtn: { height: 34, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', flex: 1, backgroundColor: 'transparent' },
   cargoActionText: { fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
-  editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
-  extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
-  const accent = isDriver ? ceramic.active : '#FF8400';
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang);
@@ -149,28 +144,11 @@ export default function MyTripsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
   const [refreshingList, setRefreshingList] = useState(false);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
-  // Название сохранено ради минимального диффа — общий «id занятой операции»
-  // (republish/продление); ставки (bid) переехали в «Сделки».
-  const [busyBidId, setBusyBidId] = useState(null);
-  const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
   const loadRequestRef = useRef(0);
   const pageRef = useRef({ busy: false, nextOffset: null, scope: null });
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [archiveTotal, setArchiveTotal] = useState(null);
-
-  // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
-  // 3 дня и возвращается в ленту. Без ручного ввода даты.
-  const extendItem = async (item, isCargo) => {
-    if (extending) return;
-    setExtending(item.id);
-    try {
-      const r = isCargo ? await marketAPI.extendCargo(item.id) : await marketAPI.extendTrip(item.id);
-      if (r.ok) { toast('✅ ' + t('extended_toast'), 'success', 3000); load(); }
-      else toast(r.detail || t('send_error'), 'error');
-    } catch { toast(t('no_connection'), 'error'); }
-    finally { setExtending(null); }
-  };
 
   const [confirmDialog, setConfirmDialog] = useState(null);
 
@@ -461,38 +439,6 @@ export default function MyTripsScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
-        {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
-            ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
-            «Изменить дату», если нужна конкретная дата. */}
-        {item._expired && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
-            <TouchableOpacity
-              testID="extend-oneclick-btn"
-              style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
-              onPress={(e) => { e.stopPropagation && e.stopPropagation(); extendItem(item, isCargo); }}
-              disabled={extending === item.id}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="check-circle" size={14} color="#0C0A09" />
-                <Text style={s.extendBtnText}>{t('still_active')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="extend-editdate-btn"
-              style={[s.editBtn, { borderColor: v1Accent.main, marginTop: 0, paddingHorizontal: 14 }]}
-              onPress={(e) => {
-                e.stopPropagation && e.stopPropagation();
-                if (isCargo) setEditCargo(item);
-                else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="calendar" size={14} color={v1Accent.main} />
-                <Text style={[s.editBtnText, { color: v1Accent.main }]}>{t('change_date')}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
         {isCargo && !isDriver && st === 'active' && (
@@ -531,24 +477,6 @@ export default function MyTripsScreen({ navigation, route }) {
     );
   };
 
-  const republishItem = async (item, isCargo) => {
-    setBusyBidId(item.id);
-    try {
-      const r = isCargo
-        ? await marketAPI.republishCargo(item.id)
-        : await marketAPI.republishTrip(item.id);
-      if (r.ok) {
-        toast('✅ ' + t('republish'), 'success');
-        load();
-      } else {
-        toast(r.detail || t('send_error'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
-    setBusyBidId(null);
-  };
-
   // Карточка сделки/статус перевозки/чат/трекинг/отзыв — переехали целиком в
   // «Сделки» (ChatScreen), решение владельца 05.08.2026: «Мои рейсы»/«Мои
   // грузы» — только управление объявлениями. renderDeal/openDealCard/
@@ -565,13 +493,14 @@ export default function MyTripsScreen({ navigation, route }) {
     ? { main: ceramic.active, deep: ceramic.driverDeep, soft: ceramic.activeSoft }
     : v1AccentFor('client');
 
-  const renderUnpublishedItem = ({ item }) => {
+  const renderHistoryItem = ({ item }) => {
     const isCargo = !isDriver;
     const from = item.from_city || '—';
     const to = item.to_city || '—';
     return (
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'default'}
+        testID="my-history-card"
         dimmed
         style={s.cardSpacing}
         onPress={() => {
@@ -585,28 +514,19 @@ export default function MyTripsScreen({ navigation, route }) {
           toFlag: flagCodeOrNull(item.to_country),
           numberOfLines: 1,
         }}
+        price={formatPrice(item.price, item.currency, t)}
+        priceMeta={formatDateForDisplay((isCargo ? item.pickup_date : item.departure) || item.created_at)}
         status={{ key: item.status, label: formatStatus(item.status), color: v1.textDim }}
       >
-        {canRepublishOwnedHistory(item.status) && (
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
-          <TouchableOpacity
-            testID="republish-btn"
-            style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
-            onPress={(e) => { e.stopPropagation && e.stopPropagation(); republishItem(item, isCargo); }}
-          >
-            <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
-          </TouchableOpacity>
-        </View>
-        )}
       </MarketplaceCard>
     );
   };
 
   // В архиве каждая карточка сохраняет исходный статус объявления.
   const DRIVER_DATA = { routes: myItems, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, archive: renderUnpublishedItem };
+  const DRIVER_RENDER = { routes: renderMyItem, archive: renderHistoryItem };
   const CLIENT_DATA = { searching: clientSearching, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, archive: renderUnpublishedItem };
+  const CLIENT_RENDER = { searching: renderMyItem, archive: renderHistoryItem };
   const sectionMatches = !data?.section || data.section === (tab === 'archive' ? 'history' : 'active');
   const listData = sectionMatches ? (isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || [])) : [];
   const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
