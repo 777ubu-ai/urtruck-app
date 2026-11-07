@@ -247,4 +247,47 @@ def test_drift_while_stopping_services_is_not_overwritten_or_rolled_back(running
     with pytest.raises(ValueError, match='drift_before_write'):
         module.execute(stage, manifest, SHA, 'apply', Path('/synthetic/proof'))
     assert (root / foreign).read_bytes() == b'FOREIGN = True\n'
-    assert calls == ['stop', 'start']
+    assert calls == ['stop']
+
+
+def test_audit_disk_failure_cannot_prevent_rollback_or_restart(running, monkeypatch):
+    setup, calls = running
+    root, stage, backups, database, _, manifest = setup
+    original = module.legacy.write_atomic
+    failed = False
+    def write(path, data, mode=0o600):
+        nonlocal failed
+        path = Path(path)
+        if path.is_relative_to(backups) and path.name == 'result.json':
+            raise OSError('synthetic audit disk failure')
+        original(path, data, mode)
+        if path.is_relative_to(root) and path.suffix == '.py' and not failed:
+            failed = True
+            raise OSError('synthetic code write failed after rename')
+    monkeypatch.setattr(module.legacy, 'write_atomic', write)
+    before = database.read_bytes()
+    with pytest.raises(OSError, match='code write failed after rename'):
+        module.execute(stage, manifest, SHA, 'apply', Path('/synthetic/proof'))
+    assert calls == ['stop', 'stop', 'start']
+    assert module.verify_state(manifest, SHA) == 'before' and database.read_bytes() == before
+
+
+def test_rollback_manifest_disk_failure_still_restarts_verified_original_code(running, monkeypatch):
+    setup, calls = running
+    root, stage, _, database, _, manifest = setup
+    original = module.legacy.write_atomic
+    failed = False
+    def write(path, data, mode=0o600):
+        nonlocal failed
+        path = Path(path)
+        if path == root / '.urtruck-runtime-manifest.json':
+            raise OSError('synthetic manifest disk failure')
+        original(path, data, mode)
+        if path.is_relative_to(root) and path.suffix == '.py' and not failed:
+            failed = True
+            raise OSError('synthetic code failure')
+    monkeypatch.setattr(module.legacy, 'write_atomic', write)
+    with pytest.raises(OSError, match='code failure'):
+        module.execute(stage, manifest, SHA, 'apply', Path('/synthetic/proof'))
+    assert calls == ['stop', 'stop', 'start']
+    assert module.verify_state(manifest, SHA) == 'before'

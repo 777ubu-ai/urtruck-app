@@ -44,3 +44,15 @@ def test_later_dismissal_or_changes_requested_revoke_approval():
     for state in ['DISMISSED', 'CHANGES_REQUESTED']:
         newer = {**r, 'state': state}
         with pytest.raises(ValueError): validate(pr, [r, newer], SHA, SHA)
+
+
+def test_existing_production_callers_do_not_lose_required_read_permissions():
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    for path in (root / '.github/workflows').glob('*.yml'):
+        data = yaml.safe_load(path.read_text())
+        for job in data.get('jobs', {}).values():
+            if 'production-deploy-execute.yml' in job.get('uses', ''):
+                permissions = job.get('permissions', data.get('permissions', {}))
+                assert permissions.get('contents') == 'read', path.name
+                assert permissions.get('pull-requests') == 'read', path.name

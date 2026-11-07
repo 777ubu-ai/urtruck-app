@@ -220,7 +220,11 @@ def rollback_code(manifest, source_sha, originals):
     for name in FILES:
         legacy.write_atomic(runtime.safe_destination(ROOT, name), originals[name], 0o644)
     runtime.verify(ROOT, before, 'production')
-    legacy.write_atomic(ROOT / '.urtruck-runtime-manifest.json', json.dumps(before, indent=2).encode())
+    try:
+        legacy.write_atomic(ROOT / '.urtruck-runtime-manifest.json', json.dumps(before, indent=2).encode())
+    except OSError:
+        # Код уже полностью сверен: metadata-ошибка не оставляет его остановленным.
+        print('owned_rollback_manifest_unwritable; исходные 183 файла проверены')
 
 
 def execute(staged, manifest, source_sha, mode, proof_path=None):
@@ -283,12 +287,22 @@ def execute(staged, manifest, source_sha, mode, proof_path=None):
             report['live_code_changed'] = state == 'before'
         except BaseException:
             report['status'] = 'CODE_PHASE_FAILED'
-            legacy.write_atomic(folder / 'result.json', json.dumps(report, indent=2).encode())
-            if changed:
-                stop_pair(pm2, command_env, env, scheduler_id)
-                rollback_code(manifest, source_sha, originals)
-            if stop_started:
-                start_pair(pm2, command_env, env, scheduler_id, old_scheduler_pid)
+            try:
+                if changed:
+                    stop_pair(pm2, command_env, env, scheduler_id)
+                    rollback_code(manifest, source_sha, originals)
+                if stop_started:
+                    # Не запускаем неизвестный код или конфигурацию даже ради
+                    # автоматического восстановления доступности.
+                    verify_state(manifest, source_sha)
+                    require(legacy.digest(ROOT / '.env') == env_hash, 'owned_recovery_config_drift')
+                    start_pair(pm2, command_env, env, scheduler_id, old_scheduler_pid)
+            finally:
+                # Нехватка места для отчёта не должна отменять rollback/restart.
+                try:
+                    legacy.write_atomic(folder / 'result.json', json.dumps(report, indent=2).encode())
+                except OSError:
+                    print('owned_failure_receipt_unwritable; проверить закрытый backup: ' + str(folder))
             raise
         # Истёкшие строки — отдельная транзакция после готовности обоих процессов.
         audits = folder / 'live-recovery'
