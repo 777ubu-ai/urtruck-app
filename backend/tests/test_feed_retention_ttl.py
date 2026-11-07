@@ -1,4 +1,4 @@
-"""Автоудаление Ленты грузов (Telegram) старше 10 дней — backend-v1.1.0."""
+"""Автоудаление Ленты грузов (Telegram) старше срока (ACTIVE_DAYS) — backend-v1.2.0: 30 дней."""
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -32,17 +32,17 @@ def _count(table):
 
 
 def _age_item(message, days):
-    """Состарить уже импортированную карточку (импорт старше 10 дней запрещён)."""
+    """Состарить уже импортированную карточку (импорт старше срока запрещён)."""
     published = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET source_published_at=? WHERE source_message_id=?",
                   (published, message))
 
 
-def test_purge_removes_only_older_than_10_days_with_dependents():
+def test_purge_removes_only_older_than_ttl_with_dependents():
     old, fresh = "old-1", "fresh-1"
-    dal.import_records([_record(message=old), _record(message=fresh, days_old=1)])
-    _age_item(old, 11)
+    dal.import_records([_record(message=old), _record(message=fresh, days_old=29)])
+    _age_item(old, 31)
     with get_conn() as c:
         old_id = c.execute("SELECT id FROM external_freight_items WHERE source_message_id=?", (old,)).fetchone()[0]
         c.execute("INSERT INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES('u1',?,?)",
@@ -59,7 +59,7 @@ def test_purge_removes_only_older_than_10_days_with_dependents():
 
 def test_purged_message_is_not_reimported():
     dal.import_records([_record(message="m-1")])
-    _age_item("m-1", 11)
+    _age_item("m-1", 31)
     assert dal.purge_expired_items() == 1
     # Тот же пост Telegram пришёл повторно (свежая дата) — не возвращается.
     result = dal.import_records([_record(message="m-1")])
@@ -67,11 +67,12 @@ def test_purged_message_is_not_reimported():
     assert _count("external_freight_items") == 0
 
 
-def test_import_older_than_10_days_is_rejected():
-    result = dal.import_records([_record(days_old=11)])
+def test_import_older_than_ttl_is_rejected():
+    assert dal.ACTIVE_DAYS == 30
+    result = dal.import_records([_record(days_old=31)])
     assert result[0]["result"] == "expired"
     assert _count("external_freight_items") == 0
-    assert dal.import_records([_record(days_old=9)])[0]["result"] == "created"
+    assert dal.import_records([_record(days_old=29)])[0]["result"] == "created"
 
 
 def test_purge_batch_is_bounded():
@@ -80,7 +81,7 @@ def test_purge_batch_is_bounded():
         dal.import_records([_record(message=m) for m in messages[start:start + dal.MAX_BATCH]])
     with get_conn() as c:
         c.execute("UPDATE external_freight_items SET source_published_at=?",
-                  ((datetime.now(timezone.utc) - timedelta(days=12)).isoformat(),))
+                  ((datetime.now(timezone.utc) - timedelta(days=32)).isoformat(),))
     assert dal.purge_expired_items() == dal.PURGE_BATCH_SIZE
     assert dal.purge_expired_items() == 5
 
@@ -101,7 +102,7 @@ def test_retention_job_reads_path_from_env_file_and_skips_missing_db(monkeypatch
 def test_retention_job_purges_real_feed(monkeypatch):
     from scheduler import jobs
     dal.import_records([_record(message="j-1")])
-    _age_item("j-1", 11)
+    _age_item("j-1", 31)
     monkeypatch.setattr(jobs, "_external_feed_schema_ready", False)
     jobs.external_freight_retention_job()
     assert _count("external_freight_items") == 0

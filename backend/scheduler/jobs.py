@@ -134,7 +134,7 @@ def _external_feed_db_path_from_env_file():
 
 
 def external_freight_retention_job():
-    """Удаляет ограниченную партию карточек Ленты грузов старше 10 дней.
+    """Удаляет ограниченную партию карточек Ленты грузов старше 30 дней (ACTIVE_DAYS).
 
     Перенесено из QA2 (#647, #665, 2673443f): до 500 карточек за запуск,
     отпечаток источника сохраняется для защиты от повторного импорта.
@@ -512,7 +512,7 @@ def start_scheduler():
     # каждая строка push_delivery_log проверяется РОВНО один раз (см.
     # receipt_checked_at в poll_pending_receipts), окно 15 минут..1 сутки.
     sched.add_job(push_receipts_poll_job, IntervalTrigger(minutes=20), id="push_receipts_poll")
-    # Лента грузов: физическое удаление карточек старше 10 дней, партиями по 500.
+    # Лента грузов: физическое удаление карточек старше 30 дней, партиями по 500.
     sched.add_job(external_freight_retention_job, IntervalTrigger(minutes=5), id="external_freight_retention")
     sched.add_job(voice_processing_drain_job, IntervalTrigger(seconds=10), id="voice_processing_drain")
     sched.start()

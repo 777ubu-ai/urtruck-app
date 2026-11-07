@@ -12,7 +12,7 @@ from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_DAYS = 10
+ACTIVE_DAYS = 30
 PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ def _source_fingerprint(source_id, source_message_id, segment_id):
 
 
 def _apply_publication_retention(c, now=None):
-    """Recompute the 10-day source-based expiry without reopening closures.
+    """Recompute the 30-day source-based expiry without reopening closures.
 
     The subsequent purge removes expired feed content and leaves only a
     one-way source-identity digest to prevent a delayed replay from restoring it.
@@ -130,7 +130,7 @@ def _apply_publication_retention(c, now=None):
 
 
 def purge_expired_items(now=None):
-    """Delete external feed content after its 10-day source-based lifetime."""
+    """Delete external feed content after its 30-day source-based lifetime."""
     now = _utc(now)
     cutoff = now - timedelta(days=ACTIVE_DAYS)
     started = time.monotonic()
