@@ -88,7 +88,11 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
     if caller_id and caller_id == row.get(owner_field):
         return True
 
-    is_public = str(row.get("status") or "") == "active"
+    from services.bid_expiry import owner_is_deleted
+    is_public = (str(row.get("status") or "") == "active"
+                 and not owner_is_deleted(c, row.get(owner_field))
+                 and not row.get("taken_by") and not row.get("booked_by")
+                 and not _active_deal_exists(c, **{table[:-1] + "_id": listing_id}))
     if is_public:
         if table == "cargos":
             return _public_cargo_ok(row)
@@ -291,8 +295,8 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
     Hides:
       - dirty tokens in cargo_desc/from_city/to_city/cargo_type
-      - listings whose 30-day publication window has elapsed
-    Pickup dates describe the job, not publication lifetime. Never deletes;
+      - архивные/закрытые объявления исключаются SQL-фильтром статуса
+    Активный собственный груз продлевается циклами 30 суток. Never deletes;
     inactive/deal listings are already excluded by the public SQL query.
     """
     if _is_dirty_text(row.get("cargo_desc"), row.get("from_city"),
@@ -303,8 +307,10 @@ def _public_cargo_ok(row: dict, today=None) -> bool:
 
 
 def _within_publication_window(row: dict, today=None) -> bool:
-    """Единый срок UTC: в момент published_at + 30 суток публикация истекла."""
-    from services.bid_expiry import listing_deadline, _utc_naive
+    """Активные собственные грузы и рейсы продлеваются автоматически каждые 30 суток UTC."""
+    from services.bid_expiry import listing_deadline, _utc_naive, auto_renewing_listing
+    if auto_renewing_listing(dict(row)):
+        return True
     now = today if today is not None else datetime.utcnow()
     if now is not None and not isinstance(now, datetime):
         now = datetime.combine(now, datetime.min.time())
@@ -313,7 +319,7 @@ def _within_publication_window(row: dict, today=None) -> bool:
 
 
 def _public_trip_ok(row: dict, today=None) -> bool:
-    """Public trip eligibility mirrors cargo: 30 days from publication."""
+    """Активный собственный рейс остаётся в выдаче при продлении цикла."""
     if _is_dirty_text(row.get("driver_name"), row.get("from_city"),
                       row.get("to_city"), row.get("truck_type")):
         return False
@@ -828,6 +834,15 @@ def list_cargos(
     where.extend(search_where)
     params.extend(search_params)
 
+    where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
+                 "deleted_owner.id=cargos.owner_id AND "
+                 "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
+    # Проверяем занятость до LIMIT: legacy active не делает груз свободным.
+    where.append("COALESCE(taken_by, '') = ''")
+    deal_placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    where.append(f"NOT EXISTS (SELECT 1 FROM deals occupied_deal WHERE "
+                 f"occupied_deal.cargo_id=cargos.id AND occupied_deal.status IN ({deal_placeholders}))")
+    params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1711,6 +1726,14 @@ def list_trips(
     where.extend(search_where)
     params.extend(search_params)
 
+    where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
+                 "deleted_owner.id=trips.driver_id AND "
+                 "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
+    where.append("COALESCE(booked_by, '') = ''")
+    deal_placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    where.append(f"NOT EXISTS (SELECT 1 FROM deals occupied_deal WHERE "
+                 f"occupied_deal.trip_id=trips.id AND occupied_deal.status IN ({deal_placeholders}))")
+    params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1732,7 +1755,7 @@ def list_trips(
     trips = [t for t in trips if _within_publication_window(t)]
     if not show_demo:
         # Дата отправления описывает рейс. Срок публикации считается от
-        # published_at и совпадает с карточками грузов: 30 дней.
+        # published_at; активные собственные грузы/рейсы продлеваются циклами 30 суток.
         trips = [t for t in trips if _public_trip_ok(t)]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
@@ -1821,11 +1844,21 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
 
 # ═══ Bids ═══
 
-def _require_current_bid_listing(row):
-    """Предложения действуют в течение 30 дней публикации, независимо от даты маршрута."""
-    from services.bid_expiry import listing_deadline
+def _require_current_bid_listing(row, conn=None):
+    """Собственный груз/рейс продлевается; TTL самой ставки проверяется отдельно."""
+    from services.bid_expiry import listing_deadline, auto_renewing_listing, owner_is_deleted
 
     value = dict(row)
+    if conn is not None and owner_is_deleted(conn, value.get("owner_id") or value.get("driver_id")):
+        raise HTTPException(status_code=409, detail="Объявление владельца больше недоступно")
+    occupied = bool(value.get("taken_by") or value.get("booked_by"))
+    if conn is not None and value.get("id"):
+        link = {"cargo_id" if "owner_id" in value else "trip_id": value["id"]}
+        occupied = occupied or _active_deal_exists(conn, **link)
+    if occupied:
+        raise HTTPException(status_code=409, detail="Объявление уже занято и недоступно для предложений")
+    if auto_renewing_listing(value):
+        return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
     if deadline is not None and deadline <= datetime.utcnow():
         raise HTTPException(status_code=409, detail="Срок публикации объявления истёк")
@@ -1839,10 +1872,12 @@ def _require_actionable_bid(c, bid):
         raise HTTPException(status_code=409, detail="Срок предложения истёк")
     for key, table in (("cargo_id", "cargos"), ("trip_id", "trips")):
         if bid.get(key):
-            row = c.execute(f"SELECT status,published_at,created_at FROM {table} WHERE id=?", (bid[key],)).fetchone()
+            owner_column = "owner_id" if table == "cargos" else "driver_id"
+            occupied_column = "taken_by" if table == "cargos" else "booked_by"
+            row = c.execute(f"SELECT id,status,published_at,created_at,{owner_column},{occupied_column} FROM {table} WHERE id=?", (bid[key],)).fetchone()
             if not row or row["status"] != "active":
                 raise HTTPException(status_code=409, detail="Объявление больше не доступно для предложений")
-            _require_current_bid_listing(row)
+            _require_current_bid_listing(row, c)
 
 
 # Символы валют для человеко-читаемых строк (push/уведомления). Зеркало
@@ -1992,7 +2027,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
 
         # Ставки разрешены только на существующее активное объявление.
         if body.cargo_id:
-            cg = c.execute("SELECT status, owner_id, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            cg = c.execute("SELECT id, status, owner_id, taken_by, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if not cg:
                 raise HTTPException(status_code=404, detail="Груз не найден")
             if cg["status"] != "active":
@@ -2008,9 +2043,9 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "message": "Нельзя ставить на собственный груз",
                 })
             if cg:
-                _require_current_bid_listing(cg)
+                _require_current_bid_listing(cg, c)
         if body.trip_id:
-            tr = c.execute("SELECT status, driver_id, departure, published_at, created_at FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            tr = c.execute("SELECT id, status, driver_id, booked_by, departure, published_at, created_at FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if not tr:
                 raise HTTPException(status_code=404, detail="Рейс не найден")
             if tr["status"] != "active":
@@ -2022,7 +2057,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
                     "message": "Нельзя ставить на собственный рейс",
                 })
             if tr:
-                _require_current_bid_listing(tr)
+                _require_current_bid_listing(tr, c)
         # M1: дедуп — у одного автора не должно быть двух активных ставок на
         # тот же груз/рейс (для изменения цены есть PATCH /bids/{id}).
         # Возвращаем id/сумму/сообщение старой ставки в теле 409 — фронт
@@ -2321,7 +2356,7 @@ def bid_price_events(bid_id: str, user=Depends(require_level(1))):
 @mp_router.get("/my/listings")
 def my_listings(
     kind: str = Query("cargo", pattern="^(cargo|trip)$"),
-    section: str = Query("active", pattern="^(active|archive)$"),
+    section: str = Query("active", pattern="^(active|archive|history)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user=Depends(require_level(1)),
@@ -2330,13 +2365,20 @@ def my_listings(
     active_statuses = ("active",) if kind == "cargo" else ("active", "draft")
     statuses = ("unpublished", "cancelled", "rejected") if section == "archive" else active_statuses
     placeholders = ",".join("?" for _ in statuses)
-    where = f"{owner} = ? AND COALESCE(status, 'active') IN ({placeholders})"
+    operator = "NOT IN" if section == "history" else "IN"
+    where = f"{owner} = ? AND COALESCE(status, 'active') {operator} ({placeholders})"
     params = (user["id"], *statuses)
     with get_conn() as c:
         total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0]
         archive_total = c.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
             "AND status IN ('unpublished','cancelled','rejected')", (user["id"],)
+        ).fetchone()[0]
+        active_placeholders = ",".join("?" for _ in active_statuses)
+        history_total = c.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
+            f"AND COALESCE(status, 'active') NOT IN ({active_placeholders})",
+            (user["id"], *active_statuses),
         ).fetchone()[0]
         items = [dict(row) for row in c.execute(
             f"SELECT * FROM {table} WHERE {where} "
@@ -2350,7 +2392,7 @@ def my_listings(
                 item["photos"] = []
     next_offset = offset + len(items)
     return {
-        "items": items, "total": total, "archive_total": archive_total,
+        "items": items, "total": total, "archive_total": archive_total, "history_total": history_total,
         "next_offset": next_offset if items and next_offset < total else None,
     }
 
@@ -2799,11 +2841,11 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["cargo_id"]:
         cargo = c.execute(
-            "SELECT owner_id, from_city, to_city, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (bid["cargo_id"],)
+            "SELECT id, status, owner_id, taken_by, from_city, to_city, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (bid["cargo_id"],)
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        _require_current_bid_listing(cargo)
+        _require_current_bid_listing(cargo, c)
         # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
         # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
         # rollback транзакции при его провале) в итоге откатит и эту запись
@@ -2827,7 +2869,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT driver_id, from_city, to_city, vehicle_id, departure, published_at, created_at FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT id, status, driver_id, booked_by, from_city, to_city, vehicle_id, departure, published_at, created_at FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
@@ -2840,7 +2882,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         driver_id = trip["driver_id"]
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
-        _require_current_bid_listing(trip)
+        _require_current_bid_listing(trip, c)
         # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
         cur = c.execute(
             "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",

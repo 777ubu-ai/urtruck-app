@@ -1,7 +1,7 @@
 {
-  "reason": "Решение владельца 04.11.2026, PR673: единый срок публикации 30 суток UTC, TTL ставок 48 часов, атомарное принятие и уведомления обеих сторон; дата маршрута сохраняется. Другие protected baseline сохранены. Поведенческие регрессии test_listing30d_acceptance.py и test_listing_lifetime.mjs обязательны.",
+  "reason": "Решение владельца от 07.11.2026 (дополнение к выпуску): активные собственные объявления водителя И грузоотправителя автоматически продлеваются циклами 30 суток UTC; ставки сохраняют TTL48ч. Архив и конечные состояния не восстанавливаются. Behavioral regression обеих ролей: test_driver_listing_auto_renew.py, test_listing30d_acceptance.py, test_publish_time.py, test_listing_lifetime.mjs. Security review P1: deleted owner не продлевается и скрыт из public list/detail; новые и существующие ставки блокируются, история участников сохранена.",
   "sha256": {
-    "backend/api/marketplace.py": "ebe5163345fd6c4675d0b5d1de37a45edad0a723414b84655ccc2b60a755daf6",
+    "backend/api/marketplace.py": "4d7d37e51a7c0a9bab2268764d534d6727a03c6fd4a82fb711d34133d06a5803",
     "backend/database/db.py": "6af0b66e18afba35ad7b82550b029b80b7437fd03ee4ab0ef35206fcff65100d",
     "src/screens/MyTripsScreen.js": "77be3c13379786055e1a9931ff272b3e678ca12104553bd188a9951de9b810f2"
   }

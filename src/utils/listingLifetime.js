@@ -6,6 +6,8 @@ function timestamp(value) {
   return Date.parse(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`);
 }
 export function isListingExpired(item, now = Date.now()) {
+  // Активный собственный груз/рейс продлевает сервер; старый кэш не скрывает его.
+  if ((item.driver_id || item.owner_id) && item.status === 'active') return false;
   const published = timestamp(item.published_at);
   const start = Number.isFinite(published) ? published : timestamp(item.created_at);
   return Number.isFinite(start) && now >= start + 30 * 24 * 60 * 60 * 1000;

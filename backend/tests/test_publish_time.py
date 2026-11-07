@@ -218,11 +218,14 @@ def test_old_pickup_and_departure_remain_public_until_thirty_day_window_ends():
         c.execute("UPDATE cargos SET published_at=? WHERE id=?", (old_publication, cargo_id))
         c.execute("UPDATE trips SET published_at=? WHERE id=?", (old_publication, trip_id))
     result = client.get("/api/v1/market/cargos", params={"status": "active", "from_city": "ThirtyDayCargoOrigin"}).json()
-    expect(cargo_id not in [row["id"] for row in result["cargos"]],
-           "cargo older than 30 published days is hidden")
+    expect([row["id"] for row in result["cargos"]].count(cargo_id) == 1,
+           "Активный груз старше 30 суток остаётся в выдаче с тем же ID")
     result = client.get("/api/v1/market/trips", params={"status": "active", "from_city": "ThirtyDayTripOrigin"}).json()
-    expect(trip_id not in [row["id"] for row in result["trips"]],
-           "trip older than 30 published days is hidden")
+    expect([row["id"] for row in result["trips"]].count(trip_id) == 1,
+           "Активный рейс старше 30 суток остаётся в выдаче с тем же ID")
+    trip = get_trip(trip_id)
+    expect(trip["status"] == "active" and trip["departure"] == "2020-01-01",
+           "Автопродление сохраняет статус и исходную дату выезда")
 
 
 if __name__ == "__main__":

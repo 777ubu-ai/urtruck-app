@@ -23,7 +23,8 @@ test('distributed QA2 requires a healthy non-production API target', () => {
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=https://urtruck.kz'));
   assert.ok(!workflow.includes('EXPO_PUBLIC_API_URL=http://127.0.0.1:18001'));
   assert.ok(workflow.includes('enable_external_freight_feed:'), 'QA-only build must expose an explicit feed flag');
-  assert.ok(workflow.includes('default: false'), 'feed must remain disabled in normal QA2 candidates');
+  assert.match(workflow, /enable_external_freight_feed:[\s\S]*?default: true/, 'QA2 должен по умолчанию включать ленту');
+  assert.ok(workflow.includes('QA2 APK requires external freight feed'), 'QA2 сборка без ленты должна завершаться ошибкой');
   assert.ok(workflow.includes('test "$API_TARGET" = "qa2"'), 'feed cannot be enabled against loopback or production');
   assert.ok(workflow.includes('EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=true'));
 });

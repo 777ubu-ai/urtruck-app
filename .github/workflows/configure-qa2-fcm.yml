@@ -184,22 +184,30 @@ jobs:
           payload=/tmp/urtruck-qa2-fcm-service-account.json
           test -f "$qa_env" && test -f "$payload"
           cutoff="$(python3 - "$qa_env" <<'PY'
-          # This command is not started by systemd, so it must never fall
-          # back to config.py's production-default DB_PATH.  Read only the
-          # isolated QA2 DB selector from the already-validated QA2 env and
-          # open it read-only before placing the cutoff above legacy rows.
+          # Preserve an established QA2 cutoff during credential rotation.
+          # Advancing it to MAX(id) on every run can suppress new QA events.
+          # Only a first-time setup without a cutoff derives one from QA2 DB.
           import os, sqlite3, sys
           from pathlib import Path
 
           env_path = Path(sys.argv[1])
           selected = None
+          existing_cutoff = None
           for raw in env_path.read_text(encoding="utf-8").splitlines():
               line = raw.strip()
               if not line or line.startswith("#") or "=" not in line:
                   continue
               key, value = line.split("=", 1)
-              if key.strip() in {"DB_PATH", "URTRUCK_DB_PATH"}:
+              key = key.strip()
+              if key in {"DB_PATH", "URTRUCK_DB_PATH"}:
                   selected = value.strip().strip("'\\\"")
+              elif key == "PUSH_OUTBOX_CUTOFF_ID":
+                  existing_cutoff = value.strip()
+          if existing_cutoff not in (None, ""):
+              if not existing_cutoff.isdecimal():
+                  raise SystemExit("QA2_PUSH_OUTBOX_CUTOFF_INVALID")
+              print(int(existing_cutoff))
+              raise SystemExit(0)
           if not selected:
               raise SystemExit("QA2_RUNTIME_DB_PATH_MISSING")
           if selected.startswith("sqlite:///"):

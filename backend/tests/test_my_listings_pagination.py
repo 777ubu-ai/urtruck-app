@@ -67,7 +67,7 @@ def test_empty_owner_and_large_offset_are_empty():
     as_user(uid)
     r = client.get("/api/v1/market/my/listings?offset=5000&owner_id=another")
     assert r.status_code == 200
-    assert r.json() == {"items": [], "total": 0, "archive_total": 0, "next_offset": None}
+    assert r.json() == {"items": [], "total": 0, "archive_total": 0, "history_total": 0, "next_offset": None}
 
 
 def test_unauthenticated_real_dependency_denies_listing():
@@ -117,3 +117,37 @@ def test_public_pages_and_empty_hygiene_window(kind, resource):
     next_page = client.get(f"/api/v1/market/{resource}", params={"from_city": tag, "limit": 50, "offset": 50}).json()
     assert len(next_page[resource]) == 50
     assert next_page["next_offset"] == 100
+
+
+@pytest.mark.parametrize('kind,role', [('cargo', 'client'), ('trip', 'driver')])
+def test_history_shows_every_nonactive_status_without_cross_owner_leaks(kind, role):
+    uid = 'history-' + str(uuid.uuid4())
+    history_statuses = ['expired', 'unpublished', 'cancelled', 'rejected', 'taken', 'booked', 'in_transit', 'completed', 'delivered']
+    expected = set()
+    for status in history_statuses:
+        expected |= seed(kind, uid, status, 7)
+    seed(kind, uid, 'active', 2)
+    if kind == 'trip':
+        seed(kind, uid, 'draft', 1)
+    seed(kind, 'foreign-' + uid, 'expired', 3)
+    as_user(uid, role)
+    offset, seen = 0, []
+    while True:
+        response = client.get('/api/v1/market/my/listings', params={'kind': kind, 'section': 'history', 'limit': 10, 'offset': offset})
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data['total'] == len(expected)
+        seen.extend(item['id'] for item in data['items'])
+        if data['next_offset'] is None:
+            break
+        offset = data['next_offset']
+    assert len(seen) == len(set(seen)) == len(expected)
+    assert set(seen) == expected
+    # Прежний архив остаётся совместимым со старыми клиентами.
+    old = client.get('/api/v1/market/my/listings', params={'kind': kind, 'section': 'archive'})
+    assert old.status_code == 200
+    assert {item['status'] for item in old.json()['items']} == {'unpublished', 'cancelled', 'rejected'}
+    again = client.get('/api/v1/market/my/listings', params={'kind': kind, 'section': 'history', 'limit': 200})
+    assert {item['id'] for item in again.json()['items']} == expected
+    assert {item['status'] for item in again.json()['items']} == set(history_statuses)
+    assert again.json()['history_total'] == len(expected)

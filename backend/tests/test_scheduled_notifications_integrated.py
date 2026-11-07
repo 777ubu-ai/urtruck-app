@@ -168,9 +168,8 @@ def test_deal_transition_uses_catalog_priority_and_ttl(env):
 def test_lifecycle_ignores_old_route_and_never_claims_active_listing_removed(env):
     cargo(age=48);assert jobs.lifecycle_job()==0
     with db.get_conn() as c:c.execute("UPDATE cargos SET created_at=?",((datetime.utcnow()-timedelta(days=29,hours=1)).isoformat(),))
-    assert jobs.lifecycle_job()==1
-    with db.get_conn() as c:row=c.execute("SELECT * FROM notifications WHERE type='listing_lifecycle'").fetchone()
-    assert 'expires' in row['title'] and 'archiv' not in row['body']
+    assert jobs.lifecycle_job()==0
+    assert count('notifications',"type='listing_lifecycle'")==0
 
 
 def test_republication_and_edit_do_not_rearm_no_bids(env):
@@ -272,13 +271,31 @@ def test_trip_owner_and_existing_bid_follow_same_rule(env):
     assert jobs.no_bids_job()==0
 
 
-def test_publication_boundaries_and_fallback_are_shared_with_marketplace(env):
+def test_auto_renewed_publication_keeps_no_bids_identity_and_fallback(env,monkeypatch):
+    monkeypatch.setattr(db,'_maybe_expire_marketplace',lambda c:None)
     now=datetime.utcnow();cargo(age=25*24,published=(now-timedelta(hours=1)).isoformat())
     assert jobs.no_bids_job(now=now)==0
     with db.get_conn() as c:c.execute("UPDATE cargos SET published_at=?",((now-timedelta(days=30)).isoformat(),))
-    assert jobs.no_bids_job(now=now)==0
-    with db.get_conn() as c:c.execute("UPDATE cargos SET published_at=NULL,created_at=?",((now-timedelta(hours=19)).isoformat(),))
     assert jobs.no_bids_job(now=now)==1
+    fallback=(now-timedelta(hours=19)).isoformat()
+    with db.get_conn() as c:
+        c.execute("UPDATE cargos SET published_at=NULL,created_at=?",(fallback,))
+        assert policy.publication_time(dict(c.execute("SELECT * FROM cargos").fetchone()))==datetime.fromisoformat(fallback)
+    assert jobs.no_bids_job(now=now)==0
+
+
+def test_deleted_owner_is_absent_from_digest_and_bound_search_delivery(env):
+    cargo(age=1)
+    assert registration_dal.delete_account('owner')
+    with db.get_conn() as c:
+        c.execute("INSERT INTO saved_searches(user_id,from_city,to_city,notify) VALUES ('driver','Город A','Город B',1)")
+    assert jobs.reminders_job()['route_match']==0
+    assert count('notifications',"type='saved_search'")==0
+    with db.get_conn() as c:
+        data={'notification_category':'saved_search','cargo_id':'cargo','from':'Город A','to':'Город B'}
+        assert policy.delivery_block_reason('driver',data,conn=c)=='listing_inactive'
+        data.pop('cargo_id')
+        assert policy.delivery_block_reason('driver',data,conn=c) is None
 
 
 def test_queue_failure_rolls_back_claim_and_inbox(env,monkeypatch):

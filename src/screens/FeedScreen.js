@@ -292,6 +292,8 @@ export default function FeedScreen({ navigation }) {
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
+  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
     // Keep the loaded server pages and FlatList anchor when returning from a

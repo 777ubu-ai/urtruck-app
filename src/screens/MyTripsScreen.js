@@ -21,6 +21,7 @@ import FadeInUp from '../components/ui/FadeInUp';
 import Feather from '@expo/vector-icons/Feather';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import { reconcileCreatedCargoOverlay } from '../utils/createdCargoOverlay';
+import { isOwnedHistory } from '../utils/ownedListingHistory';
 import RootHeader from '../components/ui/v1/RootHeader';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -112,13 +113,8 @@ export default function MyTripsScreen({ navigation, route }) {
   cargoActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
   cargoActionBtn: { height: 34, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', flex: 1, backgroundColor: 'transparent' },
   cargoActionText: { fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  editBtn: { borderWidth: 0, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: v1Spacing.sm, backgroundColor: 'rgba(34,197,94,0.12)', maxWidth: '100%' },
-  editBtnText: { color: v1.active || v1.driver, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
-  extendBtn: { flex: 1, backgroundColor: v1.active || v1.driver, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', minHeight: 40, maxWidth: '100%' },
-  extendBtnText: { color: v1.activeText || v1.driverOnAccent || '#0C0A09', fontSize: 13, fontWeight: '800', flexShrink: 1, textAlign: 'center' },
 
   }), [v1]);
-  const accent = isDriver ? ceramic.active : '#FF8400';
   const { t, lang } = useI18n();
   const { requireLevel, Gate } = useVerificationGate();
   const tonUnit = lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang);
@@ -148,28 +144,11 @@ export default function MyTripsScreen({ navigation, route }) {
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
   const [refreshingList, setRefreshingList] = useState(false);
   const [editCargo, setEditCargo] = useState(null);  // задача A: правка своего груза
-  // Название сохранено ради минимального диффа — общий «id занятой операции»
-  // (republish/продление); ставки (bid) переехали в «Сделки».
-  const [busyBidId, setBusyBidId] = useState(null);
-  const [extending, setExtending] = useState(null);  // Модель А: продление одним тапом
   const loadRequestRef = useRef(0);
   const pageRef = useRef({ busy: false, nextOffset: null, scope: null });
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [archiveTotal, setArchiveTotal] = useState(null);
-
-  // «Ещё актуально» — сбрасывает дату на сегодня, публикация снова живёт
-  // 3 дня и возвращается в ленту. Без ручного ввода даты.
-  const extendItem = async (item, isCargo) => {
-    if (extending) return;
-    setExtending(item.id);
-    try {
-      const r = isCargo ? await marketAPI.extendCargo(item.id) : await marketAPI.extendTrip(item.id);
-      if (r.ok) { toast('✅ ' + t('extended_toast'), 'success', 3000); load(); }
-      else toast(r.detail || t('send_error'), 'error');
-    } catch { toast(t('no_connection'), 'error'); }
-    finally { setExtending(null); }
-  };
 
   const [confirmDialog, setConfirmDialog] = useState(null);
 
@@ -214,7 +193,7 @@ export default function MyTripsScreen({ navigation, route }) {
     if (append && (previous.busy || previous.nextOffset == null)) return;
     const requestId = ++loadRequestRef.current;
     const offset = append ? previous.nextOffset : 0;
-    const section = tab === 'archive' ? 'archive' : 'active';
+    const section = tab === 'archive' ? 'history' : 'active';
     pageRef.current = { ...previous, busy: true, nextOffset: append ? previous.nextOffset : null };
     if (append) setLoadingMore(true);
     else if (showLoading) setLoading(true);
@@ -276,7 +255,7 @@ export default function MyTripsScreen({ navigation, route }) {
           const items = new Map([...(current?.[key] || []), ...(next[key] || [])].map(item => [item.id, item]));
           return { ...next, [key]: [...items.values()] };
         });
-        setArchiveTotal(page.archive_total ?? null);
+        setArchiveTotal(page.history_total ?? null);
         pageRef.current = { busy: false, nextOffset: page.next_offset, scope: page.scope || null };
       }
     } catch (e) {
@@ -333,30 +312,10 @@ export default function MyTripsScreen({ navigation, route }) {
 
   // Срок публикации: ровно 30 суток UTC от published_at, fallback created_at.
   const isExpiredItem = isListingExpired;
-  // Решение владельца (05.08.2026): «Грузы»/«Рейсы» — ТОЛЬКО управление
-  // объявлениями (active/draft/expired + архив unpublished/cancelled/rejected).
-  // Всё, что связано со сделкой — целиком в «Сделках». Статусы листинга во
-  // время сделки (см. backend/api/marketplace.py, _DEAL_TO_TRIP и accept_bid):
-  // trip: active → booked → in_transit → delivered/cancelled
-  // cargo: active → taken → completed (или обратно active при отмене сделки)
-  // Все «занятые сделкой» статусы скрываем здесь так же, как completed/
-  // delivered — иначе один и тот же рейс/груз виден и тут, и в Сделках.
-  const HIDDEN_ITEM_STATUSES = new Set(['completed', 'delivered', 'unpublished', 'booked', 'taken', 'in_transit']);
-  // Приоритет статуса над датой (05.08.2026, п.6/13/25 аудита): раньше
-  // «просрочено» считалось ТОЛЬКО по дате, без учёта item.status — доставленный
-  // рейс с прошедшей датой выезда всё равно попадал в myItemsExpired и рисовал
-  // «Срок истёк» + рабочие на вид кнопки «Ещё актуально»/«Изменить дату»,
-  // которые бэкенд (extend_trip/extend_cargo) отклоняет 409 «не активен»,
-  // потому что статус уже не 'active'. Источник истины: если у публикации уже
-  // есть исход по сделке (HIDDEN_ITEM_STATUSES) или она сама закрыта
-  // (cancelled/rejected), это НЕ «истёкшая публикация» — статус приоритетнее
-  // даты. «Истёкшая» относится только к публикации, которая так и осталась
-  // активной/черновиком и просто не нашла сделку вовремя.
+  // Статус имеет приоритет над датой: закрытые и занятые записи остаются
+  // в истории с исходным статусом, без кнопки продления активного объявления.
   const isOpenPublicationStatus = (it) => !it.status || it.status === 'active' || it.status === 'draft';
   const myItemsActive = myItemsRaw.filter((it) => isOpenPublicationStatus(it) && !isExpiredItem(it));
-  const myItemsUnpublished = myItemsRaw.filter((it) => it.status === 'unpublished');
-  // Отменённые/отклонённые ОБЪЯВЛЕНИЯ (не сделки/ставки — те в «Сделках»).
-  const myItemsClosed = myItemsRaw.filter((it) => it.status === 'cancelled' || it.status === 'rejected');
   const myItemsExpired = myItemsRaw.filter((it) => it.status === 'expired' || (isOpenPublicationStatus(it) && isExpiredItem(it)));
   const myItems = [...myItemsActive, ...myItemsExpired.map(it => ({ ...it, _expired: true }))];
 
@@ -370,15 +329,13 @@ export default function MyTripsScreen({ navigation, route }) {
     || (item && (data?.my_cargos || []).find((cc) => cc.id === item.cargo_id)?.currency)
     || 'USD';
 
-  // «Ищу машину» = только активные грузы (booked/taken уже отфильтрованы выше
-  // через HIDDEN_ITEM_STATUSES — такой груз живёт в «Сделках», не дублируется тут).
+  // В активном разделе остаются только открытые грузы.
   const clientSearching = myItems.filter((c) => !c.status || c.status === 'active');
-  // Архив — только объявления: неопубликованные + закрытые (отменённые/
-  // отклонённые как ЛИСТИНГИ). Отменённые/отклонённые СДЕЛКИ и СТАВКИ — это
-  // переговоры, они живут в «Сделках» со статусом «Отменено» (05.08.2026:
-  // раньше дублировались и здесь, и там; теперь у каждой записи одно место).
-  const driverArchive = [...myItemsUnpublished, ...myItemsClosed].map((it) => ({ ...it, _kind: 'unpublished' }));
-  const clientArchive = [...myItemsUnpublished, ...myItemsClosed].map((it) => ({ ...it, _kind: 'unpublished' }));
+  // История показывает все неактивные объявления без изменения их статусов.
+  const historyItems = myItemsRaw.filter((it) => isOwnedHistory(it, isDriver))
+    .map((it) => ({ ...it, _kind: 'history' }));
+  const driverArchive = historyItems;
+  const clientArchive = historyItems;
 
   // ─── Cards ───
 
@@ -482,38 +439,6 @@ export default function MyTripsScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         )}
-        {/* Просроченный груз/рейс (Модель А): «Ещё актуально» — продление
-            ОДНИМ ТАПОМ (дата = сегодня, снова живёт 3 дня и в ленте). Рядом —
-            «Изменить дату», если нужна конкретная дата. */}
-        {item._expired && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
-            <TouchableOpacity
-              testID="extend-oneclick-btn"
-              style={[s.extendBtn, extending === item.id && { opacity: 0.6 }]}
-              onPress={(e) => { e.stopPropagation && e.stopPropagation(); extendItem(item, isCargo); }}
-              disabled={extending === item.id}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="check-circle" size={14} color="#0C0A09" />
-                <Text style={s.extendBtnText}>{t('still_active')}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="extend-editdate-btn"
-              style={[s.editBtn, { borderColor: v1Accent.main, marginTop: 0, paddingHorizontal: 14 }]}
-              onPress={(e) => {
-                e.stopPropagation && e.stopPropagation();
-                if (isCargo) setEditCargo(item);
-                else navigation.navigate('EditTrip', { tripId: item.id, trip: normalizeTrip({ ...item, isMine: true, _server: true }) });
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Feather name="calendar" size={14} color={v1Accent.main} />
-                <Text style={[s.editBtnText, { color: v1Accent.main }]}>{t('change_date')}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
         {/* Задача A: управление СВОИМ грузом — Изменить (цена/описание) + Удалить.
             Только для активного груза (taken/принятый редактировать нельзя). */}
         {isCargo && !isDriver && st === 'active' && (
@@ -552,24 +477,6 @@ export default function MyTripsScreen({ navigation, route }) {
     );
   };
 
-  const republishItem = async (item, isCargo) => {
-    setBusyBidId(item.id);
-    try {
-      const r = isCargo
-        ? await marketAPI.republishCargo(item.id)
-        : await marketAPI.republishTrip(item.id);
-      if (r.ok) {
-        toast('✅ ' + t('republish'), 'success');
-        load();
-      } else {
-        toast(r.detail || t('send_error'), 'error');
-      }
-    } catch {
-      toast(t('no_connection'), 'error');
-    }
-    setBusyBidId(null);
-  };
-
   // Карточка сделки/статус перевозки/чат/трекинг/отзыв — переехали целиком в
   // «Сделки» (ChatScreen), решение владельца 05.08.2026: «Мои рейсы»/«Мои
   // грузы» — только управление объявлениями. renderDeal/openDealCard/
@@ -586,15 +493,20 @@ export default function MyTripsScreen({ navigation, route }) {
     ? { main: ceramic.active, deep: ceramic.driverDeep, soft: ceramic.activeSoft }
     : v1AccentFor('client');
 
-  const renderUnpublishedItem = ({ item }) => {
-    const isCargo = !!item.cargo_desc;
+  const renderHistoryItem = ({ item }) => {
+    const isCargo = !isDriver;
     const from = item.from_city || '—';
     const to = item.to_city || '—';
     return (
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'default'}
+        testID="my-history-card"
         dimmed
         style={s.cardSpacing}
+        onPress={() => {
+          if (isCargo) navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: item.cargo_desc, isMine: true, _server: true }, cargoId: item.id, role, readOnly: true });
+          else navigation.navigate('TripDetail', { trip: normalizeTrip({ ...item, isMine: true, _server: true }), tripId: item.id, role, readOnly: true });
+        }}
         route={{
           from: localizePlace(from, lang),
           to: localizePlace(to, lang),
@@ -602,28 +514,20 @@ export default function MyTripsScreen({ navigation, route }) {
           toFlag: flagCodeOrNull(item.to_country),
           numberOfLines: 1,
         }}
-        status={{ key: 'unpublished', label: formatStatus(item.status || 'unpublished'), color: v1.textDim }}
+        price={formatPrice(item.price, item.currency, t)}
+        priceMeta={formatDateForDisplay((isCargo ? item.pickup_date : item.departure) || item.created_at)}
+        status={{ key: item.status, label: formatStatus(item.status), color: v1.textDim }}
       >
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: v1Spacing.sm }}>
-          <TouchableOpacity
-            testID="republish-btn"
-            style={[s.acceptBtn, { backgroundColor: accent, flex: 1 }]}
-            onPress={() => republishItem(item, isCargo)}
-          >
-            <Text style={[s.acceptBtnText, { color: '#0C0A09' }]}>{t('republish')}</Text>
-          </TouchableOpacity>
-        </View>
       </MarketplaceCard>
     );
   };
 
-  // Архив содержит только неопубликованные объявления (см. driverArchive/
-  // clientArchive выше) — отдельного dispatch-рендерера больше не нужно.
+  // В архиве каждая карточка сохраняет исходный статус объявления.
   const DRIVER_DATA = { routes: myItems, archive: driverArchive };
-  const DRIVER_RENDER = { routes: renderMyItem, archive: renderUnpublishedItem };
+  const DRIVER_RENDER = { routes: renderMyItem, archive: renderHistoryItem };
   const CLIENT_DATA = { searching: clientSearching, archive: clientArchive };
-  const CLIENT_RENDER = { searching: renderMyItem, archive: renderUnpublishedItem };
-  const sectionMatches = !data?.section || data.section === (tab === 'archive' ? 'archive' : 'active');
+  const CLIENT_RENDER = { searching: renderMyItem, archive: renderHistoryItem };
+  const sectionMatches = !data?.section || data.section === (tab === 'archive' ? 'history' : 'active');
   const listData = sectionMatches ? (isDriver ? (DRIVER_DATA[tab] || []) : (CLIENT_DATA[tab] || [])) : [];
   const listRenderBase = isDriver ? (DRIVER_RENDER[tab] || renderMyItem) : (CLIENT_RENDER[tab] || renderMyItem);
   // Промпт-дизайн: карточки появляются каскадом (выезд 10px + fade, 50мс шаг).
@@ -691,7 +595,7 @@ export default function MyTripsScreen({ navigation, route }) {
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={[s.archiveToggleText, { color: tab === 'archive' ? v1Accent.main : v1.textMuted }]}>
-                  {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')} (${archiveTotal ?? (isDriver ? driverArchive : clientArchive).length}) ›`}
+                  {tab === 'archive' ? `‹ ${t('back_to_active')}` : `${t('tab_archive')}${archiveTotal == null ? '' : ` (${archiveTotal})`} ›`}
                 </Text>
               </TouchableOpacity>
             </View>

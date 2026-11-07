@@ -10,10 +10,10 @@ from functools import lru_cache
 
 from database.external_freight_connection import get_conn, new_id
 from services.external_freight_parser import valid_phone_contacts
+from services.external_freight_retention import active_days, published_deadline
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_DAYS = 10
 PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 logger = logging.getLogger(__name__)
@@ -105,14 +105,14 @@ def _source_fingerprint(source_id, source_message_id, segment_id):
 
 
 def _apply_publication_retention(c, now=None):
-    """Recompute the 10-day source-based expiry without reopening closures.
+    """Recompute per-kind source-based expiry without reopening closures.
 
     The subsequent purge removes expired feed content and leaves only a
     one-way source-identity digest to prevent a delayed replay from restoring it.
     """
     now = _utc(now)
     rows = c.execute(
-        "SELECT id,source_published_at,status,expires_at FROM external_freight_items "
+        "SELECT id,kind,source_published_at,status,expires_at FROM external_freight_items "
         "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL",
     ).fetchall()
     for row in rows:
@@ -120,7 +120,7 @@ def _apply_publication_retention(c, now=None):
             published = _utc(row["source_published_at"])
         except (TypeError, ValueError):
             continue
-        expires = published + timedelta(days=ACTIVE_DAYS)
+        expires = published + timedelta(days=active_days(row["kind"]))
         expires_at = expires.isoformat()
         status = "expired" if expires <= now else "active"
         if row["status"] != status or row["expires_at"] != expires_at:
@@ -131,25 +131,27 @@ def _apply_publication_retention(c, now=None):
 
 
 def purge_expired_items(now=None):
-    """Delete external feed content after its 10-day source-based lifetime."""
+    """Delete external offers after their kind-specific source-based lifetime."""
     now = _utc(now)
-    cutoff = now - timedelta(days=ACTIVE_DAYS)
+    cargo_cutoff = now - timedelta(days=30)
+    vehicle_cutoff = now - timedelta(days=active_days("vehicle"))
+    undated_cutoff = now - timedelta(days=max(active_days("cargo"), active_days("vehicle")))
     started = time.monotonic()
     with get_conn() as c:
         # Split dated and undated retention queries so both can use their
         # ordered indexes; the previous OR + COALESCE sort scanned all cards.
         dated = c.execute(
             "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
-            "FROM external_freight_items WHERE source_published_at IS NOT NULL "
-            "AND source_published_at<=? ORDER BY source_published_at,id LIMIT ?",
-            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+            "FROM external_freight_items WHERE source_published_at IS NOT NULL AND ((kind='cargo' AND source_published_at<=?) "
+            "OR (kind='vehicle' AND source_published_at<=?)) ORDER BY source_published_at,id LIMIT ?",
+            (cargo_cutoff.isoformat(), vehicle_cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         undated = c.execute(
             "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
             "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
             "WHERE source_published_at IS NULL "
             "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
-            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+            (undated_cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         rows = sorted(
             (*dated, *undated),
@@ -300,7 +302,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": ((published or now) + timedelta(days=ACTIVE_DAYS)).isoformat(),
+        "updated_at": now.isoformat(), "expires_at": (published_deadline(published, kind) if published else now + timedelta(days=active_days(kind))).isoformat(),
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -310,7 +312,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published_deadline(published, kind) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
         "review_reason": review_reason or None,
         "core_fields_complete": core_fields_complete,
@@ -340,10 +342,12 @@ def import_records(records):
             for values in normalized_batch:
                 fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
                 too_old = (values["source_published_at"] and
-                           _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
+                           published_deadline(values["source_published_at"], values["kind"]) <= _utc())
                 previously_expired = c.execute(
-                    "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
+                    "SELECT expired_at FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
                 ).fetchone()
+                # A tombstone means the content was intentionally purged under
+                # the prior policy. Never resurrect it from a delayed import.
                 if too_old or previously_expired:
                     c.execute(
                         "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
@@ -359,10 +363,11 @@ def import_records(records):
                     values["ingested_at"] = current["ingested_at"]
                     if current["source_published_at"]:
                         values["source_published_at"] = current["source_published_at"]
-                        values["expires_at"] = (_utc(current["source_published_at"])
-                                                 + timedelta(days=ACTIVE_DAYS)).isoformat()
+                        values["expires_at"] = published_deadline(
+                            current["source_published_at"], current["kind"]
+                        ).isoformat()
                     else:
-                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=ACTIVE_DAYS)).isoformat()
+                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=active_days(current["kind"]))).isoformat()
                     unchanged = all(values[key] == current[key] for key in columns
                                     if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                     if current["status"] in {"hidden", "closed"} or (

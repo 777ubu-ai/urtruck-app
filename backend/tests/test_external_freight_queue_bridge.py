@@ -45,17 +45,19 @@ def add(bridge, ident=1, status="published", date=NOW, text=None, destination=No
              "[]", status, destination if destination is not None else ident))
 
 
-def test_only_published_within_ten_day_window_without_source_mutation(bridge):
+def test_only_published_within_thirty_day_window_without_source_mutation(bridge):
     worker, calls = bridge
     for i, status in enumerate(["published", "queued", "sending", "rejected", "uncertain"], 1):
         add(worker, i, status)
     add(worker, 6, date=NOW - 8 * 24 * 3600)
     add(worker, 7, date=NOW + 301)
-    add(worker, 8, date=NOW - 10 * 24 * 3600 - 1)
+    add(worker, 8, date=NOW - 29 * 24 * 3600)
+    add(worker, 9, date=NOW - 30 * 24 * 3600)
+    add(worker, 10, date=NOW - 31 * 24 * 3600)
     before = hashlib.sha256(worker.source_path.read_bytes()).hexdigest()
     result = worker.run_once()
-    assert result["scanned"] == result["sent"] == 2
-    assert len(calls) == 2
+    assert result["scanned"] == result["sent"] == 3
+    assert len(calls) == 3
     assert hashlib.sha256(worker.source_path.read_bytes()).hexdigest() == before
 
 
@@ -107,7 +109,7 @@ def test_expired_outbox_record_is_retained_and_not_retried(bridge):
     worker, calls = bridge
     worker.adapter.enqueue({
         "source_id": "old-source", "source_message_id": "expired", "segment_id": "0",
-        "source_published_at": "2026-10-01T10:00:00+00:00", "kind": "cargo",
+        "source_published_at": "2026-09-19T10:00:00+00:00", "kind": "cargo",
         "status": "active", "original_text": "expired test fixture",
     })
     result = worker.run_once()

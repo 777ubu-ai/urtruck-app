@@ -107,7 +107,7 @@ on:
       enable_external_freight_feed:
         description: "Включить принятую внешнюю ленту в магазинной сборке"
         required: false
-        default: false
+        default: true
         type: boolean
       last_verified_play_code:
         description: Latest versionCode verified in Play before building the reviewed store candidate
@@ -168,7 +168,7 @@ jobs:
     env:
       URTRUCK_VERSION_NAME: 1.0.9
       URTRUCK_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
-      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ inputs.enable_external_freight_feed && 'true' || 'false' }}
+      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ (github.event_name == 'push' || inputs.enable_external_freight_feed) && 'true' || 'false' }}
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -179,6 +179,13 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Запретить магазинную сборку без внешней ленты
+        run: |
+          test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true || {
+            echo '::error::Магазинная сборка требует включённую внешнюю ленту'
+            exit 1
+          }
 
       - name: Prepare reviewed internal candidate identity
         env:
@@ -482,6 +489,7 @@ jobs:
           grep -Fq -- "android:versionCode=\"${URTRUCK_VERSION_CODE}\"" <<< "$manifest_xml"
           grep -Fq -- "android:versionName=\"${URTRUCK_VERSION_NAME}\"" <<< "$manifest_xml"
           unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
+          node scripts/require-feed-config.mjs "$RUNNER_TEMP/aab-app-config.json"
           if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
           const fs = require('fs');
@@ -549,6 +557,7 @@ jobs:
           # occurrence of that domain in unrelated code as the configured API endpoint.
           embedded_config="$RUNNER_TEMP/urtruck-embedded-app-config.json"
           unzip -p "$apk" assets/app.config > "$embedded_config"
+          node scripts/require-feed-config.mjs "$embedded_config"
           if [ "$API_ENVIRONMENT" = qa2 ]; then
             node scripts/qa2-internal-store-config.mjs "$embedded_config"
           else

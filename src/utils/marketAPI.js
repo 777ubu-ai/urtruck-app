@@ -547,7 +547,9 @@ export const marketAPI = {
         const all = (kind === 'trip' ? d.my_trips : d.my_cargos) || [];
         const archive = all.filter(item => ['unpublished', 'cancelled', 'rejected'].includes(item.status));
         const active = all.filter(item => !item.status || item.status === 'active' || (kind === 'trip' && item.status === 'draft'));
-        return { items: section === 'archive' ? archive : active, archive_total: archive.length,
+        const history = all.filter(item => item.status && item.status !== 'active' && !(kind === 'trip' && item.status === 'draft'));
+        return { items: section === 'history' ? history : section === 'archive' ? archive : active, archive_total: archive.length,
+          history_total: null,
           next_offset: null, scope, paginationUnavailable: true };
       }
       if (!r.ok || !Array.isArray(d?.items) || !Number.isInteger(d?.total)

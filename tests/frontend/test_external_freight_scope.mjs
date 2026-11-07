@@ -14,6 +14,8 @@ function withoutFeedHooks(path, source) {
     .replace("import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';\n", '')
     .replace(/^.*<Stack.Screen name="ExternalFreightFeed".*\n/m, '');
   if (['src/screens/CargoFeedScreen.js', 'src/screens/FeedScreen.js'].includes(path)) return source
+    // Отдельная регрессия проверяет обновление при выборе нижней вкладки.
+    .replace("  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.\n  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);\n", '')
     .replace("import ExternalFreightEntry from '../components/externalFreight/ExternalFreightEntry';\n", '')
     .replace(/^      <ExternalFreightEntry[^\n]*\n/m, '')
     .replace(/^      <\/ExternalFreightEntry>\n/m, '')
@@ -27,9 +29,10 @@ function withoutFeedHooks(path, source) {
 }
 const gpsPause = JSON.parse(readFileSync('tests/fixtures/gps-paused-approved-scope.json', 'utf8'));
 const listing30d = JSON.parse(readFileSync('tests/fixtures/listing30d-approved-scope.json', 'utf8'));
+const ownedHistory = JSON.parse(readFileSync('tests/fixtures/owned-history-approved-scope.json', 'utf8'));
 for (const [path, expected] of Object.entries(baseline.sha256)) {
   test('сохранена согласованная реализация: ' + path, () => {
     const source = withoutFeedHooks(path, readFileSync(path, 'utf8'));
-    assert.equal(createHash('sha256').update(source).digest('hex'), listing30d.sha256[path] || gpsPause.sha256[path] || expected, listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
+    assert.equal(createHash('sha256').update(source).digest('hex'), ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
   });
 }

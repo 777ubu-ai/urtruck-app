@@ -16,13 +16,30 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from services.external_freight_retention import CARGO_RETENTION_SECONDS, VEHICLE_RETENTION_SECONDS
+
 MAX_BATCH = 50
 MAX_FLUSH_BATCHES_PER_CYCLE = 2
 MAX_FLUSH_CYCLE_SECONDS = 30
 API_REQUEST_TIMEOUT_SECONDS = 8
 OLDEST_RESERVE_PER_BATCH = 10
 MAX_BACKOFF_SECONDS = 900
-RETENTION_SECONDS = 10 * 24 * 3600
+RETENTION_SECONDS = CARGO_RETENTION_SECONDS
+
+
+def _retention_cutoffs(now):
+    return (
+        datetime.fromtimestamp(now - CARGO_RETENTION_SECONDS, timezone.utc).isoformat(),
+        datetime.fromtimestamp(now - VEHICLE_RETENTION_SECONDS, timezone.utc).isoformat(),
+    )
+
+
+_WITHIN_RETENTION_SQL = """(json_extract(payload,'$.source_published_at') IS NULL
+    OR julianday(json_extract(payload,'$.source_published_at')) > julianday(
+        CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END))"""
+_OUTSIDE_RETENTION_SQL = """json_extract(payload,'$.source_published_at') IS NOT NULL
+    AND julianday(json_extract(payload,'$.source_published_at')) <= julianday(
+        CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END)"""
 
 
 class ImportAckError(ValueError):
@@ -127,39 +144,38 @@ class ExternalFreightFeedAdapter:
 
     def ready_pending_count(self, now=None):
         now = self.clock() if now is None else now
-        cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
+        cutoffs = _retention_cutoffs(now)
         with self._connect() as db:
-            return db.execute("""SELECT COUNT(*) FROM selected_outbox
+            return db.execute(f"""SELECT COUNT(*) FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
                 AND next_attempt_at<=?
-                AND (json_extract(payload,'$.source_published_at') IS NULL
-                    OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))""", (now, cutoff)).fetchone()[0]
+                AND {_WITHIN_RETENTION_SQL}""", (now, *cutoffs)).fetchone()[0]
 
     def quarantined_count(self):
         with self._connect() as db:
             return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL").fetchone()[0]
 
     def expired_pending_count(self, now=None):
-        cutoff = datetime.fromtimestamp((now or self.clock()) - RETENTION_SECONDS, timezone.utc).isoformat()
+        cutoffs = _retention_cutoffs(now or self.clock())
         with self._connect() as db:
-            return db.execute("""SELECT COUNT(*) FROM selected_outbox
+            return db.execute(f"""SELECT COUNT(*) FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
                 AND json_extract(payload,'$.source_published_at') IS NOT NULL
-                AND julianday(json_extract(payload,'$.source_published_at')) < julianday(?)""",
-                (cutoff,)).fetchone()[0]
+                AND {_OUTSIDE_RETENTION_SQL}""",
+                cutoffs).fetchone()[0]
 
     def terminal_expired_count(self):
         with self._connect() as db:
             return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE terminal_reason IN ('source_retention_expired','api_expired')").fetchone()[0]
 
     def _terminalize_source_expired(self, now):
-        cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
+        cutoffs = _retention_cutoffs(now)
         stamp = datetime.fromtimestamp(now, timezone.utc).isoformat()
         with self._connect() as db:
-            cur = db.execute("""UPDATE selected_outbox SET terminal_at=?,terminal_reason='source_retention_expired'
+            cur = db.execute(f"""UPDATE selected_outbox SET terminal_at=?,terminal_reason='source_retention_expired'
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
                 AND json_extract(payload,'$.source_published_at') IS NOT NULL
-                AND julianday(json_extract(payload,'$.source_published_at')) < julianday(?)""", (stamp, cutoff))
+                AND {_OUTSIDE_RETENTION_SQL}""", (stamp, *cutoffs))
             return cur.rowcount
 
     def flush_once(self, *, deadline=None):
@@ -373,24 +389,22 @@ class ExternalFreightFeedAdapter:
         now = self.clock()
         terminalized = self._terminalize_source_expired(now)
         deadline = min(time.monotonic() + 25, deadline) if deadline is not None else time.monotonic() + 25
-        cutoff = datetime.fromtimestamp(now - RETENTION_SECONDS, timezone.utc).isoformat()
+        cutoffs = _retention_cutoffs(now)
         with self._connect() as db:
-            rows = db.execute("""SELECT * FROM selected_outbox
+            rows = db.execute(f"""SELECT * FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
                 AND terminal_at IS NULL
-                AND (json_extract(payload,'$.source_published_at') IS NULL
-                    OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))
-                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, cutoff, MAX_BATCH+1)).fetchall()
+                AND {_WITHIN_RETENTION_SQL}
+                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, *cutoffs, MAX_BATCH+1)).fetchall()
             if len(rows) > MAX_BATCH:
-                due = '''delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
+                due = f'''delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
                     AND terminal_at IS NULL
-                    AND (json_extract(payload,'$.source_published_at') IS NULL
-                        OR julianday(json_extract(payload,'$.source_published_at')) >= julianday(?))'''
+                    AND {_WITHIN_RETENTION_SQL}'''
                 newest = "json_extract(payload,'$.source_published_at') DESC,source_id,source_message_id,segment_id"
-                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now, cutoff)).fetchall()
-                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now, cutoff)).fetchall()
-                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now, cutoff)).fetchall()
-                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now, cutoff)).fetchall()
+                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now, *cutoffs)).fetchall()
+                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now, *cutoffs)).fetchall()
+                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now, *cutoffs)).fetchall()
+                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now, *cutoffs)).fetchall()
                 # Резервируем часть каждого насыщенного пакета для oldest-first:
                 # сортировка базовой выборки по source identity не гарантирует
                 # продвижения записей у границы TTL. Записи без даты идут после
@@ -399,7 +413,7 @@ class ExternalFreightFeedAdapter:
                     ORDER BY CASE WHEN json_extract(payload,'$.source_published_at') IS NULL THEN 1 ELSE 0 END,
                         julianday(json_extract(payload,'$.source_published_at')) ASC,
                         source_id,source_message_id,segment_id LIMIT ?""",
-                    (now, cutoff, OLDEST_RESERVE_PER_BATCH)).fetchall()
+                    (now, *cutoffs, OLDEST_RESERVE_PER_BATCH)).fetchall()
                 # Квоты дедуплицируются по ключу записи и не увеличивают API
                 # контракт: общий пакет остаётся в пределах MAX_BATCH, ACK
                 # привязан к generation.
