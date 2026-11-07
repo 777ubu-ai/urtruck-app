@@ -151,3 +151,25 @@ def test_history_shows_every_nonactive_status_without_cross_owner_leaks(kind, ro
     assert {item['id'] for item in again.json()['items']} == expected
     assert {item['status'] for item in again.json()['items']} == set(history_statuses)
     assert again.json()['history_total'] == len(expected)
+
+
+@pytest.mark.parametrize('kind,role,key', [('cargo', 'client', 'my_cargos'), ('trip', 'driver', 'my_trips')])
+def test_legacy_dashboard_returns_all_owned_rows_beyond_fifty(kind, role, key):
+    """Старые приложения должны получить свои объявления без нового APK."""
+    uid = 'legacy-all-' + str(uuid.uuid4())
+    active = seed(kind, uid, 'active', 131)
+    archived = seed(kind, uid, 'cancelled', 7)
+    closed = seed(kind, uid, 'taken' if kind == 'cargo' else 'booked', 3)
+    foreign = seed(kind, 'foreign-' + uid, 'active', 5)
+    as_user(uid, role)
+    response = client.get('/api/v1/market/my')
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert set(data) == {'my_cargos', 'my_trips', 'my_bids', 'incoming_bids', 'my_deals'}
+    ids = [item['id'] for item in data[key]]
+    assert len(ids) == len(set(ids)) == len(active | archived | closed)
+    assert set(ids) == active | archived | closed
+    assert not set(ids).intersection(foreign)
+    statuses = {item['id']: item['status'] for item in data[key]}
+    assert all(statuses[i] == 'cancelled' for i in archived)
+    assert all(statuses[i] == ('taken' if kind == 'cargo' else 'booked') for i in closed)
