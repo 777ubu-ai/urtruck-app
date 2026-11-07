@@ -12,11 +12,12 @@ def main():
         with zipfile.ZipFile(apk) as archive:
             config = json.loads(archive.read("assets/app.config"))
         extra = config["extra"]
-        assert extra.get("urtruckExternalFreightFeedEnabled") is True
-        assert extra.get("urtruckSourceSha") == expected_sha
-        assert extra.get("urtruckApiUrl", "").rstrip("/") == expected_api.rstrip("/")
-        assert extra.get("urtruckBuildFlavor") == "qa2"
-    except (KeyError, ValueError, OSError, zipfile.BadZipFile, AssertionError, AttributeError):
+        if (extra.get("urtruckExternalFreightFeedEnabled") is not True
+                or extra.get("urtruckSourceSha") != expected_sha
+                or extra.get("urtruckApiUrl", "").rstrip("/") != expected_api.rstrip("/")
+                or extra.get("urtruckBuildFlavor") != "qa2"):
+            raise ValueError("Несовпадение параметров")
+    except (KeyError, ValueError, OSError, zipfile.BadZipFile, AttributeError):
         raise SystemExit("Ошибка: конфигурация QA2 APK не соответствует source, API, flavor или включённой ленте")
     print("Конфигурация вложенного QA2 APK: PASS")
 
