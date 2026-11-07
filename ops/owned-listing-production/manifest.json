@@ -189,7 +189,7 @@
     "database/schemas/deal_room_schema.sql": "d254fe3b55289320e8a2b2fefb74c5d23e0b14459eb779b3a466ae691f296329"
   },
   "files": {
-    "api/marketplace.py": "3c8dbaeeb0ec7e8df2ddd45644c2c16ba5abbb8d1fe94e2e5ef00fa29bc80767",
+    "api/marketplace.py": "371d4f045562fd19a7f81b4b9d1a12ce3e12c4d23e31d3f0a973c266e35eb6be",
     "services/bid_expiry.py": "0d165e2c0f1ae2cc6e5ca37d5ac5a391b268d62c28784162b9f7742b739ad55d",
     "database/db.py": "6af0b66e18afba35ad7b82550b029b80b7437fd03ee4ab0ef35206fcff65100d",
     "scheduler/jobs.py": "0f7b67b09150dcee5261f7a950e20a3555040d259bff65a1ba0ddcffd8b73df3"
@@ -206,7 +206,8 @@
   "database_replacement": false,
   "store_release": false,
   "reconstructed_baseline_sha": "653c557ccc87dc3562d55fe1683bceca26922692",
-  "functional_source_sha": "be4345c5ad91a85175030499a1434bdc017a0d45",
   "recovery_allowlist_sha256": "772d24d536cf1e913cbe3992cb892ea2b90bdc9ca289ceb3d5ae75367e419183",
-  "recovery_allowlist_path": "/home/ubuntu/urtruck-backups/expiry-allowlist-rehearsal-20261107T114905Z/production-allowlist-private.json"
+  "recovery_allowlist_path": "/home/ubuntu/urtruck-backups/expiry-allowlist-rehearsal-20261107T114905Z/production-allowlist-private.json",
+  "functional_base_sha": "be4345c5ad91a85175030499a1434bdc017a0d45",
+  "legacy_dashboard_full_own_lists": true
 }

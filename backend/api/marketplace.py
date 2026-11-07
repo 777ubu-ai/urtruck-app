@@ -2407,9 +2407,9 @@ def my_dashboard(user=Depends(require_level(1))):
     uid = user["id"]
     with get_conn() as c:
         my_cargos = [dict(r) for r in c.execute(
-            "SELECT * FROM cargos WHERE owner_id = ? ORDER BY created_at DESC LIMIT 50", (uid,)).fetchall()]
+            "SELECT * FROM cargos WHERE owner_id = ? ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
         my_trips = [dict(r) for r in c.execute(
-            "SELECT * FROM trips WHERE driver_id = ? ORDER BY created_at DESC LIMIT 50", (uid,)).fetchall()]
+            "SELECT * FROM trips WHERE driver_id = ? ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
         # Ставки которые Я сделал. currency берём у родителя (груз ИЛИ рейс) —
         # для my_bids это единственный источник: груз/рейс чужой, в payload его
         # нет, без JOIN фронт рисовал сумму хардкодным «$». COALESCE: ставка
