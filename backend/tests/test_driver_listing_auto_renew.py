@@ -95,6 +95,101 @@ def test_active_deal_is_unchanged_and_bid_keeps_48h_ttl(kind):
         assert c.execute(f"SELECT status FROM {table} WHERE id=?", (iid,)).fetchone()[0] == "active"
 
 
+def seed_busy_listing(kind, busy, age=95):
+    table, iid, owner, original = seed(kind, age)
+    participant = db.new_id()
+    with db.get_conn() as c:
+        if busy in ("pointer", "both"):
+            occupied = "taken_by" if kind == "cargo" else "booked_by"
+            c.execute(f"UPDATE {table} SET {occupied}=? WHERE id=?", (participant, iid))
+        if busy in ("deal", "both"):
+            accepted_bid = db.new_id()
+            c.execute(f"INSERT INTO bids(id,{kind}_id,bidder_id,amount,status) VALUES(?,?,?,100,'accepted')", (accepted_bid, iid, participant))
+            c.execute(f"INSERT INTO deals(id,bid_id,shipper_id,driver_id,{kind}_id,from_city,to_city,amount,status) VALUES(?,?,?,?,?,'Алматы','Астана',100,'in_progress')", (db.new_id(), accepted_bid, owner if kind == "cargo" else participant, participant if kind == "cargo" else owner, iid))
+    return table, iid, owner, original, participant
+
+
+def listing_snapshot(table, kind, iid):
+    with db.get_conn() as c:
+        return {
+            "listing": dict(c.execute(f"SELECT * FROM {table} WHERE id=?", (iid,)).fetchone()),
+            "bids": [dict(row) for row in c.execute(f"SELECT * FROM bids WHERE {kind}_id=? ORDER BY id", (iid,))],
+            "deals": [dict(row) for row in c.execute(f"SELECT * FROM deals WHERE {kind}_id=? ORDER BY id", (iid,))],
+        }
+
+
+@pytest.mark.parametrize("busy", ["deal", "pointer", "both"])
+@pytest.mark.parametrize("age", [1, 95])
+def test_occupied_listing_never_renews_is_private_and_rejects_new_bid(kind, busy, age, monkeypatch):
+    from tests.auth_harness import override_require_level
+
+    table, iid, owner, _, participant = seed_busy_listing(kind, busy, age)
+    before = listing_snapshot(table, kind, iid)
+    with db.get_conn() as c:
+        assert notification_policy.delivery_block_reason(
+            db.new_id(), {kind + "_id": iid, "notification_category": "saved_search"}, conn=c, now=NOW
+        ) == "listing_inactive"
+        assert iid not in renewed(bid_expiry.expire_stale_marketplace(now=NOW, conn=c), table)
+    assert listing_snapshot(table, kind, iid) == before
+
+    app = FastAPI()
+    app.include_router(market.mp_router, prefix="/market")
+    bidder = {"id": db.new_id(), "role": "driver" if kind == "cargo" else "client"}
+    override_require_level(app, lambda: bidder)
+    client = TestClient(app)
+    for demo in (False, True):
+        response = client.get("/market/" + table, params={"show_demo": demo, "limit": 200})
+        assert response.status_code == 200
+        assert iid not in {row["id"] for row in response.json()[table]}
+
+    monkeypatch.setattr(market, "_maybe_user", lambda token: {"id": owner if token == "owner" else participant if token == "participant" else "outsider"} if token else None)
+    endpoint = "/market/" + table + "/" + iid
+    assert client.get(endpoint).status_code == 404
+    assert client.get(endpoint, headers={"Authorization": "outsider"}).status_code == 404
+    assert client.get(endpoint, headers={"Authorization": "owner"}).status_code == 200
+    if busy in ("deal", "both"):
+        assert client.get(endpoint, headers={"Authorization": "participant"}).status_code == 200
+    response = client.post("/market/bids", json={kind + "_id": iid, "amount": 200})
+    assert response.status_code == 409, response.text
+    assert listing_snapshot(table, kind, iid) == before
+
+
+@pytest.mark.parametrize("busy", ["deal", "pointer"])
+@pytest.mark.parametrize("action", ["update", "counter", "accept", "accept_counter"])
+def test_occupied_listing_blocks_existing_bid_mutations_without_side_effects(kind, busy, action):
+    table, iid, owner, _, _ = seed_busy_listing(kind, busy)
+    bidder, bid = db.new_id(), db.new_id()
+    state = "countered" if action == "accept_counter" else "pending"
+    with db.get_conn() as c:
+        stamp = (NOW - timedelta(hours=1)).isoformat()
+        c.execute(f"INSERT INTO bids(id,{kind}_id,bidder_id,amount,status,created_at,updated_at,counter_amount) VALUES(?,?,?,100,?,?,?,150)", (bid, iid, bidder, state, stamp, stamp))
+    before = listing_snapshot(table, kind, iid)
+    calls = {
+        "update": lambda: market.update_bid(bid, market.BidUpdateIn(amount=150), user={"id": bidder}),
+        "counter": lambda: market.counter_bid(bid, market.BidCounterIn(amount=150), user={"id": owner}),
+        "accept": lambda: market.accept_bid(bid, user={"id": owner}),
+        "accept_counter": lambda: market.accept_counter(bid, user={"id": bidder}),
+    }
+    with pytest.raises(HTTPException) as caught:
+        calls[action]()
+    assert caught.value.status_code == 409
+    assert listing_snapshot(table, kind, iid) == before
+
+
+@pytest.mark.parametrize("status", ["completed", "cancelled"])
+def test_old_terminal_deal_does_not_block_current_free_listing(kind, status):
+    table, iid, owner, _ = seed(kind, 95)
+    with db.get_conn() as c:
+        c.execute(f"INSERT INTO deals(id,bid_id,shipper_id,driver_id,{kind}_id,from_city,to_city,amount,status) VALUES(?,?,?,?,?,'Алматы','Астана',100,?)", (db.new_id(), db.new_id(), owner if kind == "cargo" else db.new_id(), owner if kind == "trip" else db.new_id(), iid, status))
+        assert iid in renewed(bid_expiry.expire_stale_marketplace(now=NOW, conn=c), table)
+    app = FastAPI()
+    app.include_router(market.mp_router, prefix="/market")
+    response = TestClient(app).get("/market/" + table, params={"limit": 200})
+    assert iid in {row["id"] for row in response.json()[table]}
+    result = market.create_bid(market.BidIn(**{kind + "_id": iid}, amount=100), user={"id": db.new_id(), "role": "driver" if kind == "cargo" else "client"})
+    assert result["ok"]
+
+
 def test_stale_snapshot_visible_and_actionable_before_cleanup(kind):
     table, iid, owner, _ = seed(kind, 95)
     with db.get_conn() as c:

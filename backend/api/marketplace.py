@@ -90,7 +90,9 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
 
     from services.bid_expiry import owner_is_deleted
     is_public = (str(row.get("status") or "") == "active"
-                 and not owner_is_deleted(c, row.get(owner_field)))
+                 and not owner_is_deleted(c, row.get(owner_field))
+                 and not row.get("taken_by") and not row.get("booked_by")
+                 and not _active_deal_exists(c, **{table[:-1] + "_id": listing_id}))
     if is_public:
         if table == "cargos":
             return _public_cargo_ok(row)
@@ -835,6 +837,12 @@ def list_cargos(
     where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
                  "deleted_owner.id=cargos.owner_id AND "
                  "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
+    # Проверяем занятость до LIMIT: legacy active не делает груз свободным.
+    where.append("COALESCE(taken_by, '') = ''")
+    deal_placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    where.append(f"NOT EXISTS (SELECT 1 FROM deals occupied_deal WHERE "
+                 f"occupied_deal.cargo_id=cargos.id AND occupied_deal.status IN ({deal_placeholders}))")
+    params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1721,6 +1729,11 @@ def list_trips(
     where.append("NOT EXISTS (SELECT 1 FROM drivers_registration deleted_owner WHERE "
                  "deleted_owner.id=trips.driver_id AND "
                  "(lower(deleted_owner.status)='deleted' OR lower(deleted_owner.role)='deleted'))")
+    where.append("COALESCE(booked_by, '') = ''")
+    deal_placeholders = ",".join("?" for _ in _ACTIVE_DEAL_STATUSES)
+    where.append(f"NOT EXISTS (SELECT 1 FROM deals occupied_deal WHERE "
+                 f"occupied_deal.trip_id=trips.id AND occupied_deal.status IN ({deal_placeholders}))")
+    params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
         rows = c.execute(f"""
@@ -1838,6 +1851,12 @@ def _require_current_bid_listing(row, conn=None):
     value = dict(row)
     if conn is not None and owner_is_deleted(conn, value.get("owner_id") or value.get("driver_id")):
         raise HTTPException(status_code=409, detail="Объявление владельца больше недоступно")
+    occupied = bool(value.get("taken_by") or value.get("booked_by"))
+    if conn is not None and value.get("id"):
+        link = {"cargo_id" if "owner_id" in value else "trip_id": value["id"]}
+        occupied = occupied or _active_deal_exists(conn, **link)
+    if occupied:
+        raise HTTPException(status_code=409, detail="Объявление уже занято и недоступно для предложений")
     if auto_renewing_listing(value):
         return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
@@ -1854,7 +1873,8 @@ def _require_actionable_bid(c, bid):
     for key, table in (("cargo_id", "cargos"), ("trip_id", "trips")):
         if bid.get(key):
             owner_column = "owner_id" if table == "cargos" else "driver_id"
-            row = c.execute(f"SELECT status,published_at,created_at,{owner_column} FROM {table} WHERE id=?", (bid[key],)).fetchone()
+            occupied_column = "taken_by" if table == "cargos" else "booked_by"
+            row = c.execute(f"SELECT id,status,published_at,created_at,{owner_column},{occupied_column} FROM {table} WHERE id=?", (bid[key],)).fetchone()
             if not row or row["status"] != "active":
                 raise HTTPException(status_code=409, detail="Объявление больше не доступно для предложений")
             _require_current_bid_listing(row, c)
@@ -2007,7 +2027,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
 
         # Ставки разрешены только на существующее активное объявление.
         if body.cargo_id:
-            cg = c.execute("SELECT status, owner_id, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
+            cg = c.execute("SELECT id, status, owner_id, taken_by, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (body.cargo_id,)).fetchone()
             if not cg:
                 raise HTTPException(status_code=404, detail="Груз не найден")
             if cg["status"] != "active":
@@ -2025,7 +2045,7 @@ def create_bid(body: BidIn, user=Depends(require_active_level(1))):
             if cg:
                 _require_current_bid_listing(cg, c)
         if body.trip_id:
-            tr = c.execute("SELECT status, driver_id, departure, published_at, created_at FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
+            tr = c.execute("SELECT id, status, driver_id, booked_by, departure, published_at, created_at FROM trips WHERE id = ?", (body.trip_id,)).fetchone()
             if not tr:
                 raise HTTPException(status_code=404, detail="Рейс не найден")
             if tr["status"] != "active":
@@ -2821,7 +2841,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["cargo_id"]:
         cargo = c.execute(
-            "SELECT owner_id, from_city, to_city, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (bid["cargo_id"],)
+            "SELECT id, status, owner_id, taken_by, from_city, to_city, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (bid["cargo_id"],)
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
@@ -2849,7 +2869,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT driver_id, from_city, to_city, vehicle_id, departure, published_at, created_at FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT id, status, driver_id, booked_by, from_city, to_city, vehicle_id, departure, published_at, created_at FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ

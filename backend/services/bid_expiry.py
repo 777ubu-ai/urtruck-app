@@ -96,7 +96,8 @@ def listing_deadline(published_at, created_at, ttl_days: int = LISTING_TTL_DAYS)
 def auto_renewing_listing(row):
     """Собственное активное объявление продлевается; архив и внешняя лента — нет."""
     return bool((row.get("driver_id") or row.get("owner_id"))
-                and row.get("status", "active") == "active")
+                and row.get("status", "active") == "active"
+                and not row.get("taken_by") and not row.get("booked_by"))
 
 
 def owner_is_deleted(conn, user_id):
@@ -213,7 +214,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, cargo_id=row["id"])
-        if has_deal or deadline is None:
+        if dict(row).get("taken_by") or has_deal or deadline is None:
             continue
         if deadline <= now:
             if owner_is_deleted(conn, dict(row).get("owner_id")):
@@ -236,7 +237,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     ).fetchall():
         deadline = listing_deadline(row["published_at"], row["created_at"])
         has_deal = _has_active_deal(conn, trip_id=row["id"])
-        if has_deal or deadline is None:
+        if dict(row).get("booked_by") or has_deal or deadline is None:
             continue
         if deadline <= now:
             if owner_is_deleted(conn, dict(row).get("driver_id")):
