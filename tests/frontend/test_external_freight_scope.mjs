@@ -29,9 +29,10 @@ function withoutFeedHooks(path, source) {
 }
 const gpsPause = JSON.parse(readFileSync('tests/fixtures/gps-paused-approved-scope.json', 'utf8'));
 const listing30d = JSON.parse(readFileSync('tests/fixtures/listing30d-approved-scope.json', 'utf8'));
+const ownedHistory = JSON.parse(readFileSync('tests/fixtures/owned-history-approved-scope.json', 'utf8'));
 for (const [path, expected] of Object.entries(baseline.sha256)) {
   test('сохранена согласованная реализация: ' + path, () => {
     const source = withoutFeedHooks(path, readFileSync(path, 'utf8'));
-    assert.equal(createHash('sha256').update(source).digest('hex'), listing30d.sha256[path] || gpsPause.sha256[path] || expected, listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
+    assert.equal(createHash('sha256').update(source).digest('hex'), ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
   });
 }

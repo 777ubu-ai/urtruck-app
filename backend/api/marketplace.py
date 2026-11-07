@@ -2336,7 +2336,7 @@ def bid_price_events(bid_id: str, user=Depends(require_level(1))):
 @mp_router.get("/my/listings")
 def my_listings(
     kind: str = Query("cargo", pattern="^(cargo|trip)$"),
-    section: str = Query("active", pattern="^(active|archive)$"),
+    section: str = Query("active", pattern="^(active|archive|history)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user=Depends(require_level(1)),
@@ -2345,13 +2345,20 @@ def my_listings(
     active_statuses = ("active",) if kind == "cargo" else ("active", "draft")
     statuses = ("unpublished", "cancelled", "rejected") if section == "archive" else active_statuses
     placeholders = ",".join("?" for _ in statuses)
-    where = f"{owner} = ? AND COALESCE(status, 'active') IN ({placeholders})"
+    operator = "NOT IN" if section == "history" else "IN"
+    where = f"{owner} = ? AND COALESCE(status, 'active') {operator} ({placeholders})"
     params = (user["id"], *statuses)
     with get_conn() as c:
         total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0]
         archive_total = c.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
             "AND status IN ('unpublished','cancelled','rejected')", (user["id"],)
+        ).fetchone()[0]
+        active_placeholders = ",".join("?" for _ in active_statuses)
+        history_total = c.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
+            f"AND COALESCE(status, 'active') NOT IN ({active_placeholders})",
+            (user["id"], *active_statuses),
         ).fetchone()[0]
         items = [dict(row) for row in c.execute(
             f"SELECT * FROM {table} WHERE {where} "
@@ -2365,7 +2372,7 @@ def my_listings(
                 item["photos"] = []
     next_offset = offset + len(items)
     return {
-        "items": items, "total": total, "archive_total": archive_total,
+        "items": items, "total": total, "archive_total": archive_total, "history_total": history_total,
         "next_offset": next_offset if items and next_offset < total else None,
     }
 

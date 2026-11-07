@@ -1,0 +1,8 @@
+{
+  "reason": "Решение владельца от 07.11.2026: личная история собственных объявлений всех статусов без повторной публикации занятых и завершённых; старые active/archive контракты сохранены. Регрессии: test_my_listings_pagination.py, test_mywork_pagination.mjs, test_owned_listing_history.mjs.",
+  "sha256": {
+    "src/utils/marketAPI.js": "6d7276fdd4656f0b340cf3b004d7c36fd63b8fb9ea1f1b307275cfcf44f86ed0",
+    "src/screens/MyTripsScreen.js": "31da611d161658ae29c4464fd28d324e23b1e660c3c1b8280d002992de38f5ae",
+    "backend/api/marketplace.py": "b221c377b4c1becfdcf651b1c2cc893700b75b590af0b232c63a4bc79a4bdb64"
+  }
+}
