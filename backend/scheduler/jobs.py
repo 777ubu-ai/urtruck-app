@@ -275,74 +275,8 @@ def push_reminders_job():
 
 
 def expired_notify_job():
-    """Ежедневно (Модель А): владельцам грузов/рейсов шлём напоминания по
-    нарастающей, пока публикация «стареет» (день выезда +1, +2, +3):
-      +1 день — «Ещё актуально?» (ещё в ленте)
-      +2 дня  — «Завтра уберём из ленты»
-      +3 дня  — «Убрано из ленты — вернуть?»
-    Дальше не напоминаем (без спама). Дедуп на пользователя через push_log
-    (kind='expired'). Продление — одним тапом «Ещё актуально» в приложении."""
-    from datetime import timedelta
-    from database.db import get_conn
-    from services import push_sender
-
-    now = datetime.utcnow()
-    today = now.date()
-
-    def _pd(s):
-        s = str(s or "").strip()
-        for fmt, cut in (("%Y-%m-%d", 10), ("%d.%m.%Y", None)):
-            try:
-                return datetime.strptime(s[:cut] if cut else s, fmt).date()
-            except Exception:
-                pass
-        return None
-
-    # user_id -> самая срочная стадия (1..3) среди его стареющих публикаций
-    urgency = {}
-    try:
-        with get_conn() as c:
-            cargos = c.execute("SELECT owner_id AS uid, pickup_date AS d FROM cargos WHERE status = 'active'").fetchall()
-            trips = c.execute("SELECT driver_id AS uid, departure AS d FROM trips WHERE status = 'active'").fetchall()
-        for r in list(cargos) + list(trips):
-            dd = _pd(r["d"])
-            if not r["uid"] or not dd:
-                continue
-            days_past = (today - dd).days
-            if 1 <= days_past <= 3:
-                urgency[r["uid"]] = max(urgency.get(r["uid"], 0), days_past)
-    except Exception as e:
-        print(f"  expired-notify query err: {e}")
-        return
-
-    MSG = {
-        1: ("🕐 Ваша публикация ещё актуальна?", "Продлите одним тапом — «Ещё актуально»."),
-        2: ("⏳ Завтра уберём из ленты", "Груз/рейс скоро исчезнет из поиска. Продлить?"),
-        3: ("📭 Публикация убрана из ленты", "Хотите вернуть? Нажмите «Ещё актуально»."),
-    }
-    thresh = (now - timedelta(hours=20)).isoformat()
-    sent = 0
-    for uid, dp in urgency.items():
-        try:
-            with get_conn() as c:
-                dup = c.execute(
-                    "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'expired' AND created_at > ?",
-                    (uid, thresh)).fetchone()
-            if dup:
-                continue
-            title, body = MSG[dp]
-            # Блок 6 (P1-8): notification — до/независимо от push.
-            try:
-                from api.notifications import create_notification
-                create_notification(uid, "expired", title, body, "📭", url="/",
-                                     event_key=f"expired:stage{dp}:{now.date().isoformat()}")
-            except Exception as e:
-                print(f"  expired notif err {uid}: {e}")
-            push_sender.send(uid, title, body, kind="expired", url="/")
-            sent += 1
-        except Exception as e:
-            print(f"  expired push err {uid}: {e}")
-    print(f"[{now.isoformat()}] expired-notify: sent={sent}")
+    """Собственные активные объявления продлеваются автоматически; ручных напоминаний нет."""
+    return None
 
 
 def no_bids_notify_job():
