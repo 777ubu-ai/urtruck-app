@@ -273,11 +273,29 @@ def test_cargo_listing_expires_thirty_days_after_source_publication():
     assert expires == published + timedelta(days=30)
 
 
-@pytest.mark.parametrize(("age_days", "expected"), [(29, "active"), (30, "expired"), (31, "expired")])
-def test_cargo_retention_has_exact_utc_30_day_boundary(age_days, expected):
+@pytest.fixture
+def retention_now(monkeypatch):
+    # Возраст публикации и часы DAL должны использовать один момент времени.
+    # Парсинг дат остаётся настоящим, фиксируем только чтение текущего времени.
     now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
-    published = now - timedelta(days=age_days)
-    record = _record(source=f"retention-boundary-{age_days}", published=published)
+    real_utc = dal._utc
+    monkeypatch.setattr(dal, "_utc", lambda value=None: now if value is None else real_utc(value))
+    return now
+
+
+RETENTION_BOUNDARIES = [
+    (timedelta(days=29), "active"),
+    (timedelta(days=30) - timedelta(microseconds=1), "active"),
+    (timedelta(days=30), "expired"),
+    (timedelta(days=30) + timedelta(microseconds=1), "expired"),
+    (timedelta(days=31), "expired"),
+]
+
+
+@pytest.mark.parametrize(("age", "expected"), RETENTION_BOUNDARIES)
+def test_cargo_retention_has_exact_utc_30_day_boundary(age, expected, retention_now):
+    published = retention_now - age
+    record = _record(source=f"retention-boundary-{age}", published=published)
     record["classification_status"] = "approved"
     result = dal.normalize_record(record)
     assert result["status"] == expected
@@ -298,11 +316,10 @@ def test_external_vehicle_retention_is_thirty_days():
     assert datetime.fromisoformat(normalized["expires_at"]) == published + timedelta(days=30)
 
 
-@pytest.mark.parametrize(("age_days", "expected"), [(29, "active"), (30, "expired"), (31, "expired")])
-def test_vehicle_retention_uses_same_exact_utc_30_day_boundary(age_days, expected):
-    now = datetime(2026, 11, 6, 12, 0, tzinfo=timezone.utc)
-    published = now - timedelta(days=age_days)
-    raw = _record(kind="vehicle", source=f"vehicle-retention-boundary-{age_days}",
+@pytest.mark.parametrize(("age", "expected"), RETENTION_BOUNDARIES)
+def test_vehicle_retention_uses_same_exact_utc_30_day_boundary(age, expected, retention_now):
+    published = retention_now - age
+    raw = _record(kind="vehicle", source=f"vehicle-retention-boundary-{age}",
                   published=published, text="Есть свободная машина")
     result = dal.normalize_record(raw, require_reviewed=False)
     assert result["status"] == expected
