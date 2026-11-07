@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Следующий кандидат исправляет подтверждённый на QA488 алиас города с пробелом.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494488;
-const QA2_ANDROID_VERSION_CODE = 214494489;
+// Следующий QA2 APK должен обновляться поверх ранее установленной сборки QA489.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494489;
+const QA2_ANDROID_VERSION_CODE = 214494490;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {
