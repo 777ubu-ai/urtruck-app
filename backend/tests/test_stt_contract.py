@@ -157,8 +157,8 @@ def test_02_real_voice_upload_then_send_succeeds():
     assert STATE["message_id"]
 
 
-def test_02b_voice_duration_boundary_rejects_over_60_seconds():
-    """The API must enforce the voice-duration contract server-side."""
+def test_02b_voice_duration_uses_container_not_ui_timer():
+    """Длительность определяется аудиоконтейнером, не присланным UI-таймером."""
     _as(B)
     for duration in (0, 60):
         r = client.post("/api/v1/chat/send", json={
@@ -174,7 +174,29 @@ def test_02b_voice_duration_boundary_rejects_over_60_seconds():
             "photo_url": STATE["voice_key"], "voice_duration": duration,
             "client_msg_id": f"voice-boundary-{duration}-{uuid.uuid4().hex}",
         })
-        assert r.status_code == 422, f"{duration}s must be rejected: {r.status_code} {r.text}"
+        assert r.status_code == 200, r.text
+        with get_conn() as c:
+            stored = c.execute("SELECT voice_duration FROM chat_messages WHERE id=?", (r.json()["message_id"],)).fetchone()[0]
+        assert stored is None, "Неполный контейнер не доказывает время клиентского таймера"
+
+
+def test_02c_actual_audio_duration_enforces_limit_even_when_client_claims_shorter(monkeypatch):
+    from services import audio_metadata
+    _as(B)
+    for actual in (59, 60, 61):
+        monkeypatch.setattr(audio_metadata, 'duration_seconds_from_ref', lambda _ref: actual)
+        key = 'container-duration-' + uuid.uuid4().hex
+        r = client.post('/api/v1/chat/send', json={
+            'room_id': STATE['room_id'], 'is_voice': True,
+            'photo_url': STATE['voice_key'], 'voice_duration': 3, 'client_msg_id': key,
+        })
+        assert r.status_code == (422 if actual > 60 else 200), r.text
+        with get_conn() as c:
+            row = c.execute('SELECT voice_duration FROM chat_messages WHERE client_msg_id=?', (key,)).fetchone()
+        if actual > 60:
+            assert row is None
+        else:
+            assert row[0] == actual
 
 
 # ───────────────────────── 2. access control ────────────────────────────

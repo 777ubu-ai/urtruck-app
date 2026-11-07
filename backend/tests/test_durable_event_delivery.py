@@ -20,6 +20,7 @@ Run from backend/:
     DB_PATH=/tmp/urtruck_test_durable_delivery.db python -m tests.test_durable_event_delivery
 """
 import contextvars
+import json
 import os
 import sys
 import uuid
@@ -384,9 +385,14 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
 
     rows = outbox_rows(owner)
     event_types = {row["event_type"] for row in rows}
-    assert "deal.status.in_progress" in event_types
-    assert "deal.status.at_border" in event_types
-    assert "deal.status.delivered" in event_types
+    assert event_types == {"deal_status"}
+    # Категория очереди общая; тип каждого бизнес-события сохраняется в payload.
+    data = [json.loads(row["payload"])["data"] for row in rows]
+    assert {item["event"] for item in data} == {
+        "deal.status.in_progress", "deal.status.at_border", "deal.status.delivered",
+    }
+    assert len(data) == len({item["event_key"] for item in data}) == 3
+    assert all(item["deal_id"] == deal_id for item in data)
     assert all(row["status"] == "pending" for row in rows), "provider never succeeded -> all must stay retryable, not lost"
 
 

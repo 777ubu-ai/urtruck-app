@@ -71,7 +71,9 @@ def test_private_document_download_preserves_name_and_signature(monkeypatch):
     original = {"url": "supabase://private/uuid.pdf", "kind": "document", "original_name": "Накладная №17 & invoice.pdf"}
     signed = deal_room._sign_attachment(original)
     params = parse_qs(urlsplit(signed["url"]).query)
-    assert params == {"token": ["existing-signature"], "download": [original["original_name"]]}
+    assert params == {"token": ["existing-signature"]}
+    download_params = parse_qs(urlsplit(signed["download_url"]).query)
+    assert download_params == {"token": ["existing-signature"], "download": [original["original_name"]]}
     assert original["url"] == "supabase://private/uuid.pdf"
 
 

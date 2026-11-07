@@ -38,7 +38,7 @@ def test_translation_uses_private_service(monkeypatch):
     monkeypatch.setattr(client.httpx, "post", post)
     result = client.translate("Груз", "ru", "zh")
     assert seen == {"url": "http://127.0.0.1:8003/translate", "json": {"text": "Груз", "source_lang": "ru", "target_lang": "zh"}}
-    assert result["provider"] == "local_m2m100"
+    assert result["provider"] == "local_nllb_1_3b"
     assert result["translated_text"] == "货物"
 
 

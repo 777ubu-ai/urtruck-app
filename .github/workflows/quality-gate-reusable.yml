@@ -45,7 +45,16 @@ jobs:
       - name: Compile backend and tests
         run: |
           python -m compileall -q backend
+      - name: Получить неизменяемую исходную версию старого carrier-v1 пакета
+        uses: actions/checkout@v4
+        with:
+          ref: 4a64cf769f422dbc23c7391e4938eececcd4d446
+          path: .carrier-v1-source
+          sparse-checkout: backend
+          persist-credentials: false
       - name: Регрессии узкого production writer
+        env:
+          URTRUCK_CARRIER_V1_SOURCE: ${{ github.workspace }}/.carrier-v1-source/backend
         if: ${{ hashFiles('tests/ops/test_external_feed_production_overlay.py') != '' }}
         run: python -m pytest tests/ops/test_external_feed_production_overlay.py tests/ops/test_public_store_compatibility_overlay.py -q
       - name: Регрессии проверки исходника TestFlight до исполнения кода

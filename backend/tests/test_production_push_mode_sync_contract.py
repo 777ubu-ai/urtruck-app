@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+import re
 from pathlib import Path
 import sys
 
@@ -121,7 +122,7 @@ class PushModePreflightTests(unittest.TestCase):
         self.assertIn("production-deploy-execute.yml", caller)
         self.assertIn("deploy_sha: ${{ github.sha }}", caller)
         self.assertIn("operation: sync_push_mode", caller)
-        sync_job = writer.split("  sync_push_mode:\n", 1)[1]
+        sync_job = re.split(r"\n  (?=[A-Za-z_][\w-]*:\n)", writer.split("  sync_push_mode:\n", 1)[1], maxsplit=1)[0]
         self.assertNotIn("runtime_release_manifest.py", sync_job)
         self.assertNotIn("remote_bootstrap_secure_env.sh", sync_job)
         self.assertNotIn("scp -C -r backend/*", sync_job)

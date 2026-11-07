@@ -13,11 +13,15 @@ const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const trips = read('src/screens/MyTripsScreen.js');
 const proDocs = read('src/navigation/AppNavigator.js');
 
-test('basic endpoint validates the complete minimum profile and sets only basic status', () => {
-  for (const field of ['citizenship_country', 'full_name', 'birth_date', 'vehicle_registration_country', 'truck_kind', 'body_type', 'vehicle_brand', 'vehicle_plate', 'capacity_tons', 'volume_m3']) {
+test('basic endpoint validates personal registration without requiring a vehicle', () => {
+  for (const field of ['full_name', 'birth_date']) {
     assert.match(backend, new RegExp(`['"]${field}['"]`));
   }
-  assert.match(backend, /re\.fullmatch\(r?["']\\d\{12\}["']/);
+  const missingFields = backend.slice(backend.indexOf('def _basic_onboarding_missing'), backend.indexOf('def can_publish_driver_trip'));
+  assert.doesNotMatch(missingFields, /missing\.append\(["']iin["']\)/);
+  for (const field of ['vehicle_registration_country', 'truck_kind', 'body_type', 'vehicle_brand', 'vehicle_plate', 'capacity_tons', 'volume_m3']) {
+    assert.doesNotMatch(missingFields, new RegExp(`['"]${field}['"]`));
+  }
   assert.match(backend, /"status": "basic"/);
   assert.match(backend, /"basic_onboarding_completed": 1/);
   const endpoint = backend.slice(backend.indexOf('def complete_basic_onboarding'), backend.indexOf('@driver_reg_router.post("/submit")'));

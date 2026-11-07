@@ -25,13 +25,12 @@ test('active ProfileV2 keeps company optional for basic drivers and required for
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
-test('backend independently requires name+phone for drivers and company for clients, not country', () => {
+test('Сервер требует имя и телефон без обязательной компании', () => {
   assert.match(api, /PHONE_REQUIRED/);
   assert.match(api, /NAME_REQUIRED/);
-  assert.match(api, /COMPANY_REQUIRED/);
+  assert.doesNotMatch(api, /COMPANY_REQUIRED/);
   assert.match(api, /if not effective_phone:/);
   assert.match(api, /if not effective_name:/);
-  assert.match(api, /role_norm == "client" and/);
   assert.match(api, /role_norm not in \("driver", "client"\)/);
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
 });

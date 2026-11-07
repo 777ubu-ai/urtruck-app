@@ -7,7 +7,7 @@
   onboarding driver;
 - страна/город не блокируют завершение короткого onboarding;
 - preferred messenger необязателен;
-- если messenger выбран, контакт обязателен;
+- выбранный messenger без контакта не блокирует регистрацию;
 - messenger_type=other поддерживается.
 """
 
@@ -154,34 +154,16 @@ def test_whatsapp_contact_can_equal_primary_phone(monkeypatch):
     assert captured["values"]["messenger_id"] == "+7 701 111 22 33"
 
 
-def test_selected_messenger_without_contact_is_rejected(monkeypatch):
-    monkeypatch.setattr(
-        profile.reg_dal,
-        "get_driver",
-        lambda _uid: {
-            "id": "user-1",
-            "phone": "auth_user-1",
-            "full_name": "",
-            "company_name": "Owner Logistics",
-            "messenger_id": "",
-        },
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        profile.update_profile(
-            profile.UpdateProfileIn(
-                role="client",
-                name="Owner",
-                phone="+7 701 111 22 33",
-                company_name="Owner Logistics",
-                messenger_type="wechat",
-                messenger_id="",
-            ),
-            user={"id": "user-1"},
-        )
-
-    assert exc.value.status_code == 400
-    assert exc.value.detail["error"] == "MESSENGER_CONTACT_REQUIRED"
+@pytest.mark.parametrize("role", ["client", "driver"])
+@pytest.mark.parametrize("messenger", ["whatsapp", "wechat", "telegram", "other"])
+def test_selected_messenger_without_contact_does_not_block_onboarding(monkeypatch, role, messenger):
+    result, captured = _run(monkeypatch, profile.UpdateProfileIn(
+        role=role, name="Owner", phone="+7 701 111 22 33",
+        messenger_type=messenger, messenger_id="",
+    ))
+    assert result == {"ok": True}
+    assert captured["values"]["messenger_type"] == messenger
+    assert captured["values"]["messenger_id"] == ""
 
 
 def test_invalid_messenger_type_is_rejected(monkeypatch):

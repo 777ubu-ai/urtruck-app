@@ -96,10 +96,12 @@ def test_deal_status_notifications_cover_release_status_flow():
         assert f'"{status}":' in MARKET
     # Push-closure track: title/body_txt now come from push_i18n (localized)
     # instead of the old hardcoded-RU `labels` dict; event_key added.
-    assert 'title, body_txt = push_i18n.push_text(push_events[new_status], loc, route=route)' in MARKET
-    assert 'create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key)' in MARKET
-    assert 'send_to_user(other_id, title, body_txt, url=deal_url, kind="deal_status",' in MARKET
-    assert 'event_key = f"deal:{deal_id}:status:{new_status}"' in MARKET
+    assert 'i18n_event = f"deal_status_{new_status}"' in MARKET
+    assert 'title, body_txt = push_i18n.push_text(i18n_event, locale, route=route)' in MARKET
+    assert 'create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)' in MARKET
+    assert 'push_gateway.enqueue_event(event_key, "deal_status", other_id,' in MARKET
+    assert 'send_to_user(other_id, payload["title"], payload["body"], url=payload["data"]["url"], kind="deal_status", data=payload["data"])' in MARKET
+    assert 'event_key = f"deal:{deal[\'id\']}:status:{new_status}"' in MARKET
 
 
 def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_app():

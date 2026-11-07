@@ -86,13 +86,12 @@ test('profile keeps the unauthenticated onboarding palette consistently light', 
 });
 
 
-test('backend onboarding contract requires company for clients but not basic drivers', () => {
+test('Серверный онбординг требует имя и телефон для обеих ролей', () => {
   assert.match(backend, /if not effective_phone:/);
   assert.match(backend, /"error": "PHONE_REQUIRED"/);
   assert.match(backend, /if not effective_name:/);
   assert.match(backend, /"error": "NAME_REQUIRED"/);
-  assert.match(backend, /role_norm == "client" and \(not effective_company/);
-  assert.match(backend, /"error": "COMPANY_REQUIRED"/);
+  assert.doesNotMatch(backend, /"error": "COMPANY_REQUIRED"/);
   assert.doesNotMatch(backend, /COUNTRY_REQUIRED/);
   assert.match(backend, /"other"/);
 });
