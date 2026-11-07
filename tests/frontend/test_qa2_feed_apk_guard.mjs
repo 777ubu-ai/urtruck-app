@@ -19,5 +19,7 @@ test('Проверка реально вложенной конфигураци�
     make(false, sha); assert.notEqual(check().status, 0);
     make(true, 'b'.repeat(40)); assert.notEqual(check().status, 0);
     make('true', sha); assert.notEqual(check().status, 0);
+    make(false, sha);
+    assert.notEqual(spawnSync('python3', ['scripts/verify_qa2_apk_feed.py', apk, sha, 'https://qa2.example'], { env: { ...process.env, PYTHONOPTIMIZE: '1' } }).status, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
