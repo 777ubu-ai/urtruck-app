@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import test from 'node:test';
 
 const read = path => readFileSync(path, 'utf8');
+
+test('физический gate отклоняет другой чат, пустой маркер и неверное предусловие', () => {
+  execFileSync('python3', ['-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_android_cold_deeplink_gate.py'], { stdio: 'pipe' });
+});
 
 test('восстановленная Activity сохраняет новый Intent до передачи перехода в React Native', () => {
   const native = read('android/app/src/main/java/com/urtruck/app/MainActivity.kt');
