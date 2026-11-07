@@ -4,9 +4,9 @@
  * Keep this separate from production Android metadata: QA2 artifacts are
  * installed directly on physical test devices and never submitted to Play.
  */
-// Следующий QA2 APK должен обновляться поверх ранее установленной сборки QA489.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494489;
-const QA2_ANDROID_VERSION_CODE = 214494490;
+// Общий кандидат обновляется поверх QA490 с сохранением данных и сессии.
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494490;
+const QA2_ANDROID_VERSION_CODE = 214494491;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {
