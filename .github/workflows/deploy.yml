@@ -36,6 +36,9 @@ on:
       - "vendor/braces-3.0.4-28d440b/**"
       - "backend/tests/test_production_push_mode_backup.py"
       - "scripts/ops/production_push_mode_backup.py"
+      # Защита Production (паспорт кода): сама по себе не повод для deploy.
+      - "scripts/ops/prod_release_guard.py"
+      - "backend/tests/test_prod_release_guard.py"
   workflow_dispatch:
 
 # IMPORTANT: this workflow is now the production RELEASE GATE only.
