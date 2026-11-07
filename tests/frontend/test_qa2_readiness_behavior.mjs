@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -77,4 +79,43 @@ test('Ошибка до backup не запускает чужой или уст�
   assert.ok(!workflow.includes('/tmp/urtruck-qa2-final-rollback-id'));
   assert.match(workflow, /QA2_RUN_ATTEMPT: \$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/);
   assert.equal((workflow.match(/final-rollback-\$QA2_RUN_ATTEMPT/g) || []).length, 2);
+});
+
+test('Неполная резервная копия не получает указатель успешного backup', () => {
+  const backupStep = workflow.slice(workflow.indexOf('- name: Create QA2 code-only rollback backup'),
+    workflow.indexOf('- name: Deploy exact backend, web and AI source'));
+  const guard = backupStep.slice(backupStep.indexOf('          test -s "$backup/qa2.env"'),
+    backupStep.indexOf('          echo "QA2_ROLLBACK_BACKUP='))
+    .replace(/^ {10}/gm, '');
+  assert.ok(guard.includes('final-rollback-$QA2_RUN_ATTEMPT'));
+  for (const omitted of [null, 'qa2.env', 'backend/main.py', 'ai/main.py']) {
+    for (const empty of [false, true]) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'urtruck-backup-guard-'));
+      try {
+        fs.mkdirSync(path.join(root, 'backups', 'copy', 'backend'), { recursive: true });
+        fs.mkdirSync(path.join(root, 'backups', 'copy', 'ai'), { recursive: true });
+        for (const file of ['qa2.env', 'backend/main.py', 'ai/main.py']) {
+          if (file !== omitted || empty) {
+            fs.writeFileSync(path.join(root, 'backups', 'copy', file), file === omitted ? '' : 'fixture');
+          }
+        }
+        const result = spawnSync('bash', ['-c', `set -euo pipefail
+QA_ROOT="$1"
+backup="$QA_ROOT/backups/copy"
+QA2_RUN_ATTEMPT=123-1
+stamp=fixture
+${guard}`, 'qa2-backup-test', root], { encoding: 'utf8', timeout: 5000 });
+        const pointer = fs.existsSync(path.join(root, 'backups', 'final-rollback-123-1'));
+        if (omitted === null) {
+          assert.equal(result.status, 0, result.stderr);
+          assert.equal(pointer, true);
+        } else {
+          assert.notEqual(result.status, 0, `${omitted}: ${empty ? 'пустой' : 'отсутствует'}`);
+          assert.equal(pointer, false, `Нельзя разрешать откат: ${omitted}`);
+        }
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  }
 });

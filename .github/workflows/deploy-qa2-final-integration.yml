@@ -141,7 +141,8 @@ jobs:
           previous_web="$(readlink "$QA_WEB_ROOT/current" || true)"
           printf '%s\n' "$previous_web" > "$backup/previous-web-release"
           test -s "$backup/qa2.env"
-          test -s "$backup/backend/main.py" && test -s "$backup/ai/main.py"
+          test -s "$backup/backend/main.py"
+          test -s "$backup/ai/main.py"
           printf '%s\n' "$stamp" > "$QA_ROOT/backups/final-rollback-$QA2_RUN_ATTEMPT"
           echo "QA2_ROLLBACK_BACKUP=$backup"
           REMOTE
