@@ -187,7 +187,7 @@ const FirstVisitMainTabs = withExternalFeedFirstVisit(MainTabs);
 
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
-  const { session, hasToken, loading, verificationLevel } = useAuth();
+  const { session, hasToken, loading, verificationLevel, recoveryRequired } = useAuth();
   const { theme } = useTheme();
 
   if (loading) {
@@ -266,7 +266,7 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator
       key={navKey === 'main' ? `main:${session?.user?.id || 'guest'}` : (navKey === 'norole' ? 'guest' : navKey)}
-      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : 'OnboardingV2')}
+      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : recoveryRequired ? 'PhoneV2' : 'OnboardingV2')}
       screenOptions={{ headerShown: false }}
     >
       {!hasToken || !session || !hasRole ? (

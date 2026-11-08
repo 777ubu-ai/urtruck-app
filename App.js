@@ -386,7 +386,7 @@ function AppInner() {
     // flushOutbox (Блок 2, P1-5) обходилась: `item.userId && activeUserId &&
     // ...` при activeUserId === undefined всегда ложно, поэтому очередь
     // ПРЕДЫДУЩЕГО пользователя этого устройства уезжала под текущей сессией.
-    const doFlush = () => { flushOutbox((p) => chatAPI.send(p), session?.user?.id).catch(() => {}); };
+    const doFlush = () => { flushOutbox((p, guard) => chatAPI.send(p, guard), session?.user?.id).catch(() => {}); };
     doFlush();
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') doFlush(); });
     return () => sub?.remove?.();

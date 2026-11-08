@@ -2,13 +2,16 @@ import { sessionRole } from './publicationSession';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from './storage';
 import { runAuthMutation } from './authMutation';
+import { API_BASE } from '../config/env';
+import { saveSessionRecovery, readSessionRecovery, completeSessionRecovery, clearSessionRecovery, restoreSharedWork, clearSharedAndOwnedDrafts, migrateVerifiedLegacyDrafts } from './sessionRecovery';
 import { regAPI } from './registration';
 import { clearSocialAuthSession } from './socialAuth';
 import { subscribeAuthExpired, setAuthExpirySuppressed, configureAuthExpiryValidation } from './authEvents';
 import { push } from './push';
 import { clearAppIconBadge } from './appBadge';
 import { clearPushEventDedup } from './pushEventDedup';
-import { clearOutbox } from './outbox';
+import { clearOutboxForUser, pauseOutbox, flushOutbox } from './outbox';
+import { chatAPI } from './chatAPI';
 import { clearQueue } from './offlineQueue';
 import {
   stopBackgroundTrackingForLogout,
@@ -73,8 +76,38 @@ export const AuthProvider = ({ children }) => {
   const [verificationLevel, setVerificationLevel] = useState(0);
   const [hasToken, setHasToken] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [recoveryRequired, setRecoveryRequired] = useState(false);
   const authGenerationRef = useRef(0);
   const sessionRef = useRef(session);
+  const pendingRecoveryRef = useRef(null);
+  const legacyBootstrapRef = useRef(null);
+
+  const recoverRejectedSession = useCallback((rejectedToken, generation) => runAuthMutation(async () => {
+    if (!await authOwnerIsCurrent(rejectedToken, generation,
+      () => authGenerationRef.current, () => regAPI.getToken())) return;
+    const previous = sessionRef.current;
+    legacyBootstrapRef.current = null;
+    const recovery = pendingRecoveryRef.current || { apiBase: previous?.apiBase || 'legacy:unknown', ownerId: previous?.user?.id || null };
+    pendingRecoveryRef.current = recovery;
+    pauseOutbox(true);
+    // Немедленно закрываем приватные экраны. Обычный signOut удаляет работу,
+    // поэтому при отклонении сессии его намеренно не вызываем.
+    authGenerationRef.current += 1;
+    sessionRef.current = null;
+    setSession(null);
+    setHasToken(false);
+    setVerificationLevel(0);
+    setRecoveryRequired(true);
+    await saveSessionRecovery(recovery);
+    pendingRecoveryRef.current = await completeSessionRecovery(recovery);
+    await regAPI.clearToken();
+    await storage.remove(KEY);
+    await storage.remove('ur_verification_level');
+    clearAppIconBadge();
+    try { await clearPushEventDedup(); } catch {}
+    // Черновики с ownerId и неотправленные сообщения остаются у владельца.
+    // Никаких revoke/guest/переноса bearer между окружениями.
+  }), []);
 
   // A failed canonical logout must not silently leave the bearer and push
   // ownership active until server TTL. One bounded retry is made on each app
@@ -87,7 +120,13 @@ export const AuthProvider = ({ children }) => {
     const generation = expectedGeneration ?? authGenerationRef.current;
     const tokenAtStart = expectedToken ?? await regAPI.getToken();
     if (!tokenAtStart || generation !== authGenerationRef.current) return null;
-    const me = await regAPI.me();
+    let me;
+    try { me = await regAPI.me({ token: tokenAtStart }); }
+    catch (error) {
+      if (error?.status !== 401 || error?.code !== 'AUTH_REQUIRED') throw error;
+      await recoverRejectedSession(tokenAtStart, generation);
+      return null;
+    }
     if (!await authOwnerIsCurrent(
       tokenAtStart, generation, () => authGenerationRef.current, () => regAPI.getToken(),
     )) return null;
@@ -104,6 +143,12 @@ export const AuthProvider = ({ children }) => {
         if (!await authOwnerIsCurrent(
           tokenAtStart, generation, () => authGenerationRef.current, () => regAPI.getToken(),
         )) return;
+        const legacy = legacyBootstrapRef.current;
+        if (legacy?.token === tokenAtStart && legacy.ownerId === me.id && (!legacy.apiBase || legacy.apiBase === API_BASE)) {
+          await migrateVerifiedLegacyDrafts({ apiBase: API_BASE, ownerId: me.id });
+          legacyBootstrapRef.current = null;
+        }
+        if (me.id) await restoreSharedWork({ apiBase: API_BASE, ownerId: me.id });
         setVerificationLevel(me.verification_level);
         if (me.id || hasRealRole) {
           const prev = sessionRef.current;
@@ -112,6 +157,7 @@ export const AuthProvider = ({ children }) => {
           const city = profile?.city || null;
           const next = {
             ...(prev || {}),
+            apiBase: API_BASE,
             user: {
               ...base,
               role: sessionRole({ user: me }),
@@ -125,14 +171,37 @@ export const AuthProvider = ({ children }) => {
           sessionRef.current = next;
           setSession(next);
           await storage.set(KEY, JSON.stringify(next));
+          pauseOutbox(false);
+          flushOutbox((payload, guard) => chatAPI.send(payload, guard), me.id).catch(() => {});
         }
       });
     }
     return me;
-  }, []);
+  }, [recoverRejectedSession]);
 
   useEffect(() => {
     (async () => {
+      let recovery;
+      try { recovery = await readSessionRecovery(); }
+      catch { setRecoveryRequired(true); pauseOutbox(true); setLoading(false); return; }
+      if (recovery) {
+        pendingRecoveryRef.current = recovery;
+        setRecoveryRequired(true);
+        pauseOutbox(true);
+        try {
+          await runAuthMutation(async () => {
+            pendingRecoveryRef.current = await completeSessionRecovery(recovery);
+            await regAPI.clearToken();
+            await storage.remove(KEY);
+            await storage.remove('ur_verification_level');
+          });
+        } catch {
+          // Пока durable-карантин не завершён, приватные экраны закрыты.
+          // signIn повторит эту операцию до допуска следующего пользователя.
+        }
+        setLoading(false);
+        return;
+      }
       const token = await regAPI.getToken();
       if (!token) {
         await storage.remove(KEY);
@@ -153,6 +222,7 @@ export const AuthProvider = ({ children }) => {
       if (raw) {
         try { restored = JSON.parse(raw); sessionRef.current = restored; setSession(restored); } catch {}
       }
+      legacyBootstrapRef.current = { token, ownerId: restored?.user?.id, apiBase: restored?.apiBase };
       const savedLevel = await regAPI.getLevel();
       setVerificationLevel(savedLevel);
       setLoading(false);
@@ -188,6 +258,12 @@ export const AuthProvider = ({ children }) => {
 
   const signIn = (phone, level = 1, token = null, { expectedToken = null, userId = null, isCurrent = () => true } = {}) => runAuthMutation(async () => {
     if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) return false;
+    legacyBootstrapRef.current = null;
+    const recovery = pendingRecoveryRef.current || await readSessionRecovery();
+    if (recovery) pendingRecoveryRef.current = await completeSessionRecovery(recovery);
+    // Старый маркер не должен пережить успешно принятый вход нового владельца.
+    await clearSessionRecovery();
+    pauseOutbox(true);
     const generation = ++authGenerationRef.current;
     if (token) {
       await storage.set('ur_reg_token', token);
@@ -198,11 +274,13 @@ export const AuthProvider = ({ children }) => {
       throw new Error('NO_TOKEN');
     }
     // Другая подтверждённая почта не наследует ID/роль прежнего владельца.
-    const s = { user: { phone, role: null, id: userId } };
+    const s = { apiBase: API_BASE, user: { phone, role: null, id: userId } };
     sessionRef.current = s;
     setSession(s);
     setVerificationLevel(level);
     setHasToken(true);
+    setRecoveryRequired(false);
+    pendingRecoveryRef.current = null;
     await storage.set(KEY, JSON.stringify(s));
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
@@ -285,6 +363,7 @@ export const AuthProvider = ({ children }) => {
       setAuthExpirySuppressed(false);
       return { ok: false, reason: 'SESSION_CHANGED' };
     }
+    const ownerId = sessionRef.current?.user?.id;
     sessionRef.current = null;
     setSession(null);
     setVerificationLevel(0);
@@ -321,9 +400,9 @@ export const AuthProvider = ({ children }) => {
         storage.remove('ur_bg_deal_ids'),
         storage.remove('ur_bg_last_location_v1'),
         storage.remove('ur_queue_plate'),
-        storage.removeByPrefix('ur_draft_'),
+        clearSharedAndOwnedDrafts({ apiBase: API_BASE, ownerId }),
         storage.removeByPrefix('ur_chat_translation_v1:'),
-        clearOutbox(),
+        clearOutboxForUser(ownerId),
         clearQueue(),
       ]);
     } catch {}
@@ -360,9 +439,9 @@ export const AuthProvider = ({ children }) => {
       if (!hasTokenRef.current || !rejectedToken) return;
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         // eslint-disable-next-line no-console
-        console.warn('[Auth] current session rejection confirmed → signOut');
+        console.warn('[Auth] подтверждён отказ сессии → восстановление входа');
       }
-      signOut({ expectedToken: rejectedToken, expectedGeneration: authGenerationRef.current });
+      recoverRejectedSession(rejectedToken, authGenerationRef.current).catch(() => {});
     });
     return unsub;
   }, []);
@@ -371,7 +450,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       session, verificationLevel, hasToken,
       signIn, signOut, setRole,
-      ensureGuest, refreshLevel, loading,
+      ensureGuest, refreshLevel, loading, recoveryRequired,
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,0 +1,10 @@
+{
+  "base_sha": "ec27f12539f9306b270be348193cc45fa380829e",
+  "reason": "Задание владельца08.11.2026: исправить401 и пустые production-списки, сохранить локальную работу и изоляцию пользователей. Только явный отказ /register/me запускает восстановление входа; временные ошибки сохраняют сессию. Новый независимый review и регрессии обязательны; этот manifest не является PASS сам по себе.",
+  "sha256": {
+    "src/utils/AuthContext.js": "38af9fc9de284b22475c54fa13afdb040665c8565c402fe11376d526c1bb208a",
+    "src/utils/registration.js": "89f967b9cbca8d24c855b05658e5b8642d2365633d9e774bafd13d2fb3b54181",
+    "src/screens/DealWorkspaceScreenV2.js": "784c7d4d0ce41b602db36c196f136a8ca77a5c7c9509257964c071f5685b12b1",
+    "src/navigation/AppNavigator.js": "ea8c3aae8ce55f0e930139b4ae6f1df605468f062c68ac6aae598f039dc64551"
+  }
+}

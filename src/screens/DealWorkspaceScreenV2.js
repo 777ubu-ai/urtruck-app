@@ -844,7 +844,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!roomId) return undefined;
     const doFlush = async () => {
       try {
-        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id, {
+        const sent = await flushOutbox((p, guard) => chatAPI.send(p, guard), session?.user?.id, {
           onDrop: (item) => {
             if (!mounted.current) return;
             setMessages((items) => items.map((m) => (m.id === item.clientId

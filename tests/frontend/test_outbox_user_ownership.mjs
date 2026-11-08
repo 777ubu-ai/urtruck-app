@@ -43,10 +43,11 @@ await test('чужая запись не удаляется и не отправ
   assert.equal(await outboxCount(), 1);
 });
 
-await test('legacy-запись без userId отправляется текущим активным (backward-compat)', async () => {
+await test('legacy-запись без userId сохраняется без отправки от чужого аккаунта', async () => {
   await enqueueOutbox({ clientId: 'c-legacy', payload: { text: 'legacy' } }); // без userId
   const sent = await flushOutbox(async () => {}, 'user-A');
-  assert.equal(sent, 1, 'запись без userId (до фикса) не должна зависать навсегда');
+  assert.equal(sent, 0, 'неизвестный владелец не даёт права отправки от текущего пользователя');
+  assert.equal(await outboxCount(), 1, 'исходная запись сохранена в карантине');
 });
 
 await test('clearOutbox() при logout вычищает всё, включая чужие карантинные записи', async () => {

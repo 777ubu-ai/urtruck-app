@@ -11,12 +11,13 @@ const code = babel.transformSync(readFileSync('src/components/externalFreight/Ex
   plugins: [require('@babel/plugin-transform-react-jsx'), require('@babel/plugin-transform-modules-commonjs')],
 }).code;
 
-function harness(role) {
+function harness(role, reply = null) {
   let calls = 0, elapsed = 0, focused = true, appCallback;
   const intervals = new Map(), listeners = new Map(), cleanups = [];
+  let result = null;
   const React = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
-    useRef: current => ({ current }), useState: initial => [initial, () => {}],
+    useRef: current => ({ current }), useState: initial => [result ?? initial, value => { result = typeof value === 'function' ? value(result) : value; }],
     useEffect: fn => { cleanups.push(fn()); },
   };
   const AppState = { currentState: 'active', addEventListener: (_event, fn) => {
@@ -31,11 +32,11 @@ function harness(role) {
     'react-native': { AppState, View: 'View', TouchableOpacity: 'TouchableOpacity', Text: 'Text', StyleSheet: { create: x => x } },
     '@expo/vector-icons/Feather': 'Feather',
     '../../theme/designV1': { useV1Colors: () => ({}), useDriverCeramicColors: () => ({}) },
-    '../../utils/useI18n': { useI18n: () => ({ lang: 'RU' }) },
+    '../../utils/useI18n': { useI18n: () => ({ lang: 'RU', t:key=>key }) },
     '../../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'synthetic-' + role, role } } }) },
     '../../utils/externalFreightSession': { sessionRole: () => role },
     '../../utils/externalFreightFeed': { EXTERNAL_FREIGHT_ENABLED: true, externalFreightAPI: {
-      async count() { calls++; return { ok: true, kind: role === 'driver' ? 'cargo' : 'vehicle', count: 42 }; },
+      async count() { calls++; return reply || { ok: true, kind: role === 'driver' ? 'cargo' : 'vehicle', count: 42 }; },
     } },
   };
   const module = { exports: {} };
@@ -47,6 +48,7 @@ function harness(role) {
   module.exports.default({ navigation, role });
   return {
     calls: () => calls,
+    result:()=>result,
     flush: () => new Promise(resolve => setImmediate(resolve)),
     advance(ms) {
       const end = elapsed + ms;
@@ -77,4 +79,13 @@ for (const role of ['driver', 'client']) test(`${role}: счётчик загр�
   h.advance(120000); await h.flush(); assert.equal(h.calls(), before);
   h.focus(); await h.flush(); assert.equal(h.calls(), before + 1);
   h.unmount(); h.advance(120000); await h.flush(); assert.equal(h.calls(), before + 1);
+});
+
+test('счётчик машин не включает1297контактов каталога',async()=>{
+  const h=harness('client',{ok:true,kind:'vehicle',count:1464,offer_count:167,carrier_count:1297});
+  await h.flush();assert.equal(h.result().count,167);h.unmount();
+});
+test('сбой счётчика отмечен ошибкой, не успешным нулём',async()=>{
+  const h=harness('client',{ok:false,status:503,error:'server_error'});
+  await h.flush();assert.equal(h.result().error,true);assert.equal(h.result().count,undefined);h.unmount();
 });

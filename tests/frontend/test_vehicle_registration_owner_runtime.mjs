@@ -43,6 +43,9 @@ const regAPI = {
 const req = name => name === 'react' ? { __esModule: true, default: authReact, ...authReact }
   : name === './storage' ? { storage }
   : name === './authMutation' ? mutations
+  : name === './sessionRecovery' ? {readSessionRecovery:async()=>null,clearSessionRecovery:async()=>{},completeSessionRecovery:async x=>x}
+  : name === '../config/env' ? {API_BASE:'https://urtruck.kz/api/v1'}
+  : name === './outbox' ? {pauseOutbox:()=>{},flushOutbox:async()=>0}
   : name === './registration' ? { regAPI } : {};
 const auth = load('src/utils/AuthContext.js', req).AuthProvider({ children: null }).props.value;
 await auth.signIn('a@example.test', 1, 'synthetic-a', { userId: 'account-a' });
