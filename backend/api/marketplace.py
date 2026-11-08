@@ -3688,8 +3688,9 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         # + capacity_tons (грузоподъёмность рейса) — тот же P1 фикс, что и
         # cargo_weight_tons выше.
         if d.get("trip_id"):
-            tr = c.execute("SELECT driver_id, from_country, to_country, capacity_tons FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            tr = c.execute("SELECT driver_id, from_country, to_country, capacity_tons, currency FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
             if tr:
+                d.setdefault("currency", tr["currency"])
                 d.setdefault("from_country", tr["from_country"])
                 d.setdefault("to_country", tr["to_country"])
                 d.setdefault("trip_capacity_tons", tr["capacity_tons"])
