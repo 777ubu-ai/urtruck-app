@@ -29,7 +29,6 @@
  * Full QA desktop job runs it on every PR (it did not run anywhere before).
  */
 const { test, expect } = require('@playwright/test');
-const { dismissFirstVisit } = require('./helpers/webflow');
 
 let BASE_URL;
 try {
@@ -93,7 +92,6 @@ async function runRoleFlow(page, role) {
   }, role);
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-  await dismissFirstVisit(page);
   // ── ОБЯЗАТЕЛЬНО: вход в приложение (role → Main). Не достигли — тест падает. ──
   await expect(page.getByTestId('bottom-nav'), `bottom-nav must render for ${role}`).toBeVisible({ timeout: 20000 });
   await assertNoOverlay(page, `Main just after ${role} login`);

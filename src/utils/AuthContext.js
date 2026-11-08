@@ -1,20 +1,11 @@
-import { sessionRole } from './publicationSession';
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { storage } from './storage';
-import { runAuthMutation } from './authMutation';
 import { regAPI } from './registration';
 import { clearSocialAuthSession } from './socialAuth';
-import { subscribeAuthExpired, setAuthExpirySuppressed, configureAuthExpiryValidation } from './authEvents';
+import { subscribeAuthExpired, setAuthExpirySuppressed } from './authEvents';
 import { push } from './push';
-import { clearAppIconBadge } from './appBadge';
-import { clearPushEventDedup } from './pushEventDedup';
 import { clearOutbox } from './outbox';
 import { clearQueue } from './offlineQueue';
-import {
-  stopBackgroundTrackingForLogout,
-  restoreBackgroundTrackingForLogoutFailure,
-  clearBackgroundLocationSampleForLogout,
-} from './backgroundLocation';
 
 // Уровни доверия (lazy registration)
 // 0 = guest — только смотрит ленту
@@ -36,36 +27,10 @@ const AuthContext = createContext({
 
 const KEY = 'ur_session';
 const LOGOUT_NETWORK_TIMEOUT_MS = 3000;
-async function authOwnerIsCurrent(expectedToken, expectedGeneration, readGeneration, readToken) {
-  if (readGeneration() !== expectedGeneration) return false;
-  const liveToken = await readToken();
-  return readGeneration() === expectedGeneration && liveToken === expectedToken;
-}
 
-function commitGuestToken(data, expectedGeneration, readGeneration, readToken, writeToken, onCommit) {
-  return runAuthMutation(async () => {
-    if (!data?.token || readGeneration() !== expectedGeneration) {
-      return { ok: false, reason: 'session_changed' };
-    }
-    const existing = await readToken();
-    if (readGeneration() !== expectedGeneration) return { ok: false, reason: 'session_changed' };
-    if (existing) {
-      onCommit(data);
-      return { token: existing, existing: true };
-    }
-    await writeToken(data.token);
-    if (readGeneration() !== expectedGeneration) return { ok: false, reason: 'session_changed' };
-    onCommit(data);
-    return data;
-  });
-}
-
-const withTimeout = (promise, timeoutMs = LOGOUT_NETWORK_TIMEOUT_MS, onTimeout = null) => Promise.race([
+const withTimeout = (promise, timeoutMs = LOGOUT_NETWORK_TIMEOUT_MS) => Promise.race([
   promise,
-  new Promise(resolve => setTimeout(() => {
-    try { onTimeout?.(); } catch {}
-    resolve({ ok: false, reason: 'timeout' });
-  }, timeoutMs)),
+  new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), timeoutMs)),
 ]);
 
 export const AuthProvider = ({ children }) => {
@@ -73,48 +38,23 @@ export const AuthProvider = ({ children }) => {
   const [verificationLevel, setVerificationLevel] = useState(0);
   const [hasToken, setHasToken] = useState(false);
   const [loading, setLoading] = useState(true);
-  const authGenerationRef = useRef(0);
-  const sessionRef = useRef(session);
 
-  // A failed canonical logout must not silently leave the bearer and push
-  // ownership active until server TTL. One bounded retry is made on each app
-  // start; failures stay durably queued without blocking navigation.
-  useEffect(() => {
-    withTimeout(regAPI.flushPendingLogout()).catch(() => {});
-  }, []);
-
-  const refreshLevel = useCallback(async ({ expectedToken = null, expectedGeneration = null } = {}) => {
-    const generation = expectedGeneration ?? authGenerationRef.current;
-    const tokenAtStart = expectedToken ?? await regAPI.getToken();
-    if (!tokenAtStart || generation !== authGenerationRef.current) return null;
+  const refreshLevel = useCallback(async () => {
     const me = await regAPI.me();
-    if (!await authOwnerIsCurrent(
-      tokenAtStart, generation, () => authGenerationRef.current, () => regAPI.getToken(),
-    )) return null;
     if (me && typeof me.verification_level === 'number') {
+      setVerificationLevel(me.verification_level);
       const hasRealRole = me.role && me.role !== 'guest';
-      let profile = null;
       if (me.id || hasRealRole) {
-        profile = hasRealRole ? await regAPI.profile() : null;
-        if (!await authOwnerIsCurrent(
-          tokenAtStart, generation, () => authGenerationRef.current, () => regAPI.getToken(),
-        )) return null;
-      }
-      await runAuthMutation(async () => {
-        if (!await authOwnerIsCurrent(
-          tokenAtStart, generation, () => authGenerationRef.current, () => regAPI.getToken(),
-        )) return;
-        setVerificationLevel(me.verification_level);
-        if (me.id || hasRealRole) {
-          const prev = sessionRef.current;
-          const base = prev?.user?.id === me.id ? prev.user : {};
-          const fullName = profile?.name || me.full_name || null;
-          const city = profile?.city || null;
+        const profile = hasRealRole ? await regAPI.profile() : null;
+        const fullName = profile?.name || me.full_name || null;
+        const city = profile?.city || null;
+        setSession(prev => {
+          const base = prev?.user || {};
           const next = {
             ...(prev || {}),
             user: {
               ...base,
-              role: sessionRole({ user: me }),
+              role: hasRealRole ? me.role : (base.role || null),
               phone: me.phone || base.phone,
               id: me.id || base.id,
               name: fullName || base.name || null,
@@ -122,11 +62,10 @@ export const AuthProvider = ({ children }) => {
               city: city || base.city || null,
             },
           };
-          sessionRef.current = next;
-          setSession(next);
-          await storage.set(KEY, JSON.stringify(next));
-        }
-      });
+          storage.set(KEY, JSON.stringify(next));
+          return next;
+        });
+      }
     }
     return me;
   }, []);
@@ -136,7 +75,6 @@ export const AuthProvider = ({ children }) => {
       const token = await regAPI.getToken();
       if (!token) {
         await storage.remove(KEY);
-        sessionRef.current = null;
         setSession(null);
         setHasToken(false);
         setVerificationLevel(0);
@@ -151,7 +89,7 @@ export const AuthProvider = ({ children }) => {
       const raw = await storage.get(KEY);
       let restored = null;
       if (raw) {
-        try { restored = JSON.parse(raw); sessionRef.current = restored; setSession(restored); } catch {}
+        try { restored = JSON.parse(raw); setSession(restored); } catch {}
       }
       const savedLevel = await regAPI.getLevel();
       setVerificationLevel(savedLevel);
@@ -170,137 +108,54 @@ export const AuthProvider = ({ children }) => {
   }, [refreshLevel]);
 
   const ensureGuest = useCallback(async () => {
-    const generation = authGenerationRef.current;
-    const data = await regAPI.ensureGuest({ persist: false });
-    if (!data?.token) return data;
-    return commitGuestToken(
-      data,
-      generation,
-      () => authGenerationRef.current,
-      () => regAPI.getToken(),
-      (guestToken) => storage.set('ur_reg_token', guestToken),
-      (guestData) => {
-        setHasToken(true);
-        setVerificationLevel(guestData.verification_level ?? 0);
-      },
-    );
+    const data = await regAPI.ensureGuest();
+    if (data?.token) {
+      setHasToken(true);
+      setVerificationLevel(data.verification_level ?? 0);
+    }
+    return data;
   }, []);
 
-  const signIn = (phone, level = 1, token = null, { expectedToken = null, userId = null, isCurrent = () => true } = {}) => runAuthMutation(async () => {
-    if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) return false;
-    const generation = ++authGenerationRef.current;
+  const signIn = async (phone, level = 1, token = null) => {
     if (token) {
       await storage.set('ur_reg_token', token);
     }
     const existing = await regAPI.getToken();
-    if (!isCurrent()) return false;
     if (!existing) {
       throw new Error('NO_TOKEN');
     }
-    // Другая подтверждённая почта не наследует ID/роль прежнего владельца.
-    const s = { user: { phone, role: null, id: userId } };
-    sessionRef.current = s;
+    const prevRole = session?.user?.role || null;
+    const s = { user: { phone, role: prevRole, id: session?.user?.id || ('u_' + Date.now()) } };
     setSession(s);
     setVerificationLevel(level);
     setHasToken(true);
     await storage.set(KEY, JSON.stringify(s));
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       // eslint-disable-next-line no-console
-      console.warn('[Auth] login success', { level });
+      console.warn('[Auth] login success', { identifier: phone, level, role: prevRole });
     }
-    refreshLevel({ expectedToken: existing, expectedGeneration: generation }).catch(() => {});
+    refreshLevel().catch(() => {});
     return true;
-  });
+  };
 
-  const setRole = (role, { expectedToken = null, isCurrent = () => true } = {}) => runAuthMutation(async () => {
-    if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) {
-      return { ok: false, reason: 'SESSION_CHANGED' };
-    }
-    authGenerationRef.current += 1;
-    const prev = sessionRef.current;
-    const s = prev ? { ...prev, user: { ...prev.user, role } } : { user: { role, id: 'u_' + Date.now() } };
-    sessionRef.current = s;
-    setSession(s);
-    await storage.set(KEY, JSON.stringify(s));
-    return { ok: true };
-  });
+  const setRole = (role) => {
+    setSession(prev => {
+      const s = prev ? { ...prev, user: { ...prev.user, role } } : { user: { role, id: 'u_' + Date.now() } };
+      storage.set(KEY, JSON.stringify(s));
+      return s;
+    });
+  };
 
-  const signOut = ({ expectedToken = null, expectedGeneration = null } = {}) => runAuthMutation(async () => {
-    // A queued response from the previous account must never log out a newer one.
-    if (expectedToken && !await authOwnerIsCurrent(
-      expectedToken, expectedGeneration, () => authGenerationRef.current, () => regAPI.getToken(),
-    )) return { ok: false, reason: 'SESSION_CHANGED' };
-    authGenerationRef.current += 1;
+  const signOut = async () => {
     setAuthExpirySuppressed(true);
 
-    // Do not clear auth state until native tracking is stopped and the durable
-    // server-revoke intent has been verified.
+    // Сохраняем токен только в памяти для best-effort серверной очистки.
+    // Auth-state сбрасываем сразу: навигация не должна ждать сеть.
     const authToken = await regAPI.getToken();
-    // A local logout is not successful while native tracking may still be
-    // running. Keep the session/token so the user can retry when Expo/OS fails
-    // to confirm stop; do not hide a rejected or timed-out native operation.
-    const stopController = new AbortController();
-    const trackingResult = await withTimeout(
-      stopBackgroundTrackingForLogout(authToken, { signal: stopController.signal }),
-      LOGOUT_NETWORK_TIMEOUT_MS,
-      () => stopController.abort(),
-    );
-    if (!trackingResult?.ok) {
-      setAuthExpirySuppressed(false);
-      return {
-        ok: false,
-        reason: trackingResult?.reason || 'BACKGROUND_TRACKING_STOP_FAILED',
-      };
-    }
-
-    // Persist the canonical server revoke BEFORE deleting the last local
-    // bearer. A process kill after clearToken used to make offline logout
-    // unrecoverable: the next boot had neither token nor retry record.
-    try {
-      await regAPI.stageLogoutRevoke(authToken);
-    } catch {
-      const trackingRestore = await withTimeout(
-        restoreBackgroundTrackingForLogoutFailure(authToken, trackingResult.stopped),
-      );
-      // Do not clear the only bearer when the durable revoke intent could not
-      // be verified. Retaining the local session is safer than silently
-      // creating an unrecoverable server/push ownership window. If GPS was
-      // stopped first, restore it for the still-active session before retry.
-      setAuthExpirySuppressed(false);
-      return {
-        ok: false,
-        reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE',
-        trackingRestored: trackingRestore?.ok === true,
-      };
-    }
-    const lastSampleCleanup = await clearBackgroundLocationSampleForLogout(authToken);
-    if (lastSampleCleanup?.reason === 'session_changed') {
-      setAuthExpirySuppressed(false);
-      return { ok: false, reason: 'SESSION_CHANGED' };
-    }
-    if (!lastSampleCleanup?.ok && typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.warn('[Auth] logout could not clear last GPS sample', lastSampleCleanup?.reason);
-    }
-    if (await regAPI.getToken() !== authToken) {
-      setAuthExpirySuppressed(false);
-      return { ok: false, reason: 'SESSION_CHANGED' };
-    }
-    sessionRef.current = null;
     setSession(null);
     setVerificationLevel(0);
     setHasToken(false);
     await regAPI.clearToken();
-    // Invalidate guest/token work that may have started while stop/staging
-    // awaited; queued commits must not resurrect this now-revoked bearer.
-    authGenerationRef.current += 1;
-
-    // Badge и dedupe принадлежат текущей локальной сессии. Их нельзя
-    // оставлять до следующего пуша или успешного сетевого cleanup: иначе
-    // следующий пользователь общего телефона унаследует старое "8" и
-    // подавленные event_id. Это локальная операция, поэтому она не зависит
-    // от доступности QA2 backend.
-    clearAppIconBadge();
-    try { await clearPushEventDedup(); } catch {}
 
     // Блок 2 аудита (P1-3/P1-4): деактивируем push ТЕКУЩЕГО пользователя на
     // backend, пока токен ещё валиден — ОБЯЗАТЕЛЬНО до regAPI.logout()
@@ -319,10 +174,8 @@ export const AuthProvider = ({ children }) => {
         storage.remove('ur_client_company'),
         storage.remove('ur_pinned_chats'),
         storage.remove('ur_bg_deal_ids'),
-        storage.remove('ur_bg_last_location_v1'),
         storage.remove('ur_queue_plate'),
         storage.removeByPrefix('ur_draft_'),
-        storage.removeByPrefix('ur_chat_translation_v1:'),
         clearOutbox(),
         clearQueue(),
       ]);
@@ -345,24 +198,18 @@ export const AuthProvider = ({ children }) => {
       console.warn('[Auth] logout cleared UrTruck + provider session + push + queues');
     }
     setTimeout(() => setAuthExpirySuppressed(false), 1500);
-    return { ok: true };
-  });
-
-  useEffect(() => configureAuthExpiryValidation({
-    getToken: () => regAPI.getToken(),
-    validateToken: (token, options) => regAPI.validateToken(token, options),
-  }), []);
+  };
 
   const hasTokenRef = useRef(false);
   useEffect(() => { hasTokenRef.current = hasToken; }, [hasToken]);
   useEffect(() => {
-    const unsub = subscribeAuthExpired((rejectedToken) => {
-      if (!hasTokenRef.current || !rejectedToken) return;
+    const unsub = subscribeAuthExpired(() => {
+      if (!hasTokenRef.current) return;
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         // eslint-disable-next-line no-console
-        console.warn('[Auth] current session rejection confirmed → signOut');
+        console.warn('[Auth] session expired (401) → auto signOut');
       }
-      signOut({ expectedToken: rejectedToken, expectedGeneration: authGenerationRef.current });
+      signOut();
     });
     return unsub;
   }, []);

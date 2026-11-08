@@ -1,9 +1,3 @@
-import { GPS_TRACKING_PAUSED, pausedLocationCopy } from '../utils/locationPolicy';
-import { useIsFocused } from '@react-navigation/native';
-import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
-import { FOREGROUND_LOCATION_ONLY } from '../utils/backgroundLocation';
-import { foregroundLocationCopy } from '../utils/locationModeCopy';
 import React from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -12,9 +6,7 @@ import { useI18n } from '../utils/useI18n';
 import { localizePlace } from '../utils/places';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
-import LiveTruckMap from './TruckMap';
-import PlannedRouteSummary from './PlannedRouteSummary';
-const TruckMap = GPS_TRACKING_PAUSED ? PlannedRouteSummary : LiveTruckMap;
+import TruckMap from './TruckMap';
 
 const dedupePoints = (points) => {
   const seen = new Set();
@@ -56,9 +48,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
     return Number.isFinite(tons) && tons > 0 ? { payload_t: tons } : null;
   }, [capacityTons]);
 
-  const trackingActive = !GPS_TRACKING_PAUSED && Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
-  const isFocused = useIsFocused();
-  useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && routeOpen && trackingActive });
+  const trackingActive = Boolean(dealId && ['in_progress', 'at_border', 'delivered'].includes(dealStatus));
   const routePoints = React.useMemo(() => dedupePoints([
     ...parseRouteCities(from),
     ...(transit ? parseRouteCities(transit) : []),
@@ -116,14 +106,13 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
 
         <View style={s.mapWrap} testID={hasLivePoint ? 'trip-live-map' : 'trip-planned-map'}>
           <TruckMap
-                  enabled={isFocused}
             lat={hasLivePoint ? lat : undefined}
             lng={hasLivePoint ? lng : undefined}
             title={driverName || t('track_truck_marker')}
             routePoints={routePoints}
             planned={!hasLivePoint}
             plannedTitle={t('planned_route_title')}
-            plannedHint={GPS_TRACKING_PAUSED ? (pausedLocationCopy[lang] || pausedLocationCopy.RU) : t('tracking_starts_after_start')}
+            plannedHint={t('tracking_starts_after_start')}
             liveTitle={t('live_route_title')}
             showBadge={false}
             onRouteSummary={handleSummary}
@@ -136,7 +125,6 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           ) : null}
         </View>
 
-        {FOREGROUND_LOCATION_ONLY ? <Text style={[s.route, { color: theme.textMuted }]} testID="gps-foreground-only-notice">{GPS_TRACKING_PAUSED ? (pausedLocationCopy[lang] || pausedLocationCopy.RU) : (foregroundLocationCopy[lang] || foregroundLocationCopy.RU).background}</Text> : null}
         {routeSummary ? (
           <View style={[s.metrics, { borderTopColor: theme.border }]} testID="route-map-real-metrics">
             <View style={s.metric}>
@@ -145,7 +133,7 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
             </View>
             <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
             <View style={s.metric}>
-              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t(routeSummary.durationLabelKey || 'delivery_time')}</Text>
+              <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
               <Text style={[s.metricValue, { color: theme.text }]}>{routeSummary.durationText}</Text>
             </View>
           </View>
@@ -190,7 +178,6 @@ export default function RouteMap({ from, to, transit, dealId, dealStatus, driver
           </View>
           <View style={s.fullscreenMap}>
             <TruckMap
-                  enabled={isFocused}
               lat={hasLivePoint ? lat : undefined}
               lng={hasLivePoint ? lng : undefined}
               title={driverName || t('track_truck_marker')}

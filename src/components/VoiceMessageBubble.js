@@ -122,17 +122,7 @@ export default function VoiceMessageBubble({
   const primaryTranscript = hasTranslation && !transcript?.showOriginal
     ? transcript.translatedText
     : transcript?.transcriptText;
-  // До явного действия не запускается ни STT, ни перевод. Аудио доступно
-  // независимо от этого действия; кнопка только раскрывает сохранённый либо
-  // вручную запрошенный текстовый перевод.
-  const hiddenStatus = transcript?.backgroundStatus;
-  const remoteProcessing = hiddenStatus === 'queued' || hiddenStatus === 'processing';
-  const transcriptLabel = transcribing || remoteProcessing ? t('voice_transcription_processing')
-    : hiddenStatus === 'expired' ? t('voice_recognize_again')
-      : textVisible ? t('voice_hide_text')
-        : transcript?.transcriptReady ? t('voice_show_text')
-          : transcript?.needsTranslation ? t('voice_translate')
-            : transcript?.transcriptText ? t('voice_show_text') : t('voice_translate');
+  const transcriptLabel = transcribing ? '…' : textVisible ? t('voice_hide_text') : transcript?.transcriptText ? t('voice_show_text') : t('voice_to_text');
 
   return (
     <View style={s.wrap} testID={testID}>
@@ -153,11 +143,7 @@ export default function VoiceMessageBubble({
 
         <Pressable
           onPress={onSeek}
-          onLayout={(event) => {
-            const width = event?.nativeEvent?.layout?.width;
-            if (!Number.isFinite(width) || width <= 0) return;
-            setTrackWidth(width);
-          }}
+          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
           style={s.trackHit}
           testID="voice-progress-track"
         >
@@ -185,9 +171,9 @@ export default function VoiceMessageBubble({
         </TouchableOpacity>
       ) : null}
       {onToggleTranscript ? (
-        <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing || remoteProcessing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
+        <TouchableOpacity onPress={onToggleTranscript} disabled={transcribing} style={s.transcriptButton} accessibilityRole="button" testID="voice-transcription-btn">
           <Feather name="align-left" size={12} color={baseMuted} />
-          {transcribing || remoteProcessing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
+          {transcribing ? <ActivityIndicator size="small" color={baseMuted} testID="voice-transcription-loading" /> : null}
           <Text style={[s.transcriptLabel, { color: baseMuted, fontSize: sp(11) }]}>{transcriptLabel}</Text>
         </TouchableOpacity>
       ) : null}

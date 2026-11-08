@@ -106,7 +106,7 @@ function InputRow({
   );
 }
 
-function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID, ceramic = false, valueNumberOfLines = 1 }) {
+function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeholder, testID, ceramic = false }) {
   const baseColors = useV1Colors();
   const shipperColors = useShipperCeramicColors();
   const colors = ceramic ? shipperColors : baseColors;
@@ -131,7 +131,7 @@ function DropdownRow({ icon, featherIcon, leading, label, value, onPress, placeh
       >
         <FieldIcon leading={leading} featherIcon={featherIcon} icon={icon} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
-          <Text style={[s.input, value ? s.inputFilled : null, { color: value ? colors.text : colors.placeholder }]} numberOfLines={valueNumberOfLines}>
+          <Text style={[s.input, value ? s.inputFilled : null, { color: value ? colors.text : colors.placeholder }]} numberOfLines={1}>
             {value || placeholder || '—'}
           </Text>
         </View>

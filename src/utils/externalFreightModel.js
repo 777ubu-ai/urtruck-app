@@ -81,7 +81,7 @@ export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.n
   return [...fresh, ...tail];
 }
 
-/** Ссылка на исходный публичный пост, включая объявление с контактом во вложении. */
+/** Только ссылка на исходный пост; не личный контакт автора. */
 export function externalTelegramPost(item) {
   const message = String(item?.source_message_id || '');
   const source = String(item?.origin_source || '').replace(/^@/, '');

@@ -25,38 +25,36 @@ test('role is not committed to AuthContext before required profile saves success
   assert.doesNotMatch(role, /setRole\(/);
   assert.match(profile, /const \{ session, setRole \} = useAuth\(\)/);
   const savedCheck = profile.indexOf('if (!saved?.ok)');
-  const roleCommit = profile.indexOf('setRole(role, { expectedToken: ownerToken,');
+  const roleCommit = profile.indexOf('setRole(role)');
   assert.ok(savedCheck >= 0, 'profile must check backend save result');
   assert.ok(roleCommit > savedCheck, 'role may enter AuthContext only after successful profile save');
 });
 
 
-test('profile step keeps company, country and city optional', () => {
+test('profile step keeps company optional for drivers while retaining the profile field', () => {
   assert.match(profile, /testID="profile-v2-step"/);
   assert.match(profile, /<Text style=\{s\.stepCaption\}>2 \/ 2<\/Text>/);
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
   assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
-  assert.match(profile, /id="city"/);
-  assert.match(profile, /const basicFormValid = validName && validPhone/);
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const formValid = validName && validPhone && validCompany && validMessenger/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
-  assert.doesNotMatch(profile, /validCompany/);
+  assert.match(profile, /if \(!validCompany\) next\.company/);
   assert.doesNotMatch(profile, /validCountry/);
   assert.doesNotMatch(profile, /validCity/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
 
-test('short onboarding keeps company and location editable but optional', () => {
+test('short onboarding keeps company editable but optional for drivers', () => {
   assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
-  assert.match(profile, /id="city"/);
   assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.match(profile, /country:\s*country\.trim\(\)/);
-  assert.match(profile, /city:\s*city\.trim\(\)/);
-  assert.doesNotMatch(profile, /validCompany/);
+  assert.match(profile, /companyLabel: 'Компания \/ ИП \*'/);
+  assert.match(profile, /role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
+  assert.doesNotMatch(profile, /id="country"/);
+  assert.doesNotMatch(profile, /id="city"/);
   assert.doesNotMatch(profile, /id="email"/);
   assert.doesNotMatch(profile, /keyboardType="email-address"/);
   assert.doesNotMatch(profile, /textContentType="emailAddress"/);
@@ -71,8 +69,8 @@ test('preferred messenger supports WhatsApp, WeChat, Telegram and Other', () => 
   assert.match(profile, /messenger_type:\s*messengerType/);
   assert.match(profile, /messenger_id:\s*messengerType \? effectiveMessengerId : ''/);
   assert.match(profile, /messengerType === 'whatsapp' && sameAsPhone/);
-  assert.doesNotMatch(profile, /validMessenger/);
-  assert.match(profile, /Мессенджер \(необязательно\)/);
+  assert.match(profile, /const validMessenger = role === 'driver' \|\| !messengerType/);
+  assert.match(profile, /if \(!validMessenger\) next\.messenger/);
 });
 
 
@@ -88,7 +86,7 @@ test('profile keeps the unauthenticated onboarding palette consistently light', 
 });
 
 
-test('backend onboarding contract requires only name and phone for both roles', () => {
+test('Серверный онбординг требует имя и телефон для обеих ролей', () => {
   assert.match(backend, /if not effective_phone:/);
   assert.match(backend, /"error": "PHONE_REQUIRED"/);
   assert.match(backend, /if not effective_name:/);

@@ -14,16 +14,17 @@ counter_offer) so a driver/shipper sees the same vocabulary in a push as in
 the app itself — not a fresh, differently-worded translation.
 """
 from typing import Optional
-from services.push_i18n_additional import ADDITIONAL_TEMPLATES
 
-SUPPORTED_LOCALES = ("RU", "KK", "ZH", "EN", "TR", "UZ", "KY", "TG", "BE")
+SUPPORTED_LOCALES = ("RU", "KK", "ZH", "EN")
 DEFAULT_LOCALE = "RU"
 
 
 def normalize_locale(raw: Optional[str]) -> str:
-    """Девять кодов приложения, BCP-47 и прежние country aliases.
-
-    Неизвестный или отсутствующий язык сохраняет серверный fallback RU.
+    """Accepts app-native codes ('RU'/'KK'/'ZH'/'EN') or BCP-47-ish values a
+    client might report (Localization.getLocales(), e.g. 'ru-RU', 'zh-Hans-CN',
+    'kk', 'en-US') and maps them onto the 4 codes the app actually supports.
+    Unknown/missing -> DEFAULT_LOCALE (RU), matching src/utils/i18n.js's own
+    fallback for anything outside its 4 supported languages.
     """
     if not raw:
         return DEFAULT_LOCALE
@@ -36,8 +37,7 @@ def normalize_locale(raw: Optional[str]) -> str:
         return "ZH"
     if code.startswith("EN"):
         return "EN"
-    base = code.replace("_", "-").split("-", 1)[0]
-    return {"TR": "TR", "UZ": "UZ", "KY": "KY", "KG": "KY", "TG": "TG", "TJ": "TG", "BE": "BE", "BY": "BE"}.get(base, DEFAULT_LOCALE)
+    return DEFAULT_LOCALE
 
 
 # event -> locale -> (title, body) with {named} placeholders for the ONLY
@@ -97,12 +97,6 @@ TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
         "KK": ("📋 Жаңа баға", "{route} үшін {amount}"),
         "ZH": ("📋 新报价", "{route}：{amount}"),
         "EN": ("📋 New bid", "{amount} for {route}"),
-    },
-    "bid_accept_confirmed": {
-        "RU": ("✅ Сделка создана", "Вы приняли предложение {amount}. Сделка создана."),
-        "KK": ("✅ Мәміле жасалды", "Сіз {amount} ұсынысын қабылдадыңыз. Мәміле жасалды."),
-        "ZH": ("✅ 交易已创建", "您已接受 {amount} 的报价。交易已创建。"),
-        "EN": ("✅ Deal created", "You accepted the offer of {amount}. Deal created."),
     },
     "bid_accepted": {
         "RU": ("✅ Ставка принята!", "Ваше предложение {amount} принято! Сделка создана."),
@@ -231,14 +225,6 @@ TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
         "EN": ("⚠️ Booking revoked", "Booking {booking}: check its status in CarGoRuqsat."),
     },
 }
-
-
-for _event, _translations in ADDITIONAL_TEMPLATES.items():
-    TEMPLATES[_event].update(_translations)
-
-
-from services.scheduled_push_i18n import TEMPLATES as SCHEDULED_TEMPLATES
-TEMPLATES.update(SCHEDULED_TEMPLATES)
 
 
 def push_text(event: str, locale: Optional[str], **params) -> tuple[Optional[str], Optional[str]]:

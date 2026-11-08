@@ -1,9 +1,6 @@
-import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React from 'react';
-import { Modal, ScrollView, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
-import { foregroundLocationCopy } from '../../utils/locationModeCopy';
-import { FOREGROUND_LOCATION_ONLY } from '../../utils/backgroundLocation';
 
 const COPY = {
   RU: {
@@ -83,7 +80,6 @@ const COPY = {
     checkAgain: 'Қайта тексеру',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 function InfoRow({ icon, iconColor, iconBackground, children }) {
   return (
@@ -106,15 +102,14 @@ export default function BackgroundLocationDisclosureModal({
   onOpenSettings,
   onCheckAgain,
 }) {
-  const selectedLang = COPY[lang] ? lang : 'RU';
-  const ui = { ...COPY[selectedLang], ...(FOREGROUND_LOCATION_ONLY && Platform.OS !== 'web' ? foregroundLocationCopy[selectedLang] : {}) };
+  const ui = COPY[lang] || COPY.RU;
   const settingsMode = mode === 'settings';
   const canOpenNativeSettings = Platform.OS !== 'web';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={s.backdrop} testID="background-location-disclosure">
-        <ScrollView style={s.scroll} contentContainerStyle={s.card} bounces={false}>
+        <View style={s.card}>
           <View style={s.heroIcon}>
             <Feather name="map-pin" size={38} color="#1264E6" />
           </View>
@@ -179,14 +174,13 @@ export default function BackgroundLocationDisclosureModal({
               </TouchableOpacity>
             </>
           )}
-        </ScrollView>
+        </View>
       </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  scroll: { width: '100%', maxWidth: 520, maxHeight: '90%', alignSelf: 'center', borderRadius: 28 },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(9, 14, 20, 0.60)',

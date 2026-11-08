@@ -1,4 +1,3 @@
-import { localizeUiText } from './additionalLocales.js';
 // Централизованный словарь городов, погранпереходов и системных категорий.
 //
 // Legacy production-данные местами хранят точки маршрута свободным текстом
@@ -415,12 +414,6 @@ for (const [ru, variants] of Object.entries(CARGO_DICT)) {
   if (CARGO_KK[ru]) CARGO_VARIANT_INDEX.set(CARGO_KK[ru].toLocaleLowerCase('kk-KZ'), ru);
 }
 
-// Keep free-form cargo text intact while it is being edited. Presentation and
-// submission normalization are explicit, separate operations so a controlled
-// input never round-trips through a display formatter that trims whitespace.
-export const cargoInputText = (value) => value == null ? '' : String(value);
-export const normalizeCargoDescription = (value) => cargoInputText(value).trim();
-
 const canonicalCargoName = (raw) => {
   const value = String(raw || '').trim();
   if (!value) return '';
@@ -442,13 +435,7 @@ const localizeSingleCargoName = (raw, lang) => {
 export function localizeCargoName(raw, lang) {
   const l = String(lang || '').toLowerCase();
   if (!raw) return raw;
-  const rawKey = String(raw).trim();
-  let key = rawKey;
-  // Legacy payloads may contain percent-encoded descriptions. Decode once for
-  // display, but leave malformed sequences untouched instead of crashing UI.
-  if (/%[0-9A-Fa-f]{2}/.test(rawKey)) {
-    try { key = decodeURIComponent(rawKey); } catch { key = rawKey; }
-  }
+  const key = String(raw).trim();
   const machineSuffix = Object.keys(CARGO_MACHINE_ALIASES)
     .find((alias) => key.toLowerCase().endsWith(alias) && key.length > alias.length);
   if (machineSuffix) {
@@ -467,16 +454,12 @@ export function localizeSystemMessage(raw, lang) {
   if (l === 'ru') return raw;
   const value = String(raw).trim();
   const direct = SYSTEM_MESSAGE_DICT[value];
-  if (direct) {
-    const translated = direct[l] || localizeUiText(value, lang);
-    if (translated !== value) return translated;
-  }
+  if (direct && direct[l]) return direct[l];
 
   // Some old rows append an amount after the system phrase.
   for (const [prefix, variants] of Object.entries(SYSTEM_MESSAGE_DICT)) {
-    if (value.startsWith(`${prefix} ·`)) {
-      const translated = variants[l] || localizeUiText(prefix, lang);
-      if (translated !== prefix) return `${translated}${value.slice(prefix.length)}`;
+    if (value.startsWith(`${prefix} ·`) && variants[l]) {
+      return `${variants[l]}${value.slice(prefix.length)}`;
     }
   }
   // Never machine-translate arbitrary participant text here.

@@ -1493,38 +1493,40 @@ def unpublish_trip(trip_id: str, user=Depends(require_active_level(1))):
 
 @mp_router.patch("/trips/{trip_id}/republish")
 def republish_trip(trip_id: str, user=Depends(require_driver_trip_publication)):
-    """Опубликовать снова снятый рейс. Сохраняет дату выезда."""
+    """Опубликовать снова снятый рейс. Обновляет дату выезда на сегодня."""
     with get_conn() as c:
-        row = c.execute("SELECT driver_id, status, departure FROM trips WHERE id = ?", (trip_id,)).fetchone()
+        row = c.execute("SELECT driver_id, status FROM trips WHERE id = ?", (trip_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Рейс не найден")
         if row["driver_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно публиковать только свой рейс")
         if row["status"] not in ("unpublished", "expired"):
             raise HTTPException(status_code=409, detail="Рейс не в статусе unpublished/expired")
+        new_date = datetime.utcnow().date().isoformat()
         c.execute(
-            "UPDATE trips SET status = 'active', "
+            "UPDATE trips SET status = 'active', departure = ?, "
             "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (trip_id,))
-    return {"ok": True, "status": "active", "departure": row["departure"]}
+            (new_date, trip_id))
+    return {"ok": True, "status": "active", "departure": new_date}
 
 
 @mp_router.patch("/cargos/{cargo_id}/republish")
 def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
-    """Опубликовать снова снятый груз. Сохраняет дату погрузки."""
+    """Опубликовать снова снятый груз. Обновляет дату подачи на сегодня."""
     with get_conn() as c:
-        row = c.execute("SELECT owner_id, status, pickup_date FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
+        row = c.execute("SELECT owner_id, status FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Груз не найден")
         if row["owner_id"] != user["id"]:
             raise HTTPException(status_code=403, detail="Можно публиковать только свой груз")
         if row["status"] not in ("unpublished", "expired"):
             raise HTTPException(status_code=409, detail="Груз не в статусе unpublished/expired")
+        new_date = datetime.utcnow().date().isoformat()
         c.execute(
-            "UPDATE cargos SET status = 'active', "
+            "UPDATE cargos SET status = 'active', pickup_date = ?, "
             "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (cargo_id,))
-    return {"ok": True, "status": "active", "pickup_date": row["pickup_date"]}
+            (new_date, cargo_id))
+    return {"ok": True, "status": "active", "pickup_date": new_date}
 
 
 # ═══ Trips ═══
@@ -2966,9 +2968,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     # P3-fix: пишем событие в ценовой timeline каждой перебитой ставки — иначе
     # у проигравших история обрывалась на «proposed» без финала.
     for _sib in rejected_siblings:
-        event_id = _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", "other_bid_accepted")
-        if event_id is None:
-            raise HTTPException(status_code=503, detail="Не удалось сохранить причину отклонения предложения")
+        _record_price_event(c, _sib["id"], user["id"], "owner", _sib.get("amount"), "rejected", None)
 
     chat_room_id = _ensure_chat_room_inline(
         c, shipper_id, driver_id, bid.get("cargo_id"), bid.get("trip_id")
@@ -3018,34 +3018,42 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
     # — владелец cargo (client) или driver рейса (driver). Локальный импорт —
-    # избегаем циклов (deal_room_dal не тянет marketplace). Сбой записи
-    # откатывает сделку вместе с резервированием объявления.
-    from database import deal_room_dal
-    actor_role = "driver" if bid.get("trip_id") else "client"
-    deal_room_dal.create_deal_event(
-        "deal.bid_accepted",
-        actor_id=user["id"],
-        actor_role=actor_role,
-        conversation_id=chat_room_id,
-        deal_id=deal_id,
-        bid_id=bid_id,
-        load_id=bid.get("cargo_id"),
-        trip_id=bid.get("trip_id"),
-        payload={"amount": final_amount, "from_city": from_city, "to_city": to_city},
-        conn=c,   # та же открытая транзакция — иначе SQLite write-lock
-    )
+    # избегаем циклов (deal_room_dal не тянет marketplace). Не критично для
+    # accept, если запись события упадёт — оборачиваем в try.
+    try:
+        from database import deal_room_dal
+        actor_role = "driver" if bid.get("trip_id") else "client"
+        deal_room_dal.create_deal_event(
+            "deal.bid_accepted",
+            actor_id=user["id"],
+            actor_role=actor_role,
+            conversation_id=chat_room_id,
+            deal_id=deal_id,
+            bid_id=bid_id,
+            load_id=bid.get("cargo_id"),
+            trip_id=bid.get("trip_id"),
+            payload={"amount": final_amount, "from_city": from_city, "to_city": to_city},
+            conn=c,   # та же открытая транзакция — иначе SQLite write-lock
+        )
+    except Exception as e:
+        print(f"[accept_bid] deal_event write failed (continuing): {e}", flush=True)
+
     # Системный маркер в чат — чтобы Deal Room сразу не был пустым (раньше до
     # первой смены статуса комната открывалась без единого сообщения).
-    if chat_room_id:
-        _mk = f"🤝 Сделка создана · {final_amount}"
-        c.execute(
-            "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
-            (chat_room_id, "system", _mk),
-        )
-        c.execute(
-            "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (_mk[:50], chat_room_id),
-        )
+    try:
+        if chat_room_id:
+            _mk = f"🤝 Сделка создана · {final_amount}"
+            c.execute(
+                "INSERT INTO chat_messages (room_id, sender_id, text) VALUES (?,?,?)",
+                (chat_room_id, "system", _mk),
+            )
+            c.execute(
+                "UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (_mk[:50], chat_room_id),
+            )
+    except Exception as e:
+        print(f"[accept_bid] chat marker write failed (continuing): {e}", flush=True)
+
     return {
         "deal_id": deal_id,
         "chat_room_id": chat_room_id,
@@ -3087,43 +3095,36 @@ def accept_bid(bid_id: str, user=Depends(require_active_level(1))):
         # обновиться гонкой с update_bid — см. _finalize_accept_inline).
         committed_amount = result["amount"]
         # Часть 3: событие — владелец принял ставку (actor=owner).
-        event_id = _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
-        if event_id is None:
-            raise HTTPException(status_code=503, detail="Не удалось сохранить историю принятия предложения")
+        _record_price_event(c, bid_id, user["id"], "owner", committed_amount, "accepted", None)
         _cur = _bid_currency(c, bid)   # валюта ставки для текста уведомления
 
-        # Уведомления и outbox фиксируются атомарно со сделкой.
+    # «Дом заказа» (02.08.2026): пуш о принятой ставке ведёт в карточку
+    # заказа (там сверху блок сделки + прогресс-бар + кнопка «💬 Открыть
+    # чат»), а не в Deal Room. Так и статус доставки, и контакт с
+    # контрагентом всегда в одном месте.
+    if bid.get("cargo_id"):
+        deal_url = f"/cargos/{bid['cargo_id']}"
+    elif bid.get("trip_id"):
+        deal_url = f"/trips/{bid['trip_id']}"
+    else:
+        deal_url = f"/deals/{result['deal_id']}"
+    # Push-closure track: event_key=bid:{bid_id}:accepted — a bid can only
+    # be accepted once (guarded by the status!='pending' check above), so
+    # this key is inherently stable/unique; localized via push_i18n.
+    loc = push_gateway.get_recipient_locale(bid["bidder_id"])
+    title, text = push_i18n.push_text("bid_accepted", loc, amount=_money(committed_amount, _cur))
+    event_key = f"bid:{bid_id}:accepted"
+    try:
+        send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",
+                     data={"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,
+                           "i18n_event": "bid_accepted", "i18n_params": {"amount": _money(committed_amount, _cur)}})
+    except Exception:
+        pass
+    try:
         from api.notifications import create_notification
-        deal_url = (f"/cargos/{bid['cargo_id']}" if bid.get("cargo_id")
-                    else f"/trips/{bid['trip_id']}")
-        event_key = f"bid:{bid_id}:accepted"
-        amount = _money(committed_amount, _cur)
-        recipients = []
-        for uid in (result["shipper_id"], result["driver_id"]):
-            # То же соединение: get_conn внутри write-транзакции способен
-            # запустить очистку и ждать собственную блокировку SQLite.
-            locale_row = c.execute(
-                "SELECT locale FROM push_devices WHERE user_id=? AND enabled=1 "
-                "ORDER BY last_seen_at DESC,id DESC LIMIT 1", (uid,),
-            ).fetchone()
-            loc = push_i18n.normalize_locale(locale_row["locale"] if locale_row else None)
-            i18n_event = "bid_accepted" if uid == bid["bidder_id"] else "bid_accept_confirmed"
-            title, text = push_i18n.push_text(i18n_event, loc, amount=amount)
-            data = {"event_key": event_key, "event": "bid.accepted", "bid_id": bid_id,
-                    "deal_id": result["deal_id"], "i18n_event": i18n_event,
-                    "i18n_params": {"amount": amount}}
-            push_gateway.enqueue_event(event_key, "bid.accepted", uid,
-                {"title": title, "body": text, "data": data, "url": deal_url}, conn=c)
-            create_notification(uid, "bid_accepted", title, text, "✅",
-                                url=deal_url, event_key=event_key, conn=c)
-            recipients.append((uid, title, text, data))
-
-    for uid, title, text, data in recipients:
-        try:
-            send_to_user(uid, title, text, url=deal_url, kind="bid", data=data)
-        except Exception:
-            # Worker доставит сохранённое событие после временного сбоя.
-            pass
+        create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)
+    except Exception:
+        pass
 
     # Уведомляем авторов перебитых ставок (auto-reject внутри _finalize).
     _notify_rejected_siblings(result.get("rejected_siblings"))
@@ -3472,9 +3473,7 @@ def accept_counter(bid_id: str, user=Depends(require_active_level(1))):
         owner_user = {"id": owner_id}
         result = _finalize_accept_inline(c, owner_user, bid, counter, expected_status="countered")
         # Часть 3: событие — bidder принял контр-оффер (actor=bidder).
-        event_id = _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
-        if event_id is None:
-            raise HTTPException(status_code=503, detail="Не удалось сохранить историю принятия предложения")
+        _record_price_event(c, bid_id, user["id"], "bidder", counter, "accepted", None)
 
         # Сначала сохраняем обе доставки в той же транзакции, что и сделку.
         # Сбой процесса после commit не должен терять уведомления.

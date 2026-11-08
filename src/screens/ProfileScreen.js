@@ -1,11 +1,9 @@
-import { localizeUiText } from '../utils/additionalLocales.js';
-import { sessionRole } from '../utils/publicationSession';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Feather from '@expo/vector-icons/Feather';
-import { getLanguage } from '../utils/i18n';
+import { setLanguage, getLanguage } from '../utils/i18n';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useV1Colors, useShipperCeramicColors } from '../theme/designV1';
@@ -21,11 +19,17 @@ import { API_BASE } from '../config/env';
 import { IS_BETA } from '../config/supabase';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import Button from '../components/ui/v1/Button';
-import LanguageSwitcher from '../components/LanguageSwitcher';
+import CountryFlag from '../components/ui/v1/CountryFlag';
 import { localizePlace } from '../utils/places';
 import { appVersionLabel } from '../utils/appVersionLabel';
 import { getVehicleCopy } from '../utils/vehicleSetupCopy';
-import { getExpenseCopy } from '../utils/expenseCopy';
+
+const LANGS = [
+  { code: 'RU', country: 'RU' },
+  { code: 'EN', country: 'GB' },
+  { code: 'KK', country: 'KZ' },
+  { code: 'ZH', country: 'CN' },
+];
 
 const QA_HOOK_ALLOWED = (() => {
   if (typeof __DEV__ === 'undefined' || !__DEV__) return false;
@@ -36,11 +40,6 @@ const QA_HOOK_ALLOWED = (() => {
     return false;
   }
 })();
-
-// Product decision 2026-09-25: the completed basic registration is the only
-// mandatory driver onboarding. The separate 4-step PRO verification remains
-// implemented for future use, but is hidden from the normal profile journey.
-const ADVANCED_VERIFICATION_VISIBLE = false;
 
 const APP_VERSION_LABEL = (() => {
   try {
@@ -53,8 +52,7 @@ const APP_VERSION_LABEL = (() => {
 })();
 
 export default function ProfileScreen({ navigation, route }) {
-  const { session, signOut, verificationLevel } = useAuth();
-  const role = sessionRole(session, route.params?.role);
+  const { role } = route.params || {};
   const isDriver = role === 'driver';
   const baseV1 = useV1Colors();
   const shipper = useShipperCeramicColors();
@@ -68,11 +66,11 @@ export default function ProfileScreen({ navigation, route }) {
     textSecondary: v1.textMuted,
   };
   const { t, lang: uiLang } = useI18n();
-  const expenseCopy = getExpenseCopy(uiLang);
-  const tonUnit = uiLang === 'ZH' ? localizeUiText('吨', uiLang) : uiLang === 'EN' ? localizeUiText('t', uiLang) : localizeUiText('т', uiLang);
-  const cubicMeterUnit = uiLang === 'ZH' ? localizeUiText('立方米', uiLang) : localizeUiText('м³', uiLang);
-
+  const tonUnit = uiLang === 'ZH' ? '吨' : uiLang === 'EN' ? 't' : 'т';
+  const cubicMeterUnit = uiLang === 'ZH' ? '立方米' : 'м³';
+  const { session, signOut, verificationLevel } = useAuth();
   const [profile, setProfile] = useState(getProfile(session?.user?.id) || {});
+  const [lang, setLang] = useState(getLanguage());
   const [confirmDialog, setConfirmDialog] = useState(null);
   const askConfirm = useCallback((title, message = '', confirmLabel = t('confirm')) => new Promise((resolve) => {
     setConfirmDialog({ title, message, confirmLabel, resolve });
@@ -129,19 +127,13 @@ export default function ProfileScreen({ navigation, route }) {
   useFocusEffect(useCallback(() => {
     fetchProfile();
   }, [fetchProfile]));
-  // Владелец 09.10.2026: push приходит, но событие невозможно найти внутри.
-  // Доступ к существующей ленте через меню; открытие Profile не читает
-  // уведомления и не добавляет второй счётчик чатов.
+  // Notifications are not a second navigation hub anymore. Deal events and
+  // their unread state live in the dedicated Deals area, so Profile must not
+  // duplicate the same feed or badge.
   const menuItems = [
-    ...(session?.user?.id ? [
-      { icon: 'inbox', label: t('menu_notifications'), screen: 'Notifications', testID: 'profile-notifications' },
-      { icon: 'sliders', label: `${t('push_title')}: ${t('push_categories')}`, screen: 'PushFilter', testID: 'profile-notification-settings' },
-    ] : []),
     ...(isDriver ? [
       { icon: 'truck', label: getVehicleCopy(uiLang).myVehicles, screen: 'VehicleChooser', params: { origin: 'Profile' }, testID: 'profile-my-vehicles' },
-      ...(ADVANCED_VERIFICATION_VISIBLE ? [
-        { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
-      ] : []),
+      { icon: 'shield', label: t('security_my_status'), sub: t('my_status_subtitle'), screen: 'Security', testID: 'profile-my-status' },
     ] : []),
     { icon: 'star', label: t('myReviews'), screen: 'Reviews', testID: 'profile-my-reviews' },
     { icon: 'help-circle', label: t('howit_header'), screen: 'HowItWorks', testID: 'profile-how-it-works' },
@@ -243,28 +235,7 @@ export default function ProfileScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {isDriver && session?.user?.role === 'driver' ? (
-          <TouchableOpacity
-            style={[s.expenseCard, { backgroundColor: baseV1.driverSoft, borderColor: baseV1.driver }]}
-            onPress={() => navigation.navigate('DriverExpenses', { role, targetId: session?.user?.id })}
-            activeOpacity={0.7}
-            testID="profile-my-expenses"
-            accessibilityRole="button"
-            accessibilityLabel={expenseCopy.title}
-            accessibilityHint={expenseCopy.privacy}
-          >
-            <View style={[s.expenseIconWrap, { backgroundColor: theme.card }]}>
-              <Feather name="book-open" size={24} color={baseV1.driver} />
-            </View>
-            <View style={s.expenseCardText}>
-              <Text style={[s.expenseTitle, { color: theme.text }]}>{expenseCopy.title}</Text>
-              <Text style={[s.expenseSubtitle, { color: theme.text }]}>{expenseCopy.privacy}</Text>
-            </View>
-            <Feather name="chevron-right" size={22} color={baseV1.driver} />
-          </TouchableOpacity>
-        ) : null}
-
-        {ADVANCED_VERIFICATION_VISIBLE && isDriver ? (
+        {isDriver ? (
           <View style={[s.proCard, { backgroundColor: theme.card, borderColor: proActive ? accent : theme.border }]}>
             <View style={s.proHeader}>
               <View style={{ flex: 1 }}>
@@ -336,9 +307,16 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           </View>
 
-          <View style={[s.settingsRow, s.languageSetting]}>
-            <View style={s.languageLabel}><Feather name="globe" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text></View>
-            <LanguageSwitcher testID="profile-language-switcher" optionTestIDPrefix="profile-lang" />
+          <View style={[s.settingsRow, { marginTop: 12, flexDirection: 'column', alignItems: 'stretch' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}><Feather name="globe" size={14} color={theme.text} /><Text style={[s.settingLabel, { color: theme.text }]}>{t('language')}</Text></View>
+            <View style={s.langGrid}>
+              {LANGS.map(l => (
+                <TouchableOpacity key={l.code} testID={`profile-lang-${l.code.toLowerCase()}`} accessibilityRole="button" accessibilityLabel={l.code} style={[s.langCard, { backgroundColor: theme.bg, borderColor: theme.border }, lang === l.code && { backgroundColor: accent, borderColor: accent }]} onPress={() => { setLang(l.code); setLanguage(l.code); }}>
+                  <CountryFlag code={l.country} width={28} />
+                  <Text style={[s.langCardText, { color: theme.textSecondary }, lang === l.code && { color: onAccent }]} numberOfLines={1}>{l.code}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
         </View>
@@ -378,12 +356,7 @@ export default function ProfileScreen({ navigation, route }) {
         <TouchableOpacity style={s.logoutBtn} onPress={async () => {
           const ok = await askConfirm(t('logout_title') || t('logout'), t('logout_message'), t('logout_confirm') || t('logout'));
           if (!ok) return;
-          try {
-            const result = await signOut();
-            if (result?.ok === false) Alert.alert(t('logout'), t('generic_error'));
-          } catch {
-            Alert.alert(t('logout'), t('generic_error'));
-          }
+          try { await signOut(); } catch {}
         }} testID="profile-logout">
           <Text style={s.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
@@ -419,11 +392,6 @@ const s = StyleSheet.create({
   ratingInline: { fontSize: 12, fontWeight: '700', flexShrink: 0 },
   subtitle: { fontSize: 12 },
   editBtnInline: { position: 'absolute', top: 10, right: 10, padding: 4 },
-  expenseCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1.5, padding: 16, minHeight: 100, marginBottom: 14 },
-  expenseIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  expenseCardText: { flex: 1, minWidth: 0 },
-  expenseTitle: { fontSize: 18, fontWeight: '800' },
-  expenseSubtitle: { fontSize: 12, lineHeight: 18, marginTop: 4 },
   menuGroup: { borderRadius: 10, borderWidth: 1, marginBottom: 14, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 13 },
   menuSeparator: { height: StyleSheet.hairlineWidth, marginLeft: 50 },
@@ -435,8 +403,9 @@ const s = StyleSheet.create({
   settingLabel: { fontSize: 13, fontWeight: '600' },
   themeBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
   themeBtnText: { fontSize: 12, fontWeight: '700' },
-  languageSetting: { marginTop: 12, gap: 12, flexWrap: 'wrap' },
-  languageLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  langGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  langCard: { width: '23.5%', minWidth: 68, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 10, borderWidth: 1, alignItems: 'center', gap: 3 },
+  langCardText: { fontSize: 11, fontWeight: '600', textAlign: 'center' },
   pushBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 12 },
   configureBtn: { fontSize: 12, fontWeight: '700' },
   versionRow: { alignItems: 'center', paddingVertical: 10, marginBottom: 6 },

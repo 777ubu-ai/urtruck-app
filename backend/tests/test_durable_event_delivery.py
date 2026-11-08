@@ -20,10 +20,9 @@ Run from backend/:
     DB_PATH=/tmp/urtruck_test_durable_delivery.db python -m tests.test_durable_event_delivery
 """
 import contextvars
+import json
 import os
-import sqlite3
 import sys
-import threading
 import uuid
 from pathlib import Path
 
@@ -38,7 +37,6 @@ sys.path.insert(0, str(ROOT))
 
 from database import db as dbm
 from database import registration_dal
-SHARED_TEST_DB = dbm.config.DB_PATH
 
 dbm.init_db()
 registration_dal.init_registration_schema()
@@ -88,13 +86,13 @@ import api.chat as chat_module
 
 
 @pytest.fixture(autouse=True)
-def _explicit_native_provider_for_this_delivery_suite(monkeypatch):
-    """These tests exercise the direct native FCM/APNs path.
+def _explicit_legacy_provider_for_this_legacy_path_suite(monkeypatch):
+    """These tests intentionally exercise the retained Expo legacy path.
 
     The production default is native now, so make the old-provider intent
     explicit instead of relying on an implicit module default.
     """
-    monkeypatch.setattr(push_gateway, "PUSH_PROVIDER_MODE", "native")
+    monkeypatch.setattr(push_gateway, "PUSH_PROVIDER_MODE", "expo")
 
 
 def _synchronous_send_to_user(user_id, title, body, url="/", kind="info", data=None):
@@ -137,12 +135,12 @@ def seed_cargo(owner_id, price=1234):
 
 def seed_device(user_id, locale=None):
     """Register an active push_devices row so send_to_devices() actually
-    targets this user in the native mode."""
+    targets this user in the explicitly selected legacy Expo mode."""
     with get_conn() as c:
         c.execute(
             "INSERT INTO push_devices (user_id, device_id, platform, push_provider, push_token, locale, enabled) "
             "VALUES (?,?,?,?,?,?,1)",
-            (user_id, uuid.uuid4().hex, "android", "fcm", f"fcm-test-{uuid.uuid4().hex}", locale),
+            (user_id, uuid.uuid4().hex, "android", "expo", f"ExponentPushToken[{uuid.uuid4().hex}]", locale),
         )
 
 
@@ -162,9 +160,9 @@ def outbox_rows(recipient_user_id):
         return [dict(r) for r in rows]
 
 
-class _FlakyNative:
+class _FlakyExpo:
     """Fails the first N calls, then succeeds — installed as
-    services.push_sender._send_native, the exact seam both the
+    services.push_sender._send_expo_detailed, the exact seam both the
     inline fast path (_send_native) and the outbox worker
     (drain_outbox_once) call through in production."""
 
@@ -173,12 +171,12 @@ class _FlakyNative:
         self.calls = 0
         self.successful_payloads = []
 
-    def __call__(self, user_id, title, body, data, badge=None, provider=None):
+    def __call__(self, tokens, title, body, data, badge=None):
         self.calls += 1
         if self.calls <= self.fail_times:
-            return {"sent": 0, "devices": 1, "errors": {"transient": 1}, "error": "transient"}
-        self.successful_payloads.append({"user_id": user_id, "title": title, "body": body, "data": dict(data or {}), "badge": badge})
-        return {"sent": 1, "devices": 1, "already_delivered": 0}
+            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}], "error": "transient"}
+        self.successful_payloads.append({"tokens": list(tokens), "title": title, "body": body, "data": dict(data or {}), "badge": badge})
+        return {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)}
 
 
 def _force_due(recipient_user_id):
@@ -186,111 +184,21 @@ def _force_due(recipient_user_id):
         c.execute("UPDATE push_outbox SET next_attempt_at=CURRENT_TIMESTAMP WHERE recipient_user_id=?", (recipient_user_id,))
 
 
-def _wait_for_push_senders():
-    """Не переключать тестовую БД, пока прежний sender ещё использует get_conn."""
-    for sender in threading.enumerate():
-        target = getattr(sender, "_target", None)
-        if (getattr(target, "__module__", "") == "api.push" and
-                getattr(target, "__qualname__", "") == "send_to_user.<locals>._bg"):
-            sender.join(timeout=10)
-            assert not sender.is_alive(), "Фоновая отправка push не завершилась перед очисткой тестовой очереди"
-
-
-@pytest.fixture(autouse=True)
-def _separate_delivery_database(monkeypatch, tmp_path, _ensure_full_schema):
-    """Housekeeping чужих ставок не должен пополнять очередь текущего сценария."""
-    _wait_for_push_senders()
-    isolated = str(tmp_path / 'durable-delivery.sqlite3')
-    monkeypatch.setattr(dbm.config, 'DB_PATH', isolated)
-    monkeypatch.setenv('DB_PATH', isolated)
-    monkeypatch.setenv('URTRUCK_DB_PATH', isolated)
-    monkeypatch.setattr(dbm, '_WAL_INITIALIZED', False)
-    monkeypatch.setattr(dbm, '_MARKET_EXPIRY_LAST_RUN', 0.0)
-    monkeypatch.setattr(dbm, '_MARKET_EXPIRY_LAST_PROBE', 0.0)
-    from tests.conftest import _rebuild_all_schemas
-    _rebuild_all_schemas()
-    try:
-        yield
-    finally:
-        _wait_for_push_senders()
-
-
 def _reset_outbox():
-    """Очистить только очередь своей изолированной тестовой БД после setup."""
-    _wait_for_push_senders()
+    """Every test in this file shares one process-wide SQLite DB (same
+    pattern as every other test file here) — process_pending_once() has no
+    per-recipient filter, so a prior test's still-pending row (e.g. one that
+    deliberately never succeeds) would otherwise be picked up by a LATER
+    test's own process_pending_once() call and processed through that
+    test's unrelated _FlakyExpo instance. Starting every test from a clean
+    outbox is the simplest correct isolation — not a workaround for a
+    product bug, purely test hygiene for this shared-DB harness."""
     with get_conn() as c:
         c.execute("DELETE FROM push_outbox")
         c.execute("DELETE FROM push_delivery_log")
 
 
 # ───────────────────────── new bid: fail then retry ─────────────────────────
-def test_delivery_queue_does_not_process_another_scenarios_database(monkeypatch):
-    """Реальный worker сценария не должен забирать чужие тестовые события."""
-    _reset_outbox()
-    event_id = 'foreign-scenario-' + uuid.uuid4().hex
-    monkeypatch.setattr(push_gateway, 'configured_outbox_cutoff_id', lambda: 0)
-    with sqlite3.connect(SHARED_TEST_DB) as connection:
-        connection.execute(
-            "INSERT INTO push_outbox(event_id,event_type,recipient_user_id,payload) VALUES(?,?,?,?)",
-            (event_id, 'test.other_scenario', 'other-scenario-user', '{}'),
-        )
-    try:
-        stats = push_gateway.process_pending_once(limit=10)
-        assert stats['picked'] == 0, 'Очередь другого сценария попала в текущий worker'
-        with sqlite3.connect(SHARED_TEST_DB) as connection:
-            assert connection.execute('SELECT status FROM push_outbox WHERE event_id=?', (event_id,)).fetchone()[0] == 'pending'
-    finally:
-        with sqlite3.connect(SHARED_TEST_DB) as connection:
-            connection.execute('DELETE FROM push_outbox WHERE event_id=?', (event_id,))
-
-
-def test_reset_outbox_waits_for_previous_push_sender(monkeypatch):
-    """Поздний sender предыдущего сценария не должен заново заполнить очищенную очередь."""
-    import api.push as push_api
-
-    _reset_outbox()
-    user_id = "late-sender-" + uuid.uuid4().hex
-    seed_device(user_id)
-    started, release = threading.Event(), threading.Event()
-    real_send, real_join = push_sender.send, threading.Thread.join
-    errors = []
-
-    def delayed_send(*args, **kwargs):
-        started.set()
-        if not release.wait(timeout=5):
-            errors.append("sender не получил сигнал продолжения")
-            return
-        try:
-            return real_send(*args, **kwargs)
-        except Exception as error:
-            errors.append(str(error))
-
-    monkeypatch.setattr(push_sender, "send", delayed_send)
-    monkeypatch.setattr(push_sender, "_send_native", lambda *a, **k: {"sent": 1, "devices": 1})
-    existing_threads = set(threading.enumerate())
-    push_api.send_to_user(user_id, "Проверка изоляции", "Поздняя отправка")
-    assert started.wait(timeout=5)
-    senders = [thread for thread in threading.enumerate() if thread not in existing_threads]
-    assert len(senders) == 1
-    sender = senders[0]
-
-    def join_releasing_sender(thread, *args, **kwargs):
-        # Управляем порядок без sleep: новый helper отпускает sender ДО очистки.
-        if thread is sender:
-            release.set()
-        return real_join(thread, *args, **kwargs)
-
-    monkeypatch.setattr(threading.Thread, "join", join_releasing_sender)
-    try:
-        _reset_outbox()
-    finally:
-        # Старый helper вернётся раньше sender: тот повторно enqueue ПОСЛЕ очистки.
-        release.set()
-        real_join(sender, timeout=5)
-    assert not sender.is_alive() and not errors
-    assert outbox_rows(user_id) == []
-
-
 def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatch):
     _reset_outbox()
     install_synchronous_send_to_user(monkeypatch)
@@ -299,8 +207,8 @@ def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatc
     seed_device(owner)
     cargo_id = seed_cargo(owner)
 
-    flaky = _FlakyNative(fail_times=1)
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
     as_user(driver, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2000})
@@ -314,8 +222,7 @@ def test_new_bid_survives_transient_provider_failure_via_worker_retry(monkeypatc
 
     rows = outbox_rows(owner)
     assert len(rows) == 1
-    assert rows[0]["status"] == "retry", "Сбой немедленной попытки должен сохранить управляемый retry"
-    assert rows[0]["attempt_count"] == 1 and rows[0]["next_attempt_at"] is not None
+    assert rows[0]["status"] == "pending", "immediate send failed -> row must stay pending, not lost"
     assert flaky.calls == 1
 
     _force_due(owner)
@@ -335,22 +242,13 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     owner = "owner-durable-2"
     driver = "driver-durable-2"
     seed_device(driver)
-    seed_device(owner)
     cargo_id = seed_cargo(owner)
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1500}).json()["id"]
 
-    # Доставка создания ставки проверяется отдельным тестом выше.
-    _reset_outbox()
-
-    # После принятия уведомляются оба участника. Сбой первой попытки
-    # моделируется отдельно для каждого получателя, независимо от порядка.
-    attempts = {owner: _FlakyNative(fail_times=1), driver: _FlakyNative(fail_times=1)}
-    def flaky(user_id, *args, **kwargs):
-        return attempts[user_id](user_id, *args, **kwargs)
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
-    monkeypatch.setattr(push_gateway, "send_to_devices", flaky)
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
     as_user(owner)
     r = client.post(f"/api/v1/market/bids/{bid_id}/accept")
@@ -358,17 +256,13 @@ def test_bid_accepted_survives_transient_provider_failure_via_worker_retry(monke
     deal_id = r.json()["deal_id"]
     assert deal_id
 
-    for participant in (owner, driver):
-        rows = outbox_rows(participant)
-        assert len(rows) == 1 and rows[0]["status"] == "retry"
-        _force_due(participant)
-    stats = push_gateway.process_pending_once(limit=10)
-    assert stats["sent"] == 2
-    for participant in (owner, driver):
-        assert len(attempts[participant].successful_payloads) == 1
-        assert attempts[participant].calls == 2
-        assert outbox_rows(participant)[0]["status"] == "sent"
-    assert push_gateway.process_pending_once(limit=10)["sent"] == 0
+    rows = outbox_rows(driver)
+    assert len(rows) == 1 and rows[0]["status"] == "pending"
+
+    _force_due(driver)
+    stats = push_gateway.process_pending_once(flaky, limit=10)
+    assert stats["sent"] == 1
+    assert len(flaky.successful_payloads) == 1
 
 
 # ───────────────────────── chat: durable, sender excluded, retry-safe ─────────────────────────
@@ -386,8 +280,8 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     # with a trivially-succeeding fake, then start this test's own outbox
     # bookkeeping from a clean slate once setup is done (same pattern as
     # test_deal_status_transitions_create_durable_events above).
-    monkeypatch.setattr(push_sender, "_send_native",
-                        lambda tokens, *a, **k: {"sent": len(tokens), "devices": len(tokens), "errors": {}})
+    monkeypatch.setattr(push_sender, "_send_expo_detailed",
+                        lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1800}).json()["id"]
@@ -397,8 +291,8 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     room_id = accept.json()["chat_room_id"]
 
     _reset_outbox()  # discard the setup phase's own outbox rows
-    flaky = _FlakyNative(fail_times=1)
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
     as_user(owner)
     client_msg_id = "durable-chat-msg-1"
@@ -412,7 +306,7 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
     # outbox is now exclusively whatever this one chat send created.
     assert outbox_rows(owner) == [], "chat message must not enqueue a push for its own sender"
     driver_rows = outbox_rows(driver)
-    assert len(driver_rows) == 1 and driver_rows[0]["status"] == "retry"
+    assert len(driver_rows) == 1 and driver_rows[0]["status"] == "pending"
     assert driver_rows[0]["event_id"].startswith("chat:")
     with get_conn() as c:
         bell_rows = c.execute(
@@ -453,21 +347,8 @@ def test_chat_message_durable_event_excludes_sender_and_retry_does_not_duplicate
 
     _force_due(driver)
     stats = push_gateway.process_pending_once(flaky, limit=10)
-    # The room was read before retry: resurrecting its push would restore
-    # the stale icon/OS notification. This queued event is terminal.
-    assert stats["sent"] == 0 and stats["skipped"] == 1
-    assert flaky.calls == 1 and flaky.successful_payloads == []
-    assert outbox_rows(driver)[0]["status"] == "skipped_read"
-    assert push_gateway.process_pending_once(flaky, limit=10)["picked"] == 0
-
-    # Suppression is event-specific: a genuinely new unread message must
-    # still be delivered normally after the earlier message was read.
-    as_user(owner)
-    fresh = client.post("/api/v1/chat/send", json={
-        "room_id": room_id, "text": "new message after read", "client_msg_id": "durable-chat-msg-2",
-    })
-    assert fresh.status_code == 200, fresh.text
-    assert flaky.calls == 2 and len(flaky.successful_payloads) == 1
+    assert stats["sent"] == 1
+    assert len(flaky.successful_payloads) == 1
 
 
 # ───────────────────────── deal status: durable event for delivered/received/completed ─────────────────────────
@@ -485,8 +366,8 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
     # strict never-succeeds fake right before the status transitions under
     # test (monkeypatch.setattr can be called more than once per test; only
     # the final binding before teardown matters for restoration).
-    monkeypatch.setattr(push_sender, "_send_native",
-                        lambda tokens, *a, **k: {"sent": len(tokens), "devices": len(tokens), "errors": {}})
+    monkeypatch.setattr(push_sender, "_send_expo_detailed",
+                        lambda tokens, *a, **k: {"sent": len(tokens), "tickets": [{"status": "ok"}] * len(tokens)})
 
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1200}).json()["id"]
@@ -494,8 +375,8 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
     deal_id = client.post(f"/api/v1/market/bids/{bid_id}/accept").json()["deal_id"]
 
     _reset_outbox()  # discard the setup phase's own (successful) outbox rows
-    flaky = _FlakyNative(fail_times=99)  # never succeeds inline — every status push must land in the outbox
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
+    flaky = _FlakyExpo(fail_times=99)  # never succeeds inline — every status push must land in the outbox
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
     as_user(driver)
     for status in ("in_progress", "at_border", "delivered"):
@@ -504,12 +385,15 @@ def test_deal_status_transitions_create_durable_events(monkeypatch):
 
     rows = outbox_rows(owner)
     event_types = {row["event_type"] for row in rows}
-    assert event_types == {"deal.status.in_progress", "deal.status.at_border", "deal.status.delivered"}
-    payloads = " ".join(row["payload"] for row in rows)
-    assert ":status:in_progress" in payloads
-    assert ":status:at_border" in payloads
-    assert ":status:delivered" in payloads
-    assert all(row["status"] == "retry" and row["attempt_count"] == 1 for row in rows), "Неуспешные попытки остаются в retry с учётом backoff"
+    assert event_types == {"deal_status"}
+    # Категория очереди общая; тип каждого бизнес-события сохраняется в payload.
+    data = [json.loads(row["payload"])["data"] for row in rows]
+    assert {item["event"] for item in data} == {
+        "deal.status.in_progress", "deal.status.at_border", "deal.status.delivered",
+    }
+    assert len(data) == len({item["event_key"] for item in data}) == 3
+    assert all(item["deal_id"] == deal_id for item in data)
+    assert all(row["status"] == "pending" for row in rows), "provider never succeeded -> all must stay retryable, not lost"
 
 
 # ───────────────────────── localization ─────────────────────────
@@ -578,8 +462,8 @@ def test_retry_preserves_title_body_deeplink_badge(monkeypatch):
     seed_device(owner)
     cargo_id = seed_cargo(owner)
 
-    flaky = _FlakyNative(fail_times=1)
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
 
     as_user(driver, role="driver")
     r = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 3300})
@@ -610,11 +494,11 @@ def test_ordinary_bid_cancel_is_durable_and_retries_once(monkeypatch):
     as_user(driver, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 1100}).json()["id"]
     _reset_outbox()
-    flaky = _FlakyNative(fail_times=1)
-    monkeypatch.setattr(push_sender, "_send_native", flaky)
+    flaky = _FlakyExpo(fail_times=1)
+    monkeypatch.setattr(push_sender, "_send_expo_detailed", flaky)
     assert client.post(f"/api/v1/market/bids/{bid_id}/cancel").status_code == 200
     rows = outbox_rows(owner)
-    assert len(rows) == 1 and rows[0]["status"] == "retry"
+    assert len(rows) == 1 and rows[0]["status"] == "pending"
     assert rows[0]["event_id"].startswith(f"bid:{bid_id}:cancelled:")
     _force_due(owner)
     assert push_gateway.process_pending_once(flaky, limit=10)["sent"] == 1
@@ -633,33 +517,31 @@ def test_partial_multi_device_retry_completes_without_resending_success(monkeypa
     })
     calls = []
     def partial(tokens, title, body, data, badge=None):
-        calls.append(list(tokens))
-        return {"sent": 1, "devices": len(tokens), "errors": {"transient": 1} if len(calls) == 1 else {}}
-    assert push_gateway.process_pending_once(partial, limit=10)["retry"] == 1
+        token = tokens[0]
+        calls.append(token)
+        if len(calls) == 1:
+            return {"sent": 0, "tickets": [{"status": "error", "details": {"error": "transient"}}]}
+        return {"sent": 1, "tickets": [{"status": "ok", "id": token}]}
+    assert push_gateway.process_pending_once(partial, limit=10)["failed"] == 1
     _force_due(user)
     assert push_gateway.process_pending_once(partial, limit=10)["sent"] == 1
     assert outbox_rows(user)[0]["status"] == "sent"
-    assert len(calls) == 2 and len(calls[1]) == 1, "the successful first-attempt device must not be re-sent"
+    assert len(calls) == 3, "the successful first-attempt device must not be re-sent"
 
 
-def test_system_push_is_localized_per_device_not_per_last_seen(monkeypatch):
+def test_system_push_is_localized_per_device_not_per_last_seen():
     _reset_outbox()
     user = "mixed-locale-final"
     seed_device(user, locale="EN")
     seed_device(user, locale="ZH")
     captured = []
-    class CaptureProvider:
-        def supports_platform(self, platform): return True
-        def validate_token(self, token): return True
-        def send(self, token, title, body, data, badge=None):
-            captured.append((token, title, body))
-            return push_gateway.ProviderResult("native", "sent")
-    monkeypatch.setattr(push_gateway, "FCMProvider", CaptureProvider)
-    monkeypatch.setattr(push_gateway, "APNsProvider", CaptureProvider)
+    def capture(tokens, title, body, data, badge=None):
+        captured.append((tokens[0], title, body))
+        return {"sent": 1, "tickets": [{"status": "ok"}]}
     result = push_gateway.send_to_devices(user, "fallback", "fallback", {
         "event_key": "event:mixed-locale-final", "i18n_event": "bid_created",
         "i18n_params": {"amount": "$1", "route": "A→B"},
-    }, badge=1, mode="native")
+    }, badge=1, expo_send_one=capture, mode="expo")
     assert result["sent"] == 2
     texts = " ".join(f"{title} {body}" for _, title, body in captured)
     assert "New bid" in texts and "新报价" in texts
@@ -716,7 +598,7 @@ def test_counter_accept_persists_before_inline_send_and_retries_both(monkeypatch
         assert row["event_type"] == "bid.counter_accepted"
         assert row["event_type"] in push_gateway.PUSH_EVENT_CATALOG
         assert row["priority"] == "critical"
-    flaky = _FlakyNative(fail_times=0)
+    flaky = _FlakyExpo(fail_times=0)
     for uid in (owner, driver):
         assert outbox_rows(uid)[0]["status"] == "pending"
         _force_due(uid)

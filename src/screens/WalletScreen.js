@@ -1,4 +1,3 @@
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -117,7 +116,7 @@ export default function WalletScreen({ route }) {
                   : rate.toFixed(2);
                 return (
                   <View key={code} style={[s.fxCard, { borderColor: theme.border }]}>
-                    <CountryFlag code={FX_FLAGS[code]} width={22} />
+                    <CountryFlag code={FX_FLAGS[code]} width={28} />
                     <Text style={[s.fxPair, { color: theme.textMuted }]}>USD / {code}</Text>
                     <Text style={[s.fxRate, { color: theme.text }]}>{formatted}</Text>
                   </View>

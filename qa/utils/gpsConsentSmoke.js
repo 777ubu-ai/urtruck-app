@@ -1,4 +1,4 @@
-/* Active-trip one-shot GPS and legacy client compatibility contract. */
+/* Active-trip GPS + Android background-location compliance contract. */
 import fs from 'node:fs';
 
 const read = (p) => fs.readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
@@ -22,7 +22,6 @@ const playDoc = read('docs/release/google-play-background-location.md');
 const agentsDoc = read('AGENTS.md');
 const claudeDoc = read('CLAUDE.md');
 const privacy = read('web/legal/privacy.html');
-const locationCopy = read('src/utils/locationModeCopy.js');
 
 const must = (source, needle, label) => {
   if (!source.includes(needle)) throw new Error(`GPS consent contract missing: ${label}`);
@@ -63,9 +62,9 @@ mustNot(routeMap, 'Linking.openURL', 'route CTA cannot launch an external maps a
 must(routeMap, 'route-map-fullscreen', 'route CTA has an in-app fullscreen map');
 must(tracker, "requestLocationPermissionThroughDisclosure({ source: 'start_trip' })", 'Start trip is the location disclosure trigger');
 must(tracker, 'getBackgroundLocationPermissionState()', 'location service checks existing grants');
-must(tracker, 'FOREGROUND_LOCATION_ONLY = true', 'snapshot runtime is explicit');
-must(tracker, 'return { ...fg, foregroundOnly: true }', 'snapshot trip needs foreground grant only');
-must(locationCopy, 'Местоположение определяется один раз при открытии карты рейса', 'current disclosure explains one-shot map capture');
+must(tracker, 'backgroundRequired: true', 'Android permission state requires background access for the trip service');
+must(tracker, "ok: fg.status === 'granted' && bg.status === 'granted'", 'Android permission state requires foreground and background grants');
+must(tracker, 'foregroundService:', 'active-trip updates use a location foreground service');
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestForegroundLocationPermission()', 'location service cannot ask foreground permission');
 mustNot(tracker.split('export async function startBackgroundTracking()')[1] || '', 'requestBackgroundLocationPermission()', 'location service cannot ask background permission');
 must(coordinator, 'registerLocationPermissionRequestHandler', 'visible deal screen can register disclosure host');
@@ -110,7 +109,7 @@ for (const [source, label] of [
 
 must(workspace, 'ensureBackgroundLocationPermission()', 'start trip checks location permission');
 const permissionIndex = workspace.indexOf('ensureBackgroundLocationPermission()');
-const statusIndex = workspace.indexOf("changeDealStatus('in_progress', FOREGROUND_LOCATION_ONLY ? 'snapshot' : null)");
+const statusIndex = workspace.indexOf("changeDealStatus('in_progress')");
 if (permissionIndex < 0 || statusIndex < 0 || permissionIndex > statusIndex) {
   throw new Error('GPS consent contract violation: deal becomes in_progress before permission succeeds');
 }
@@ -120,28 +119,35 @@ const permissions = app.android?.permissions || [];
 for (const required of [
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.ACCESS_COARSE_LOCATION',
+  'android.permission.ACCESS_BACKGROUND_LOCATION',
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_LOCATION',
 ]) {
   if (!permissions.includes(required)) throw new Error(`GPS consent contract missing Android permission: ${required}`);
   console.log(`  ✓ Android permission ${required}`);
 }
-mustNot(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION', 'native manifest excludes background location permission');
-mustNot(manifest, 'android.permission.FOREGROUND_SERVICE_LOCATION', 'native manifest excludes location foreground-service permission');
+must(manifest, 'android.permission.ACCESS_BACKGROUND_LOCATION', 'native manifest keeps Android background location permission');
+must(manifest, 'android.permission.FOREGROUND_SERVICE_LOCATION', 'native manifest keeps location foreground-service permission');
 
 const locationPlugin = (app.plugins || []).find((entry) => Array.isArray(entry) && entry[0] === 'expo-location');
-if (locationPlugin?.[1]?.isAndroidForegroundServiceEnabled !== false) throw new Error('Snapshot build unexpectedly enables Android location service');
-if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== false) throw new Error('Snapshot build unexpectedly enables Android background location');
-if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== false) throw new Error('Snapshot build unexpectedly enables iOS background location');
-console.log('  ✓ expo-location snapshot mode excludes native background location');
+if (locationPlugin?.[1]?.isAndroidForegroundServiceEnabled !== true) throw new Error('GPS consent contract missing: expo-location Android foreground service mode');
+if (locationPlugin?.[1]?.isAndroidBackgroundLocationEnabled !== true) throw new Error('GPS consent contract missing: expo-location Android background mode');
+if (locationPlugin?.[1]?.isIosBackgroundLocationEnabled !== true) throw new Error('GPS consent contract missing: iOS background location mode');
+console.log('  ✓ expo-location Android foreground/background location modes enabled');
 
 must(playDoc, 'ACCESS_BACKGROUND_LOCATION', 'Play release doc covers Android background permission');
-must(playDoc, 'Snapshot release mode', 'Play release doc names current snapshot contract');
+must(playDoc, 'isAndroidBackgroundLocationEnabled: true', 'Play release doc matches Expo Android config');
 must(playDoc, 'DealWorkspaceRoute.js', 'Play release doc names canonical gated route');
-must(agentsDoc, 'разовое определение на открытой карте', 'AGENTS marks current snapshot rule');
-must(claudeDoc, 'разовое определение на открытой карте', 'CLAUDE marks current snapshot rule');
+mustNot(playDoc, 'не использует `ACCESS_BACKGROUND_LOCATION`', 'Play release doc does not claim background permission is absent');
+mustNot(playDoc, 'не содержит `ACCESS_BACKGROUND_LOCATION`', 'Play checklist does not require removing background permission');
+must(agentsDoc, 'Фоновая геолокация Android включена', 'AGENTS current GPS rule is enabled');
+mustNot(agentsDoc, 'Фоновая геолокация Android отключена', 'AGENTS has no obsolete disabled GPS rule');
+must(claudeDoc, 'Android GPS: background location активного рейса', 'CLAUDE current GPS rule is enabled');
+mustNot(claudeDoc, 'Временно отключено: фоновая геолокация Android', 'CLAUDE has no obsolete disabled GPS section');
 must(privacy, 'в фоновом режиме', 'public privacy policy discloses background location');
 must(privacy, 'только авторизованным участникам соответствующей сделки', 'privacy policy limits live location to deal participants');
 must(privacy, 'Геолокация не используется для рекламы', 'privacy policy rules out advertising use');
 
 must(routeMap, '<TruckMap', 'trip renders embedded route map inside UrTruck');
 
-console.log('\n[gps-consent] OK — Start-trip consent + map-only snapshot + legacy client boundary');
+console.log('\n[gps-consent] OK — Start-trip-only consent + embedded route + Android background-location contract');

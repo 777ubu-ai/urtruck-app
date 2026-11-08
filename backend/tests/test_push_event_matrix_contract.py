@@ -35,17 +35,8 @@ def test_bid_created_routes_to_owner_or_trip_driver_with_order_deeplink():
 def test_bid_accepted_and_deal_created_keep_canonical_order_card_links():
     # Push-closure track: event_key added for durable-outbox retry; text
     # localized via push_i18n instead of hardcoded RU.
-    # Обычное принятие сохраняет обе доставки до commit, с каноническим URL.
-    import ast
-    accept = next(n for n in ast.parse(MARKET).body if isinstance(n, ast.FunctionDef) and n.name == "accept_bid")
-    accept_calls = [n for n in ast.walk(accept) if isinstance(n, ast.Call)]
-    notices = [n for n in accept_calls if isinstance(n.func, ast.Name) and n.func.id == "create_notification"]
-    assert any(ast.unparse(n.args[0]) == "uid" and ast.literal_eval(n.args[1]) == "bid_accepted"
-               and {kw.arg: ast.unparse(kw.value) for kw in n.keywords}
-                   == {"url": "deal_url", "event_key": "event_key", "conn": "c"} for n in notices)
-    loops = [n for n in ast.walk(accept) if isinstance(n, ast.For)]
-    assert any(ast.unparse(n.iter) == "(result['shipper_id'], result['driver_id'])" for n in loops)
-    assert 'i18n_event = "bid_accepted" if uid == bid["bidder_id"] else "bid_accept_confirmed"' in MARKET
+    assert 'create_notification(bid["bidder_id"], "bid_accepted", title, text, "✅", url=deal_url, event_key=event_key)' in MARKET
+    assert 'push_i18n.push_text("bid_accepted", loc, amount=_money' in MARKET
     # Новый contract сохраняет event_key внутри транзакции сделки.
     import ast
     calls = [node for node in ast.walk(ast.parse(MARKET)) if isinstance(node, ast.Call)
@@ -105,11 +96,12 @@ def test_deal_status_notifications_cover_release_status_flow():
         assert f'"{status}":' in MARKET
     # Push-closure track: title/body_txt now come from push_i18n (localized)
     # instead of the old hardcoded-RU `labels` dict; event_key added.
+    assert 'i18n_event = f"deal_status_{new_status}"' in MARKET
     assert 'title, body_txt = push_i18n.push_text(i18n_event, locale, route=route)' in MARKET
     assert 'create_notification(other_id, "deal_status", title, body_txt, "🚛", url=deal_url, event_key=event_key, conn=c)' in MARKET
-    assert '_record_deal_transition_effects(c, deal, new_status, actor_uid, event_payload)' in MARKET
-    assert 'kind="deal_status", data=payload["data"]' in MARKET
-    assert 'event_key = f"deal:{deal_id}:status:{new_status}"' in MARKET
+    assert 'push_gateway.enqueue_event(event_key, "deal_status", other_id,' in MARKET
+    assert 'send_to_user(other_id, payload["title"], payload["body"], url=payload["data"]["url"], kind="deal_status", data=payload["data"])' in MARKET
+    assert 'event_key = f"deal:{deal[\'id\']}:status:{new_status}"' in MARKET
 
 
 def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_app():
@@ -131,16 +123,13 @@ def test_tracking_notifications_use_deal_tracking_action_link_for_push_and_in_ap
 
 def test_push_api_wraps_background_sender_without_removing_kind_or_data():
     assert 'def send_to_user(user_id: str, title: str, body: str, url: str = "/", kind: str = "info", data: dict = None)' in PUSH
-    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=payload_data, event_id=event_id)' in PUSH
-    assert 'payload_data = dict(data or {})' in PUSH
-    assert PUSH.index('push_gateway.enqueue_event(event_id', PUSH.index('def send_to_user')) < PUSH.index('threading.Thread(target=_bg', PUSH.index('def send_to_user'))
+    assert 'push_sender.send(user_id, title, body, url=url, kind=kind, data=data)' in PUSH
 
 
-def test_bid_expiry_queues_bell_and_push_in_the_expiry_transaction():
-    assert "_queue_expired_bid_notifications(conn, bid)" in EXPIRY
-    assert 'push_gateway.enqueue_event(event_key, "bid.expired", recipient' in EXPIRY
-    assert "}, conn=conn)" in EXPIRY
-    assert "INSERT INTO notifications" in EXPIRY
+def test_bid_expiry_has_no_notification_sender_yet_so_live_matrix_must_not_claim_pass():
+    assert "create_notification(" not in EXPIRY
+    assert "send_to_user(" not in EXPIRY
+    assert "expired_bids" in EXPIRY
 
 
 def test_critical_bid_and_deal_status_events_now_carry_typed_payload_and_event_key():
@@ -155,7 +144,6 @@ def test_critical_bid_and_deal_status_events_now_carry_typed_payload_and_event_k
     info_calls = re.findall(r"send_to_user\([^\\n]+url=.*?\)", MARKET)
     assert info_calls, "expected marketplace push callsites to exist"
     assert 'send_to_user(recipient, title, text, url=url, kind="bid",' in MARKET
-    assert 'send_to_user(uid, title, text, url=deal_url, kind="bid", data=data)' in MARKET
-    assert '"deal_id": result["deal_id"], "i18n_event": i18n_event' in MARKET
+    assert 'send_to_user(bid["bidder_id"], title, text, url=deal_url, kind="bid",' in MARKET
     # Every one of these critical call sites carries "event_key" in its data.
     assert MARKET.count('"event_key": event_key') >= 4

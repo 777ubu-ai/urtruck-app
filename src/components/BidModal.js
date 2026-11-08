@@ -1,5 +1,4 @@
-import { withAdditionalLanguageTree, withAdditionalLanguages } from '../utils/additionalLocales.js';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { KeyboardSafeScrollView } from './ui/v1/KeyboardSafeLayout';
 import { useI18n } from '../utils/useI18n';
@@ -8,7 +7,6 @@ import { useToast } from './Toast';
 import { marketAPI } from '../utils/marketAPI';
 import { vehicleAPI } from '../utils/vehicleAPI';
 import { CURRENCY_SYMBOLS } from '../utils/normalizers';
-import { acquireSingleFlight, releaseSingleFlight } from '../utils/singleFlightLock';
 
 // PR-C2 (BidModal P0): currency-aware quick prices.
 // До этого все chips и subtitle рендерились с hardcoded `$` —
@@ -75,7 +73,6 @@ export default function BidModal({
   const [bid, setBid] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const submitLockRef = useRef(null);
   const [error, setError] = useState('');
   // Ставку больше нельзя отправить (сессия истекла / ставка уже принята и т.п.):
   // блокируем кнопку, чтобы пользователь не жал повторно и не ловил ту же ошибку.
@@ -161,11 +158,9 @@ export default function BidModal({
     }
     if (!isCounter && !isEdit && cargoId && vehicles.length > 1 && !selectedVehicleId) {
       const msg = { RU: 'Выберите машину для перевозки', KK: 'Тасымалға көлікті таңдаңыз', EN: 'Choose a vehicle for this shipment', ZH: '请选择本次运输车辆' };
-Object.assign(msg, withAdditionalLanguageTree(msg));
       setError(msg[lang] || msg.RU);
       return;
     }
-    if (!acquireSingleFlight(submitLockRef, 'bid-submit')) return;
     setLoading(true);
     setError('');
     try {
@@ -223,7 +218,6 @@ Object.assign(msg, withAdditionalLanguageTree(msg));
     } catch (e) {
       setError(t('no_connection'));
     } finally {
-      releaseSingleFlight(submitLockRef, 'bid-submit');
       setLoading(false);
     }
   };
@@ -274,7 +268,7 @@ Object.assign(msg, withAdditionalLanguageTree(msg));
 
           {!isPrefill && cargoId && vehicles.length > 1 ? (
             <View style={s.vehicleChooser} testID="bid-vehicle-chooser">
-              <Text style={[s.vehicleChooserLabel, { color: theme.text }]}>{(withAdditionalLanguages({ RU: 'Машина для перевозки', KK: 'Тасымал көлігі', EN: 'Vehicle for shipment', ZH: '运输车辆' }))[lang] || 'Машина для перевозки'}</Text>
+              <Text style={[s.vehicleChooserLabel, { color: theme.text }]}>{({ RU: 'Машина для перевозки', KK: 'Тасымал көлігі', EN: 'Vehicle for shipment', ZH: '运输车辆' })[lang] || 'Машина для перевозки'}</Text>
               <View style={s.vehicleChips}>
                 {vehicles.map((vehicle) => {
                   const activeVehicle = String(vehicle.id) === String(selectedVehicleId);

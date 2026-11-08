@@ -43,6 +43,5 @@ assert.doesNotMatch(
   "another provider must never replace Yandex",
 );
 assert.match(map, /new api\.Map/);
-assert.doesNotMatch(map, /api\.multiRouter\.MultiRoute/);
-assert.match(map, /strokeStyle: 'dash'/);
+assert.match(map, /api\.multiRouter\.MultiRoute/);
 console.log("clean Yandex-only map screen contract: PASS");

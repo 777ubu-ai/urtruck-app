@@ -28,6 +28,5 @@ test('GPS background delivery persists failed samples and retries them FIFO', ()
   assert.match(gps, /locationQueue.drain/);
   assert.doesNotMatch(gps, /slice\(-MAX_QUEUED_LOCATIONS\)/);
   assert.match(gps, /locationPushChain/);
-  assert.match(hook, /getCurrentLocationPayload\(\{ signal: controller\.signal \}\)/);
-  assert.match(hook, /pushLocationToDeals\(payload, idsRef\.current\)/);
+  assert.match(hook, /pushLocationToDeals\(\{ \.\.\.payload, timestamp: pos\.timestamp \}, idsRef\.current\)/);
 });

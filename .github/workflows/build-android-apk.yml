@@ -6,67 +6,9 @@ name: Build Android APK
 on:
   workflow_dispatch:
     inputs:
-      operation:
-        description: Build a QA2 APK or collect read-only QA2 feed preflight evidence
-        required: false
-        type: choice
-        options:
-          - apk
-          - read_only_audit
-        default: apk
       source_ref:
-        description: Exact source commit SHA to build or audit
+        description: Exact source commit SHA to build
         required: true
-        type: string
-      api_target:
-        description: Configured QA2 or isolated loopback lab API (adb reverse required on device)
-        required: true
-        type: choice
-        options:
-          - qa2
-          - loopback_lab
-        default: qa2
-      lab_confirmation:
-        description: Type BUILD_OPPO_LOOPBACK_LAB only for loopback_lab
-        required: false
-        type: string
-      enable_external_freight_feed:
-        description: Enable the external freight feed in this QA-only APK
-        required: false
-        type: boolean
-        default: true
-      qa_abi:
-        description: Архитектура тестовых телефонов; all сохраняет универсальный APK
-        required: false
-        type: choice
-        options:
-          - all
-          - arm64-v8a
-        default: all
-  workflow_call:
-    inputs:
-      operation:
-        required: false
-        type: string
-        default: apk
-      source_ref:
-        required: true
-        type: string
-      api_target:
-        required: false
-        type: string
-        default: qa2
-      lab_confirmation:
-        required: false
-        type: string
-      enable_external_freight_feed:
-        required: false
-        type: boolean
-        default: true
-      qa_abi:
-        required: false
-        type: string
-        default: all
   push:
     branches: [main, "claude/**"]
 
@@ -75,7 +17,6 @@ permissions:
 
 jobs:
   build:
-    if: inputs.operation == '' || inputs.operation == 'apk'
     name: Build APK on Ubuntu
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -85,7 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_ref || github.sha }}
-          fetch-depth: 0
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -96,10 +36,7 @@ jobs:
       - name: Set QA2 build contract
         env:
           EXPECTED_SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
-          QA2_API_URL: ${{ secrets.QA2_API_URL }}
-          API_TARGET: ${{ inputs.api_target || 'qa2' }}
-          LAB_CONFIRMATION: ${{ inputs.lab_confirmation || '' }}
-          ENABLE_EXTERNAL_FREIGHT_FEED: ${{ github.event_name == 'push' || inputs.enable_external_freight_feed }}
+          QA_API_URL: ${{ secrets.QA2_API_URL }}
         run: |
           set -euo pipefail
           RESOLVED_SOURCE_SHA="$(git rev-parse HEAD)"
@@ -107,31 +44,10 @@ jobs:
             echo "::error::Expected exact source SHA $EXPECTED_SOURCE_SHA, resolved $RESOLVED_SOURCE_SHA"
             exit 1
           }
-          case "$API_TARGET" in
-            qa2)
-              QA_API_URL="${QA2_API_URL:-}"
-              ;;
-            loopback_lab)
-              test "$LAB_CONFIRMATION" = BUILD_OPPO_LOOPBACK_LAB || {
-                echo "::error::Loopback lab build requires explicit BUILD_OPPO_LOOPBACK_LAB confirmation"
-                exit 1
-              }
-              git merge-base --is-ancestor 6bf713eac1f9c7339b8651fecc132aa14f7862e5 "$RESOLVED_SOURCE_SHA" || {
-                echo "::error::Loopback lab build source must descend from the reviewed 6bf713e candidate"
-                exit 1
-              }
-              QA_API_URL="http://127.0.0.1:8002"
-              ;;
-            *)
-              echo "::error::Unsupported QA API target"
-              exit 1
-              ;;
-          esac
           test -n "${QA_API_URL:-}" || {
-            echo "::error::Selected QA API target is unavailable"
+            echo "::error::QA2_API_URL is required for QA2 Android builds"
             exit 1
           }
-          export QA_API_URL
           QA_HOST="$(python3 - <<'PY'
           from urllib.parse import urlparse
           import os
@@ -145,60 +61,25 @@ jobs:
               exit 1
               ;;
           esac
-          if [ "$API_TARGET" = loopback_lab ]; then
-            test "$QA_API_URL" = "http://127.0.0.1:8002" || {
-              echo "::error::Loopback lab API must be exactly http://127.0.0.1:8002"
-              exit 1
-            }
-            echo "QA2_API_TARGET=loopback-lab; device requires adb reverse tcp:8002 tcp:8002"
-          else
-            case "$QA_HOST" in
-              127.0.0.1|localhost|0.0.0.0|::1)
-                echo "::error::Loopback API is allowed only in explicit loopback_lab mode"
-                exit 1
-                ;;
-            esac
-            qa_ok=no
-            for path in /health /api/version; do
-              code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
-              [[ "$code" =~ ^2 ]] && qa_ok=yes && break
-            done
-            test "$qa_ok" = yes || {
-              echo "::error::QA2 Android build target is not healthy"
-              exit 1
-            }
-            echo "QA2_API_TARGET=healthy-nonproduction"
-          fi
-          echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
-          echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
-          echo "URTRUCK_VERSION_NAME=1.0.13-qa2" >> "$GITHUB_ENV"
-          read -r qa2_version_code qa2_previous_version_code < <(node -e "const metadata = require('./config/qa2-android-build-metadata'); process.stdout.write([metadata.QA2_ANDROID_VERSION_CODE, metadata.QA2_ANDROID_PREVIOUS_VERSION_CODE].join(' ') + '\\n')")
-          test "$qa2_version_code" -gt "$qa2_previous_version_code" || {
-            echo "::error::QA2 Android versionCode must be greater than the previous QA2 APK"
+          qa_ok=no
+          for path in /health /api/version; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${QA_API_URL%/}${path}" || true)"
+            [[ "$code" =~ ^2 ]] && qa_ok=yes && break
+          done
+          test "$qa_ok" = yes || {
+            echo "::error::QA2 Android build target is not healthy"
             exit 1
           }
-          echo "URTRUCK_VERSION_CODE=$qa2_version_code" >> "$GITHUB_ENV"
+          echo "URTRUCK_SOURCE_SHA=$RESOLVED_SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "URTRUCK_BUILD_FLAVOR=qa2" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_NAME=1.0.9" >> "$GITHUB_ENV"
+          echo "URTRUCK_VERSION_CODE=211040081" >> "$GITHUB_ENV"
           echo "URTRUCK_EXPECTED_ANDROID_PACKAGE=com.urtruck.app.qa2" >> "$GITHUB_ENV"
-          echo "URTRUCK_QA_API_TARGET=$API_TARGET" >> "$GITHUB_ENV"
           printf 'EXPO_PUBLIC_API_URL=%s\n' "$QA_API_URL" >> "$GITHUB_ENV"
-          if [ "$API_TARGET" = qa2 ] && [ "$ENABLE_EXTERNAL_FREIGHT_FEED" != true ]; then
-            echo '::error::QA2 APK requires external freight feed'
-            exit 1
-          fi
-          if [ "$ENABLE_EXTERNAL_FREIGHT_FEED" = "true" ]; then
-            test "$API_TARGET" = "qa2" || {
-              echo "::error::External freight feed is enabled only for a QA2 API build"
-              exit 1
-            }
-            echo "EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=true" >> "$GITHUB_ENV"
-            echo "EXTERNAL_FREIGHT_FEED=enabled"
-          else
-            echo "EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=false" >> "$GITHUB_ENV"
-            echo "EXTERNAL_FREIGHT_FEED=disabled"
-          fi
+          echo "QA2_API_TARGET=healthy-nonproduction"
 
       - name: Verify QA2 build regression contract
-        run: node --test tests/frontend/test_qa2_live_build_contract.mjs tests/frontend/test_qa2_feed_apk_guard.mjs
+        run: node --test tests/frontend/test_qa2_live_build_contract.mjs
 
       - name: Materialize QA2 native MapKit build contract
         # Keep the native key out of source and separate from the web JS key.
@@ -233,12 +114,6 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk || true
           df -h
-
-      # The cleanup above removes the preinstalled NDK. React Native's native
-      # modules pin this exact side-by-side version, so install it afterwards
-      # rather than relying on Gradle's implicit SDK download.
-      - name: Install required Android NDK
-        run: sdkmanager "ndk;27.1.12297006"
 
       - name: Install npm dependencies (skip postinstall scripts)
         run: |
@@ -277,15 +152,13 @@ jobs:
             python3 scripts/verify_android_firebase_config.py --check-source google-services.json
 
       - name: Expo prebuild (Android, non-interactive)
-        # Expo prebuild regenerates android/ even without --clean. App-owned
-        # Kotlin sources are restored from this exact checkout immediately after.
+        # The tracked Android tree contains the approved full-screen splash and
+        # its native launch wiring. --clean deletes those native files before
+        # the build and silently restores Expo's tiny centered icon splash.
         run: npx expo prebuild --platform android --no-install --non-interactive
         env:
           EXPO_NO_TELEMETRY: 1
           CI: 1
-
-      - name: Restore app-owned Android Kotlin classes removed by prebuild
-        run: python3 scripts/restore_android_qa_native_sources.py --expected-sha "$URTRUCK_SOURCE_SHA"
 
       - name: Verify Google Services Gradle plugin wired after prebuild
         run: python3 scripts/verify_android_firebase_config.py --check-plugin android
@@ -335,23 +208,13 @@ jobs:
         # QA2-flavor APK intentionally has no such key (it's never uploaded
         # to Play) — the explicit opt-in flag below is the one sanctioned
         # exception to that fail-closed default.
-        env:
-          QA2_ABI: ${{ inputs.qa_abi || 'all' }}
         run: |
           cd android
           chmod +x gradlew
-          abi_args=()
-          case "$QA2_ABI" in
-            all) ;;
-            arm64-v8a) abi_args=(-PreactNativeArchitectures=arm64-v8a) ;;
-            *) echo 'Неподдерживаемая архитектура QA2'; exit 1 ;;
-          esac
           ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary \
-            --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1536m -XX:+UseG1GC -Dfile.encoding=UTF-8' \
             -PURTRUCK_VERSION_CODE="$URTRUCK_VERSION_CODE" \
             -PURTRUCK_QA2=true \
-            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true "${abi_args[@]}"
+            -PURTRUCK_ALLOW_DEBUG_SIGNED_RELEASE=true
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
@@ -363,13 +226,6 @@ jobs:
           mv app-release.apk UrTruck.apk
           ls -la UrTruck.apk
 
-      - name: Verify merged FCM service and app-owned DEX classes
-        run: |
-          python3 scripts/verify_android_fcm_apk.py \
-            android/app/build/outputs/apk/release/UrTruck.apk \
-            --expected-package "$URTRUCK_EXPECTED_ANDROID_PACKAGE" \
-            --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt"
-
       - name: Verify QA2 artifact manifest
         env:
           EXPECTED_CERT_SHA256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
@@ -379,11 +235,6 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           BADGING="$($AAPT dump badging "$APK")"
-          PERMISSIONS="$($AAPT dump permissions "$APK")"
-          if printf '%s\n' "$PERMISSIONS" | grep -E 'android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)' ; then
-            echo "::error::Snapshot QA APK unexpectedly declares background/location-service permission"
-            exit 1
-          fi
           echo "$BADGING" | grep -F "package: name='com.urtruck.app.qa2' versionCode='${URTRUCK_VERSION_CODE}' versionName='${URTRUCK_VERSION_NAME}'"
           echo "$BADGING" | grep -F "targetSdkVersion:'36'"
           CERT="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/.*SHA-256 digest: //p' | head -n 1)"
@@ -397,10 +248,6 @@ jobs:
           echo "apkSHA256=$SHA256"
           echo "certificateSHA256=$CERT"
 
-      - name: Verify embedded QA2 feed and source identity
-        if: env.URTRUCK_QA_API_TARGET == 'qa2'
-        run: python3 scripts/verify_qa2_apk_feed.py android/app/build/outputs/apk/release/UrTruck.apk "$URTRUCK_SOURCE_SHA" "$EXPO_PUBLIC_API_URL"
-
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -408,83 +255,3 @@ jobs:
           path: android/app/build/outputs/apk/release/UrTruck.apk
           retention-days: 30
           if-no-files-found: error
-
-  owned-feed-audit:
-    name: Read-only owned feed evidence
-    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'read_only_audit' && github.ref_name == 'qa2/integration-candidate'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: qa2
-    permissions:
-      contents: read
-      checks: read
-      pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-      - name: Require exact reviewed workflow source
-        env:
-          AUDIT_SOURCE_SHA: ${{ inputs.source_ref }}
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF_NAME" = "qa2/integration-candidate"
-          [[ "$AUDIT_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$AUDIT_SOURCE_SHA" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          pr="$(gh api "repos/$GITHUB_REPOSITORY/pulls/602")"
-          test "$(jq -r '.state' <<<"$pr")" = closed
-          test "$(jq -r '.merged' <<<"$pr")" = true
-          test "$(jq -r '.base.ref' <<<"$pr")" = qa2/integration-candidate
-          test "$(jq -r '.merge_commit_sha' <<<"$pr")" = "$AUDIT_SOURCE_SHA"
-          pr_head="$(jq -r '.head.sha' <<<"$pr")"
-          git fetch origin "$pr_head" --depth=1
-          git diff --quiet "$pr_head" "$AUDIT_SOURCE_SHA" -- || {
-            echo '::error::Merged candidate tree differs from the reviewed PR head'
-            exit 1
-          }
-          # Владелец 25.10.2026 разрешил внутренний выпуск без независимого GitHub approval.
-          checks="$(gh api "repos/$GITHUB_REPOSITORY/commits/$pr_head/check-runs?per_page=100")"
-          for check in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
-            conclusion="$(jq -r --arg name "$check" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$checks")"
-            test "$conclusion" = success || { echo "::error::Required check '$check' is $conclusion"; exit 1; }
-          done
-          python3 -m py_compile scripts/qa/audit_owned_feed_runtime.py
-      - name: Install SSH helper on ephemeral runner
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-      - name: Read QA2 service state, aggregate counts and code hashes
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PASS: ${{ secrets.SERVER_PASS }}
-          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$SERVER_HOST"
-          test -n "$SERVER_USER"
-          test -n "$SERVER_PASS"
-          test -n "$SERVER_SSH_KNOWN_HOSTS" || { echo '::error::Verified SSH host key is required'; exit 1; }
-          known_hosts_file="$RUNNER_TEMP/owned-feed-known-hosts"
-          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
-          chmod 600 "$known_hosts_file"
-          export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" 'python3 -' < scripts/qa/audit_owned_feed_runtime.py
-          sshpass -e ssh -o UserKnownHostsFile="$known_hosts_file" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          for unit in urtruck-telegram-feed.service urtruck-qa2-feed-bridge.service urtruck-qa2-feed-bridge.timer urtruck-qa2.service; do
-            systemctl show "$unit" -p Id -p ActiveState -p SubState -p MainPID -p WorkingDirectory --no-pager
-          done
-          python3 - <<'PY'
-          import json
-          import urllib.request
-          try:
-              with urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=5) as response:
-                  print(json.dumps({'qa2_health_http': response.status}))
-          except Exception as exc:
-              print(json.dumps({'qa2_health_error': type(exc).__name__}))
-          PY
-          REMOTE

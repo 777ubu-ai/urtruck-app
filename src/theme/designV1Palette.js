@@ -28,16 +28,14 @@ export const withAlpha = (hex, alpha) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${clamp})`;
 };
 export const LIGHT = {
-  bg: '#F7F3EC',
-  bgDeep: '#F5EEE3',
+  bg: '#F6F8F7',
+  bgDeep: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceLift: '#FFFCF7',
-  surfaceMuted: '#FAF8F4',
-  chatCanvas: '#F5EEE3',
-  chatPattern: '#8C7D68',
+  surfaceLift: '#F3FBF7',
+  surfaceMuted: '#F0F4F2',
 
-  border: '#D8D2C9',
-  borderStrong: '#BFB5A8',
+  border: '#E5ECE8',
+  borderStrong: '#C8D8CF',
 
   driver: '#168759',
   driverDeep: '#0F6B47',
@@ -105,20 +103,20 @@ export const LIGHT = {
 // do not change accidentally. These are visual tokens only: no API/status
 // semantics belong here.
 export const DRIVER_CERAMIC = {
-  bg: '#F7F3EC',
-  surface: '#FFFFFF',
-  surfaceMuted: '#FAF8F4',
+  bg: '#EEF2F5',
+  surface: '#FAFCFD',
+  surfaceMuted: '#E5EBF0',
   text: '#111C2C',
   textMuted: '#657489',
-  border: '#D8D2C9',
+  border: '#D1DAE3',
   active: '#738396',
-  activeSoft: '#E9E3DA',
+  activeSoft: '#DDE4EA',
   activeText: '#FAFCFD',
   success: '#3E8E6B',
   warning: '#A4773E',
   error: '#B85454',
   shadow: '#9AA9B7',
-  routeLine: '#DDD5CA',
+  routeLine: '#D7E0E7',
   textDim: '#7A8795',
   driver: '#738396',
   driverDeep: '#5F6E7E',
@@ -137,20 +135,20 @@ export const DRIVER_CERAMIC = {
 // Shipper work-surface contract. Kept separate from the driver's
 // semantic/status palette so changing client chrome cannot alter driver flows.
 export const SHIPPER_CERAMIC = {
-  bg: '#F7F3EC',
-  surface: '#FFFFFF',
-  surfaceMuted: '#FAF8F4',
+  bg: '#F1F3F5',
+  surface: '#FAFCFD',
+  surfaceMuted: '#E5EBF0',
   text: '#111C2C',
   textMuted: '#657489',
-  border: '#D8D2C9',
+  border: '#D1DAE3',
   active: '#738396',
-  activeSoft: '#E9E3DA',
+  activeSoft: '#DDE4EA',
   activeText: '#FAFCFD',
   success: '#3E8E6B',
   warning: '#A4773E',
   error: '#B85454',
   shadow: '#9AA9B7',
-  routeLine: '#DDD5CA',
+  routeLine: '#D7E0E7',
   textDim: '#7A8795',
   driver: '#738396',
   driverDeep: '#5F6E7E',
@@ -201,42 +199,6 @@ export const DRIVER_CERAMIC_DARK = {
   statusCompleted: '#9EAAA2',
   statusCancelled: '#7C8B82',
   clientAccent: '#8FA2B5',
-};
-
-// Dark counterpart for shipper/client Ceramic surfaces. The light-only
-// SHIPPER_CERAMIC object was previously returned for both theme modes, so
-// profile and client work screens stayed light after selecting dark mode.
-// Keep the muted blue-grey client identity while using the same dark surface
-// hierarchy as the rest of the application.
-export const SHIPPER_CERAMIC_DARK = {
-  bg: '#0F1512',
-  surface: '#151E19',
-  surfaceMuted: '#202C25',
-  text: '#F3F7F4',
-  textMuted: '#B7C3BB',
-  border: '#2A3930',
-  active: '#8FA2B5',
-  activeSoft: '#24323A',
-  activeText: '#0F1512',
-  success: '#63D69A',
-  warning: '#F5B75B',
-  error: '#FF7B7B',
-  shadow: '#000000',
-  routeLine: '#3A4B40',
-  textDim: '#9EAAA2',
-  driver: '#8FA2B5',
-  driverDeep: '#73889D',
-  driverGlow: 'rgba(143,162,181,0.30)',
-  driverSoft: '#24323A',
-  driverOnAccent: '#0F1512',
-  cargoOwner: '#8FA2B5',
-  cargoOwnerDeep: '#73889D',
-  cargoOwnerGlow: 'rgba(143,162,181,0.30)',
-  cargoOwnerSoft: '#24323A',
-  clientAccent: '#8FA2B5',
-  clientNavPill: '#24323A',
-  clientNavIcon: '#F3F7F4',
-  clientNavLabel: '#F3F7F4',
 };
 
 export const DARK = {

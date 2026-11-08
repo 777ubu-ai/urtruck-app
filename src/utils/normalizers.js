@@ -1,4 +1,3 @@
-import { localizeUiText } from './additionalLocales.js';
 // Canonical shape mappers for marketplace objects. Keep this module PURE:
 // frontend Node regression tests import it without React Native. Locale is an
 // explicit optional argument; runtime language/storage must not leak here.
@@ -53,33 +52,7 @@ const displayUnits = (lang = 'RU') => {
   const locale = String(lang || 'RU').toUpperCase();
   if (locale === 'ZH') return { ton: '吨', volume: '立方米' };
   if (locale === 'EN') return { ton: 't', volume: 'm³' };
-  return { ton: localizeUiText('т', locale), volume: localizeUiText('м³', locale) };
-};
-
-// Cargo weights are stored and transported in tonnes. Group only numeric
-// values for readability; non-numeric legacy strings are preserved verbatim.
-export const formatWeightTons = (value, lang = 'RU') => {
-  if (value === null || value === undefined || String(value).trim() === '') return '';
-  const raw = String(value).trim();
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) return raw;
-  const locale = String(lang || 'RU').toUpperCase();
-  const [integer, fraction] = String(numeric).split('.');
-  const groupSeparator = locale === 'EN' || locale === 'ZH' ? ',' : ' ';
-  const decimalSeparator = locale === 'RU' || locale === 'KK' ? ',' : '.';
-  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, groupSeparator);
-  return fraction ? `${grouped}${decimalSeparator}${fraction}` : grouped;
-};
-
-// The cargo form is explicitly labeled in tonnes. Accept either decimal
-// separator but reject partial parses such as parseFloat("20,5") === 20.
-export const parseWeightTonsInput = (value) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) return null;
-  const normalized = raw.replace(/[\s\u00a0\u202f]/g, '').replace(',', '.');
-  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+  return { ton: 'т', volume: 'м³' };
 };
 
 // Exported for FavoritesScreen (saved-item snapshots store raw departure
@@ -189,10 +162,7 @@ export const normalizeCargo = (raw, lang = 'RU') => {
 export const cargoDisplay = (cargo, t, lang = 'RU') => {
   const dash = (t && t('not_specified')) || 'Not specified';
   const units = displayUnits(lang);
-  const weightNumber = Number(cargo?.weightTons);
-  const legacyWeight = cargo?.weightTons != null && String(cargo.weightTons).trim() !== '';
-  const hasWeight = Number.isFinite(weightNumber) ? weightNumber > 0 : legacyWeight;
-  const weight = hasWeight ? `${formatWeightTons(cargo.weightTons, lang)} ${units.ton}` : dash;
+  const weight = cargo?.weightTons > 0 ? `${cargo.weightTons} ${units.ton}` : dash;
   const volume = cargo?.volumeM3 > 0 ? `${cargo.volumeM3} ${units.volume}` : dash;
   return {
     from: localizePlace(sanitizeForDisplay(cargo?.from), lang) || dash,

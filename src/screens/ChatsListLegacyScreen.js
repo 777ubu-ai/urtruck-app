@@ -1,5 +1,3 @@
-import { localizeUiText } from '../utils/additionalLocales.js';
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 // ChatsListScreen — «Сделки» (dealsMode) и «Чаты» (обычный режим).
 //
 // Архитектура «Сделки» (WhatsApp-style, 04.08.2026):
@@ -646,7 +644,7 @@ export default function ChatsListScreen({ navigation, route }) {
           <Feather name="search" size={17} color={theme.textMuted} />
           <TextInput
             style={[s.searchInput, { color: theme.text }]}
-            placeholder={dealsMode ? (lang === 'RU' ? localizeUiText('Поиск: водитель, маршрут, груз', lang) : t('chat_search_placeholder')) : t('chat_search_placeholder')}
+            placeholder={dealsMode ? (lang === 'RU' ? 'Поиск: водитель, маршрут, груз' : t('chat_search_placeholder')) : t('chat_search_placeholder')}
             placeholderTextColor={theme.textMuted}
             value={query}
             onChangeText={setQuery}

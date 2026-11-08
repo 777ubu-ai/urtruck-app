@@ -1,11 +1,9 @@
 import React from 'react';
-import { useFocusEffect } from '@react-navigation/native';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 
 import BackgroundLocationDisclosureModal from './BackgroundLocationDisclosureModal';
 import {
   getBackgroundLocationPermissionState,
-  FOREGROUND_LOCATION_ONLY,
   openLocationSettings,
   requestForegroundLocationPermission,
 } from '../../utils/backgroundLocation';
@@ -51,9 +49,9 @@ export default function DealLocationPermissionGate({ role, children }) {
 
   const successPayload = React.useCallback(() => ({
     ok: true,
-    foregroundOnly: FOREGROUND_LOCATION_ONLY || Platform.OS !== 'android',
-    foregroundService: !FOREGROUND_LOCATION_ONLY && Platform.OS === 'android',
-    backgroundRequired: !FOREGROUND_LOCATION_ONLY && Platform.OS === 'android',
+    foregroundOnly: Platform.OS !== 'android',
+    foregroundService: Platform.OS === 'android',
+    backgroundRequired: Platform.OS === 'android',
   }), []);
 
   const beginDisclosure = React.useCallback(async (context = {}) => {
@@ -79,16 +77,12 @@ export default function DealLocationPermissionGate({ role, children }) {
     });
   }, [isDriver, refreshPermission, successPayload, supportsTripDisclosure]);
 
-  useFocusEffect(React.useCallback(() => {
+  React.useEffect(() => {
     if (!supportsTripDisclosure) return undefined;
-    const unregister = registerLocationPermissionRequestHandler(beginDisclosure);
-    return () => {
-      unregister();
-      resolvePending({ ok: false, reason: 'permission_host_blurred' });
-      setModalVisible(false);
-      setBusy(false);
-    };
-  }, [beginDisclosure, supportsTripDisclosure, resolvePending]));
+    // One canonical coordinator is registered at the accepted-deal route.
+    // beginDisclosure passes shippers through without any GPS prompt.
+    return registerLocationPermissionRequestHandler(beginDisclosure);
+  }, [beginDisclosure, supportsTripDisclosure]);
 
   const completeIfGranted = React.useCallback(async () => {
     if (!pendingResolve.current) return false;

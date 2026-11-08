@@ -1,19 +1,25 @@
-// Push клиент — Web Push (PWA/браузер) + native FCM/APNs через expo-notifications.
-import { Linking, Platform } from 'react-native';
+// Push клиент — Web Push (PWA/браузер) + Expo Notifications (native FCM/APNs).
+import { Platform } from 'react-native';
 import { storage } from './storage';
 import { API_BASE } from '../config/env';
 import { getActiveRoom } from './activeRoom';  // QA-аудит P2-2
-import { t as tGlobal, getLanguage } from './i18n';
-import { claimPushEvent, clearPushEventDedup } from './pushEventDedup';
-import { decideForegroundPresentation } from './pushRuntime';
+import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/push`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const PUSH_ASKED = 'ur_push_asked';
 const NATIVE_TOKEN_KEY = 'ur_push_native_token';
-// Язык берётся из общего i18n, который сохраняет выбор в ur_lang.
-// Синхронное значение не отстаёт от ещё выполняющегося сохранения в storage.
+// Track: push-recovery — сырой FCM(Android)/APNs(iOS) токен, отдельно от
+// Expo-токена выше. Нужен собственный ключ, чтобы unsubscribe() мог снять
+// ОБА провайдера по значению (POST /push/unregister-native шлёт конкретный
+// token, не device_id) — см. registerNative()/unsubscribe() ниже.
+const NATIVE_RAW_TOKEN_KEY = 'ur_push_native_raw_token';
+// Push-closure track: same key src/utils/i18n.js persists the user's chosen
+// app language under (`const KEY = 'ur_lang'`). Read-only here — never
+// written — so backend system push text (services/push_i18n.py) can be
+// localized to the recipient without a second, independent language store.
+const LANG_KEY = 'ur_lang';
 export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // P0-1 (аудит push-безопасности): технический идентификатор устройства —
 // НЕ секрет, НЕ user_id, НЕ сам push-токен. Генерируется один раз и живёт
@@ -22,62 +28,6 @@ export const NATIVE_PUSH_CHANNEL_ID = 'urtruck_messages_v2';
 // использует его, чтобы отличить «тот же физический телефон сменил
 // пользователя» (легитимно) от «кто-то узнал чужой токен» (блокируется).
 const DEVICE_ID_KEY = 'ur_device_id';
-
-// Expo вызывает этот listener при ротации нативного FCM/APNs token. Binding
-// хранится один раз на процесс: повторный app-active/login не должен
-// множить callbacks и регистрацию одного токена.
-let nativeTokenListenerBound = false;
-// Android may deliver several token-change callbacks in the same event-loop
-// turn (notably while the notification bridge is restoring after process
-// recreation).  Registration is an idempotent *network write*, but without
-// coalescing each callback opened another OkHttp request and could starve the
-// authenticated marketplace traffic on the same device.
-let nativeRegistrationInFlight = null;
-// A provider token can rotate while the current registration request is still
-// on the wire. Only a different token needs one trailing registration; Expo
-// can also emit the current token while getDevicePushTokenAsync() is settling.
-let nativeRegistrationQueued = false;
-let nativeRegistrationQueuedToken = null;
-let nativeRegistrationTokenInFlight = null;
-let nativeRegistrationTokenOverrideInFlight = null;
-let nativeRegistrationLocaleInFlight = null;
-let nativeRegistrationReplacedTokensInFlight = [];
-let nativeLatestTokenEvent = null;
-let nativeRegistrationLastAttempt = null;
-let nativeRegistrationRetryTimer = null;
-let nativeRegistrationSuspended = false;
-let nativeRegistrationGeneration = 0;
-let nativeRegistrationDeferredAfterLogoutGeneration = null;
-let nativeRegistrationLogoutSessionFingerprint = null;
-let nativeRegistrationFlightGeneration = null;
-let nativeRegistrationReplayGeneration = null;
-let nativeRegistrationRequestInFlight = null;
-let nativeRegistrationAbortController = null;
-const NATIVE_REGISTRATION_RETRY_DELAYS_MS = [1000, 4000, 16000];
-const NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS = 60_000;
-
-function authContextFingerprint(token) {
-  // Cache identity only; never retain the bearer in module-level state.
-  // Two independent 32-bit hashes make accidental session collisions very unlikely.
-  let first = 0x811c9dc5;
-  let second = 0x9e3779b9;
-  for (let index = 0; index < token.length; index += 1) {
-    const code = token.charCodeAt(index);
-    first = Math.imul(first ^ code, 0x01000193) >>> 0;
-    second = Math.imul(second ^ (code + index), 0x85ebca6b) >>> 0;
-  }
-  return `${first.toString(16)}:${second.toString(16)}`;
-}
-
-function clearNativeRegistrationRetry() {
-  if (nativeRegistrationRetryTimer) clearTimeout(nativeRegistrationRetryTimer);
-  nativeRegistrationRetryTimer = null;
-}
-
-function isTransientNativeRegistrationFailure(result) {
-  const status = Number(result?.status || 0);
-  return status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
-}
 
 function _uuidv4() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -116,19 +66,6 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export const push = {
-  async notificationPreferences(update = null) {
-    const token = await storage.get(TOKEN_KEY);
-    if (!token) return { ok: false };
-    try {
-      const response = await fetch(`${BASE}/preferences`, {
-        method: update ? 'PATCH' : 'GET',
-        headers: { Authorization: `Bearer ${token}`, ...(update ? { 'Content-Type': 'application/json' } : {}) },
-        ...(update ? { body: JSON.stringify(update) } : {}),
-      });
-      const result = await response.json();
-      return { ok: response.ok && !!result.preferences, preferences: result.preferences };
-    } catch { return { ok: false }; }
-  },
   isSupported() {
     return Platform.OS === 'web'
       && typeof window !== 'undefined'
@@ -144,26 +81,6 @@ export const push = {
   async permission() {
     if (!this.isSupported()) return 'unsupported';
     return Notification.permission; // 'default' | 'granted' | 'denied'
-  },
-
-  async nativePermission() {
-    if (!this.isNative()) return 'unsupported';
-    try {
-      const Notifications = require('expo-notifications');
-      return (await Notifications.getPermissionsAsync()).status || 'undetermined';
-    } catch {
-      return 'unsupported';
-    }
-  },
-
-  async openNativeNotificationSettings() {
-    if (!this.isNative() || typeof Linking?.openSettings !== 'function') return false;
-    try {
-      await Linking.openSettings();
-      return true;
-    } catch {
-      return false;
-    }
   },
 
   async subscribe(options = {}) {
@@ -257,7 +174,7 @@ export const push = {
         await sub.unsubscribe();
       }
     }
-    // Native: удаляем старую привязку устройства с backend
+    // Native: убираем Expo-токен с backend
     try {
       const existing = await storage.get(NATIVE_TOKEN_KEY);
       if (existing) {
@@ -267,6 +184,22 @@ export const push = {
           body: JSON.stringify({ token: existing, reason: 'user_unregistered' }),
         });
         await storage.remove(NATIVE_TOKEN_KEY);
+      }
+    } catch {}
+    // Track: push-recovery — и сырой FCM/APNs-токен тоже (если был
+    // зарегистрирован, см. registerNative()). /unregister-native снимает по
+    // значению конкретного token, поэтому оба провайдера нужно отписывать
+    // отдельными вызовами — logoutCleanup() ниже, наоборот, снимает всё по
+    // device_id за один запрос и в этом отдельном вызове не нуждается.
+    try {
+      const existingNative = await storage.get(NATIVE_RAW_TOKEN_KEY);
+      if (existingNative) {
+        await fetch(`${BASE}/unregister-native`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({ token: existingNative, reason: 'user_unregistered' }),
+        });
+        await storage.remove(NATIVE_RAW_TOKEN_KEY);
       }
     } catch {}
   },
@@ -280,23 +213,7 @@ export const push = {
    * ошибка не должна блокировать сам logout.
    */
   async logoutCleanup(token = null) {
-    // Stop retries/token callbacks before deactivating the server registration.
-    // Otherwise a registration already on the wire can finish after logout
-    // cleanup and reactivate the previous account's device token.
-    nativeRegistrationSuspended = true;
-    nativeRegistrationGeneration += 1;
-    nativeRegistrationLogoutSessionFingerprint = token ? authContextFingerprint(token) : null;
-    clearNativeRegistrationRetry();
-    nativeRegistrationQueued = false;
-    nativeRegistrationQueuedToken = null;
-    nativeLatestTokenEvent = null;
     try {
-      // Abort and settle only the HTTP write. Permission/token SDK work may be
-      // waiting on the OS; its captured generation prevents it from writing
-      // after this logout, without holding logout open on an OS prompt.
-      try { nativeRegistrationAbortController?.abort(); } catch {}
-      const pendingRequest = nativeRegistrationRequestInFlight;
-      if (pendingRequest) await pendingRequest.catch(() => {});
       const authToken = token || await storage.get(TOKEN_KEY);
       if (!authToken) return { ok: false, reason: 'no_token' };
       const deviceId = await getOrCreateDeviceId();
@@ -308,136 +225,20 @@ export const push = {
         },
         body: JSON.stringify({ device_id: deviceId }),
       });
-      const result = resp.ok ? await resp.json() : { ok: false, status: resp.status };
-      if (result.ok) await clearPushEventDedup();
-      return result;
+      return resp.ok ? await resp.json() : { ok: false, status: resp.status };
     } catch (e) {
       return { ok: false, reason: 'network_error', error: String(e) };
-    } finally {
-      const shouldReplayRegistration =
-        nativeRegistrationDeferredAfterLogoutGeneration === nativeRegistrationGeneration;
-      nativeRegistrationDeferredAfterLogoutGeneration = null;
-      nativeRegistrationLogoutSessionFingerprint = null;
-      clearNativeRegistrationRetry();
-      nativeRegistrationLastAttempt = null;
-      nativeRegistrationQueued = false;
-      nativeRegistrationQueuedToken = null;
-      nativeLatestTokenEvent = null;
-      nativeRegistrationTokenOverrideInFlight = null;
-      nativeRegistrationTokenInFlight = null;
-      nativeRegistrationSuspended = false;
-      // AuthContext may time out its wait for logout cleanup while a new
-      // account signs in. A registration requested during that window must
-      // resume only after server-side deactivation has settled.
-      if (shouldReplayRegistration) this.registerNative().catch(() => {});
     }
   },
 
   getOrCreateDeviceId,
 
-  // Provider success is not device receipt. This best-effort acknowledgement
-  // creates diagnostic evidence only; failures never affect chat delivery,
-  // notification presentation, or retry ownership on the server.
-  async acknowledgeReceipt(eventId, { opened = false } = {}) {
-    if (!this.isNative() || typeof eventId !== 'string' || !eventId.trim()) {
-      return { ok: false, reason: 'invalid_receipt' };
-    }
-    try {
-      const token = await storage.get(TOKEN_KEY);
-      if (!token) return { ok: false, reason: 'no_token' };
-      const deviceId = await getOrCreateDeviceId();
-      const response = await fetch(`${BASE}/receipt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ event_id: eventId.trim(), device_id: deviceId, opened: !!opened, platform: Platform.OS }),
-      });
-      return { ok: response.ok, status: response.status };
-    } catch {
-      return { ok: false, reason: 'network_error' };
-    }
-  },
-
-  // ── Native token bridge (expo-notifications permissions/listeners only) ──
+  // ── Native (Expo Notifications) ──
   isNative() {
     return Platform.OS === 'ios' || Platform.OS === 'android';
   },
 
-  async registerNative({ forceRetry = false, tokenOverride = null, replacedTokens = [] } = {}) {
-    if (nativeRegistrationSuspended) {
-      const suspendedGeneration = nativeRegistrationGeneration;
-      const logoutSessionFingerprint = nativeRegistrationLogoutSessionFingerprint;
-      const currentAuthToken = await storage.get(TOKEN_KEY);
-      if (currentAuthToken && authContextFingerprint(currentAuthToken) !== logoutSessionFingerprint) {
-        if (nativeRegistrationSuspended && suspendedGeneration === nativeRegistrationGeneration) {
-          nativeRegistrationDeferredAfterLogoutGeneration = suspendedGeneration;
-        } else if (!nativeRegistrationSuspended && suspendedGeneration === nativeRegistrationGeneration) {
-          // Cleanup can settle while storage.get is pending. In that ordering,
-          // its finally block cannot see a deferred marker, so resume here.
-          this.registerNative().catch(() => {});
-        }
-      }
-      return { ok: false, reason: 'logout_in_progress' };
-    }
-    // Keep one registration flight per JS runtime.  Callers still receive the
-    // same result, while a token-listener burst cannot turn into a request
-    // storm or monopolise the mobile HTTP dispatcher.
-    if (nativeRegistrationInFlight) {
-      // If logout invalidated the existing flight and a new session asks to
-      // register before an OS token lookup has settled, remember one replay.
-      // Returning the stale promise alone would silently lose the new login's
-      // registration because its auth snapshot belongs to the old generation.
-      if (nativeRegistrationFlightGeneration !== nativeRegistrationGeneration
-        || nativeRegistrationLocaleInFlight !== getLanguage()) {
-        nativeRegistrationReplayGeneration = nativeRegistrationGeneration;
-      }
-      return nativeRegistrationInFlight;
-    }
-    nativeRegistrationTokenOverrideInFlight = tokenOverride || null;
-    nativeRegistrationReplacedTokensInFlight = [...new Set([...replacedTokens, nativeRegistrationLastAttempt?.token])]
-      .filter(token => token && token !== tokenOverride).slice(-4);
-    nativeRegistrationLocaleInFlight = getLanguage();
-    nativeRegistrationTokenInFlight = tokenOverride || null;
-    const flightGeneration = nativeRegistrationGeneration;
-    nativeRegistrationFlightGeneration = flightGeneration;
-    const flight = this._registerNativeOnce({
-      forceRetry,
-      tokenOverride,
-      generation: flightGeneration,
-      locale: nativeRegistrationLocaleInFlight,
-    });
-    nativeRegistrationInFlight = flight;
-    try {
-      return await flight;
-    } finally {
-      if (nativeRegistrationInFlight === flight) {
-        const completedToken = nativeRegistrationTokenInFlight;
-        const completedReplacedTokens = nativeRegistrationReplacedTokensInFlight;
-        nativeRegistrationInFlight = null;
-        nativeRegistrationFlightGeneration = null;
-        nativeRegistrationTokenInFlight = null;
-        nativeRegistrationTokenOverrideInFlight = null;
-        nativeRegistrationLocaleInFlight = null;
-        nativeRegistrationReplacedTokensInFlight = [];
-        const replayGeneration = nativeRegistrationReplayGeneration;
-        nativeRegistrationReplayGeneration = null;
-        if (nativeRegistrationQueued) {
-          const nextToken = nativeRegistrationQueuedToken;
-          nativeRegistrationQueued = false;
-          nativeRegistrationQueuedToken = null;
-          nativeLatestTokenEvent = null;
-          this.registerNative({ tokenOverride: nextToken, replacedTokens: [...completedReplacedTokens, completedToken] }).catch(() => {});
-        } else if (replayGeneration === nativeRegistrationGeneration && !nativeRegistrationSuspended) {
-          // Смена языка сохраняет токен из listener: getter ОС может ещё отставать.
-          this.registerNative({
-            tokenOverride: flightGeneration === nativeRegistrationGeneration ? completedToken : null,
-            replacedTokens: flightGeneration === nativeRegistrationGeneration ? completedReplacedTokens : [],
-          }).catch(() => {});
-        }
-      }
-    }
-  },
-
-  async _registerNativeOnce({ forceRetry = false, tokenOverride = null, generation = nativeRegistrationGeneration, locale = getLanguage() } = {}) {
+  async registerNative() {
     if (!this.isNative()) return { ok: false, reason: 'web' };
     let Notifications, Device;
     try {
@@ -458,12 +259,15 @@ export const push = {
       handleNotification: async (notification) => {
         try {
           const data = notification?.request?.content?.data || {};
-          return await decideForegroundPresentation({
-            data,
-            activeRoom: getActiveRoom(),
-            acknowledge: (eventId, options) => this.acknowledgeReceipt(eventId, options),
-            claimDisplay: (eventId) => claimPushEvent(eventId, 'display'),
-          });
+          if ((data.type === 'chat_message' || data.type === 'chat_attachment') && data.room_id && data.room_id === getActiveRoom()) {
+            // SDK 52: shouldShowAlert устарел → дублируем shouldShowBanner/
+            // shouldShowList, иначе баннер не подавляется. shouldSetBadge
+            // false — сообщение читается прямо сейчас.
+            return {
+              shouldShowAlert: false, shouldShowBanner: false, shouldShowList: false,
+              shouldPlaySound: false, shouldSetBadge: false,
+            };
+          }
         } catch {}
         return {
           shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true,
@@ -497,34 +301,61 @@ export const push = {
       });
     }
 
-    // Read only app version metadata; project identifiers are unrelated to
-    // native FCM/APNs delivery and are intentionally not consulted here.
+    // Expo Push Token
+    // PR-C2 (P0-1 push permissions): на Expo SDK 49+ getExpoPushTokenAsync
+    // требует `projectId` иначе на iOS возвращает пустой токен / падает.
+    // projectId живёт в app.json:expo.extra.eas.projectId; читаем через
+    // expo-constants. Если константы нет — fallback на старый zero-arg
+    // вызов (web/legacy).
+    let projectId;
     let appVersion = null;
     try {
       const Constants = require('expo-constants').default;
+      projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ||
+        Constants?.easConfig?.projectId ||
+        Constants?.manifest?.extra?.eas?.projectId ||
+        null;
       appVersion = Constants?.expoConfig?.version || Constants?.manifest?.version || null;
-    } catch {}
+    } catch { projectId = null; }
     // issue #5: dev-only debug logging для проверки регистрации токена на
     // реальном устройстве/dev-билде (в проде молчим).
     const dbg = (...a) => { if (typeof __DEV__ !== 'undefined' && __DEV__) console.log('[push]', ...a); };
-    // The only native registration below is a platform token from the
-    // notification SDK; it is sent directly to UrTruck's native registry.
+    dbg('projectId', projectId || '(none)');
+    let tokenData;
+    let token = null;
+    let expoTokenError = null;
+    try {
+      tokenData = projectId
+        ? await Notifications.getExpoPushTokenAsync({ projectId })
+        : await Notifications.getExpoPushTokenAsync();
+      token = tokenData?.data || null;
+    } catch (e) {
+      dbg('getExpoPushTokenAsync failed', String(e));
+      expoTokenError = String(e);
+    }
+    if (!token) dbg('no Expo token returned');
+    else dbg('expo token', _maskToken(token)); // P0-1: полный токен в логи не пишем даже в dev
+
+    // Отправляем на бэк. issue #5: проверяем ответ — раньше статус
+    // игнорировался и при 401/500 функция всё равно возвращала ok:true,
+    // хотя токен на сервере не сохранялся (push не доходил).
+    // Track: push-recovery (2026-09-09) — вынесено в _registerToken(), т.к.
+    // ниже регистрируем ЕЩЁ и сырой FCM/APNs-токен тем же device_id тем же
+    // эндпоинтом (см. Notifications.getDevicePushTokenAsync() ниже);
+    // исторический прецедент — commit fb5c6415 ("add native gateway and
+    // device registry", 31.08.2026), который добавил ровно эту функцию, но
+    // не попал в эту ветку (см. forensic-аудит). Логика самого Expo-пути
+    // (порядок проверок 409/2xx/not_linked) не менялась ни на строчку.
     const authToken = await storage.get(TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
+    const locale = await storage.get(LANG_KEY);
 
     const registerToken = async ({ pushToken, provider }) => {
-      if (nativeRegistrationSuspended || generation !== nativeRegistrationGeneration) {
-        return { ok: false, reason: 'logout_in_progress', token: pushToken, provider };
-      }
       let regStatus = 0;
       let regUserId;
-      let controller = null;
       try {
-        if (typeof AbortController === 'function') {
-          controller = new AbortController();
-          nativeRegistrationAbortController = controller;
-        }
-        const request = fetch(`${BASE}/register-native`, {
+        const resp = await fetch(`${BASE}/register-native`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -539,19 +370,13 @@ export const push = {
             app_version: appVersion,
             locale: locale || null,
           }),
-          ...(controller ? { signal: controller.signal } : {}),
         });
-        nativeRegistrationRequestInFlight = request;
-        const resp = await request;
         regStatus = resp.status;
         try { const j = await resp.json(); regUserId = j?.user_id; } catch {}
         dbg('register-native', provider, '→', regStatus, 'user_id=', regUserId);
       } catch (e) {
         dbg('register-native network error', provider, String(e));
-        return { ok: false, reason: 'register_failed', token: pushToken, provider, status: 0, error: String(e) };
-      } finally {
-        nativeRegistrationRequestInFlight = null;
-        if (nativeRegistrationAbortController === controller) nativeRegistrationAbortController = null;
+        return { ok: false, reason: 'register_failed', token: pushToken, provider, error: String(e) };
       }
       if (regStatus === 409) {
         // P0-1: TOKEN_OWNERSHIP_CONFLICT — этот физический токен уже активно
@@ -573,59 +398,24 @@ export const push = {
       return { ok: true, token: pushToken, provider, user_id: regUserId };
     };
 
-    // Token may rotate without a login (restore, OS/provider maintenance).
-    // Re-enter registerNative so each callback obtains fresh auth, locale and
-    // installation metadata rather than reusing this invocation's snapshot.
-    if (!nativeTokenListenerBound && typeof Notifications.addPushTokenListener === 'function') {
-      nativeTokenListenerBound = true;
-      Notifications.addPushTokenListener((event) => {
-        if (nativeRegistrationSuspended) return;
-        const eventToken = typeof event?.data === 'string' ? event.data : null;
-        if (!eventToken) return;
-        if (nativeRegistrationInFlight) {
-          // Do not turn a callback that repeats the token we are currently
-          // registering into an immediate retry loop (notably on endpoint
-          // errors such as 404). A genuine rotation is coalesced once.
-          if (nativeRegistrationTokenInFlight) {
-            if (eventToken === nativeRegistrationTokenInFlight) return;
-            // During a trailing registration, Expo can replay the previous
-            // token while getDevicePushTokenAsync() is still settling. Do not
-            // replace the explicit rotated token with the last attempted one.
-            if (nativeRegistrationTokenOverrideInFlight
-              && (eventToken === nativeRegistrationLastAttempt?.token
-                || nativeRegistrationReplacedTokensInFlight.includes(eventToken))) return;
-            nativeLatestTokenEvent = eventToken;
-            nativeRegistrationQueued = true;
-            nativeRegistrationQueuedToken = eventToken;
-          } else {
-            // The getter has not exposed its token yet. Keep only the latest
-            // callback snapshot; it is consumed when the getter settles.
-            nativeLatestTokenEvent = eventToken;
-          }
-          return;
-        }
-        const previous = nativeRegistrationLastAttempt;
-        if (previous?.token === eventToken && previous.locale === getLanguage()) {
-          // SDK Android посылает onNewToken даже после resolve своего getter.
-          // Сетевой dedup ниже слишком поздний: новый getter снова породит событие.
-          const eventGeneration = nativeRegistrationGeneration;
-          storage.get(TOKEN_KEY).then(currentAuth => {
-            if (nativeRegistrationSuspended || eventGeneration !== nativeRegistrationGeneration) return;
-            if (previous === nativeRegistrationLastAttempt && previous.locale === getLanguage()
-              && previous.authFingerprint === authContextFingerprint(currentAuth || '')
-              && (previous.result.ok || Date.now() - previous.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS)) return;
-            // Запущенная за время чтения новая регистрация уже владеет контекстом.
-            if (nativeRegistrationInFlight) return;
-            nativeLatestTokenEvent = eventToken;
-            this.registerNative({ tokenOverride: eventToken }).catch(() => {});
-          }).catch(() => {});
-          return;
-        }
-        nativeLatestTokenEvent = eventToken;
-        this.registerNative({ tokenOverride: eventToken }).catch(() => {});
-      });
-    }
+    const expoResult = token
+      ? await registerToken({ pushToken: token, provider: 'expo' })
+      : { ok: false, reason: expoTokenError ? 'token_failed' : 'no_token', error: expoTokenError };
+    if (expoResult.ok) await storage.set(NATIVE_TOKEN_KEY, token);
 
+    // Track: push-recovery — сырой нативный токен (FCM registration token на
+    // Android / APNs device token на iOS), дополнительно к Expo-токену выше.
+    // Historical: Notifications.getDevicePushTokenAsync() — тот же вызов,
+    // что был в commit fb5c6415, не требует отдельного Firebase SDK (это
+    // API самого expo-notifications). Backend-шлюз (services/push_gateway.py
+    // FCMProvider/APNsProvider) уже умеет их принимать и слать напрямую —
+    // ждёт только PUSH_PROVIDER_MODE=native|dual + креды (не меняются этим
+    // коммитом, см. PHASE 7 контракт). Регистрация ВСЕГДА идёт тем же
+    // register-native эндпоинтом и тем же device_id — backend уже умеет
+    // держать несколько активных провайдеров на одном device_id (см.
+    // _resolve_ownership / push_devices UNIQUE(push_provider, push_token)).
+    // Падение этого блока НЕ должно откатывать успешную Expo-регистрацию
+    // выше — весь блок в своём try/catch, ошибка только логируется в dev.
     let nativeResult = null;
     try {
       let nativeTokenData = null;
@@ -634,99 +424,42 @@ export const push = {
       } catch (e) {
         dbg('getDevicePushTokenAsync failed', String(e));
       }
-      // Expo may emit the rotated token while its getter still returns a
-      // stale value. Consume that event exactly once and register its token;
-      // leaving it cached would queue the same trailing call forever.
-      const tokenEvent = nativeLatestTokenEvent;
-      nativeLatestTokenEvent = null;
-      const nativeToken = tokenEvent || tokenOverride || nativeTokenData?.data;
+      const nativeToken = nativeTokenData?.data;
       if (nativeToken) {
-        nativeRegistrationTokenInFlight = nativeToken;
-        // Events consumed above belong to this write. Only a later event can
-        // schedule one trailing write.
-        nativeRegistrationQueued = false;
-        nativeRegistrationQueuedToken = null;
         dbg('native token', nativeTokenData?.type, _maskToken(nativeToken)); // P0-1: не логируем токен целиком
         const nativeProvider = Platform.OS === 'android' ? 'fcm' : 'apns';
-        const authFingerprint = authContextFingerprint(authToken || '');
-        const sameContext = nativeRegistrationLastAttempt?.token === nativeToken
-          && nativeRegistrationLastAttempt?.authFingerprint === authFingerprint
-          && nativeRegistrationLastAttempt?.locale === locale
-          && nativeRegistrationLastAttempt?.provider === nativeProvider;
-        if (sameContext && !forceRetry) {
-          const lastAttempt = nativeRegistrationLastAttempt;
-          if (lastAttempt.result.ok
-            || Date.now() - lastAttempt.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS) {
-            return lastAttempt.result;
-          }
-        }
-
-        if (!sameContext) clearNativeRegistrationRetry();
         nativeResult = await registerToken({ pushToken: nativeToken, provider: nativeProvider });
-        // A response that settles during logout belongs to the invalidated
-        // auth generation. Do not cache it or schedule a transient retry.
-        if (nativeRegistrationSuspended || generation !== nativeRegistrationGeneration) {
-          return nativeResult;
-        }
-        const previousRetries = sameContext
-          && Date.now() - nativeRegistrationLastAttempt.at < NATIVE_REGISTRATION_FAILURE_COOLDOWN_MS
-          ? (nativeRegistrationLastAttempt.retries || 0)
-          : 0;
-        nativeRegistrationLastAttempt = {
-          token: nativeToken,
-          authFingerprint,
-          locale,
-          provider: nativeProvider,
-          result: nativeResult,
-          retries: previousRetries,
-          at: Date.now(),
-        };
-        if (nativeResult.ok) await storage.set(NATIVE_TOKEN_KEY, nativeToken);
-        if (isTransientNativeRegistrationFailure(nativeResult)) {
-          const retryIndex = previousRetries;
-          const delay = NATIVE_REGISTRATION_RETRY_DELAYS_MS[retryIndex];
-          if (delay !== undefined) {
-            nativeRegistrationLastAttempt.retries = retryIndex + 1;
-            clearNativeRegistrationRetry();
-            nativeRegistrationRetryTimer = setTimeout(() => {
-              nativeRegistrationRetryTimer = null;
-              const last = nativeRegistrationLastAttempt;
-              if (last?.token === nativeToken && last?.authFingerprint === authFingerprint && last?.provider === nativeProvider) {
-                storage.get(TOKEN_KEY).then((currentAuthToken) => {
-                  if (authContextFingerprint(currentAuthToken || '') === authFingerprint) {
-                    this.registerNative({ forceRetry: true }).catch(() => {});
-                  }
-                }).catch(() => {});
-              }
-            }, delay);
-          }
-        }
+        if (nativeResult.ok) await storage.set(NATIVE_RAW_TOKEN_KEY, nativeToken);
       }
     } catch (e) {
-      dbg('native registration block failed', String(e));
+      dbg('native registration block failed (Expo unaffected)', String(e));
     }
 
+    // Native delivery is canonical. An Expo credential/registration failure
+    // must not prevent the FCM/APNs registration above from succeeding.
     if (nativeResult?.ok) {
       return {
         ok: true,
-        token: nativeResult.token,
-        user_id: nativeResult.user_id,
+        token: token || null,
+        user_id: nativeResult.user_id || expoResult?.user_id,
+        native: nativeResult,
         native_token: nativeResult.token,
         native_provider: nativeResult.provider,
+        expo: expoResult,
       };
     }
-    return nativeResult || { ok: false, reason: 'no_native_token' };
+    if (!expoResult.ok) return { ...expoResult, native: nativeResult };
+    return {
+      ok: true,
+      token,
+      user_id: expoResult.user_id,
+      native: nativeResult,
+      native_token: nativeResult?.ok ? nativeResult.token : null,
+      native_provider: nativeResult?.provider || null,
+    };
   },
 
   // ── Единый автозапуск: web.subscribe() если PWA, иначе registerNative() ──
-  async refreshLocale() {
-    // Переключение языка не должно открывать новый системный запрос разрешения.
-    if (this.isNative() && await this.nativePermission() !== 'granted') {
-      return { ok: false, reason: 'permission_required' };
-    }
-    return this.autoRegister();
-  },
-
   async autoRegister() {
     if (this.isSupported()) return this.subscribe({ requestPermission: false });
     if (this.isNative()) return this.registerNative();

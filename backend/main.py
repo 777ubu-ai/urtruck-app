@@ -281,8 +281,8 @@ def startup():
     from database import vehicles_dal
     vehicles_dal.init_vehicles_schema()
     init_expenses_schema()
-    from database.external_freight_dal import init_schema as init_external_freight_schema
     if os.getenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
+        from database.external_freight_dal import init_schema as init_external_freight_schema
         init_external_freight_schema()
     # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
     # имеет registration-схему. Создаём special users только после неё;
@@ -388,6 +388,8 @@ def startup():
     # completion only after the FastAPI startup hook returns, so the health
     # endpoint can bind before the background DDL scans old production data.
     start_deferred_migrations()
+
+
 
 
 @app.on_event("startup")

@@ -8,7 +8,6 @@
 //
 // Base URL берём из E2E_BASE (по умолчанию http://127.0.0.1:4599).
 const { test, expect } = require('@playwright/test');
-const { dismissFirstVisit } = require('./helpers/webflow');
 
 const BASE = process.env.E2E_BASE || 'http://127.0.0.1:4599';
 const BETA_CODE = process.env.E2E_BETA_CODE || '0000';
@@ -49,7 +48,6 @@ test('вход по email доходит до выбора роли', async ({ p
   if (await roleScreen.isVisible().catch(() => false)) {
     await expect(page.locator('[data-testid="role-v2-driver"]')).toBeVisible();
   } else {
-    await dismissFirstVisit(page);
     await expect(bottomNav).toBeVisible();
     await expect(page.locator('[data-testid="bottom-nav-queue"]')).toBeVisible();
   }

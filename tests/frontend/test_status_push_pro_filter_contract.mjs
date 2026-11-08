@@ -12,9 +12,8 @@ const i18n = fs.readFileSync('src/utils/i18n.js', 'utf8');
 const push = fs.readFileSync('src/utils/push.js', 'utf8');
 
 test('foreground deal activity uses the Deals badge without a duplicate top banner', () => {
-  assert.match(bottomNav, /const result = await refreshAppIconBadge\(\)/);
-  assert.match(bottomNav, /setDealsUnread\(result\.badge\)/);
-  assert.doesNotMatch(bottomNav, /computeDealsUnread|marketAPI\.myDashboard/);
+  assert.match(bottomNav, /computeDealsUnread/);
+  assert.match(bottomNav, /setDealsUnread\(next\)/);
   assert.match(bottomNav, /bottom-nav-deals-badge/);
   assert.match(bottomNav, /route\.name === 'Deals' \? dealsUnread : 0/);
   assert.doesNotMatch(bottomNav, /Math\.max\(chatUnread, dealsUnread\)/);
@@ -74,10 +73,7 @@ test('status history refreshes before opening from the status card and keeps the
   assert.match(timeline, /currentCard/);
 });
 
-test('profile hides the optional PRO journey after basic registration', () => {
-  assert.match(profile, /const ADVANCED_VERIFICATION_VISIBLE = false/);
-  assert.match(profile, /ADVANCED_VERIFICATION_VISIBLE && isDriver/);
-  assert.match(profile, /\.\.\.\(ADVANCED_VERIFICATION_VISIBLE \? \[/);
+test('profile separates verification, trust tier and PRO completion truthfully', () => {
   assert.match(profile, /proStatusTitle = proActive \? t\('pro_active_badge'\) : t\('pro_inactive_badge'\)/);
   assert.match(profile, /verificationStatusText = profile\.is_verified \? t\('verification_passed_short'\) : ''/);
   assert.doesNotMatch(profile, /t\('verification_failed_short'\)/);
@@ -103,7 +99,7 @@ test('help copy matches the current basic onboarding and deal completion flow', 
   assert.doesNotMatch(i18n, /11 языков/);
   assert.match(i18n, /Документы для повышения доверия можно загрузить позже/);
   assert.match(i18n, /После подтверждения получения сделка завершается/);
-  assert.match(i18n, /Интерфейс на 9 языках/);
+  assert.match(i18n, /Интерфейс на 4 языках/);
 });
 
 test('route filter can select a whole country without forcing a city', () => {
@@ -111,8 +107,8 @@ test('route filter can select a whole country without forcing a city', () => {
   assert.match(feed, /dirToCountry/);
   assert.match(feed, /allowCountryOnly/);
   assert.match(feed, /countryOnly \? ''/);
-  assert.match(feed, /fromCountry:\s*dirFromCountry/);
-  assert.match(feed, /toCountry:\s*dirToCountry/);
+  assert.match(feed, /fromCountry === dirFromCountry/);
+  assert.match(feed, /toCountry === dirToCountry/);
   assert.match(locationPicker, /allowCountryOnly = false/);
   assert.match(locationPicker, /type:\s*'country'/);
   assert.match(locationPicker, /testID=\{`loc-country-only-\$\{country\}`\}/);

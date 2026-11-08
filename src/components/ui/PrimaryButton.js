@@ -1,23 +1,20 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { useV1Colors, v1Radius, v1Spacing, v1Typography } from '../../theme/designV1';
-import { useTheme } from '../../utils/ThemeContext';
+import { v1Colors, v1Radius, v1Spacing, v1Typography } from '../../theme/designV1';
 
 export default function PrimaryButton({
   label, onPress, variant = 'primary', loading = false, disabled = false, style,
 }) {
-  const colors = useV1Colors();
-  const { isDark } = useTheme();
   const isDisabled = disabled || loading;
   // Светлая тема: у secondary фон — зелёный тинт, текст — тёмно-зелёный.
   // Белый текст на surfaceMuted (#F0F4F2) был невидим после light-флипа.
-  const bg = variant === 'primary' ? colors.driver
-    : variant === 'secondary' ? colors.driverSoft
+  const bg = variant === 'primary' ? v1Colors.driver
+    : variant === 'secondary' ? v1Colors.driverSoft
     : 'transparent';
-  const textColor = variant === 'ghost' ? colors.textMuted
-    : variant === 'secondary' ? (isDark ? colors.success : colors.driverDeep)
+  const textColor = variant === 'ghost' ? v1Colors.textMuted
+    : variant === 'secondary' ? v1Colors.driverDeep
     : '#fff';
-  const borderColor = variant === 'ghost' ? colors.border : 'transparent';
+  const borderColor = variant === 'ghost' ? v1Colors.border : 'transparent';
 
   return (
     <TouchableOpacity

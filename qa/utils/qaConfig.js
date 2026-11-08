@@ -20,15 +20,8 @@ const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 
-// QA must fail closed. A missing URL must never send test traffic to production.
-const configuredBaseUrl = process.env.QA_BASE_URL || process.env.E2E_BASE_URL;
-if (!configuredBaseUrl) {
-  throw new Error('QA_BASE_URL is required; refusing to run QA against an implicit host');
-}
-const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
-if (/^https:\/\/urtruck\.kz(?:\/|$)/i.test(BASE_URL)) {
-  throw new Error('Refusing to run QA against production urtruck.kz; set an isolated QA_BASE_URL');
-}
+// Default to production. Override with QA_BASE_URL=http://localhost:8080 etc.
+const BASE_URL = (process.env.QA_BASE_URL || process.env.E2E_BASE_URL || 'https://urtruck.kz').replace(/\/$/, '');
 
 // API base. Production nginx proxies /security/api/ → :8001; bare API_BASE
 // also works against the direct port for non-prod environments.

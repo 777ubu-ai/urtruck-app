@@ -1,4 +1,3 @@
-import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Modal } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -27,7 +26,6 @@ const CALENDAR_LABELS = {
     title: (month, year) => `${month} ${year}`,
   },
 };
-Object.assign(CALENDAR_LABELS, withAdditionalLanguageTree(CALENDAR_LABELS));
 
 export default function ExternalFeedDatePicker({ value, onChange, onClose, placeholder = 'DD.MM.YYYY', style, min, max, defaultOpen = false, allowPast = false }) {
   const { theme } = useTheme();

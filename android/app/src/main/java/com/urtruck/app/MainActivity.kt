@@ -1,6 +1,5 @@
 package com.urtruck.app
 
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -13,12 +12,6 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
-  // Пока JS запускается, Linking.getInitialURL должен видеть новую ссылку.
-  override fun onNewIntent(intent: Intent) {
-    setIntent(intent)
-    super.onNewIntent(intent)
-  }
-
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.

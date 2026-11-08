@@ -1,5 +1,3 @@
-import { withAdditionalLanguages } from '../utils/additionalLocales.js';
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -136,12 +134,12 @@ export default function TripDetail({ navigation, route }) {
     };
   }, [serverTrip, rawTrip, tripId]);
   const { t, lang } = useI18n();
-  const editBidLabel = (withAdditionalLanguages({
+  const editBidLabel = ({
     RU: 'Изменить цену',
     EN: 'Edit price',
     KK: 'Бағаны өзгерту',
     ZH: '修改价格',
-  })[lang]) || t('edit_bid');
+  }[lang]) || t('edit_bid');
   const { theme } = useTheme();
   const { toast } = useToast();
   const { requireLevel, Gate } = useVerificationGate();

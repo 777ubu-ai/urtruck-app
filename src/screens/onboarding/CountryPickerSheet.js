@@ -1,4 +1,3 @@
-import { localizeUiText } from '../../utils/additionalLocales.js';
 // CountryPickerSheet — bottom-sheet модал для выбора страны (dial code).
 //
 // Open from PhoneV2Screen через navigation.navigate('CountryPicker',
@@ -37,7 +36,7 @@ const Row = ({ s, country, label, onPress }) => (
     ]}
     testID={`country-row-${country.iso}`}
   >
-    <CountryFlag code={country.iso} width={22} />
+    <CountryFlag code={country.iso} width={27} />
     <Text style={s.countryName}>{label}</Text>
     <Text style={s.iso}>{country.iso}</Text>
     <Text style={s.dial}>+{country.dial}</Text>
@@ -80,7 +79,7 @@ export default function CountryPickerSheet({ navigation, route }) {
   );
   const others = useMemo(
     () => [...COUNTRIES.filter((c) => !POPULAR_ISO.includes(c.iso))].sort((a, b) =>
-      countryLabel(a).localeCompare(countryLabel(b), lang === 'ZH' ? localizeUiText('zh-CN', lang) : lang === 'KK' ? localizeUiText('kk-KZ', lang) : lang === 'EN' ? localizeUiText('en-US', lang) : localizeUiText('ru-RU', lang)),
+      countryLabel(a).localeCompare(countryLabel(b), lang === 'ZH' ? 'zh-CN' : lang === 'KK' ? 'kk-KZ' : lang === 'EN' ? 'en-US' : 'ru-RU'),
     ),
     [countryLabel, lang],
   );

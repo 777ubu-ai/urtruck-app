@@ -1,8 +1,5 @@
-import { ADDITIONAL_TRANSLATIONS } from '../utils/additionalLocales.js';
-import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React from 'react';
-import { GPS_TRACKING_PAUSED } from '../utils/locationPolicy';
-import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import * as Location from 'expo-location';
 import { useTheme } from '../utils/ThemeContext';
@@ -42,7 +39,6 @@ const COPY = {
     weatherUnavailable: '暂无数据', ratesUnavailable: '暂无数据', cached: '缓存', gpsPending: '行程开始后可用',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const dedupePoints = (points) => {
   const seen = new Set();
@@ -59,8 +55,8 @@ const formatDistance = (meters, lang) => {
   if (!Number.isFinite(value) || value < 0) return null;
   const km = value / 1000;
   const rounded = km >= 100 ? Math.round(km) : Math.round(km * 10) / 10;
-  const text = String(rounded).replace('.', lang === 'EN' ? localizeUiText('.', lang) : localizeUiText(',', lang));
-  return `${text} ${lang === 'ZH' ? localizeUiText('公里', lang) : localizeUiText('км', lang)}`;
+  const text = String(rounded).replace('.', lang === 'EN' ? '.' : ',');
+  return `${text} ${lang === 'ZH' ? '公里' : 'км'}`;
 };
 
 const formatDuration = (seconds, lang) => {
@@ -72,11 +68,6 @@ const formatDuration = (seconds, lang) => {
   const mins = minutes % 60;
   if (lang === 'ZH') return days ? `${days}天 ${hours}小时` : hours ? `${hours}小时 ${mins}分` : `${mins}分`;
   if (lang === 'EN') return days ? `${days} d ${hours} h` : hours ? `${hours} h ${mins} min` : `${mins} min`;
-  const extra = ADDITIONAL_TRANSLATIONS[lang];
-  if (extra) {
-    const units = { TR: 'g', UZ: 'kun', KY: 'күн', TG: 'рӯз', BE: 'д' };
-    return days ? `${days} ${units[lang]} ${hours} ${extra.time_hour}` : hours ? `${hours} ${extra.time_hour} ${mins} ${extra.time_min}` : `${mins} ${extra.time_min}`;
-  }
   return days ? `${days} д. ${hours} ч.` : hours ? `${hours} ч. ${mins} мин.` : `${mins} мин.`;
 };
 
@@ -86,7 +77,6 @@ const WEATHER_LABELS = {
   KK: ['Ашық', 'Бұлтты', 'Тұман', 'Жаңбыр', 'Қар', 'Найзағай'],
   ZH: ['晴', '多云', '雾', '雨', '雪', '雷暴'],
 };
-Object.assign(WEATHER_LABELS, withAdditionalLanguageTree(WEATHER_LABELS));
 const weatherLabel = (code, lang) => {
   const labels = WEATHER_LABELS[lang] || WEATHER_LABELS.RU;
   const value = Number(code);
@@ -156,20 +146,17 @@ export default function TripRoutePanel({
   }, []);
 
   React.useEffect(() => {
-    if (GPS_TRACKING_PAUSED || role !== 'driver') return undefined;
     let cancelled = false;
     const controller = new AbortController();
-    const cancel = () => { cancelled = true; controller.abort(); };
-    const listener = AppState.addEventListener('change', state => { if (state !== 'active') cancel(); });
     const load = async () => {
-      if (cancelled || AppState.currentState !== 'active') return;
+      if (role !== 'driver') return;
       const permission = await Location.getForegroundPermissionsAsync();
-      if (cancelled || AppState.currentState !== 'active' || permission.status !== 'granted') return;
-      const position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
-      if (cancelled || AppState.currentState !== 'active' || !position?.coords) return;
+      if (permission.status !== 'granted') return;
+      let position = await Location.getLastKnownPositionAsync({ maxAge: 15 * 60 * 1000, requiredAccuracy: 5000 });
+      if (!position) position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      if (cancelled || !position?.coords) return;
       const { latitude, longitude } = position.coords;
       const places = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
-      if (cancelled || AppState.currentState !== 'active') return;
       const place = places?.[0];
       const city = place?.city || place?.district || place?.subregion || place?.region || '';
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&current=temperature_2m,apparent_temperature,weather_code&timezone=auto`;
@@ -193,7 +180,7 @@ export default function TripRoutePanel({
       }
     };
     load().catch(() => {});
-    return () => { cancel(); listener?.remove?.(); };
+    return () => { cancelled = true; controller.abort(); };
   }, [lang, role]);
 
   const serverWeatherText = weather?.current_label || weather?.current || weather?.now || '';

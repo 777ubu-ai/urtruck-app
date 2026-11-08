@@ -1,4 +1,3 @@
-import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 // PhoneV2Screen — the ONE canonical sign-in / registration entry (AuthV2).
 //
 // FINAL 10/10 AUTH CANON CLOSURE (2026-09-14, owner decision): every guest
@@ -42,7 +41,6 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
-import { resolveLoginAccount, loginIsCurrent } from '../../utils/loginAccount';
 import { push } from '../../utils/push';
 import {
   AUTH_ERROR_CODES,
@@ -97,7 +95,6 @@ const SOCIAL_LABELS = {
     apple: 'Apple арқылы жалғастыру',
   },
 };
-Object.assign(SOCIAL_LABELS, withAdditionalLanguageTree(SOCIAL_LABELS));
 
 const openLegal = (path) => {
   const url = `${LEGAL_BASE}${path}`;
@@ -166,11 +163,6 @@ export default function PhoneV2Screen({ navigation, route }) {
   // hidden button can never silently be read as "Apple checked, PASS".
   const [appleGate, setAppleGate] = useState({ show: false, reason: 'PENDING' });
   const finishingSocialRef = useRef(false);
-  const authMountedRef = useRef(true);
-  useEffect(() => {
-    authMountedRef.current = true;
-    return () => { authMountedRef.current = false; };
-  }, []);
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
@@ -202,22 +194,20 @@ export default function PhoneV2Screen({ navigation, route }) {
   }, [routedSocialUrl]);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
-    const ownsLogin = () => loginIsCurrent(result.token, () => regAPI.getToken(), () => authMountedRef.current);
-    if (!await ownsLogin()) return;
-    const account = await resolveLoginAccount(result, () => regAPI.me());
-    if (!await ownsLogin()) return;
-    const signedIn = await signIn(identifier, result.verification_level || 1, result.token, {
-      expectedToken: result.token, userId: account.id, isCurrent: () => authMountedRef.current,
-    });
-    if (signedIn === false || !await ownsLogin()) return;
-    const detectedRole = account.role;
+    await signIn(identifier, result.verification_level || 1, result.token);
     push.autoRegister?.().catch(() => {});
 
+    let detectedRole = result.role && result.role !== 'guest' ? result.role : null;
+    if (!detectedRole) {
+      try {
+        const me = await regAPI.me();
+        if (me?.role && me.role !== 'guest') detectedRole = me.role;
+      } catch {}
+    }
+
     if (detectedRole) {
-      const roleSaved = await setRole(detectedRole, { expectedToken: result.token, isCurrent: () => authMountedRef.current });
-      if (roleSaved?.ok === false || !await ownsLogin()) return;
+      setRole(detectedRole);
       await refreshLevel?.().catch(() => {});
-      if (!await ownsLogin()) return;
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main', params: { role: detectedRole } }],
@@ -246,7 +236,7 @@ export default function PhoneV2Screen({ navigation, route }) {
     setSocialBusy(provider);
     setSocialError(null);
     try {
-      const result = await completeSocialAuth(url, { isCurrent: () => authMountedRef.current });
+      const result = await completeSocialAuth(url);
       if (!result) {
         // Duplicate delivery of an already-processed callback — no-op, not
         // an error (see socialAuth.js lastProcessedCallbackKey guard).
@@ -332,16 +322,7 @@ export default function PhoneV2Screen({ navigation, route }) {
         consent: true,
         role,
       });
-      if (result?.cooldown) {
-        const retrySeconds = Number(result.cooldown_sec);
-        const seconds = Number.isFinite(retrySeconds) && retrySeconds > 0
-          ? Math.ceil(retrySeconds)
-          : 60;
-        const wait = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-        setEmailError(t('prem_reg_cooldown_body').replace('{time}', wait));
-        return;
-      }
-      if (result?.sent !== true || result?.error) {
+      if (result?.sent === false && result?.error && !result?.cooldown) {
         setEmailError(t('phone_v2_send_failed'));
         return;
       }

@@ -1,21 +1,18 @@
-import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 
 import { useI18n } from '../../utils/useI18n';
 import { localizePlace } from '../../utils/places';
-import { useV1Colors } from '../../theme/designV1';
+import { useV1Colors, getStatusColor } from '../../theme/designV1';
 import { systemEventText } from './DealRoom';
-import { stripSystemEventDecoration } from '../../utils/dealEventPresentation';
 
 const COPY = {
-  RU: { empty: 'История рейса пока пуста', location: 'Место', actor: 'Кто обновил', driver: 'Водитель', shipper: 'Грузоотправитель' },
-  EN: { empty: 'Trip history is empty', location: 'Location', actor: 'Updated by', driver: 'Driver', shipper: 'Shipper' },
-  ZH: { empty: '暂无运输记录', location: '地点', actor: '更新者', driver: '司机', shipper: '货主' },
-  KK: { empty: 'Рейс тарихы әзірге бос', location: 'Орын', actor: 'Жаңартқан', driver: 'Жүргізуші', shipper: 'Жүк жөнелтуші' },
+  RU: { empty: 'История рейса пока пуста', location: 'Место', actor: 'Кто обновил' },
+  EN: { empty: 'Trip history is empty', location: 'Location', actor: 'Updated by' },
+  ZH: { empty: '暂无运输记录', location: '地点', actor: '更新者' },
+  KK: { empty: 'Рейс тарихы әзірге бос', location: 'Орын', actor: 'Жаңартқан' },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const ICON_BY_EVENT = {
   bid_accepted: 'check-circle',
@@ -27,10 +24,33 @@ const ICON_BY_EVENT = {
   at_border: 'map-pin',
   border_crossed: 'check-square',
   delivered: 'package',
+  // received vs completed must differ BOTH by icon (check-square vs flag)
+  // AND by colour (accentDeep vs archive grey) — see STATUS_BY_EVENT.
   received: 'check-square',
   completed: 'flag',
   cancelled: 'x-circle',
   rejected: 'x-circle',
+};
+
+// Design v1 Commit 4: every event key maps onto a deal-status role so the
+// dot/icon colour comes from v1StatusColors (theme-aware). Non-status
+// events (deal created, bid accepted, border crossed) ride the role of the
+// status they represent. Unknown keys fall back to `accepted` — the list
+// stays a history feed; FSM semantics are untouched.
+const STATUS_BY_EVENT = {
+  bid_accepted: 'accepted',
+  deal_created: 'accepted',
+  created: 'accepted',
+  accepted: 'accepted',
+  in_progress: 'in_progress',
+  trip_started: 'in_progress',
+  at_border: 'at_border',
+  border_crossed: 'at_border',
+  delivered: 'delivered',
+  received: 'received',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  rejected: 'cancelled',
 };
 
 function textValue(value) {
@@ -90,19 +110,14 @@ function eventTime(ev) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function detailsFor(ev, key, ui) {
+function detailsFor(ev) {
   const p = ev?.payload || {};
-  const role = firstText(ev?.actor_role, p.actor_role);
   return {
     place: firstText(
       ev?.location_name, ev?.location, ev?.place, ev?.city,
       p.location_name, p.location, p.place, p.city, p.border_name,
     ),
-    actor: firstText(
-      ev?.actor_name, ev?.actor, ev?.updated_by, p.actor_name, p.actor, p.updated_by,
-      key === 'cancelled' && role === 'driver' ? ui.driver : null,
-      key === 'cancelled' && ['client', 'shipper'].includes(role) ? ui.shipper : null,
-    ),
+    actor: firstText(ev?.actor_name, ev?.actor, ev?.updated_by, p.actor_name, p.actor, p.updated_by),
     detail: firstText(ev?.comment, ev?.reason, ev?.description, ev?.details, p.comment, p.reason, p.description, p.details),
   };
 }
@@ -115,7 +130,7 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
   if (!events.length) {
     return (
       <View style={s.empty} testID="deal-status-timeline-empty">
-        <Feather name="activity" size={22} color={colors.success} />
+        <Feather name="activity" size={22} color={colors.statusAccepted} />
         <Text style={[s.emptyTitle, { color: colors.text }]}>{fallbackStatus || ui.empty}</Text>
         {fallbackStatus ? <Text style={[s.emptyHint, { color: colors.textMuted }]}>{ui.empty}</Text> : null}
       </View>
@@ -130,24 +145,27 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
     <View style={s.list} testID="deal-status-timeline">
       {sortedEvents.map((ev, index) => {
         const key = eventKey(ev);
-        const meta = detailsFor(ev, key, ui);
-        const title = stripSystemEventDecoration(systemEventText(t, ev));
+        const meta = detailsFor(ev);
+        const title = systemEventText(t, ev);
         const moment = formatMoment(ev, lang);
         const localizedPlace = meta.place ? (localizePlace(meta.place, lang) || meta.place) : '';
         const last = index === sortedEvents.length - 1;
-        // Единый акцент; семантику этапа передают подпись и иконка.
-        const roleColor = colors.success;
+        // Dot/icon colour per status role (accepted / in_progress /
+        // at_border / delivered / received / completed / cancelled) via
+        // v1StatusColors — received rides accentDeep, completed rides
+        // archive grey, so the two are distinguishable at a glance.
+        const roleColor = getStatusColor(colors, STATUS_BY_EVENT[key] || 'accepted');
         const isCurrent = index === 0;
         return (
           <View key={String(ev?.id || `${key}-${index}`)} style={s.item} testID="deal-status-timeline-item">
             <View style={s.rail}>
-              <View style={[s.dot, { borderColor: roleColor, backgroundColor: isCurrent ? roleColor : colors.surface }]}>
-                <Feather name={ICON_BY_EVENT[key] || 'circle'} size={17} color={isCurrent ? colors.surface : roleColor} />
+              <View style={[s.dot, { borderColor: roleColor, backgroundColor: colors.surface }]}>
+                <Feather name={ICON_BY_EVENT[key] || 'circle'} size={12} color={roleColor} />
               </View>
               {!last ? <View style={[s.line, { backgroundColor: colors.border }]} /> : null}
             </View>
 
-            <View style={[s.card, isCurrent ? s.currentCard : null, { backgroundColor: isCurrent ? colors.driverSoft : colors.surface, borderColor: isCurrent ? roleColor : colors.border }]}>
+            <View style={[s.card, isCurrent ? s.currentCard : null, { backgroundColor: isCurrent ? colors.driverSoft : colors.surface, borderColor: isCurrent ? colors.borderStrong : colors.border }]}>
               <Text style={[s.title, { color: colors.text }]}>{title}</Text>
               {moment ? <Text style={[s.moment, { color: colors.textMuted }]}>{moment}</Text> : null}
               {localizedPlace ? (
@@ -174,12 +192,12 @@ export default function DealStatusTimeline({ events = [], fallbackStatus = '' })
 const s = StyleSheet.create({
   list: { paddingHorizontal: 4, paddingTop: 6, paddingBottom: 24 },
   item: { flexDirection: 'row', alignItems: 'stretch', minHeight: 82 },
-  rail: { width: 40, alignItems: 'center' },
-  dot: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  rail: { width: 34, alignItems: 'center' },
+  dot: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   line: { width: 2, flex: 1, minHeight: 52, marginVertical: -1 },
   card: { flex: 1, borderWidth: 1, borderRadius: 15, paddingHorizontal: 13, paddingVertical: 11, marginBottom: 12 },
   currentCard: { borderWidth: 1.5 },
-  title: { fontSize: 14, fontWeight: '800', lineHeight: 20 },
+  title: { fontSize: 14, fontWeight: '900', lineHeight: 19 },
   moment: { fontSize: 11.5, fontWeight: '700', marginTop: 3, marginBottom: 7 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   metaText: { flex: 1, fontSize: 12, fontWeight: '650', lineHeight: 17 },

@@ -66,8 +66,8 @@ self.addEventListener('push', (event) => {
       body: data.body,
       icon: data.icon || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🚛</text></svg>',
       badge: data.badge,
-      data: data.url || data.data?.url || '/',
-      tag: data.tag || data.data?.event_id || data.data?.event_key || undefined,
+      data: data.url || '/',
+      tag: data.tag || 'urtruck',
       requireInteraction: data.severity === 'critical',
       vibrate: [200, 100, 200],
     })

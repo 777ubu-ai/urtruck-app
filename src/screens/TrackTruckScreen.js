@@ -1,7 +1,3 @@
-import { GPS_TRACKING_PAUSED, pausedLocationCopy } from '../utils/locationPolicy';
-import { useIsFocused } from '@react-navigation/native';
-import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
 // TrackTruckScreen — карта сделки внутри UrTruck.
 // Маршрут показывается сразу после создания сделки. GPS водителя, когда появится,
 // автоматически накладывается на ту же карту; отдельного пустого экрана ожидания нет.
@@ -11,18 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { marketAPI } from '../utils/marketAPI';
-import LiveTruckMap from '../components/TruckMap';
-import PlannedRouteSummary from '../components/PlannedRouteSummary';
-const TruckMap = GPS_TRACKING_PAUSED ? PlannedRouteSummary : LiveTruckMap;
+import TruckMap from '../components/TruckMap';
 import { parseRouteCities } from '../utils/geo';
 import { localizePlace } from '../utils/places';
 import { getLanguage } from '../utils/i18n';
 
 export default function TrackTruckScreen({ navigation, route }) {
   const { dealId, from, to, driverName, capacityTons } = route.params || {};
-  const isFocused = useIsFocused();
-  useDealLocationBroadcast(dealId ? [dealId] : [], { enabled: isFocused && Boolean(dealId) });
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const { theme } = useTheme();
   const [loc, setLoc] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -30,7 +22,7 @@ export default function TrackTruckScreen({ navigation, route }) {
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
-    if (GPS_TRACKING_PAUSED || !dealId) { setLoading(false); return; }
+    if (!dealId) { setLoading(false); return; }
     const r = await marketAPI.getDealLocation(dealId);
     if (!mounted.current) return;
     setLoading(false);
@@ -40,7 +32,6 @@ export default function TrackTruckScreen({ navigation, route }) {
   useEffect(() => {
     mounted.current = true;
     load();
-    if (GPS_TRACKING_PAUSED) return () => { mounted.current = false; };
     const iv = setInterval(load, 10000);
     return () => { mounted.current = false; clearInterval(iv); };
   }, [load]);
@@ -110,14 +101,13 @@ export default function TrackTruckScreen({ navigation, route }) {
       ) : (
         <View style={s.cleanMapWrap} testID={loc ? "track-live-map" : "track-planned-map"}>
           <TruckMap
-                  enabled={isFocused}
             lat={loc ? lat : undefined}
             lng={loc ? lng : undefined}
             title={loc ? (driverName || t('track_truck_marker')) : undefined}
             routePoints={routePoints}
             planned={!loc}
             plannedTitle={t('planned_route_title')}
-            plannedHint={GPS_TRACKING_PAUSED ? (pausedLocationCopy[lang] || pausedLocationCopy.RU) : t('tracking_starts_after_start')}
+            plannedHint={t('tracking_starts_after_start')}
             liveTitle={t('live_route_title')}
             showBadge={false}
             onRouteSummary={handleRouteSummary}
@@ -152,7 +142,7 @@ export default function TrackTruckScreen({ navigation, route }) {
               </View>
               <View style={[s.metricDiv, { backgroundColor: theme.border }]} />
               <View style={s.metricBlock}>
-                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t(routeSummary.durationLabelKey || 'delivery_time')}</Text>
+                <Text style={[s.metricLabel, { color: theme.textMuted }]}>{t('delivery_time')}</Text>
                 <Text style={[s.metricValue, { color: theme.text }]} numberOfLines={1}>{routeSummary.durationText}</Text>
               </View>
             </View>

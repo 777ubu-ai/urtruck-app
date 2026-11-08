@@ -42,12 +42,6 @@ _VEHICLE_CONTEXT = re.compile(
     r"нужен груз|нужна\s+загрузка|ищ(?:у|ем)\s+(?:обратн\w*|попутн\w*)\s+груз|"
     r"готов\w*\s+перевезти|ед(?:у|ем)\s+пуст\w*|освободил(?:ся|ась|ись)|освободимся|"
     r"жүк керек|(?:машина|фура|тент)\s+свободн(?:а|ы)|"
-    # Узбекские объявления о свободной машине часто состоят из двух слов.
-    # Поддерживаем кириллицу и распространённые варианты апострофа в латинице.
-    r"бос\s+(?:фур\w*|машин\w*|тент\w*|реф\w*)|"
-    r"(?:фур\w*|машин\w*)\s+бўш|"
-    r"bo[’‘ʻʼ']?sh\s+(?:fura|m[ao]shina|tent|ref)\b|"
-    r"(?:fura|m[ao]shina)\s+bo[’‘ʻʼ']?sh\b|"
     r"свобод(?:ен|на)\s+(?:тент|реф|машин|фур)|бос көлік|жүк іздеймін|yuk kerak\b|юк\s+керак\b|(?:m[ao]shina|fura) bor\b|free truck|available truck|empty truck|looking for cargo|"
     r"有空车|空车|找货|"
     r"предлага(?:ю|ем)\s+(?:свободн\w*\s+)?(?:машин\w*|авто|фур\w*|транспорт|тент\w*|реф\w*|тягач\w*|грузовик\w*)|"
@@ -60,17 +54,11 @@ _VEHICLE_CONTEXT = re.compile(
 
 
 _EMPTY_VEHICLE_OFFER = re.compile(
-    r"(?im)^[ \t]*[^\w\n]*(?:пуст(?:ой|ая|ые)\s+"
-    r"(?:эвакуатор\w*|машин\w*|фур\w*|тент\w*|реф\w*|тягач\w*)|"
-    r"бос\s+(?:фур\w*|машин\w*)|(?:фур\w*|машин\w*)\s+бўш|"
-    r"bo[’‘ʻʼ']?sh\s+(?:fura|m[ao]shina)|(?:fura|m[ao]shina)\s+bo[’‘ʻʼ']?sh)\b")
+    r"(?im)^[ \t]*[^\w\n]*пуст(?:ой|ая|ые)\s+"
+    r"(?:эвакуатор\w*|машин\w*|фур\w*|тент\w*|реф\w*|тягач\w*)\b")
 _UNAVAILABLE_OFFER = re.compile(
     r"(?i)\b(?:не|нет|если|нужен|нужна|нужны|куплю|продам|продаётся|продается|"
     r"ремонт\w*|занят\w*|загруж\w*)\b|[?？❓❔]")
-_UNAVAILABLE_UZBEK_VEHICLE = re.compile(
-    r"(?i)(?:бос\s+(?:фур\w*|машин\w*)|(?:фур\w*|машин\w*)\s+бўш|"
-    r"bo[’‘ʻʼ']?sh\s+(?:fura|m[ao]shina)|(?:fura|m[ao]shina)\s+bo[’‘ʻʼ']?sh)"
-    r"\s+(?:эмас|emas|yo['’‘ʻʼ]?q|йўқ)\b")
 
 _SERVICE_SEARCH_PREFIX = re.compile(
     r"(?i)\b(?:находите|находить|найдите|найти|ищите|поиск(?:а)?|"
@@ -124,24 +112,19 @@ def _intents(value):
         vehicle_text = re.sub(
             r'(?i)\bесть\s+(?:свободн\w*\s+)?(?:машин\w*|фур\w*|транспорт)\s*[-–—]\s*'
             r'(?:пишите|звоните|забирайте|подключайтесь)[^\n.!?]*', ' ', vehicle_text)
-    empty_offer = (bool(_EMPTY_VEHICLE_OFFER.search(vehicle_text))
-                   and not _UNAVAILABLE_OFFER.search(value)
-                   and not _UNAVAILABLE_UZBEK_VEHICLE.search(value))
-    unavailable = bool(re.search(
+    empty_offer = bool(_EMPTY_VEHICLE_OFFER.search(vehicle_text)) and not _UNAVAILABLE_OFFER.search(value)
+    unavailable = re.search(
         r'(?i)\b(?:машин\w*|фур\w*|тент\w*|реф\w*|авто|транспорт)\s+'
         r'(?:не\s+свобод(?:ен|н\w*)|занят\w*|в\s+ремонте)\b|'
         r'\b(?:ваканси\w*|продам|прода[её]тся|куплю)\b|'
         r'\b(?:ищу|ищем|нужен|требуется)\s+водител\w*|'
         r'\bне\s+(?:освободил\w*|готов\w*|ищу|ищем)', value)
-        or _UNAVAILABLE_UZBEK_VEHICLE.search(value))
     return cargo, bool(not unavailable and (_direct_vehicle_context(vehicle_text) or empty_offer))
 
 
 def has_vehicle_supply_signal(text):
     """Быстрый кандидат приоритетной полосы; тип всё равно проверяется парсером."""
-    value = text or ''
-    return bool((not _UNAVAILABLE_UZBEK_VEHICLE.search(value))
-                and (_VEHICLE_CONTEXT.search(value) or _EMPTY_VEHICLE_OFFER.search(value)))
+    return bool(_VEHICLE_CONTEXT.search(text or '') or _EMPTY_VEHICLE_OFFER.search(text or ''))
 # Закрытие относится к заявке: закрытый кузов/граница — лишь условия перевозки.
 _CLOSE_CONTEXT = re.compile(
     r"(?:\b(?:заявка|объявление|заказ|груз|рейс|перевозка|маршрут)\s+"
@@ -152,20 +135,9 @@ _CLOSE_CONTEXT = re.compile(
     r"\bfound (?:a truck|cargo)\b|(?:订单|货源)已关闭)", re.I | re.M,
 )
 
-_GROUP_ADMIN_POST = re.compile(
-    r"(?i)\b(?:добро\s+пожаловать\s+в\s+(?:нашу\s+)?(?:группу|чат)|"
-    r"(?:данное|это|эта)\s+(?:сообщество|группа)\s+создано\s+для\s+размещени\w*\s+объявлени\w*|"
-    r"в\s+(?:нашей|этой)\s+группе\s+запрещено|правила\s+(?:нашей\s+)?группы)\b"
-)
-
 
 def classify_message(text: str) -> dict:
     value = str(text or "")[:20000]
-    # Welcome/rules posts often mention freight services and contain route
-    # examples, but are group administration rather than an actual listing.
-    if _GROUP_ADMIN_POST.search(value):
-        return {"kind": None, "status": "closed", "segments": [value],
-                "reason": "group_administration"}
     if _CLOSE_CONTEXT.search(value):
         return {"kind": None, "status": "closed", "segments": [value]}
     cargo, vehicle = _intents(value)

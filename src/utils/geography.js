@@ -20,10 +20,7 @@
 //     point object is also returned via the second arg to `onChange`
 //     for screens that want it.
 
-import { ALL_COUNTRIES } from './countries.js';
-import { worldCitiesForCountry, searchWorldCities, searchWorldCitiesAsync } from './worldCities.js';
-
-const CORRIDOR_COUNTRIES = {
+export const COUNTRIES = {
   CN: { name: 'Китай' }, KZ: { name: 'Казахстан' }, UZ: { name: 'Узбекистан' },
   KG: { name: 'Кыргызстан' }, RU: { name: 'Россия' }, BY: { name: 'Беларусь' },
   TJ: { name: 'Таджикистан' }, TM: { name: 'Туркменистан' }, AM: { name: 'Армения' },
@@ -35,21 +32,10 @@ const CORRIDOR_COUNTRIES = {
 
 // Stable order in pickers — corridor matters: CN/KZ on top, then CIS,
 // then EU.
-const CORRIDOR_ORDER = [
+export const COUNTRY_ORDER = [
   'CN', 'KZ', 'UZ', 'KG', 'RU', 'BY', 'TJ', 'TM',
   'AM', 'GE', 'AZ', 'TR',
   'PL', 'LT', 'LV', 'EE', 'HU', 'RO', 'SK', 'BG', 'GR',
-];
-
-// Общий ISO-справочник уже используется регистрацией. Маршрут не должен
-// скрывать страны, для которых в приложении уже есть названия и SVG-флаги.
-export const COUNTRIES = {
-  ...Object.fromEntries(ALL_COUNTRIES.map((country) => [country.iso, { name: country.name }])),
-  ...CORRIDOR_COUNTRIES,
-};
-export const COUNTRY_ORDER = [
-  ...CORRIDOR_ORDER,
-  ...ALL_COUNTRIES.map((country) => country.iso).filter((code) => !CORRIDOR_ORDER.includes(code)),
 ];
 
 // Point taxonomy. `key` is what we store internally; `label` /
@@ -235,37 +221,8 @@ export const POINTS = [
 
 // Search across all visible label surfaces (name + aliases + country
 // name). Empty query returns top 12 entries to keep the UI fast.
-const CURATED_CITY_NAMES = new Set(POINTS
-  .filter((point) => point.type === 'city')
-  .flatMap((point) => [point.name, ...(point.aliases || [])]
-    .map((name) => `${point.country}:${name.toLocaleLowerCase()}`)));
-
 export const searchPoints = (query, { country, type } = {}) => {
-  const worldHits = searchWorldCities(query, country, {
-    allowedCountries: COUNTRIES,
-    excludedNames: CURATED_CITY_NAMES,
-    type,
-  });
-  return rankPoints(query, country, type, worldHits);
-};
-
-const asyncSearchCache = new Map();
-export const searchPointsAsync = async (query, { country, type, ...options } = {}) => {
-  if (options.isCurrent && !options.isCurrent()) return null;
-  const key = JSON.stringify([String(query || '').trim().toLocaleLowerCase(), country, type]);
-  if (asyncSearchCache.has(key)) return asyncSearchCache.get(key);
-  const worldHits = await searchWorldCitiesAsync(query, country, {
-    ...options, allowedCountries: COUNTRIES, excludedNames: CURATED_CITY_NAMES, type,
-  });
-  if (worldHits === null || (options.isCurrent && !options.isCurrent())) return null;
-  const result = rankPoints(query, country, type, worldHits);
-  if (asyncSearchCache.size >= 32) asyncSearchCache.delete(asyncSearchCache.keys().next().value);
-  asyncSearchCache.set(key, result);
-  return result;
-};
-
-const rankPoints = (query, country, type, worldHits) => {
-  let pool = [...POINTS, ...worldHits];
+  let pool = POINTS;
   if (country) pool = pool.filter((p) => p.country === country || p.partnerCountry === country);
   if (type) pool = pool.filter((p) => p.type === type);
   if (!query || !query.trim()) return pool.slice(0, 12);
@@ -299,10 +256,7 @@ export const formatPoint = (point) => {
 // Convenience: return only the points belonging to one country, useful
 // for the picker's stage-2 list.
 export const pointsForCountry = (countryCode, type = null) => {
-  const curated = POINTS.filter((p) => p.country === countryCode || p.partnerCountry === countryCode);
-  const knownNames = new Set(curated.flatMap((p) => [p.name, ...(p.aliases || [])]).map((name) => name.toLocaleLowerCase()));
-  const cities = worldCitiesForCountry(countryCode).filter((p) => ![p.name, ...p.aliases].some((name) => knownNames.has(name.toLocaleLowerCase())));
-  let pool = [...curated, ...cities];
+  let pool = POINTS.filter((p) => p.country === countryCode || p.partnerCountry === countryCode);
   if (type) pool = pool.filter((p) => p.type === type);
   return pool;
 };

@@ -1,42 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {ADVISORY_URL, evaluateAudit} from '../../scripts/security-node-forge-audit-gate.mjs';
+import {evaluateAudit} from '../../scripts/dependency-security-gate.mjs';
 
-const expectedAdvisory = {
-  name: 'node-forge',
-  url: ADVISORY_URL,
-  range: '<=1.4.0',
-  severity: 'high',
-};
+const advisory = {name: 'node-forge', url: 'https://github.com/advisories/GHSA-86w9-cpqp-85rv',
+  range: '<=1.4.0', severity: 'high'};
 
-test('audit compensation allows only the transitive GHSA-86w9-cpqp-85rv chain', () => {
+test('исправленный upstream не допускает прежнюю компенсированную цепочку', () => {
   const audit = {vulnerabilities: {
     expo: {severity: 'high', via: ['@expo/cli']},
     '@expo/cli': {severity: 'high', via: ['node-forge']},
-    'node-forge': {severity: 'high', via: [expectedAdvisory]},
+    'node-forge': {severity: 'high', via: [advisory]},
   }};
-  assert.deepEqual(evaluateAudit(audit), []);
+  assert.deepEqual(evaluateAudit(audit).map(item => item.name), ['expo', '@expo/cli', 'node-forge']);
 });
 
-test('audit compensation blocks every independent high or critical advisory', () => {
-  const audit = {vulnerabilities: {
-    'node-forge': {severity: 'high', via: [expectedAdvisory]},
-    unrelated: {severity: 'critical', via: [{
-      name: 'unrelated', url: 'https://github.com/advisories/GHSA-test',
-      range: '*', severity: 'critical',
-    }]},
-  }};
-  assert.deepEqual(evaluateAudit(audit), [{
-    name: 'unrelated', severity: 'critical', via: audit.vulnerabilities.unrelated.via,
-  }]);
+test('все moderate/high/critical блокируют проверку, low не скрывает high', () => {
+  const vulnerabilities = Object.fromEntries(['low', 'moderate', 'high', 'critical']
+    .map(severity => [severity, {severity, via: [advisory]}]));
+  assert.deepEqual(evaluateAudit({vulnerabilities}).map(item => item.name), ['moderate', 'high', 'critical']);
 });
 
-test('audit compensation blocks a second node-forge advisory', () => {
-  const audit = {vulnerabilities: {
-    'node-forge': {severity: 'high', via: [expectedAdvisory, {
-      name: 'node-forge', url: 'https://github.com/advisories/GHSA-other',
-      range: '*', severity: 'high',
-    }]},
-  }};
-  assert.equal(evaluateAudit(audit).length, 1);
+test('пустой отчёт допускается, отсутствие результата аудита отклоняется', () => {
+  assert.deepEqual(evaluateAudit({vulnerabilities: {}}), []);
+  assert.throws(() => evaluateAudit({}), /vulnerabilities/);
 });

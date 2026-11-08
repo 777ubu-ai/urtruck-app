@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 from database import db as ddb
 from database import registration_dal as reg_dal
 from database.db import get_conn
-from services import push_gateway
 
 ddb.init_db()
 reg_dal.init_registration_schema()
@@ -30,15 +29,7 @@ from services import push_sender
 app = FastAPI()
 app.include_router(reg_router, prefix="/api/v1/registration")
 app.include_router(push_router, prefix="/api/v1/push")
-_raw_client = TestClient(app)
-class _NativeClient:
-    def __getattr__(self, name): return getattr(_raw_client, name)
-    def post(self, url, *args, **kwargs):
-        payload = kwargs.get("json")
-        if url.endswith("/register-native") and isinstance(payload, dict):
-            payload.setdefault("provider", "fcm"); payload.setdefault("platform", "android")
-        return _raw_client.post(url, *args, **kwargs)
-client = _NativeClient()
+client = TestClient(app)
 
 
 def _driver_columns():
@@ -65,13 +56,6 @@ def _new_user(*, name="Delete Me", phone=None):
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
-def _native_tokens(uid):
-    return [d for d in push_gateway.active_devices(uid) if d.get("push_provider") in ("fcm", "apns")]
-
-def _web_subs(uid):
-    with get_conn() as c:
-        return c.execute("SELECT * FROM push_subscriptions WHERE user_id=? AND active=1", (uid,)).fetchall()
-
 
 def _delete(token, method="delete"):
     if method == "post":
@@ -80,7 +64,7 @@ def _delete(token, method="delete"):
 
 
 def _register_push(token, suffix):
-    native = f"fcm-account-delete-{suffix}"
+    native = f"ExponentPushToken[account-delete-{suffix}]"
     endpoint = f"https://fcm.googleapis.com/fcm/send/account-delete-{suffix}"
     r1 = client.post("/api/v1/push/register-native", json={
         "token": native, "device_id": f"device-{suffix}",
@@ -147,11 +131,11 @@ def test_old_token_cannot_access_me_after_delete():
 def test_delete_deactivates_native_and_web_push():
     uid, token = _new_user(name="Push cleanup")
     _register_push(token, "both")
-    assert len(_native_tokens(uid)) == 1
-    assert len(_web_subs(uid)) == 1
+    assert len(push_sender._native_tokens(uid)) == 1
+    assert len(push_sender._web_subs(uid)) == 1
     _delete(token)
-    assert _native_tokens(uid) == []
-    assert _web_subs(uid) == []
+    assert push_sender._native_tokens(uid) == []
+    assert push_sender._web_subs(uid) == []
 
 
 def test_delete_does_not_affect_other_user():
@@ -162,8 +146,8 @@ def test_delete_does_not_affect_other_user():
     _delete(token_a)
     assert reg_dal.get_driver(uid_a)["status"] == "deleted"
     assert reg_dal.get_driver(uid_b)["status"] != "deleted"
-    assert len(_native_tokens(uid_b)) == 1
-    assert len(_web_subs(uid_b)) == 1
+    assert len(push_sender._native_tokens(uid_b)) == 1
+    assert len(push_sender._web_subs(uid_b)) == 1
     assert reg_dal.get_driver_by_token(token_b) == uid_b
 
 
@@ -180,12 +164,12 @@ def test_deactivated_native_token_can_be_rebound_safely():
     uid_a, token_a = _new_user(name="Old owner")
     native, _ = _register_push(token_a, "rebind")
     _delete(token_a)
-    assert _native_tokens(uid_a) == []
+    assert push_sender._native_tokens(uid_a) == []
 
     uid_b, token_b = _new_user(name="New owner")
     r = client.post("/api/v1/push/register-native", json={
         "token": native, "device_id": "device-rebind-new",
     }, headers=_auth(token_b))
     assert r.status_code == 200, r.text
-    assert _native_tokens(uid_a) == []
-    assert [x["push_token"] for x in _native_tokens(uid_b)] == [native]
+    assert push_sender._native_tokens(uid_a) == []
+    assert [x["token"] for x in push_sender._native_tokens(uid_b)] == [native]

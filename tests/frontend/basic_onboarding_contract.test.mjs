@@ -8,7 +8,7 @@ const gate = read('backend/api/verification_gate.py');
 const registration = read('backend/api/registration.py');
 const client = read('src/utils/registration.js');
 const success = read('src/screens/vehicle/VehicleSetupSuccessScreen.js');
-const setup = read('src/screens/vehicle/VehicleSetupCountryScreen.js');
+const review = read('src/screens/vehicle/VehicleSetupReviewScreen.js');
 const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const trips = read('src/screens/MyTripsScreen.js');
 const proDocs = read('src/navigation/AppNavigator.js');
@@ -28,53 +28,51 @@ test('basic endpoint validates personal registration without requiring a vehicle
   assert.doesNotMatch(endpoint, /update_driver[\s\S]*verification_level[\s\S]*3/);
 });
 
-test('register/me exposes basic completion and the basic app has no document-review UI gate', () => {
+test('register/me exposes the basic completion flag and trip gate is explicit', () => {
   assert.match(registration, /"basic_onboarding_completed": bool\(driver\.get\("basic_onboarding_completed"\)\)/);
   assert.match(gate, /basic_onboarding_required/);
   assert.match(gate, /basic_onboarding_completed/);
-  assert.doesNotMatch(trips, /trips-publish-gate/);
-  assert.doesNotMatch(trips, /pubGateVisible|canPublish|verState/);
-  assert.doesNotMatch(trips, /regAPI\.me\(\)/);
-  assert.match(trips, /await vehicleAPI\.list\(\)/);
-  assert.doesNotMatch(trips, /navigation\.navigate\('VehicleSetupCountry'/); // Owner decision 2026-10-09: no repeat registration during route publication.
+  assert.match(trips, /me\.basic_onboarding_completed/);
+  assert.match(trips, /if \(!canPublish\)/);
 });
 
 test('VehicleSetupSuccess completes basic onboarding before opening trip creation', () => {
-  assert.match(client, /async completeBasic\(/);
+  assert.match(client, /async completeBasic\(\)/);
   assert.match(client, /DRIVER_REG_BASE}\/complete-basic/);
-  assert.match(success, /regAPI\.completeBasic\(/);
+  assert.match(success, /regAPI\.completeBasic\(\)/);
   assert.match(success, /catch \{/);
-  assert.match(success, /setRole\('driver', /);
-  assert.match(success, /screen: 'Feed'/);
+  assert.match(success, /setRole\('driver'\)/);
+  assert.match(success, /navigation\.replace\('CreateTrip'/);
   assert.match(success, /basicState === 'done' \? </);
-  assert.match(success, /basic-onboarding-loads/);
-  assert.match(success, /testID="vehicle-setup-success"/);
+  assert.match(success, /'basic-onboarding-publish'/);
+  assert.match(success, /testID=\{`basic-onboarding-\$\{basicState\}`\}/);
   assert.doesNotMatch(success, /<Pressable disabled=\{basicState !== 'done'\}/);
-  assert.match(setup, /truck_kind: draft\.vehicle_type/);
-  assert.match(setup, /vehicle_registration_country: draft\.vehicle_registration_country_code/);
+  assert.match(review, /truck_kind: d\.vehicle_type/);
+  assert.match(review, /vehicle_registration_country: d\.vehicle_registration_country_code/);
 });
 
-test('driver profile continues to the required single-page vehicle setup', () => {
-  assert.doesNotMatch(profile, /const completed = await regAPI\.completeBasic\(\)/);
-  assert.doesNotMatch(profile, /setRole\('driver'\)/);
-  assert.match(profile, /navigation\.replace\('VehicleSetupCountry', \{[\s\S]*role: 'driver',[\s\S]*origin: 'basic_onboarding'/);
+test('driver profile continues to vehicle setup and does not commit driver role early', () => {
+  assert.match(profile, /navigation\.replace\('VehicleSetupCountry', \{ role: 'driver', origin: 'basic_onboarding' \}\)/);
+  const driverContinue = profile.slice(profile.indexOf("if (role === 'driver') {\n        navigation.replace('VehicleSetupCountry'"), profile.indexOf('setRole(role)'));
+  assert.doesNotMatch(driverContinue, /setRole\(/);
+  assert.doesNotMatch(driverContinue, /Main/);
 });
 
-test('single-page vehicle save continues through compact completion and errors have retry', () => {
-  assert.match(setup, /vehicleAPI\.save/);
-  assert.match(setup, /regAPI\.saveDriverDraft/);
-  assert.match(setup, /navigation\.replace\('VehicleSetupSuccess'/);
-  assert.doesNotMatch(setup, /VehicleSetupReview/);
+test('vehicle save without publication still completes basic onboarding and errors have retry', () => {
+  assert.match(review, /if \(!publish && !returnOrigin\) \{ const completed = await regAPI\.completeBasic\(\)/);
+  assert.match(review, /setRole\('driver'\)/);
+  assert.match(review, /testID="vehicle-setup-retry"/);
+  assert.doesNotMatch(review, /c\.documents/);
   assert.match(success, /testID="basic-onboarding-retry"/);
   assert.match(success, /const completionStarted = useRef\(false\)/);
-  assert.match(success, /returnsToExistingFlow \|\| completionStarted\.current/);
+  assert.match(success, /if \(completionStarted\.current\) return undefined/);
   assert.match(success, /basicState !== 'done'/);
-  assert.match(success, /navigation\.reset\(/);
+  assert.match(success, /navigation\.replace\('Main', \{ role: 'driver' \}\)/);
 });
 
-test('basic profile leaves company and messenger optional', () => {
-  assert.doesNotMatch(profile, /validCompany/);
-  assert.doesNotMatch(profile, /validMessenger/);
+test('driver basic profile leaves company and messenger optional', () => {
+  assert.match(profile, /const validCompany = role === 'driver' \|\| company\.trim\(\)\.length >= 2/);
+  assert.match(profile, /const validMessenger = role === 'driver' \|\| !messengerType/);
 });
 
 test('Pro documents remain separate stack routes', () => {

@@ -1,13 +1,10 @@
-import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -48,9 +45,6 @@ const TEXT = '#17221D';
 const TEXT_SECONDARY = '#606B66';
 const TEXT_MUTED = '#718078';
 const BORDER = '#E5EAE7';
-// Bound the mounted card window on low-memory devices. `items` and the server
-// cursor remain complete; this only controls the nearby rows kept in the view.
-const CARGO_FEED_WINDOW_SIZE = 7;
 
 const cargoPalette = (ceramic) => ({
   pageBg: ceramic.bg,
@@ -71,29 +65,27 @@ const cargoPalette = (ceramic) => ({
 const COPY = {
   RU: {
     loading: 'Погрузка', negotiated: 'По договорённости', loadError: 'Не удалось загрузить грузы',
-    empty: 'Подходящих грузов пока нет', retry: 'Повторить', favorites: 'Избранное', minPrice: 'Цена от', maxPrice: 'Цена до', priceScope: 'Сортировка и диапазон только в выбранной валюте', scrollToTop: 'Наверх', priceRangeError: 'Проверьте цены и даты: начало диапазона должно быть не позже конца',
+    empty: 'Подходящих грузов пока нет', retry: 'Повторить', favorites: 'Избранное',
   },
   EN: {
     loading: 'Loading', negotiated: 'By agreement', loadError: 'Could not load cargoes',
-    empty: 'No matching cargoes yet', retry: 'Retry', favorites: 'Favorites', minPrice: 'Price from', maxPrice: 'Price to', priceScope: 'Sort and range use the selected currency only', scrollToTop: 'Back to top', priceRangeError: 'Check prices and dates: the range start must not be after its end',
+    empty: 'No matching cargoes yet', retry: 'Retry', favorites: 'Favorites',
   },
   ZH: {
     loading: '装货', negotiated: '面议', loadError: '无法加载货物',
-    empty: '暂时没有合适的货物', retry: '重试', favorites: '收藏', minPrice: '最低价', maxPrice: '最高价', priceScope: '排序和价格范围仅使用所选货币', scrollToTop: '回到顶部', priceRangeError: '请检查价格和日期：范围起始值不能晚于结束值',
+    empty: '暂时没有合适的货物', retry: '重试', favorites: '收藏',
   },
   KK: {
     loading: 'Тиеу', negotiated: 'Келісім бойынша', loadError: 'Жүктерді жүктеу мүмкін болмады',
-    empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
+    empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const MONTHS = {
   RU: ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'],
   EN: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   KK: ['қаң', 'ақп', 'нау', 'сәу', 'мам', 'мау', 'шіл', 'там', 'қыр', 'қаз', 'қар', 'жел'],
 };
-Object.assign(MONTHS, withAdditionalLanguageTree(MONTHS));
 
 const FLAG_PAIR_RE = /[\u{1F1E6}-\u{1F1FF}]{2}/gu;
 
@@ -187,8 +179,8 @@ function CargoCard({ item, lang, t, copy, saved, onToggleSaved, onPress }) {
   const fromFlag = item.fromCountry || flagCode(item.fromEmbeddedFlag) || null;
   const toFlag = item.toCountry || flagCode(item.toEmbeddedFlag) || null;
   const units = {
-    volume: lang === 'ZH' ? localizeUiText('立方米', lang) : localizeUiText('м³', lang),
-    tons: lang === 'ZH' ? localizeUiText('吨', lang) : lang === 'EN' ? localizeUiText('t', lang) : localizeUiText('т', lang),
+    volume: lang === 'ZH' ? '立方米' : 'м³',
+    tons: lang === 'ZH' ? '吨' : lang === 'EN' ? 't' : 'т',
   };
   const specs = [
     formatTruckType(item.type),
@@ -239,11 +231,7 @@ export default function CargoFeedScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const pageRef = React.useRef({ busy: false, nextOffset: null, failed: false });
-  const loadSeqRef = React.useRef(0);
-  useEffect(() => () => { loadSeqRef.current++; }, []);
-  const [errorAppend, setErrorAppend] = useState(false);
+  const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
   const [dirFromCountry, setDirFromCountry] = useState('');
@@ -255,16 +243,9 @@ export default function CargoFeedScreen({ navigation }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('newest');
-  const [priceCurrency, setPriceCurrency] = useState('USD');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [filterDraft, setFilterDraft] = useState(null);
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
-  const listRef = React.useRef(null);
-  const scrollOffsetRef = React.useRef(0);
-  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -277,19 +258,8 @@ export default function CargoFeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async ({ append = false, retry = false } = {}) => {
-    const previous = pageRef.current;
-    if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
-    const requestId = ++loadSeqRef.current;
-    const offset = append ? previous.nextOffset : 0;
-    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null, failed: false };
-    if (append) setLoadingMore(true);
-    else {
-      scrollOffsetRef.current = 0;
-      listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
+  const load = useCallback(async () => {
     setError(false);
-    setErrorAppend(false);
     try {
       const result = await marketAPI.listCargos({
         fromCity: dirFrom.trim() || '',
@@ -297,15 +267,7 @@ export default function CargoFeedScreen({ navigation }) {
         fromCountry: dirFromCountry,
         toCountry: dirToCountry,
         cargoType: filterType || '',
-        dateFrom: toIso(dateFrom),
-        dateTo: toIso(dateTo),
-        minPrice: minPrice.trim() ? Number(minPrice) : null,
-        maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
-        currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
-        sortBy,
-        savedOnly,
-        limit: 50,
-        offset,
+        limit: pageLimit,
       });
       // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
       // бросает при сетевой ошибке / 5xx — он возвращает
@@ -319,56 +281,42 @@ export default function CargoFeedScreen({ navigation }) {
       // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
       // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
       // ленту грузов к той же симметрии.
-      if (requestId !== loadSeqRef.current) return;
-      if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
       if (result?.serverError) throw new Error('cargo_feed_failed');
       const mapped = (result?.cargos || [])
         .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
         .map((cargo) => normalizeCargo(cargo, myUserId))
         .filter((cargo) => cargo.from && cargo.to);
-      if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
-      const next = result.has_more ? result.next_offset : null;
-      if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
-      setItems(current => append
-        ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
-        : mapped);
-      pageRef.current = { busy: false, nextOffset: next, failed: false };
+      setItems(mapped);
     } catch (e) {
-      if (requestId !== loadSeqRef.current) return;
       console.warn('[CargoFeed] load failed:', e);
-      pageRef.current.failed = true;
-      setErrorAppend(append);
       setError(true);
     } finally {
-      if (requestId === loadSeqRef.current) {
-        pageRef.current.busy = false;
-        setLoadingMore(false);
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly]);
-
-  const loadNextPage = useCallback(() => {
-    const page = pageRef.current;
-    if (!page.busy && !page.failed && page.nextOffset != null) load({ append: true });
-  }, [load]);
+  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, pageLimit, myUserId]);
 
   useEffect(() => { load(); }, [load]);
-  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
-  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
-    // Preserve the current server pages and list position when returning from
-    // a cargo detail. Pull-to-refresh explicitly starts a fresh search.
+    load();
     loadSaved();
-    const frame = requestAnimationFrame(() => {
-      if (scrollOffsetRef.current > 0) listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current, animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [loadSaved]));
+  }, [load, loadSaved]));
 
-  // Search and ordering are server-side so later pages participate too.
-  const visibleItems = items;
+  const visibleItems = useMemo(() => {
+    const dateStart = toIso(dateFrom);
+    const dateEnd = toIso(dateTo);
+    let data = items.filter((item) => {
+      const pickup = toIso(item.pickup);
+      if (dateStart && pickup && pickup < dateStart) return false;
+      if (dateEnd && pickup && pickup > dateEnd) return false;
+      if (savedOnly && !savedIds.has(String(item.id))) return false;
+      return true;
+    });
+    if (sortBy === 'price-asc') data = [...data].sort((a, b) => a.price - b.price);
+    if (sortBy === 'price-desc') data = [...data].sort((a, b) => b.price - a.price);
+    if (sortBy === 'newest') data = [...data].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    return data;
+  }, [items, dateFrom, dateTo, sortBy, savedOnly, savedIds]);
 
   const openCargo = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'driver');
@@ -430,50 +378,13 @@ export default function CargoFeedScreen({ navigation }) {
     setSavedOnly((value) => !value);
   };
 
-  const openFilter = (key) => {
-    setFilterDraft({ dateFrom, dateTo, sortBy, priceCurrency, minPrice, maxPrice });
-    setActiveFilter(key);
-  };
-
-  const applyFilterDraft = () => {
-    if (!filterDraft) { setActiveFilter(null); return; }
-    const parsePrice = (raw) => raw.trim() ? Number(raw.trim().replace(',', '.')) : null;
-    const min = parsePrice(filterDraft.minPrice);
-    const max = parsePrice(filterDraft.maxPrice);
-    const startDate = toIso(filterDraft.dateFrom);
-    const endDate = toIso(filterDraft.dateTo);
-    if ((min != null && (!Number.isFinite(min) || min < 0))
-      || (max != null && (!Number.isFinite(max) || max < 0))
-      || (min != null && max != null && min > max)
-      || (startDate && endDate && startDate > endDate)) {
-      toast(copy.priceRangeError, 'error');
-      return;
-    }
-    if (min != null) setMinPrice(String(min));
-    if (max != null) setMaxPrice(String(max));
-    setDateFrom(filterDraft.dateFrom);
-    setDateTo(filterDraft.dateTo);
-    setSortBy(filterDraft.sortBy);
-    setPriceCurrency(filterDraft.priceCurrency);
-    setMinPrice(filterDraft.minPrice);
-    setMaxPrice(filterDraft.maxPrice);
-    setFilterDraft(null);
-    setActiveFilter(null);
-  };
-
   const { refreshing, onRefresh } = useSafeRefresh(
     useCallback(() => Promise.allSettled([load(), loadSaved()]), [load, loadSaved]),
   );
 
   const filterPill = (key, label, icon, active) => (
-    <CompactFilterChip key={key} variant="driver" icon={icon} label={label} active={active} onPress={() => openFilter(key)} testID={`cargo-filter-${key}`} />
+    <CompactFilterChip key={key} variant="driver" icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`cargo-filter-${key}`} />
   );
-  const clearAllFilters = () => {
-    setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry('');
-    setFilterType(null); setDateFrom(''); setDateTo(''); setSortBy('newest');
-    setMinPrice(''); setMaxPrice(''); setSavedOnly(false);
-  };
-  const hasAnyFilter = !!(dirFrom || dirTo || dirFromCountry || dirToCountry || filterType || dateFrom || dateTo || sortBy !== 'newest' || minPrice || maxPrice || savedOnly);
 
   const feedControls = (
     <View style={styles.feedControls} testID="cargo-feed-scroll-controls">
@@ -527,9 +438,8 @@ export default function CargoFeedScreen({ navigation }) {
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
-        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest' || !!minPrice || !!maxPrice)}
+        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
         <CompactFilterChip variant="driver" icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="cargo-filter-favorites" accessibilityLabel={copy.favorites} />
-        {hasAnyFilter ? <CompactFilterChip variant="driver" icon="x-circle" label={t('filter_reset')} onPress={clearAllFilters} testID="cargo-filter-reset" /> : null}
       </ScrollView>
     </View>
   );
@@ -542,9 +452,7 @@ export default function CargoFeedScreen({ navigation }) {
       </ExternalFreightEntry>
 
       <FlatList
-        ref={listRef}
         style={styles.list}
-        windowSize={CARGO_FEED_WINDOW_SIZE}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
@@ -553,47 +461,20 @@ export default function CargoFeedScreen({ navigation }) {
             lang={lang}
             t={t}
             copy={copy}
-            saved={savedOnly || savedIds.has(String(item.id))}
+            saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openCargo(item)}
           />
         )}
         ListHeaderComponent={feedControls}
-        ListHeaderComponentStyle={{ backgroundColor: palette.pageBg }}
-        stickyHeaderIndices={[0]}
-        onScroll={(event) => {
-          const offset = event.nativeEvent.contentOffset.y;
-          scrollOffsetRef.current = offset;
-          const visible = offset > 800;
-          setShowScrollTop((current) => current === visible ? current : visible);
-          const { height: contentHeight } = event.nativeEvent.contentSize || {};
-          const { height: viewportHeight } = event.nativeEvent.layoutMeasurement || {};
-          if (Number.isFinite(contentHeight) && Number.isFinite(viewportHeight)
-            && contentHeight - viewportHeight - offset <= viewportHeight * 0.5) loadNextPage();
-        }}
-        onEndReached={loadNextPage}
-        onEndReachedThreshold={0.5}
-        scrollEventThrottle={100}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={palette.accent} />}
-        ListFooterComponent={loadingMore ? (
-          <View style={styles.pageFooter} testID="cargo-feed-loading-more">
-            <ActivityIndicator size="small" color={palette.accent} />
-          </View>
-        ) : error && items.length > 0 ? (
-          <View style={styles.pageFooter}>
-            <Text style={styles.emptyTitle}>{copy.loadError}</Text>
-            <TouchableOpacity
-              testID="cargo-feed-retry-more"
-              style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]}
-              onPress={() => errorAppend ? load({ append: true, retry: true }) : load()}
-            >
-              <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((p) => p + 50);
+        }}
         ListEmptyComponent={
           loading ? (
             <View style={styles.loadingWrap}>
@@ -612,11 +493,6 @@ export default function CargoFeedScreen({ navigation }) {
           )
         }
       />
-      {showScrollTop ? (
-        <TouchableOpacity testID="cargo-feed-scroll-top" accessibilityLabel={copy.scrollToTop} style={[styles.scrollTopButton, { backgroundColor: palette.accent }]} onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}>
-          <Feather name="arrow-up" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
-      ) : null}
 
       <LocationPickerModal
         visible={showDirFromPicker}
@@ -653,14 +529,14 @@ export default function CargoFeedScreen({ navigation }) {
           cargoPalette(theme, isDark) выше. */}
       <BottomSheet visible={activeFilter === 'date'} onClose={() => setActiveFilter(null)} title={t('filter_date')}>
         <Text style={[styles.sheetLabel, { color: palette.textMuted }]}>{t('filter_date_from')}</Text>
-        <DatePicker value={filterDraft?.dateFrom ?? dateFrom} onChange={(value) => setFilterDraft((current) => ({ ...current, dateFrom: value }))} placeholder={t('date_placeholder')} />
+        <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
         <Text style={[styles.sheetLabel, { color: palette.textMuted, marginTop: 14 }]}>{t('filter_date_to')}</Text>
-        <DatePicker value={filterDraft?.dateTo ?? dateTo} onChange={(value) => setFilterDraft((current) => ({ ...current, dateTo: value }))} placeholder={t('date_placeholder')} />
+        <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setFilterDraft((current) => ({ ...current, dateFrom: '', dateTo: '' }))}>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => { setDateFrom(''); setDateTo(''); }}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={applyFilterDraft}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -702,31 +578,18 @@ export default function CargoFeedScreen({ navigation }) {
         ].map(([key, label]) => (
           <TouchableOpacity
             key={key}
-            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, (filterDraft?.sortBy ?? sortBy) === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
-            onPress={() => setFilterDraft((current) => ({ ...current, sortBy: key }))}
+            style={[styles.sortRow, { backgroundColor: palette.surface, borderColor: palette.border }, sortBy === key && { backgroundColor: palette.accentSoft, borderColor: palette.accent }]}
+            onPress={() => setSortBy(key)}
           >
-            <Text style={[styles.sortText, { color: (filterDraft?.sortBy ?? sortBy) === key ? palette.accent : palette.textSecondary }]}>{label}</Text>
-            {(filterDraft?.sortBy ?? sortBy) === key ? <Feather name="check" size={18} color={palette.accent} /> : null}
+            <Text style={[styles.sortText, { color: sortBy === key ? palette.accent : palette.textSecondary }]}>{label}</Text>
+            {sortBy === key ? <Feather name="check" size={18} color={palette.accent} /> : null}
           </TouchableOpacity>
         ))}
-        <Text style={[styles.sheetLabel, { color: palette.textMuted }]}>{t('currency_label')}</Text>
-        <View style={styles.currencyOptions}>
-          {['USD', 'KZT', 'RUB', 'CNY'].map((code) => (
-            <TouchableOpacity key={code} testID={`cargo-price-currency-${code}`} style={[styles.currencyChip, (filterDraft?.priceCurrency ?? priceCurrency) === code && { borderColor: palette.accent, backgroundColor: palette.accentSoft }]} onPress={() => setFilterDraft((current) => ({ ...current, priceCurrency: code }))}>
-              <Text style={{ color: palette.text, fontWeight: '700' }}>{code}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.priceInputs}>
-          <TextInput testID="cargo-price-min" value={filterDraft?.minPrice ?? minPrice} onChangeText={(value) => setFilterDraft((current) => ({ ...current, minPrice: value }))} keyboardType="decimal-pad" placeholder={copy.minPrice} style={[styles.priceInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]} />
-          <TextInput testID="cargo-price-max" value={filterDraft?.maxPrice ?? maxPrice} onChangeText={(value) => setFilterDraft((current) => ({ ...current, maxPrice: value }))} keyboardType="decimal-pad" placeholder={copy.maxPrice} style={[styles.priceInput, { color: palette.text, borderColor: palette.border, backgroundColor: palette.surface }]} />
-        </View>
-        <Text style={[styles.priceScope, { color: palette.textMuted }]}>{copy.priceScope}</Text>
         <View style={styles.sheetActions}>
-          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setFilterDraft((current) => ({ ...current, sortBy: 'newest', minPrice: '', maxPrice: '' }))}>
+          <TouchableOpacity style={[styles.sheetSecondary, { backgroundColor: palette.surface, borderColor: palette.border }]} onPress={() => setSortBy('newest')}>
             <Text style={[styles.sheetSecondaryText, { color: palette.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={applyFilterDraft}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -807,7 +670,6 @@ const styles = StyleSheet.create({
   // its list spacing.
   cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
-  pageFooter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
   emptyTitle: { fontSize: 14, lineHeight: 20, color: TEXT_MUTED, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: ACCENT_SOFT },
   retryText: { fontSize: 14, fontWeight: '700', color: ACCENT },
@@ -824,10 +686,4 @@ const styles = StyleSheet.create({
   sortRow: { minHeight: 50, paddingHorizontal: 14, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE },
   sortText: { fontSize: 14, fontWeight: '600', color: TEXT_SECONDARY },
   sortTextActive: { color: ACCENT },
-  currencyOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  currencyChip: { minHeight: 40, minWidth: 62, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
-  priceInputs: { flexDirection: 'row', gap: 10 },
-  priceInput: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
-  priceScope: { marginTop: 8, fontSize: 12, lineHeight: 17 },
-  scrollTopButton: { position: 'absolute', right: 18, bottom: 92, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 4 },
 });

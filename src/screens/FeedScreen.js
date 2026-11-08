@@ -1,13 +1,10 @@
-import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -49,22 +46,21 @@ const BORDER = '#E5EAE7';
 const COPY = {
   RU: {
     favorites: 'Избранное', empty: 'Подходящих машин пока нет', loadError: 'Не удалось загрузить машины',
-    retry: 'Повторить', perTrip: 'за рейс', departure: 'Выезд', minPrice: 'Цена от', maxPrice: 'Цена до', priceScope: 'Сортировка и диапазон только в выбранной валюте', scrollToTop: 'Наверх', priceRangeError: 'Проверьте цены и даты: начало диапазона должно быть не позже конца',
+    retry: 'Повторить', perTrip: 'за рейс', departure: 'Выезд',
   },
   EN: {
     favorites: 'Saved', empty: 'No matching trucks yet', loadError: 'Could not load trucks',
-    retry: 'Retry', perTrip: 'per trip', departure: 'Departure', minPrice: 'Price from', maxPrice: 'Price to', priceScope: 'Sort and range use the selected currency only', scrollToTop: 'Back to top', priceRangeError: 'Check prices and dates: the range start must not be after its end',
+    retry: 'Retry', perTrip: 'per trip', departure: 'Departure',
   },
   ZH: {
     favorites: '收藏', empty: '暂时没有合适的车辆', loadError: '无法加载车辆',
-    retry: '重试', perTrip: '每趟', departure: '出发', minPrice: '最低价', maxPrice: '最高价', priceScope: '排序和价格范围仅使用所选货币', scrollToTop: '回到顶部', priceRangeError: '请检查价格和日期：范围起始值不能晚于结束值',
+    retry: '重试', perTrip: '每趟', departure: '出发',
   },
   KK: {
     favorites: 'Таңдаулы', empty: 'Сәйкес көлік әзірге жоқ', loadError: 'Көліктерді жүктеу мүмкін болмады',
-    retry: 'Қайталау', perTrip: 'рейске', departure: 'Шығу', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
+    retry: 'Қайталау', perTrip: 'рейске', departure: 'Шығу',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const toIso = (value) => {
   const text = String(value || '').trim();
@@ -143,11 +139,7 @@ export default function FeedScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const pageRef = React.useRef({ busy: false, nextOffset: null, failed: false });
-  const loadSeqRef = React.useRef(0);
-  useEffect(() => () => { loadSeqRef.current++; }, []);
-  const [errorAppend, setErrorAppend] = useState(false);
+  const [pageLimit, setPageLimit] = useState(50);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
   const [dirFromCountry, setDirFromCountry] = useState('');
@@ -159,16 +151,9 @@ export default function FeedScreen({ navigation }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortBy, setSortBy] = useState('newest');
-  const [priceCurrency, setPriceCurrency] = useState('USD');
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [filterDraft, setFilterDraft] = useState(null);
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
-  const listRef = React.useRef(null);
-  const scrollOffsetRef = React.useRef(0);
-  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const countryLabel = (code) => {
     if (!code) return '';
@@ -217,19 +202,8 @@ export default function FeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async ({ append = false, retry = false } = {}) => {
-    const previous = pageRef.current;
-    if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
-    const requestId = ++loadSeqRef.current;
-    const offset = append ? previous.nextOffset : 0;
-    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null, failed: false };
-    if (append) setLoadingMore(true);
-    else {
-      scrollOffsetRef.current = 0;
-      listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
+  const load = useCallback(async () => {
     setError(false);
-    setErrorAppend(false);
     try {
       const result = await marketAPI.listTrips({
         fromCity: dirFrom.trim() || '',
@@ -237,18 +211,8 @@ export default function FeedScreen({ navigation }) {
         fromCountry: dirFromCountry,
         toCountry: dirToCountry,
         truckType: filterType || '',
-        dateFrom: toIso(dateFrom),
-        dateTo: toIso(dateTo),
-        minPrice: minPrice.trim() ? Number(minPrice) : null,
-        maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
-        currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
-        sortBy,
-        savedOnly,
-        limit: 50,
-        offset,
+        limit: pageLimit,
       });
-      if (requestId !== loadSeqRef.current) return;
-      if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
       if (result?.serverError) throw new Error('trip_feed_failed');
 
       const mapped = (result?.trips || [])
@@ -263,51 +227,51 @@ export default function FeedScreen({ navigation }) {
           };
         })
         .filter((trip) => trip?.id && trip.from && trip.to);
-      if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
-      const next = result.has_more ? result.next_offset : null;
-      if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
-      setItems(current => append
-        ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
-        : mapped);
-      pageRef.current = { busy: false, nextOffset: next, failed: false };
+      setItems(mapped);
     } catch (err) {
-      if (requestId !== loadSeqRef.current) return;
       console.warn('[FeedScreen] load trips failed:', err);
-      pageRef.current.failed = true;
-      setErrorAppend(append);
       setError(true);
     } finally {
-      if (requestId === loadSeqRef.current) {
-        pageRef.current.busy = false;
-        setLoadingMore(false);
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly]);
-
-  const loadNextPage = useCallback(() => {
-    const page = pageRef.current;
-    if (!page.busy && !page.failed && page.nextOffset != null) load({ append: true });
-  }, [load]);
+  }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
 
   useEffect(() => { load(); }, [load]);
-  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
-  useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
-    // Keep the loaded server pages and FlatList anchor when returning from a
-    // detail screen. Pull-to-refresh remains the explicit fresh-query action.
+    load();
     loadSaved();
-    const frame = requestAnimationFrame(() => {
-      if (scrollOffsetRef.current > 0) listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current, animated: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [loadSaved]));
+  }, [load, loadSaved]));
 
-  // The server applies all filters and sorting before LIMIT/OFFSET. Sorting a
-  // partially loaded JS array made the apparent cheapest/newest page false.
-  const visibleItems = items;
+  const visibleItems = useMemo(() => {
+    const dateStart = toIso(dateFrom);
+    const dateEnd = toIso(dateTo);
+    let data = items.filter((item) => {
+      const departure = toIso(item.departure);
+      if (dateStart && departure && departure < dateStart) return false;
+      if (dateEnd && departure && departure > dateEnd) return false;
+      if (dirFromCountry) {
+        const fromCountry = String(item.fromCountry || '').toUpperCase();
+        if (!(fromCountry === dirFromCountry)) return false;
+      }
+      if (dirToCountry) {
+        const toCountry = String(item.toCountry || '').toUpperCase();
+        if (!(toCountry === dirToCountry)) return false;
+      }
+      if (savedOnly && !savedIds.has(String(item.id))) return false;
+      return true;
+    });
+
+    if (sortBy === 'price-asc') {
+      data = [...data].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    } else if (sortBy === 'price-desc') {
+      data = [...data].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    } else {
+      data = [...data].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    }
+    return data;
+  }, [items, dateFrom, dateTo, dirFromCountry, dirToCountry, sortBy, savedOnly, savedIds]);
 
   const openTrip = async (item) => {
     const ok = await requireLevel(LEVELS.PHONE, 'open_detail', 'client');
@@ -370,37 +334,6 @@ export default function FeedScreen({ navigation }) {
     setSavedOnly((value) => !value);
   };
 
-  const openFilter = (key) => {
-    setFilterDraft({ dateFrom, dateTo, sortBy, priceCurrency, minPrice, maxPrice });
-    setActiveFilter(key);
-  };
-
-  const applyFilterDraft = () => {
-    if (!filterDraft) { setActiveFilter(null); return; }
-    const parsePrice = (raw) => raw.trim() ? Number(raw.trim().replace(',', '.')) : null;
-    const min = parsePrice(filterDraft.minPrice);
-    const max = parsePrice(filterDraft.maxPrice);
-    const startDate = toIso(filterDraft.dateFrom);
-    const endDate = toIso(filterDraft.dateTo);
-    if ((min != null && (!Number.isFinite(min) || min < 0))
-      || (max != null && (!Number.isFinite(max) || max < 0))
-      || (min != null && max != null && min > max)
-      || (startDate && endDate && startDate > endDate)) {
-      toast(copy.priceRangeError, 'error');
-      return;
-    }
-    if (min != null) setMinPrice(String(min));
-    if (max != null) setMaxPrice(String(max));
-    setDateFrom(filterDraft.dateFrom);
-    setDateTo(filterDraft.dateTo);
-    setSortBy(filterDraft.sortBy);
-    setPriceCurrency(filterDraft.priceCurrency);
-    setMinPrice(filterDraft.minPrice);
-    setMaxPrice(filterDraft.maxPrice);
-    setFilterDraft(null);
-    setActiveFilter(null);
-  };
-
   const onRefresh = () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -408,15 +341,8 @@ export default function FeedScreen({ navigation }) {
   };
 
   const filterPill = (key, label, icon, active) => (
-    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => openFilter(key)} testID={`trip-filter-${key}`} />
+    <CompactFilterChip key={key} icon={icon} label={label} active={active} onPress={() => setActiveFilter(key)} testID={`trip-filter-${key}`} />
   );
-
-  const clearAllFilters = () => {
-    setDirFrom(''); setDirTo(''); setDirFromCountry(''); setDirToCountry('');
-    setFilterType(null); setDateFrom(''); setDateTo(''); setSortBy('newest');
-    setMinPrice(''); setMaxPrice(''); setSavedOnly(false);
-  };
-  const hasAnyFilter = !!(dirFrom || dirTo || dirFromCountry || dirToCountry || filterType || dateFrom || dateTo || sortBy !== 'newest' || minPrice || maxPrice || savedOnly);
 
   const feedControls = (
     <View style={styles.feedControls} testID="trip-feed-controls">
@@ -498,9 +424,8 @@ export default function FeedScreen({ navigation }) {
       >
         {filterPill('date', t('filter_date'), 'calendar', !!(dateFrom || dateTo))}
         {filterPill('body', t('filter_body'), 'truck', !!filterType)}
-        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest' || !!minPrice || !!maxPrice)}
+        {filterPill('price', t('filter_price'), 'dollar-sign', sortBy !== 'newest')}
         <CompactFilterChip icon="bookmark" active={savedOnly} onPress={toggleSavedOnly} testID="trip-filter-favorites" accessibilityLabel={copy.favorites} />
-        {hasAnyFilter ? <CompactFilterChip icon="x-circle" label={t('filter_reset')} onPress={clearAllFilters} testID="trip-filter-reset" /> : null}
       </ScrollView>
     </View>
   );
@@ -516,7 +441,6 @@ export default function FeedScreen({ navigation }) {
       </ExternalFreightEntry>
 
       <FlatList
-        ref={listRef}
         style={[styles.list, { backgroundColor: colors.pageBg }]}
         data={loading ? [] : visibleItems}
         keyExtractor={(item) => String(item.id)}
@@ -526,27 +450,12 @@ export default function FeedScreen({ navigation }) {
             lang={lang}
             t={t}
             copy={copy}
-            saved={savedOnly || savedIds.has(String(item.id))}
+            saved={savedIds.has(String(item.id))}
             onToggleSaved={() => toggleSaved(item)}
             onPress={() => openTrip(item)}
           />
         )}
         ListHeaderComponent={feedControls}
-        ListHeaderComponentStyle={{ backgroundColor: colors.pageBg }}
-        stickyHeaderIndices={[0]}
-        onScroll={(event) => {
-          const offset = event.nativeEvent.contentOffset.y;
-          scrollOffsetRef.current = offset;
-          const visible = offset > 800;
-          setShowScrollTop((current) => current === visible ? current : visible);
-          const { height: contentHeight } = event.nativeEvent.contentSize || {};
-          const { height: viewportHeight } = event.nativeEvent.layoutMeasurement || {};
-          if (Number.isFinite(contentHeight) && Number.isFinite(viewportHeight)
-            && contentHeight - viewportHeight - offset <= viewportHeight * 0.5) loadNextPage();
-        }}
-        onEndReached={loadNextPage}
-        onEndReachedThreshold={0.5}
-        scrollEventThrottle={100}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -557,22 +466,10 @@ export default function FeedScreen({ navigation }) {
             tintColor={colors.accent}
           />
         )}
-        ListFooterComponent={loadingMore ? (
-          <View style={styles.pageFooter} testID="trip-feed-loading-more">
-            <ActivityIndicator size="small" color={colors.accent} />
-          </View>
-        ) : error && items.length > 0 ? (
-          <View style={styles.pageFooter}>
-            <Text style={styles.emptyTitle}>{copy.loadError}</Text>
-            <TouchableOpacity
-              testID="trip-feed-retry-more"
-              style={[styles.retryBtn, { backgroundColor: colors.accentSoft }]}
-              onPress={() => errorAppend ? load({ append: true, retry: true }) : load()}
-            >
-              <Text style={[styles.retryText, { color: colors.accent }]}>{copy.retry}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (!loading && !savedOnly && items.length >= pageLimit) setPageLimit((value) => value + 50);
+        }}
         ListEmptyComponent={loading ? (
           <View style={styles.loadingWrap}>
             {[0, 1, 2, 3].map((index) => <SkeletonCard key={index} />)}
@@ -599,11 +496,6 @@ export default function FeedScreen({ navigation }) {
           </View>
         )}
       />
-      {showScrollTop ? (
-        <TouchableOpacity testID="trip-feed-scroll-top" accessibilityLabel={copy.scrollToTop} style={[styles.scrollTopButton, { backgroundColor: colors.accent }]} onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}>
-          <Feather name="arrow-up" size={18} color="#FFFFFF" />
-        </TouchableOpacity>
-      ) : null}
 
       <LocationPickerModal
         visible={showDirFromPicker}
@@ -628,17 +520,17 @@ export default function FeedScreen({ navigation }) {
         testID="filter-date-sheet"
       >
         <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>{t('filter_date_from')}</Text>
-        <DatePicker value={filterDraft?.dateFrom ?? dateFrom} onChange={(value) => setFilterDraft((current) => ({ ...current, dateFrom: value }))} placeholder={t('date_placeholder')} />
+        <DatePicker value={dateFrom} onChange={setDateFrom} placeholder={t('date_placeholder')} />
         <Text style={[styles.sheetLabel, { color: colors.textMuted, marginTop: 14 }]}>{t('filter_date_to')}</Text>
-        <DatePicker value={filterDraft?.dateTo ?? dateTo} onChange={(value) => setFilterDraft((current) => ({ ...current, dateTo: value }))} placeholder={t('date_placeholder')} />
+        <DatePicker value={dateTo} onChange={setDateTo} placeholder={t('date_placeholder')} />
         <View style={styles.sheetActions}>
           <TouchableOpacity
             style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => setFilterDraft((current) => ({ ...current, dateFrom: '', dateTo: '' }))}
+            onPress={() => { setDateFrom(''); setDateTo(''); }}
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={applyFilterDraft}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -720,43 +612,30 @@ export default function FeedScreen({ navigation }) {
             style={[
               styles.sortRow,
               { backgroundColor: colors.surface, borderColor: colors.border },
-              (filterDraft?.sortBy ?? sortBy) === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+              sortBy === value && { backgroundColor: colors.accentSoft, borderColor: colors.accent },
             ]}
-            onPress={() => setFilterDraft((current) => ({ ...current, sortBy: value }))}
+            onPress={() => setSortBy(value)}
           >
             <Text
               style={[
                 styles.sortRowText,
                 { color: colors.textSecondary },
-                (filterDraft?.sortBy ?? sortBy) === value && styles.sortRowTextActive,
+                sortBy === value && styles.sortRowTextActive,
               ]}
             >
               {label}
             </Text>
-            {(filterDraft?.sortBy ?? sortBy) === value ? <Feather name="check" size={18} color={ACCENT} /> : null}
+            {sortBy === value ? <Feather name="check" size={18} color={ACCENT} /> : null}
           </TouchableOpacity>
         ))}
-        <Text style={[styles.sheetLabel, { color: colors.textMuted }]}>{t('currency_label')}</Text>
-        <View style={styles.currencyOptions}>
-          {['USD', 'KZT', 'RUB', 'CNY'].map((code) => (
-            <TouchableOpacity key={code} testID={`trip-price-currency-${code}`} style={[styles.currencyChip, (filterDraft?.priceCurrency ?? priceCurrency) === code && { borderColor: colors.accent, backgroundColor: colors.accentSoft }]} onPress={() => setFilterDraft((current) => ({ ...current, priceCurrency: code }))}>
-              <Text style={{ color: colors.text, fontWeight: '700' }}>{code}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.priceInputs}>
-          <TextInput testID="trip-price-min" value={filterDraft?.minPrice ?? minPrice} onChangeText={(value) => setFilterDraft((current) => ({ ...current, minPrice: value }))} keyboardType="decimal-pad" placeholder={copy.minPrice} style={[styles.priceInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]} />
-          <TextInput testID="trip-price-max" value={filterDraft?.maxPrice ?? maxPrice} onChangeText={(value) => setFilterDraft((current) => ({ ...current, maxPrice: value }))} keyboardType="decimal-pad" placeholder={copy.maxPrice} style={[styles.priceInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surface }]} />
-        </View>
-        <Text style={[styles.priceScope, { color: colors.textMuted }]}>{copy.priceScope}</Text>
         <View style={styles.sheetActions}>
           <TouchableOpacity
             style={[styles.sheetSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => setFilterDraft((current) => ({ ...current, sortBy: 'newest', minPrice: '', maxPrice: '' }))}
+            onPress={() => setSortBy('newest')}
           >
             <Text style={[styles.sheetSecondaryText, { color: colors.textSecondary }]}>{t('filter_reset')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={applyFilterDraft}>
+          <TouchableOpacity testID="filter-sheet-apply" style={styles.sheetPrimary} onPress={() => setActiveFilter(null)}>
             <Text style={styles.sheetPrimaryText}>{t('filter_apply')}</Text>
           </TouchableOpacity>
         </View>
@@ -829,7 +708,6 @@ const styles = StyleSheet.create({
   // its list spacing.
   cardSpacing: { marginHorizontal: 18, marginBottom: 7 },
   emptyWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 65, gap: 11 },
-  pageFooter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8 },
   emptyTitle: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: { marginTop: 5, minHeight: 44, borderRadius: 22, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
   retryText: { fontSize: 14, fontWeight: '700' },
@@ -846,10 +724,4 @@ const styles = StyleSheet.create({
   sortRow: { minHeight: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sortRowText: { fontSize: 14, fontWeight: '600' },
   sortRowTextActive: { color: ACCENT },
-  currencyOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  currencyChip: { minHeight: 40, minWidth: 62, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
-  priceInputs: { flexDirection: 'row', gap: 10 },
-  priceInput: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
-  priceScope: { marginTop: 8, fontSize: 12, lineHeight: 17 },
-  scrollTopButton: { position: 'absolute', right: 18, bottom: 92, width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', elevation: 4 },
 });

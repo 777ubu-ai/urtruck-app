@@ -1,4 +1,3 @@
-import { withAdditionalLanguageTree, withAdditionalLanguages, localizeUiText } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,7 +20,6 @@ import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
 import CountryFlag from '../components/ui/v1/CountryFlag';
 import { API_BASE } from '../config/env';
 import { localizeCheckpointName } from '../utils/checkpointNames';
-import { localizePlace } from '../utils/places';
 import { storage } from '../utils/storage';
 import { vehicleAPI } from '../utils/vehicleAPI';
 import { marketAPI } from '../utils/marketAPI';
@@ -44,7 +42,6 @@ const COUNTRY = {
   TM: { RU: 'Туркменистан', KK: 'Түрікменстан', EN: 'Turkmenistan', ZH: '土库曼斯坦' },
   CASPIAN: { RU: 'Каспий', KK: 'Каспий', EN: 'Caspian', ZH: '里海' },
 };
-Object.assign(COUNTRY, withAdditionalLanguageTree(COUNTRY));
 
 const COPY = {
   RU: {
@@ -95,12 +92,11 @@ const COPY = {
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const ROLE_COPY = {
   RU: {
     myVehicle: 'Моя машина', change: 'Сменить', myBorderDeals: 'Мои перевозки на границе',
-    active: 'активных', cgrOnline: 'CGR online', cgrUnchecked: 'Не проверено', cgrChecking: 'Проверяем CGR', cgrUnavailable: 'CGR недоступен', selectedShipment: 'Выбранная перевозка',
+    active: 'активных', cgrOnline: 'CGR online', selectedShipment: 'Выбранная перевозка',
     toCheckpoint: 'До КПП', trackingOn: 'Отслеживание включено', openDeal: 'Открыть сделку',
     history: 'История статусов', messageDriver: 'Написать водителю', borderSituation: 'Обстановка на границе',
     checkOther: 'Проверить другой номер', addVehicle: 'Добавить машину', noVehicle: 'Добавьте машину, чтобы UrTruck сам проверял очередь по госномеру.',
@@ -112,7 +108,7 @@ const ROLE_COPY = {
   },
   KK: {
     myVehicle: 'Менің көлігім', change: 'Ауыстыру', myBorderDeals: 'Шекарадағы тасымалдарым',
-    active: 'белсенді', cgrOnline: 'CGR online', cgrUnchecked: 'Тексерілмеген', cgrChecking: 'CGR тексерілуде', cgrUnavailable: 'CGR қолжетімсіз', selectedShipment: 'Таңдалған тасымал',
+    active: 'белсенді', cgrOnline: 'CGR online', selectedShipment: 'Таңдалған тасымал',
     toCheckpoint: 'Бекетке дейін', trackingOn: 'Бақылау қосулы', openDeal: 'Мәмілені ашу',
     history: 'Күй тарихы', messageDriver: 'Жүргізушіге жазу', borderSituation: 'Шекарадағы жағдай',
     checkOther: 'Басқа нөмірді тексеру', addVehicle: 'Көлік қосу', noVehicle: 'Кезекті автоматты тексеру үшін көлік қосыңыз.',
@@ -124,7 +120,7 @@ const ROLE_COPY = {
   },
   EN: {
     myVehicle: 'My vehicle', change: 'Change', myBorderDeals: 'My border shipments',
-    active: 'active', cgrOnline: 'CGR online', cgrUnchecked: 'Not checked', cgrChecking: 'Checking CGR', cgrUnavailable: 'CGR unavailable', selectedShipment: 'Selected shipment',
+    active: 'active', cgrOnline: 'CGR online', selectedShipment: 'Selected shipment',
     toCheckpoint: 'To checkpoint', trackingOn: 'Tracking on', openDeal: 'Open deal',
     history: 'Status history', messageDriver: 'Message driver', borderSituation: 'Border situation',
     checkOther: 'Check another plate', addVehicle: 'Add vehicle', noVehicle: 'Add a vehicle so UrTruck can check the queue automatically.',
@@ -136,7 +132,7 @@ const ROLE_COPY = {
   },
   ZH: {
     myVehicle: '我的车辆', change: '切换', myBorderDeals: '我的边境运输',
-    active: '进行中', cgrOnline: 'CGR 在线', cgrUnchecked: '未检查', cgrChecking: '正在检查 CGR', cgrUnavailable: 'CGR 暂不可用', selectedShipment: '已选运输',
+    active: '进行中', cgrOnline: 'CGR 在线', selectedShipment: '已选运输',
     toCheckpoint: '距口岸', trackingOn: '跟踪已开启', openDeal: '打开交易',
     history: '状态记录', messageDriver: '联系司机', borderSituation: '边境情况',
     checkOther: '查询其他车牌', addVehicle: '添加车辆', noVehicle: '添加车辆后，UrTruck 可自动查询排队状态。',
@@ -147,7 +143,6 @@ const ROLE_COPY = {
     recent: '最近查询', followStatus: '关注状态', following: '正在关注', openShipment: '打开运输',
   },
 };
-Object.assign(ROLE_COPY, withAdditionalLanguageTree(ROLE_COPY));
 
 // The plate lookup (/borders/lookup) returns `status_raw` scraped verbatim
 // from CGR's public registry HTML — always Russian, e.g. "В очереди", "Вызван".
@@ -167,7 +162,6 @@ const LOOKUP_STATUS = {
   review_failed: { RU: 'Проверка провалена', KK: 'Тексеру сәтсіз аяқталды', EN: 'Review failed', ZH: '审核未通过' },
   unknown: { RU: 'Статус уточняется', KK: 'Күйі нақтылануда', EN: 'Status pending', ZH: '状态待定' },
 };
-Object.assign(LOOKUP_STATUS, withAdditionalLanguageTree(LOOKUP_STATUS));
 function lookupStatusLabel(code, lang) {
   const entry = LOOKUP_STATUS[code] || LOOKUP_STATUS.unknown;
   return entry[lang] || entry.RU;
@@ -182,7 +176,7 @@ async function fetchJson(url) {
   if (!response.ok) throw new Error(body?.detail || `HTTP ${response.status}`);
   return body;
 }
-function localeFor(lang) { return lang === 'KK' ? localizeUiText('kk-KZ', lang) : lang === 'EN' ? localizeUiText('en-GB', lang) : lang === 'ZH' ? localizeUiText('zh-CN', lang) : localizeUiText('ru-RU', lang); }
+function localeFor(lang) { return lang === 'KK' ? 'kk-KZ' : lang === 'EN' ? 'en-GB' : lang === 'ZH' ? 'zh-CN' : 'ru-RU'; }
 function formatDate(iso, lang) {
   if (!iso) return '—';
   const date = new Date(`${iso}T12:00:00`);
@@ -207,7 +201,7 @@ function formatKztAmount(mci) {
 function formatDistance(distanceM, lang = 'RU') {
   const value = Number(distanceM);
   if (!Number.isFinite(value) || value <= 0) return null;
-  const units = lang === 'EN' ? { m: localizeUiText('m', lang), km: localizeUiText('km', lang) } : lang === 'ZH' ? { m: localizeUiText('米', lang), km: localizeUiText('公里', lang) } : { m: localizeUiText('м', lang), km: localizeUiText('км', lang) };
+  const units = lang === 'EN' ? { m: 'm', km: 'km' } : lang === 'ZH' ? { m: '米', km: '公里' } : { m: 'м', km: 'км' };
   return value < 1000 ? `${Math.round(value)} ${units.m}` : `${Math.round(value / 100) / 10} ${units.km}`;
 }
 function formatDuration(durationS, lang = 'RU') {
@@ -215,10 +209,10 @@ function formatDuration(durationS, lang = 'RU') {
   if (!Number.isFinite(minutes)) return null;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  const unit = withAdditionalLanguages({
+  const unit = {
     RU: { h: 'ч', m: 'мин' }, KK: { h: 'сағ', m: 'мин' },
     EN: { h: 'h', m: 'min' }, ZH: { h: '小时', m: '分钟' },
-  })[lang] || { h: 'ч', m: 'мин' };
+  }[lang] || { h: 'ч', m: 'мин' };
   return hours ? `${hours} ${unit.h}${rest ? ` ${rest} ${unit.m}` : ''}` : `${rest} ${unit.m}`;
 }
 function parseQueueWindowStart(value) {
@@ -297,7 +291,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [liveById, setLiveById] = useState({});
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState('');
-  const [liveStatus, setLiveStatus] = useState('unchecked');
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
   const [favorites, setFavorites] = useState([]);
@@ -323,7 +316,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const countryName = useCallback((code) => {
     const normalizedCode = String(code || '').trim().toUpperCase();
-    const meta = COUNTRY[normalizedCode] || withAdditionalLanguages({ RU: normalizedCode, KK: normalizedCode, EN: normalizedCode, ZH: normalizedCode });
+    const meta = COUNTRY[normalizedCode] || { RU: normalizedCode, KK: normalizedCode, EN: normalizedCode, ZH: normalizedCode };
     return meta[lang] || meta.RU || normalizedCode;
   }, [lang]);
 
@@ -484,14 +477,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const selected = useMemo(() => catalog.find((item) => String(item.id) === String(selectedId)) || null, [catalog, selectedId]);
   const live = selectedId ? liveById[String(selectedId)] : null;
-  // A selected checkpoint with a failed live request must never retain the
-  // optimistic "CGR online" badge. The catalogue can still be usable while
-  // the actual public live source is unavailable.
-  const cgrLiveAvailable = liveStatus === 'ready' && !!live && !liveError;
-  const cgrStatusLabel = cgrLiveAvailable ? R.cgrOnline
-    : liveStatus === 'checking' ? R.cgrChecking
-      : liveStatus === 'unchecked' ? R.cgrUnchecked
-        : R.cgrUnavailable;
   const calendarRows = useMemo(() => completeBookingCalendar(live), [live]);
 
   useEffect(() => {
@@ -527,13 +512,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     setSelectedId(checkpoint.id);
     setLiveLoading(true);
     setLiveError('');
-    setLiveStatus('checking');
     try {
       const data = await fetchJson(`${BASE}/live/${encodeURIComponent(checkpoint.id)}${force ? '?force=true' : ''}`);
-      if (!data || typeof data !== 'object') throw new Error('invalid_cgr_live_payload');
       setLiveById((previous) => ({ ...previous, [String(checkpoint.id)]: data }));
-      setLiveStatus('ready');
-    } catch { setLiveError(L.sourceError); setLiveStatus('unavailable'); }
+    } catch { setLiveError(L.sourceError); }
     finally { setLiveLoading(false); }
   }, [liveLoading, L.sourceError]);
 
@@ -541,7 +523,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     setSelectedCountry(code);
     setSelectedId(null);
     setLiveError('');
-    setLiveStatus('unchecked');
     checkpointCarouselX.current = 0;
     checkpointCarouselRef.current?.scrollTo({ x: 0, animated: false });
   }, []);
@@ -663,7 +644,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 <View style={{ flex: 1 }}>
                   <Text style={[s.vehicleName, { color: theme.text }]}>{[selectedDeal?.make || selectedVehicle?.make, selectedDeal?.model || selectedVehicle?.model].filter(Boolean).join(' ') || selectedVehicle?.vehicle_type || '—'}</Text>
                   <View style={s.plateRow}><Text style={[s.plateBadge, { color: theme.text, borderColor: theme.border }]}>{normalizePlate(activePlate) || '—'}</Text>{(selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code) ? <Text style={[s.countryBadge, { color: theme.textMuted }]}>{selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code}</Text> : null}</View>
-                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{localizePlace(selectedDeal.from_city, lang)} → {localizePlace(selectedDeal.to_city, lang)}</Text> : null}
+                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{selectedDeal.from_city} → {selectedDeal.to_city}</Text> : null}
                 </View>
               </View>
             ) : (
@@ -682,13 +663,13 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
             <View style={s.contextHeader}>
               <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myBorderDeals}</Text></View>
-              <View style={s.headerPills}><View style={s.countPill}><Text style={s.countPillText}>{privateContext.deals.length} {R.active}</Text></View><View style={[s.onlinePill, !cgrLiveAvailable && s.unavailablePill]}><View style={[s.onlineDot, !cgrLiveAvailable && s.unavailableDot]} /><Text style={[s.onlineText, !cgrLiveAvailable && s.unavailableText]}>{cgrStatusLabel}</Text></View></View>
+              <View style={s.headerPills}><View style={s.countPill}><Text style={s.countPillText}>{privateContext.deals.length} {R.active}</Text></View><View style={s.onlinePill}><View style={s.onlineDot} /><Text style={s.onlineText}>{R.cgrOnline}</Text></View></View>
             </View>
             {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : privateContext.deals.length ? privateContext.deals.slice(0, 4).map((item) => {
               const activeDeal = String(item.deal_id) === String(selectedDeal?.deal_id);
               return <TouchableOpacity key={item.deal_id} onPress={() => setSelectedDealId(item.deal_id)} style={[s.shipmentRow, { borderColor: activeDeal ? activeColor : theme.border, backgroundColor: activeDeal ? activeColor + '0D' : v1.surfaceMuted }]} testID="border-shipper-deal-row">
                 <View style={[s.shipmentTruck, { backgroundColor: theme.card }]}><Feather name="truck" size={26} color={activeColor} /></View>
-                <View style={{ flex: 1 }}><Text style={[s.shipmentRoute, { color: theme.text }]}>{localizePlace(item.from_city, lang)} → {localizePlace(item.to_city, lang)}</Text><Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{item.driver_name || '—'} · {[item.make, item.model].filter(Boolean).join(' ') || '—'} · {normalizePlate(item.plate) || '—'}</Text></View>
+                <View style={{ flex: 1 }}><Text style={[s.shipmentRoute, { color: theme.text }]}>{item.from_city} → {item.to_city}</Text><Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{item.driver_name || '—'} · {[item.make, item.model].filter(Boolean).join(' ') || '—'} · {normalizePlate(item.plate) || '—'}</Text></View>
                 <Feather name="chevron-right" size={20} color={theme.textDim} />
               </TouchableOpacity>;
             }) : <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noActiveShipments}</Text>}
@@ -888,9 +869,6 @@ const s = StyleSheet.create({
   onlinePill: { backgroundColor: '#E9F8EE', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 5 },
   onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#168759' },
   onlineText: { color: '#168759', fontSize: 11.5, fontWeight: '800' },
-  unavailablePill: { backgroundColor: '#FFF4E5' },
-  unavailableDot: { backgroundColor: '#B7791F' },
-  unavailableText: { color: '#8A4B08' },
   shipmentRow: { borderWidth: 1, borderRadius: 14, padding: 10, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
   shipmentTruck: { width: 48, height: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   shipmentRoute: { fontSize: 14.5, fontWeight: '850' },

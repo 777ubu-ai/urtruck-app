@@ -1,4 +1,3 @@
-import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
@@ -25,42 +24,31 @@ export default function ExternalFreightEntry(props) {
     if (!enabled || !session?.user?.id || currentRole !== role) return undefined;
     let alive = true, controller = null, timeout = null;
     const current = () => alive && ownerRef.current === ownerKey;
-    const cancel = () => {
-      const request = controller;
-      controller = null;
-      clearTimeout(timeout);
-      timeout = null;
-      request?.abort();
-    };
+    const cancel = () => { controller?.abort(); clearTimeout(timeout); };
     const refresh = async () => {
-      if (!current() || controller || !navigation.isFocused() || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+      if (!current() || !navigation.isFocused() || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+      cancel();
       const request = new AbortController();
       controller = request;
-      const requestTimeout = setTimeout(() => request.abort(), 8000);
-      timeout = requestTimeout;
+      timeout = setTimeout(() => request.abort(), 8000);
       try {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
         if (!current() || request.signal.aborted) return;
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
-        if (data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0) {
-          setResult({ ownerKey, count: data.count });
-        }
+        setResult({ ownerKey, count: data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0 ? data.count : null });
       } catch {
-        // Сохраняем последний успешный счётчик и повторяем запрос на следующем цикле.
+        if (current() && controller === request) setResult(null);
       } finally {
-        if (controller === request) {
-          clearTimeout(requestTimeout);
-          timeout = null;
-          controller = null;
-        }
+        if (controller === request) clearTimeout(timeout);
       }
     };
-    const onBlur = () => { cancel(); };
+    const onBlur = () => { cancel(); setResult(null); };
     const removeFocus = navigation.addListener('focus', refresh);
     const removeBlur = navigation.addListener('blur', onBlur);
     const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
+    const interval = setInterval(refresh, 60000);
     refresh();
-    return () => { alive = false; cancel(); removeFocus(); removeBlur(); appListener.remove(); };
+    return () => { alive = false; cancel(); clearInterval(interval); removeFocus(); removeBlur(); appListener.remove(); };
   }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);
   if (!EXTERNAL_FREIGHT_ENABLED || showBack || !['driver', 'client'].includes(role)) return children;
   const labels = {
@@ -69,7 +57,6 @@ export default function ExternalFreightEntry(props) {
     ZH: role === 'driver' ? '货源信息' : '车辆信息',
     EN: role === 'driver' ? 'Cargo feed' : 'Truck feed',
   };
-Object.assign(labels, withAdditionalLanguageTree(labels));
   const palette = ceramic ? ceramicColors : colors;
   const count = result?.ownerKey === ownerKey ? result.count : null;
   const countText = count === null ? null : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');

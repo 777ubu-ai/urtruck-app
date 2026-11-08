@@ -1,4 +1,3 @@
-import { withAdditionalLanguageTree, } from './additionalLocales.js';
 const COPY = {
   RU: {
     blocked: 'Для открытия карты рейса разрешите GPS-отслеживание.',
@@ -17,7 +16,6 @@ const COPY = {
     retry: 'GPS рұқсат беру',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 export const getMapPermissionCopy = (lang) => COPY[lang] || COPY.EN;
 export default COPY;

@@ -24,24 +24,14 @@ export function installNativeRequireShim() {
     nativeDeviceToken: 'fake-native-device-token-abc123', // FCM registration token / APNs device token shape is provider-specific but opaque to push.js
     nativeDeviceTokenType: 'android', // mirrors expo-notifications' DevicePushToken.type ('android'|'ios')
     getDevicePushTokenThrows: null, // Error | null — e.g. no google-services.json wired
-    emitTokenListenerOnDeviceTokenRead: false,
-    tokenListenerEventToken: null,
-    pauseDeviceTokenRead: false,
-    deviceTokenReadPaused: false,
-    releaseDeviceTokenRead: null,
     channelCreateCalls: [],
     permissionRequestCalls: 0,
-    tokenListeners: [],
   };
 
   const AndroidImportance = { MAX: 5, HIGH: 4, DEFAULT: 3, LOW: 2, MIN: 1 };
 
   const NotificationsMock = {
     setNotificationHandler() {},
-    addPushTokenListener(listener) {
-      state.tokenListeners.push(listener);
-      return { remove() {} };
-    },
     async getPermissionsAsync() {
       return { status: state.permissionStatus };
     },
@@ -60,26 +50,7 @@ export function installNativeRequireShim() {
     },
     async getDevicePushTokenAsync() {
       if (state.getDevicePushTokenThrows) throw state.getDevicePushTokenThrows;
-      if (state.pauseDeviceTokenRead) {
-        state.deviceTokenReadPaused = true;
-        await new Promise((resolve) => { state.releaseDeviceTokenRead = resolve; });
-        state.pauseDeviceTokenRead = false;
-        state.deviceTokenReadPaused = false;
-      }
-      if (state.emitTokenListenerOnDeviceTokenRead) {
-        state.emitTokenListenerOnDeviceTokenRead = false;
-        for (const listener of state.tokenListeners) listener({
-          data: state.tokenListenerEventToken || state.nativeDeviceToken,
-          type: state.nativeDeviceTokenType,
-        });
-      }
       return { data: state.nativeDeviceToken, type: state.nativeDeviceTokenType };
-    },
-    async __emitTokenRotation() {
-      for (const listener of state.tokenListeners) listener({
-        data: state.nativeDeviceToken,
-        type: state.nativeDeviceTokenType,
-      });
     },
   };
 

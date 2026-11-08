@@ -1,8 +1,6 @@
-import { authedFetch } from './authEvents';
 // Client for /api/v1/register/*
 import { Platform } from 'react-native';
 import { storage } from './storage';
-import { commitVerifiedLogin } from './authMutation';
 import { compressImage } from './imageCompress';
 import { getLanguage, t as tGlobal } from './i18n';
 import { API_BASE } from '../config/env';
@@ -13,34 +11,6 @@ const DRIVER_REG_BASE = `${API_BASE}/driver/registration`;
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
-const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
-let pendingLogoutMutation = Promise.resolve();
-
-function parsePendingLogoutTokens(raw) {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return [...new Set(parsed.filter((value) => typeof value === 'string' && value))];
-  } catch {}
-  // Backward compatibility with the first scalar implementation.
-  return typeof raw === 'string' ? [raw] : [];
-}
-
-async function pendingLogoutTokens() {
-  return parsePendingLogoutTokens(await storage.get(PENDING_LOGOUT_KEY));
-}
-
-function mutatePendingLogoutTokens(mutate) {
-  const work = pendingLogoutMutation.then(async () => {
-    const tokens = await pendingLogoutTokens();
-    const next = [...new Set(mutate(tokens).filter(Boolean))];
-    if (next.length) await storage.set(PENDING_LOGOUT_KEY, JSON.stringify(next));
-    else await storage.remove(PENDING_LOGOUT_KEY);
-    return next;
-  });
-  pendingLogoutMutation = work.catch(() => {});
-  return work;
-}
 
 // PR-C2: см. marketAPI.normalizeDetail — те же причины. Backend
 // иногда возвращает detail как object (verification_required),
@@ -87,7 +57,7 @@ async function appendImageFile(form, uri, name) {
 
 export const regAPI = {
   // ─── Lazy registration ───
-  async ensureGuest({ persist = true } = {}) {
+  async ensureGuest() {
     // Если уже есть токен — вернуть его
     const existing = await storage.get(TOKEN_KEY);
     if (existing) return { token: existing };
@@ -95,23 +65,10 @@ export const regAPI = {
     const r = await fetch(`${BASE}/guest`, { method: 'POST' });
     const data = await r.json();
     if (data.token) {
-      if (persist) {
-        await storage.set(TOKEN_KEY, data.token);
-        await storage.set(LEVEL_KEY, String(data.verification_level || 0));
-      }
+      await storage.set(TOKEN_KEY, data.token);
+      await storage.set(LEVEL_KEY, String(data.verification_level || 0));
     }
     return data;
-  },
-
-  // Проверка публикации использует один bearer и не меняет локальную сессию.
-  async publicationAccount(token) {
-    const r = await authedFetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) {
-      const e = new Error('PUBLICATION_ACCOUNT_UNAVAILABLE');
-      e.code = r.status === 401 ? 'PUBLICATION_SESSION_CHANGED' : 'PUBLICATION_ACCOUNT_UNAVAILABLE';
-      throw e;
-    }
-    return r.json();
   },
 
   async me() {
@@ -125,20 +82,11 @@ export const regAPI = {
       // Юзер сам выйдет через signOut если нужно.
       return null;
     }
-    if (!r.ok) throw new Error('ACCOUNT_FETCH_FAILED');
     const data = await r.json();
     if (typeof data.verification_level === 'number') {
       await storage.set(LEVEL_KEY, String(data.verification_level));
     }
     return data;
-  },
-
-  // Raw status keeps transient server/network errors distinct from rejection.
-  async validateToken(token, { signal } = {}) {
-    const r = await fetch(`${BASE}/me`, {
-      headers: { Authorization: `Bearer ${token}` }, signal,
-    });
-    return r.status;
   },
 
   async getLevel() {
@@ -187,7 +135,7 @@ export const regAPI = {
     return data;
   },
 
-  async verifyCode(phone, code, { isCurrent = () => true } = {}) {
+  async verifyCode(phone, code) {
     // Апгрейд гостевого токена в phone-верифицированный
     const guestToken = await storage.get(TOKEN_KEY);
     const r = await fetch(`${BASE}/whatsapp/verify`, {
@@ -214,14 +162,8 @@ export const regAPI = {
       };
     }
     if (data.token) {
-      const committed = await commitVerifiedLogin({ expectedToken: guestToken,
-        readToken: () => storage.get(TOKEN_KEY), isCurrent,
-        write: async () => {
-          await storage.set(TOKEN_KEY, data.token);
-          await storage.set(LEVEL_KEY, String(data.verification_level || 1));
-        },
-      });
-      if (!committed) return { token: null, sessionChanged: true };
+      await storage.set(TOKEN_KEY, data.token);
+      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
     }
     return data;
   },
@@ -251,19 +193,10 @@ export const regAPI = {
       return { sent: false, ok: false, cooldown: true, cooldown_sec: cooldown || 60,
                detail: normalizeDetail(data.detail, 'rate_limited') };
     }
-    // Переход к OTP допустим только после подтверждённого успеха канала.
-    // HTTP-ошибка/пустой JSON не означают, что письмо было отправлено.
-    const sent = r.ok && data?.sent === true && !data?.error;
-    return {
-      ...data,
-      sent,
-      ok: sent,
-      status: r.status,
-      error: sent ? null : (data?.error || normalizeDetail(data?.detail, 'delivery_failed')),
-    };
+    return data;
   },
 
-  async verifyEmailCode(email, code, { isCurrent = () => true } = {}) {
+  async verifyEmailCode(email, code) {
     const guestToken = await storage.get(TOKEN_KEY);
     const r = await fetch(`${BASE}/email/verify`, {
       method: 'POST',
@@ -283,14 +216,8 @@ export const regAPI = {
                detail: normalizeDetail(data.detail, 'rate_limited') };
     }
     if (data.token) {
-      const committed = await commitVerifiedLogin({ expectedToken: guestToken,
-        readToken: () => storage.get(TOKEN_KEY), isCurrent,
-        write: async () => {
-          await storage.set(TOKEN_KEY, data.token);
-          await storage.set(LEVEL_KEY, String(data.verification_level || 1));
-        },
-      });
-      if (!committed) return { token: null, sessionChanged: true };
+      await storage.set(TOKEN_KEY, data.token);
+      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
     }
     return data;
   },
@@ -328,57 +255,21 @@ export const regAPI = {
     return await storage.remove(TOKEN_KEY);
   },
 
-  // Persist the server-revoke intent before AuthContext removes the only
-  // locally held bearer.  Native storage is SecureStore-backed, so this
-  // survives an app kill/offline interval and is retried at the next boot.
-  async stageLogoutRevoke(token = null) {
-    const authToken = token || await this.getToken();
-    if (!authToken) return { ok: true, pending: false };
-    await mutatePendingLogoutTokens((tokens) => [...tokens, authToken]);
-    // `storage.set` intentionally preserves its historic best-effort UI
-    // contract and can swallow a SecureStore/AsyncStorage write failure.
-    // A logout revoke is different: clearing the only live bearer after an
-    // unverified write loses any way to revoke the server session on a later
-    // launch. Re-read the durable intent without ever exposing the bearer.
-    const persisted = await pendingLogoutTokens();
-    if (!persisted.includes(authToken)) {
-      const error = new Error('PENDING_LOGOUT_REVOKE_NOT_DURABLE');
-      error.code = 'PENDING_LOGOUT_REVOKE_NOT_DURABLE';
-      throw error;
-    }
-    return { ok: true, pending: true };
-  },
-
   // QA-аудит P1-7: серверный revoke токена при logout. Best-effort —
   // вызывать ДО clearToken (нужен сам токен). Сетевые/любые ошибки
   // глушим: logout на клиенте всё равно должен пройти.
   async logout(token = null) {
-    const authToken = token || await this.getToken();
-    if (!authToken) return { ok: true, revoked: false };
-    // Persist before the request: AuthContext intentionally clears the live
-    // session immediately, while a timeout/503 must remain retryable after a
-    // process restart. This key uses SecureStore on native platforms.
-    await this.stageLogoutRevoke(authToken);
     try {
+      const authToken = token || await this.getToken();
+      if (!authToken) return { ok: true, revoked: false };
       const r = await fetch(`${BASE}/logout`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${authToken}` },
       });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) return { ok: false, status: r.status, ...data };
-      await mutatePendingLogoutTokens((tokens) => tokens.filter((value) => value !== authToken));
-      return { ok: true, ...data };
+      return await r.json().catch(() => ({ ok: true }));
     } catch {
       return { ok: false };
     }
-  },
-
-  async flushPendingLogout() {
-    const tokens = await pendingLogoutTokens();
-    if (!tokens.length) return { ok: true, pending: false };
-    const results = [];
-    for (const token of tokens) results.push(await this.logout(token));
-    return { ok: results.every((result) => result?.ok), pending: true, results };
   },
 
   // PR-C1: GET /api/v1/users/me — расширенный профиль (name + city + about
@@ -409,13 +300,12 @@ export const regAPI = {
   // passport_intl_url, tir_book_url, cmr_insurance_url). Если backend
   // ещё не задеплоен с этими полями — он молча игнорирует extras
   // (Pydantic по умолчанию ignores), ничего не ломается.
-  async updateProfile(payload = {}, { expectedToken = null } = {}) {
+  async updateProfile(payload = {}) {
     const token = await this.getToken();
     if (!token) return authRequiredResult();
-    if (expectedToken && token !== expectedToken) return { ok: false, sessionChanged: true };
 
     const allowed = [
-      'name', 'city', 'about', 'phone', 'role', 'contact_email',
+      'name', 'city', 'about', 'phone', 'role',
       'legal_form', 'china_experience_years', 'favorite_borders',
       'emergency_contact',
       'passport_intl_url', 'tir_book_url', 'cmr_insurance_url',
@@ -427,22 +317,17 @@ export const regAPI = {
       if (payload[k] !== undefined) body[k] = payload[k];
     }
 
-    let r;
-    try {
-      r = await fetch(`${API_BASE}/users/me`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-    } catch {
-      return { ok: false, status: 0, networkError: true, error: 'NETWORK_ERROR' };
-    }
+    const r = await fetch(`${API_BASE}/users/me`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
     let data = {};
     try { data = await r.json(); } catch {}
-    return { ...data, ok: r.ok && data?.ok === true, status: r.status };
+    return { ok: r.ok, ...data };
   },
 
   // Безопасная смена телефона: generic PATCH намеренно не принимает phone.
@@ -748,10 +633,9 @@ export const regAPI = {
   // ТЗ §0.1 — авто-сохранение шага мастера. payload — любое подмножество
   // полей (бэкенд берёт только whitelisted). Fail-tolerant: возвращает
   // { ok:false } при сетевой ошибке, чтобы UI не вис.
-  async saveDriverDraft(payload = {}, { expectedToken = null, isCurrent = () => true } = {}) {
+  async saveDriverDraft(payload = {}) {
     const token = await this.getToken();
     if (!token) return authRequiredResult();
-    if (!isCurrent() || (expectedToken && token !== expectedToken)) return { ok: false, sessionChanged: true };
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/draft`, {
         method: 'PATCH',
@@ -773,9 +657,8 @@ export const regAPI = {
     }
   },
 
-  async completeBasic({ expectedToken = null, isCurrent = () => true } = {}) {
+  async completeBasic() {
     const token = await this.getToken();
-    if (!isCurrent() || (expectedToken && token !== expectedToken)) return { ok: false, sessionChanged: true };
     if (!token) return authRequiredResult();
     try {
       const r = await fetch(`${DRIVER_REG_BASE}/complete-basic`, {

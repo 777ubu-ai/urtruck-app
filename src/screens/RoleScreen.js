@@ -1,4 +1,3 @@
-import { sessionRole } from '../utils/publicationSession';
 // RoleScreen — welcome / role selection (light B2B style).
 //
 // RC2 fix (14 May):
@@ -66,7 +65,7 @@ const RoleCard = ({
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
-  const { refreshLevel, session, ensureGuest } = useAuth();
+  const { setRole, session, ensureGuest } = useAuth();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
 
@@ -94,10 +93,8 @@ export default function RoleScreen({ navigation }) {
     try {
       if (session && session.user && session.user.id) {
         setBusy(role);
-        const account = await refreshLevel();
-        const confirmedRole = sessionRole({ user: account });
-        if (!confirmedRole || account?.id !== session.user.id) throw new Error('ACCOUNT_FETCH_FAILED');
-        navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role: confirmedRole } }] });
+        setRole(role);
+        navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
         return;
       }
       // RC2: предпочитаем новый PhoneV2 flow. Legacy 'Reg' остался

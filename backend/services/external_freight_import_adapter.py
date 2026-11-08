@@ -5,49 +5,16 @@
 отдельно и выключен, пока EXTERNAL_FREIGHT_IMPORT_ENABLED не включён.
 """
 import json
-import hashlib
-import hmac
 import os
 import sqlite3
 import time
-import uuid
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.external_freight_retention import CARGO_RETENTION_SECONDS, VEHICLE_RETENTION_SECONDS
-
 MAX_BATCH = 50
-MAX_FLUSH_BATCHES_PER_CYCLE = 2
-MAX_FLUSH_CYCLE_SECONDS = 30
-API_REQUEST_TIMEOUT_SECONDS = 8
-OLDEST_RESERVE_PER_BATCH = 10
 MAX_BACKOFF_SECONDS = 900
-RETENTION_SECONDS = CARGO_RETENTION_SECONDS
-
-
-def _retention_cutoffs(now):
-    return (
-        datetime.fromtimestamp(now - CARGO_RETENTION_SECONDS, timezone.utc).isoformat(),
-        datetime.fromtimestamp(now - VEHICLE_RETENTION_SECONDS, timezone.utc).isoformat(),
-    )
-
-
-_WITHIN_RETENTION_SQL = """(json_extract(payload,'$.source_published_at') IS NULL
-    OR julianday(json_extract(payload,'$.source_published_at')) > julianday(
-        CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END))"""
-_OUTSIDE_RETENTION_SQL = """json_extract(payload,'$.source_published_at') IS NOT NULL
-    AND julianday(json_extract(payload,'$.source_published_at')) <= julianday(
-        CASE json_extract(payload,'$.kind') WHEN 'cargo' THEN ? ELSE ? END)"""
-
-
-class ImportAckError(ValueError):
-    """Успешный HTTP-ответ не содержит полного ACK требуемого формата."""
-    def __init__(self, http_status, code):
-        super().__init__(code)
-        self.code = code
-        self.http_status = http_status
 
 
 class ExternalFreightFeedAdapter:
@@ -70,9 +37,6 @@ class ExternalFreightFeedAdapter:
             for column in ("quarantined_at", "quarantine_reason"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE selected_outbox ADD COLUMN {column} TEXT")
-            for column in ("terminal_at", "terminal_reason", "api_accepted_at", "api_item_status", "active_confirmed_at"):
-                if column not in columns:
-                    db.execute(f"ALTER TABLE selected_outbox ADD COLUMN {column} TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS ix_selected_outbox_due ON selected_outbox(delivered_at,next_attempt_at)")
 
     def _connect(self):
@@ -88,8 +52,12 @@ class ExternalFreightFeedAdapter:
                 raise ValueError("source_identity_required")
         return str(record["source_id"])[:120], str(record["source_message_id"])[:160], str(record.get("segment_id") or "0")[:80]
 
-    def _prepare_enqueue(self, selected_record):
-        """Normalize one selected source record into a durable outbox row."""
+    def enqueue(self, selected_record):
+        """Durable insert/upsert of an agent-selected result.
+
+        Legacy queue rows are mapped conservatively here. Fully structured
+        importer records remain backward compatible and explicit values win.
+        """
         from services.external_freight_parser import map_selected_message
 
         source = dict(selected_record)
@@ -100,7 +68,6 @@ class ExternalFreightFeedAdapter:
             "origin_country", "destination_country", "cargo_name", "body_types", "weight", "volume",
             "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state",
             "contacts", "source_contacts", "origin_source", "created_by",
-            "review_reason",
         }
         explicit = {key: value for key, value in source.items() if key in contract_keys and value not in (None, "")}
         if explicit.get("status") not in {"active", "review", "closed", "hidden"}:
@@ -111,74 +78,25 @@ class ExternalFreightFeedAdapter:
         # Контракт допускает блок и полный пост по 20 000 символов Unicode.
         if len(encoded.encode("utf-8")) > 200000:
             raise ValueError("record_too_large")
-        return identity, encoded
-
-    def enqueue_many_with_outcomes(self, selected_records):
-        """Persist a bridge batch atomically, avoiding one fsync per segment."""
-        prepared = [self._prepare_enqueue(record) for record in selected_records]
-        outcomes = []
         with self._connect() as db:
-            for identity, encoded in prepared:
-                existing = db.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?", identity).fetchone()
-                if existing and existing["payload"] == encoded:
-                    outcomes.append("unchanged")
-                    continue
-                if existing:
-                    db.execute("UPDATE selected_outbox SET payload=?,generation=generation+1,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL,quarantined_at=NULL,quarantine_reason=NULL,terminal_at=NULL,terminal_reason=NULL,api_accepted_at=NULL,api_item_status=NULL,active_confirmed_at=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
-                    outcomes.append("updated")
-                else:
-                    db.execute("INSERT INTO selected_outbox(source_id,source_message_id,segment_id,payload) VALUES(?,?,?,?)", (*identity, encoded))
-                    outcomes.append("created")
-        return outcomes
-
-    def enqueue_with_outcome(self, selected_record):
-        return self.enqueue_many_with_outcomes([selected_record])[0]
-
-    def enqueue(self, selected_record):
-        """Backward-compatible change flag; use enqueue_with_outcome for metrics."""
-        return self.enqueue_with_outcome(selected_record) != "unchanged"
+            existing = db.execute("SELECT payload,delivered_at FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?", identity).fetchone()
+            if existing and existing["payload"] == encoded:
+                return False
+            if existing:
+                db.execute("UPDATE selected_outbox SET payload=?,generation=generation+1,attempts=0,next_attempt_at=0,delivered_at=NULL,last_http_status=NULL,quarantined_at=NULL,quarantine_reason=NULL WHERE source_id=? AND source_message_id=? AND segment_id=?", (encoded, *identity))
+            else:
+                db.execute("INSERT INTO selected_outbox(source_id,source_message_id,segment_id,payload) VALUES(?,?,?,?)", (*identity, encoded))
+        return True
 
     def pending_count(self):
         with self._connect() as db:
-            return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL").fetchone()[0]
-
-    def ready_pending_count(self, now=None):
-        now = self.clock() if now is None else now
-        cutoffs = _retention_cutoffs(now)
-        with self._connect() as db:
-            return db.execute(f"""SELECT COUNT(*) FROM selected_outbox
-                WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
-                AND next_attempt_at<=?
-                AND {_WITHIN_RETENTION_SQL}""", (now, *cutoffs)).fetchone()[0]
+            return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE delivered_at IS NULL AND quarantined_at IS NULL").fetchone()[0]
 
     def quarantined_count(self):
         with self._connect() as db:
             return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE quarantined_at IS NOT NULL").fetchone()[0]
 
-    def expired_pending_count(self, now=None):
-        cutoffs = _retention_cutoffs(now or self.clock())
-        with self._connect() as db:
-            return db.execute(f"""SELECT COUNT(*) FROM selected_outbox
-                WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
-                AND json_extract(payload,'$.source_published_at') IS NOT NULL
-                AND {_OUTSIDE_RETENTION_SQL}""",
-                cutoffs).fetchone()[0]
-
-    def terminal_expired_count(self):
-        with self._connect() as db:
-            return db.execute("SELECT COUNT(*) FROM selected_outbox WHERE terminal_reason IN ('source_retention_expired','api_expired')").fetchone()[0]
-
-    def _terminalize_source_expired(self, now):
-        cutoffs = _retention_cutoffs(now)
-        stamp = datetime.fromtimestamp(now, timezone.utc).isoformat()
-        with self._connect() as db:
-            cur = db.execute(f"""UPDATE selected_outbox SET terminal_at=?,terminal_reason='source_retention_expired'
-                WHERE delivered_at IS NULL AND quarantined_at IS NULL AND terminal_at IS NULL
-                AND json_extract(payload,'$.source_published_at') IS NOT NULL
-                AND {_OUTSIDE_RETENTION_SQL}""", (stamp, *cutoffs))
-            return cur.rowcount
-
-    def flush_once(self, *, deadline=None):
+    def flush_once(self):
         # Один отправитель на durable outbox, включая разные процессы.
         # enqueue не блокируется: новая версия останется pending до своего ACK.
         import fcntl
@@ -188,72 +106,9 @@ class ExternalFreightFeedAdapter:
             except BlockingIOError:
                 return {'status': 'busy', 'sent': 0, 'pending': self.pending_count()}
             try:
-                return self._flush_locked(deadline=deadline)
+                return self._flush_locked()
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
-
-    def flush_bounded(self, *, max_batches=MAX_FLUSH_BATCHES_PER_CYCLE,
-                      time_budget_seconds=MAX_FLUSH_CYCLE_SECONDS):
-        """Drain ready outbox in a small number of durable, independently locked batches.
-
-        The lock is released after every batch so incoming and owned workers can
-        interleave. Each successful batch is ACKed by _flush_locked before the
-        next iteration, and a failed/backoff batch ends this cycle immediately.
-        """
-        max_batches = min(MAX_FLUSH_BATCHES_PER_CYCLE, max(1, int(max_batches)))
-        time_budget_seconds = min(MAX_FLUSH_CYCLE_SECONDS, max(0.1, float(time_budget_seconds)))
-        deadline = time.monotonic() + time_budget_seconds
-        batches = []
-        while (len(batches) < max_batches
-               and deadline - time.monotonic() >= API_REQUEST_TIMEOUT_SECONDS):
-            result = self.flush_once(deadline=deadline)
-            if result.get("status") == "busy":
-                batches.append(result)
-                break
-            batches.append(result)
-            if result.get("status") not in {"delivered", "terminalized"} or not result.get("attempted_records"):
-                # idle, retry, disabled and configuration errors are terminal
-                # for this cycle; do not spin on the same row.
-                break
-        if not batches:
-            batches.append({"status": "budget_exhausted", "sent": 0, "attempted_records": 0,
-                            "confirmed_deliveries": 0, "pending": self.pending_count(),
-                            "ready_pending": self.ready_pending_count()})
-        counts = {"created": 0, "updated": 0, "replayed": 0, "expired": 0,
-                  "stale_ack": 0, "active": 0, "review": 0, "unknown": 0}
-        for batch in batches:
-            for key, value in (batch.get("outcomes") or {}).items():
-                counts[key] = counts.get(key, 0) + value
-        sent = sum(batch.get("sent", 0) for batch in batches)
-        accepted = sum(batch.get("api_accepted", batch.get("sent", 0)) for batch in batches)
-        active = sum(batch.get("confirmed_deliveries", 0) for batch in batches)
-        review = sum(batch.get("review_accepted", 0) for batch in batches)
-        attempted = sum(batch.get("attempted_records", 0) for batch in batches)
-        request_count = sum(batch.get("api_request_count", 0) for batch in batches)
-        api_duration = sum(batch.get("api_duration_ms", 0) for batch in batches)
-        terminalized = sum(batch.get("terminalized_expired", 0) for batch in batches)
-        last = batches[-1]
-        status = last.get("status", "idle")
-        if sent and status == "idle":
-            status = "delivered"
-        result = {"status": status, "sent": sent, "api_accepted": accepted,
-                  "confirmed_deliveries": active, "review_accepted": review,
-                  "unknown_status_accepted": sum(b.get("unknown_status_accepted", 0) for b in batches),
-                  "attempted_records": attempted, "outcomes": counts,
-                  "batches_attempted": sum(1 for b in batches if b.get("attempted_records", 0) > 0),
-                  "api_request_count": request_count, "api_duration_ms": api_duration,
-                  "cycle_duration_ms": round((time.monotonic() - (deadline-time_budget_seconds))*1000),
-                  "pending": self.pending_count(), "ready_pending": self.ready_pending_count(),
-                  "terminalized_expired": terminalized,
-                  "terminal_expired": self.terminal_expired_count(),
-                  "expired_pending": self.expired_pending_count(),
-                  "quarantined": self.quarantined_count()}
-        for key in ("http_status", "error_type", "retry_after_seconds"):
-            if last.get(key) is not None:
-                result[key] = last[key]
-        if status == "busy":
-            result["outbox_lock_busy"] = True
-        return result
 
     def _send(self, rows):
         payload = json.dumps({"records": [json.loads(row["payload"]) for row in rows]}, ensure_ascii=False).encode("utf-8")
@@ -261,50 +116,28 @@ class ExternalFreightFeedAdapter:
             f"{self.api_url}/api/v1/external-freight/import", data=payload, method="POST",
             headers={"Content-Type": "application/json", "X-External-Importer-Key": self.importer_key},
         )
-        with self.opener(req, timeout=API_REQUEST_TIMEOUT_SECONDS) as response:
+        with self.opener(req, timeout=8) as response:
             status = int(getattr(response, "status", 200))
             if not 200 <= status < 300:
                 raise urllib.error.HTTPError(req.full_url, status, "import_rejected", {}, None)
-            try:
-                body = json.loads(response.read().decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                raise ImportAckError(status, "invalid_json_ack") from None
-        results = body.get("results", []) if isinstance(body, dict) else []
+            body = json.loads(response.read().decode("utf-8"))
+        results = body.get("results", [])
         if len(results) != len(rows) or not all(
-                isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("id")
-                and item.get("result") in {"created", "updated", "replayed", "expired"}
-                for item in results):
-            raise ImportAckError(status, "invalid_import_ack")
-        return status, results
+                item.get("id") and item.get("result") in {"created", "updated", "replayed"} for item in results):
+            raise ValueError("invalid_import_ack")
+        return status
 
-    def _ack(self, rows, results, now, status):
-        counts = {"created": 0, "updated": 0, "replayed": 0, "expired": 0, "stale_ack": 0, "active": 0, "review": 0, "unknown": 0}
-        stamp = datetime.fromtimestamp(now, timezone.utc).isoformat()
+    def _ack(self, rows, now, status):
         with self._connect() as db:
-            for row, result in zip(rows, results):
-                outcome = result["result"]
-                if outcome == "expired":
-                    cur = db.execute("""UPDATE selected_outbox SET terminal_at=?,terminal_reason='api_expired',last_http_status=?
-                        WHERE source_id=? AND source_message_id=? AND segment_id=?
-                        AND delivered_at IS NULL AND terminal_at IS NULL AND generation=?""",
-                        (stamp, status, row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
-                else:
-                    item_status = result.get("status") if result.get("status") in {"active", "review", "closed", "hidden", "expired"} else "unknown"
-                    cur = db.execute("""UPDATE selected_outbox SET delivered_at=?,last_http_status=?,api_accepted_at=?,api_item_status=?,active_confirmed_at=?
+            for row in rows:
+                db.execute("""UPDATE selected_outbox SET delivered_at=?,last_http_status=?
                     WHERE source_id=? AND source_message_id=? AND segment_id=?
                     AND delivered_at IS NULL AND generation=?""",
-                    (stamp, status, stamp, item_status, stamp if item_status == "active" else None,
+                    (datetime.fromtimestamp(now, timezone.utc).isoformat(), status,
                      row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
-                counts[outcome if cur.rowcount else "stale_ack"] += 1
-                if cur.rowcount and outcome != "expired":
-                    if item_status in {"active", "review", "unknown"}:
-                        counts[item_status] += 1
-        return counts
 
-    def _retry(self, rows, now, status, error_type=None, duration_ms=None, *,
-               api_request_count=0, api_duration_ms=0):
+    def _retry(self, rows, now, status):
         delay = 0
-        retry_rows = []
         with self._connect() as db:
             for row in rows:
                 attempts = row["attempts"] + 1
@@ -312,60 +145,30 @@ class ExternalFreightFeedAdapter:
                 row_delay = min(5 * (2 ** min(attempts - 1, 8)), MAX_BACKOFF_SECONDS)
                 db.execute("""UPDATE selected_outbox SET attempts=?,next_attempt_at=?,last_http_status=?
                     WHERE source_id=? AND source_message_id=? AND segment_id=?
-                    AND delivered_at IS NULL AND terminal_at IS NULL AND generation=?""",
+                    AND delivered_at IS NULL AND generation=?""",
                     (attempts, now + row_delay, status, row["source_id"], row["source_message_id"],
                      row["segment_id"], row["generation"]))
-                opaque_id = hmac.new(self.importer_key.encode(), "\0".join((row["source_id"], row["source_message_id"], row["segment_id"])).encode(), hashlib.sha256).hexdigest()[:12]
-                retry_rows.append({"id": opaque_id, "attempt": attempts, "delay_seconds": row_delay})
-        result = {"status": "retry_scheduled", "retry_id": uuid.uuid4().hex[:12], "sent": 0,
-                  "confirmed_deliveries": 0, "attempted_records": len(rows), "pending": self.pending_count(),
-                  "ready_pending": self.ready_pending_count(now), "retry_rows": retry_rows,
-                  "quarantined": self.quarantined_count(), "expired_pending": self.expired_pending_count(now),
-                  "retry_after_seconds": delay, "http_status": status,
-                  "api_request_count": api_request_count, "api_duration_ms": api_duration_ms}
-        if duration_ms is not None:
-            result["duration_ms"] = duration_ms
-        if error_type:
-            # Log only the exception class; never include payload, contact, or
-            # exception text in the service journal.
-            result["error_type"] = error_type
-        return result
+        return {"status": "retry_scheduled", "sent": 0, "pending": self.pending_count(),
+                "quarantined": self.quarantined_count(), "retry_after_seconds": delay, "http_status": status}
 
-    def _isolate_validation_errors(self, rows, now, deadline, *, initial_api_duration_ms=0):
-        sent = active = review = unknown = 0
-        api_request_count = 1  # The batch request that returned HTTP 422.
-        api_duration_ms = initial_api_duration_ms
-        def metrics(result):
-            result.update(api_accepted=sent, confirmed_deliveries=active, review_accepted=review, unknown_status_accepted=unknown)
-            # Every row was included in the initial batch that returned 422;
-            # request_count separately records the additional isolation calls.
-            result["attempted_records"] = len(rows)
-            return result
+    def _isolate_validation_errors(self, rows, now, deadline):
+        sent = 0
         for index, row in enumerate(rows):
             # Ограничиваем время oneshot. Остальные записи не теряются.
-            if deadline - time.monotonic() < API_REQUEST_TIMEOUT_SECONDS:
-                result = self._retry(rows[index:], now, 422, api_request_count=api_request_count,
-                                     api_duration_ms=api_duration_ms)
+            if time.monotonic() >= deadline:
+                result = self._retry(rows[index:], now, 422)
                 result["sent"] = sent
-                return metrics(result)
+                return result
             try:
-                started = time.monotonic()
-                status, outcomes = self._send([row])
-                api_request_count += 1
-                api_duration_ms += round((time.monotonic()-started)*1000)
-                counts = self._ack([row], outcomes, self.clock(), status)
-                sent += sum(counts[key] for key in ("created", "updated", "replayed"))
-                active += counts["active"]; review += counts["review"]; unknown += counts["unknown"]
+                status = self._send([row])
+                self._ack([row], self.clock(), status)
+                sent += 1
             except Exception as exc:
-                status = getattr(exc, "http_status", getattr(exc, "code", None))
-                api_request_count += 1
-                api_duration_ms += round((time.monotonic()-started)*1000)
+                status = getattr(exc, "code", None)
                 if status != 422:
-                    result = self._retry(rows[index:], now, status, type(exc).__name__,
-                                         round((time.monotonic()-started)*1000),
-                                         api_request_count=api_request_count, api_duration_ms=api_duration_ms)
+                    result = self._retry(rows[index:], now, status)
                     result["sent"] = sent
-                    return metrics(result)
+                    return result
                 # Только одиночный 422 доказывает неисправимость этой версии.
                 # Полный payload остаётся в outbox для диагностики/исправления.
                 with self._connect() as db:
@@ -374,87 +177,44 @@ class ExternalFreightFeedAdapter:
                         AND delivered_at IS NULL AND generation=?""",
                         (datetime.fromtimestamp(now, timezone.utc).isoformat(), "import_validation_422",
                          row["source_id"], row["source_message_id"], row["segment_id"], row["generation"]))
-        return {"status": "delivered" if sent else "terminalized", "sent": sent, "api_accepted": sent, "confirmed_deliveries": active,
-                "review_accepted": review, "unknown_status_accepted": unknown, "pending": self.pending_count(),
-                "attempted_records": len(rows), "api_request_count": api_request_count,
-                "api_duration_ms": api_duration_ms,
-                "ready_pending": self.ready_pending_count(now), "quarantined": self.quarantined_count(),
-                "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count()}
+        return {"status": "delivered", "sent": sent, "pending": self.pending_count(),
+                "quarantined": self.quarantined_count()}
 
-    def _flush_locked(self, *, deadline=None):
+    def _flush_locked(self):
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "false").lower() not in {"1", "true", "yes"}:
             return {"status": "disabled", "sent": 0, "pending": self.pending_count()}
         if not self.api_url or not self.importer_key:
             return {"status": "not_configured", "sent": 0, "pending": self.pending_count()}
         now = self.clock()
-        terminalized = self._terminalize_source_expired(now)
-        deadline = min(time.monotonic() + 25, deadline) if deadline is not None else time.monotonic() + 25
-        cutoffs = _retention_cutoffs(now)
+        deadline = time.monotonic() + 25
         with self._connect() as db:
-            rows = db.execute(f"""SELECT * FROM selected_outbox
+            rows = db.execute("""SELECT * FROM selected_outbox
                 WHERE delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
-                AND terminal_at IS NULL
-                AND {_WITHIN_RETENTION_SQL}
-                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, *cutoffs, MAX_BATCH+1)).fetchall()
+                ORDER BY attempts,source_id,source_message_id,segment_id LIMIT ?""", (now, MAX_BATCH+1)).fetchall()
             if len(rows) > MAX_BATCH:
-                due = f'''delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?
-                    AND terminal_at IS NULL
-                    AND {_WITHIN_RETENTION_SQL}'''
+                due = 'delivered_at IS NULL AND quarantined_at IS NULL AND next_attempt_at<=?'
                 newest = "json_extract(payload,'$.source_published_at') DESC,source_id,source_message_id,segment_id"
-                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now, *cutoffs)).fetchall()
-                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now, *cutoffs)).fetchall()
-                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now, *cutoffs)).fetchall()
-                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now, *cutoffs)).fetchall()
-                # Резервируем часть каждого насыщенного пакета для oldest-first:
-                # сортировка базовой выборки по source identity не гарантирует
-                # продвижения записей у границы TTL. Записи без даты идут после
-                # датированных, свежая и vehicle-квоты остаются первыми.
-                oldest = db.execute(f"""SELECT * FROM selected_outbox WHERE {due}
-                    ORDER BY CASE WHEN json_extract(payload,'$.source_published_at') IS NULL THEN 1 ELSE 0 END,
-                        julianday(json_extract(payload,'$.source_published_at')) ASC,
-                        source_id,source_message_id,segment_id LIMIT ?""",
-                    (now, *cutoffs, OLDEST_RESERVE_PER_BATCH)).fetchall()
-                # Квоты дедуплицируются по ключу записи и не увеличивают API
-                # контракт: общий пакет остаётся в пределах MAX_BATCH, ACK
-                # привязан к generation.
+                controls = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.status')='closed' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
+                vehicles = db.execute(f"SELECT * FROM selected_outbox WHERE {due} AND json_extract(payload,'$.kind')='vehicle' AND json_extract(payload,'$.status')='active' ORDER BY {newest} LIMIT 10", (now,)).fetchall()
+                fresh = db.execute(f'SELECT * FROM selected_outbox WHERE {due} ORDER BY {newest} LIMIT 10', (now,)).fetchall()
+                retries = db.execute(f'SELECT * FROM selected_outbox WHERE {due} AND attempts>0 ORDER BY next_attempt_at,attempts,source_id,source_message_id,segment_id LIMIT 10', (now,)).fetchall()
+                # Квоты не вытесняют весь хвост: оставшиеся места берут старую
+                # выдачу. Пакет по-прежнему не больше 50, ACK привязан к generation.
                 selected = {}
-                for row in (*controls, *vehicles, *fresh, *retries, *oldest, *rows):
+                for row in (*controls, *vehicles, *fresh, *retries, *rows):
                     identity = (row['source_id'], row['source_message_id'], row['segment_id'])
                     selected.setdefault(identity, row)
                 rows = list(selected.values())[:MAX_BATCH]
         if not rows:
-            return {"status": "idle", "sent": 0, "confirmed_deliveries": 0, "attempted_records": 0,
-                    "api_request_count": 0, "api_duration_ms": 0,
-                    "pending": self.pending_count(),
-                    "ready_pending": self.ready_pending_count(now), "terminalized_expired": terminalized,
-                    "quarantined": self.quarantined_count(),
-                    "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count()}
-        if deadline - time.monotonic() < API_REQUEST_TIMEOUT_SECONDS:
-            return {"status": "budget_exhausted", "sent": 0, "attempted_records": 0,
-                    "api_request_count": 0, "api_duration_ms": 0,
-                    "pending": self.pending_count(), "ready_pending": self.ready_pending_count(now),
-                    "terminalized_expired": terminalized, "quarantined": self.quarantined_count(),
-                    "expired_pending": self.expired_pending_count(now),
-                    "terminal_expired": self.terminal_expired_count()}
+            return {"status": "idle", "sent": 0, "pending": self.pending_count(),
+                    "quarantined": self.quarantined_count()}
         try:
-            started = time.monotonic()
-            status, outcomes = self._send(rows)
-            api_duration_ms = round((time.monotonic()-started)*1000)
-            counts = self._ack(rows, outcomes, self.clock(), status)
-            sent = sum(counts[key] for key in ("created", "updated", "replayed"))
-            return {"status": "delivered" if sent else "terminalized", "sent": sent,
-                    "confirmed_deliveries": counts["active"], "api_accepted": sent,
-                    "review_accepted": counts["review"], "unknown_status_accepted": counts["unknown"], "attempted_records": len(rows), "outcomes": counts,
-                    "pending": self.pending_count(), "ready_pending": self.ready_pending_count(now),
-                    "api_request_count": 1, "api_duration_ms": api_duration_ms,
-                    "terminalized_expired": terminalized, "quarantined": self.quarantined_count(),
-                    "expired_pending": self.expired_pending_count(now), "terminal_expired": self.terminal_expired_count(),
-                    "http_status": status, "duration_ms": round((time.monotonic()-started)*1000)}
+            status = self._send(rows)
+            self._ack(rows, self.clock(), status)
+            return {"status": "delivered", "sent": len(rows), "pending": self.pending_count(),
+                    "quarantined": self.quarantined_count(), "http_status": status}
         except Exception as exc:
-            api_duration_ms = round((time.monotonic()-started)*1000)
-            status = getattr(exc, "http_status", getattr(exc, "code", None))
+            status = getattr(exc, "code", None)
             if status == 422:
-                return self._isolate_validation_errors(rows, now, deadline,
-                                                       initial_api_duration_ms=api_duration_ms)
-            return self._retry(rows, now, status, type(exc).__name__, api_duration_ms,
-                               api_request_count=1, api_duration_ms=api_duration_ms)
+                return self._isolate_validation_errors(rows, now, deadline)
+            return self._retry(rows, now, status)

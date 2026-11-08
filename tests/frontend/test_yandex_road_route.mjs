@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseRouteCities } from '../../src/utils/geo.js';
 
 const mapSrc = fs.readFileSync('src/components/TruckMap.web.js', 'utf8');
 const geoSrc = fs.readFileSync('src/utils/geo.js', 'utf8');
@@ -9,13 +8,12 @@ const injectSrc = fs.readFileSync('scripts/injectYandexMaps.mjs', 'utf8');
 const routerSrc = fs.readFileSync('backend/api/routing.py', 'utf8');
 const routingClient = fs.readFileSync('src/utils/routingAPI.js', 'utf8');
 
-test('Yandex web map renders trusted server road geometry and fails closed without it', () => {
+test('Yandex web map renders trusted server road geometry and keeps JS MultiRoute as compatibility fallback', () => {
   assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
   assert.match(mapSrc, /new api\.Polyline\(geometry/);
   assert.match(mapSrc, /strokeStyle: 'solid'/);
-  assert.doesNotMatch(mapSrc, /api\.multiRouter\.MultiRoute/);
-  assert.match(mapSrc, /Do not use Yandex JS `routingMode: auto` as a truck route/);
-  assert.match(mapSrc, /strokeStyle: 'dash'/);
+  assert.match(mapSrc, /api\.multiRouter\.MultiRoute/);
+  assert.match(mapSrc, /routeActiveStrokeColor: '#168759'/);
 });
 
 test('server Yandex Router API builds truck routes for KZ-RU and real driving fallback when city centre is truck-restricted', () => {
@@ -31,17 +29,6 @@ test('Bakhty-Tacheng checkpoint remains normalized as one border corridor', () =
   assert.match(geoSrc, /'Чугучак': \[46\.739131, 82\.983797\]/);
   assert.match(geoSrc, /isBakhtyTachengBorderPair/);
   assert.match(geoSrc, /return \[CITIES\['Бахты'\]\]/);
-});
-
-test('Ош → Поти resolves both city centres before authenticated road routing', () => {
-  assert.deepEqual(parseRouteCities('Ош'), [[40.5283, 72.7985]]);
-  assert.deepEqual(parseRouteCities('Поти'), [[42.14272, 41.67384]]);
-  assert.deepEqual(parseRouteCities('Poti'), [[42.14272, 41.67384]]);
-  assert.match(geoSrc, /'Ош': \[40\.5283, 72\.7985\]/);
-  assert.match(geoSrc, /'Поти': \[42\.14272, 41\.67384\]/);
-  assert.match(geoSrc, /'Poti': \[42\.14272, 41\.67384\]/);
-  assert.match(geoSrc, /export const parseRouteCities/);
-  assert.match(mapSrc, /routingAPI\.roadRoute\(effectivePoints, vehicle\)/);
 });
 
 test('map JS key and Router API key are separated; Router key stays server-side', () => {

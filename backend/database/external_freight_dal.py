@@ -5,15 +5,14 @@ import logging
 import math
 import re
 import time
-from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from datetime import datetime, timedelta, timezone
 
 from database.external_freight_connection import get_conn, new_id
-from services.external_freight_parser import valid_phone_contacts
-from services.external_freight_retention import active_days, published_deadline
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
+ACTIVE_DAYS = 30
 PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 logger = logging.getLogger(__name__)
@@ -105,14 +104,14 @@ def _source_fingerprint(source_id, source_message_id, segment_id):
 
 
 def _apply_publication_retention(c, now=None):
-    """Recompute per-kind source-based expiry without reopening closures.
+    """Recompute the 30-day source-based expiry without reopening closures.
 
     The subsequent purge removes expired feed content and leaves only a
     one-way source-identity digest to prevent a delayed replay from restoring it.
     """
     now = _utc(now)
     rows = c.execute(
-        "SELECT id,kind,source_published_at,status,expires_at FROM external_freight_items "
+        "SELECT id,source_published_at,status,expires_at FROM external_freight_items "
         "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL",
     ).fetchall()
     for row in rows:
@@ -120,7 +119,7 @@ def _apply_publication_retention(c, now=None):
             published = _utc(row["source_published_at"])
         except (TypeError, ValueError):
             continue
-        expires = published + timedelta(days=active_days(row["kind"]))
+        expires = published + timedelta(days=ACTIVE_DAYS)
         expires_at = expires.isoformat()
         status = "expired" if expires <= now else "active"
         if row["status"] != status or row["expires_at"] != expires_at:
@@ -131,27 +130,25 @@ def _apply_publication_retention(c, now=None):
 
 
 def purge_expired_items(now=None):
-    """Delete external offers after their kind-specific source-based lifetime."""
+    """Delete external feed content after its 30-day source-based lifetime."""
     now = _utc(now)
-    cargo_cutoff = now - timedelta(days=30)
-    vehicle_cutoff = now - timedelta(days=active_days("vehicle"))
-    undated_cutoff = now - timedelta(days=max(active_days("cargo"), active_days("vehicle")))
+    cutoff = now - timedelta(days=ACTIVE_DAYS)
     started = time.monotonic()
     with get_conn() as c:
         # Split dated and undated retention queries so both can use their
         # ordered indexes; the previous OR + COALESCE sort scanned all cards.
         dated = c.execute(
             "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
-            "FROM external_freight_items WHERE source_published_at IS NOT NULL AND ((kind='cargo' AND source_published_at<=?) "
-            "OR (kind='vehicle' AND source_published_at<=?)) ORDER BY source_published_at,id LIMIT ?",
-            (cargo_cutoff.isoformat(), vehicle_cutoff.isoformat(), PURGE_BATCH_SIZE),
+            "FROM external_freight_items WHERE source_published_at IS NOT NULL "
+            "AND source_published_at<=? ORDER BY source_published_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         undated = c.execute(
             "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
             "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
             "WHERE source_published_at IS NULL "
             "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
-            (undated_cutoff.isoformat(), PURGE_BATCH_SIZE),
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
         ).fetchall()
         rows = sorted(
             (*dated, *undated),
@@ -260,8 +257,6 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     source_contacts = raw.get('source_contacts') or []
     if not isinstance(source_contacts, list) or len(source_contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in source_contacts):
         raise ValueError('invalid_source_contacts')
-    contacts = valid_phone_contacts(contacts, text)
-    source_contacts = valid_phone_contacts(source_contacts, text)
     source_revision = str(raw.get("source_revision") or "")
     if len(source_revision) > 160:
         raise ValueError("source_revision_too_long")
@@ -270,39 +265,10 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     destination_country = _bounded(raw.get("destination_country"), 3).upper() if raw.get("destination_country") else None
     if any(code and not re.fullmatch(r"[A-Z]{2,3}", code) for code in (origin_country, destination_country)):
         raise ValueError("invalid_country_code")
-    # Enforce the same publication contract at the API storage boundary, even
-    # if a caller bypasses the Telegram bridge. Optional commercial fields are
-    # deliberately excluded; vehicle offers require one location, cargo needs
-    # both route endpoints.
-    has_route = bool(raw.get("origin") and raw.get("destination"))
-    has_vehicle_location = bool(raw.get("origin") or raw.get("destination"))
-    missing_core = []
-    if kind == "cargo" and not has_route:
-        missing_core.append("missing_route" if not has_vehicle_location else "incomplete_route")
-    elif kind == "vehicle" and not has_vehicle_location:
-        missing_core.append("missing_location")
-    if not contacts:
-        missing_core.append("missing_contact")
-    core_fields_complete = not missing_core and (
-        has_route if kind == "cargo" else has_vehicle_location if kind == "vehicle" else False
-    )
-    if status == "active" and not core_fields_complete:
-        status = "review"
-    explicit_review_reason = bool(raw.get("review_reason"))
-    review_reason = str(raw.get("review_reason") or "")[:128]
-    if review_reason and not re.fullmatch(r"[a-z][a-z0-9_|]{0,127}", review_reason):
-        raise ValueError("invalid_review_reason")
-    if status == "review":
-        if missing_core:
-            tokens = review_reason.split("_and_") if review_reason else []
-            tokens.extend(reason for reason in missing_core if reason not in tokens)
-            review_reason = "_and_".join(tokens)
-        elif not review_reason:
-            review_reason = "classification_review"
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published_deadline(published, kind) if published else now + timedelta(days=active_days(kind))).isoformat(),
+        "updated_at": now.isoformat(), "expires_at": (published + timedelta(days=ACTIVE_DAYS)).isoformat() if published else None,
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -312,12 +278,8 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published_deadline(published, kind) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
-        "review_reason": review_reason or None,
-        "core_fields_complete": core_fields_complete,
-        "review_requested": raw.get("status") == "review",
-        "review_reason_explicit": explicit_review_reason,
     }
 
 
@@ -336,72 +298,53 @@ def import_records(records):
     normalized_batch = [normalize_record(raw) for raw in records]
     results = []
     columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
-    transaction_started = time.monotonic()
-    try:
-        with get_conn() as c:
-            for values in normalized_batch:
-                fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
-                too_old = (values["source_published_at"] and
-                           published_deadline(values["source_published_at"], values["kind"]) <= _utc())
-                previously_expired = c.execute(
-                    "SELECT expired_at FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
-                ).fetchone()
-                # A tombstone means the content was intentionally purged under
-                # the prior policy. Never resurrect it from a delayed import.
-                if too_old or previously_expired:
-                    c.execute(
-                        "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
-                        (fingerprint, _utc().isoformat()),
-                    )
-                    results.append({"id": values["id"], "result": "expired", "status": "expired"})
-                    continue
-                current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
-                if current:
-                    values["id"] = current["id"]
-                    # Replay/edit must keep its original admission time so a new
-                    # ingest cannot move the row into an in-progress cursor snapshot.
-                    values["ingested_at"] = current["ingested_at"]
-                    if current["source_published_at"]:
-                        values["source_published_at"] = current["source_published_at"]
-                        values["expires_at"] = published_deadline(
-                            current["source_published_at"], current["kind"]
-                        ).isoformat()
-                    else:
-                        values["expires_at"] = current["expires_at"] or (_utc(current["ingested_at"]) + timedelta(days=active_days(current["kind"]))).isoformat()
-                    unchanged = all(values[key] == current[key] for key in columns
-                                    if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
-                    if current["status"] in {"hidden", "closed"} or (
-                            current["status"] == "active" and values["status"] == "review" and unchanged
-                            and values["core_fields_complete"] and not values["review_requested"]
-                            and not values["review_reason_explicit"]):
-                        values["status"] = current["status"]
-                    if values["status"] == "closed":
-                        values["kind"] = current["kind"]
-                    if values["status"] == "active" and (not values["expires_at"] or _utc(values["expires_at"]) <= _utc()):
-                        values["status"] = "expired"
-                    assignments = ",".join(f"{key}=?" for key in columns)
-                    c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
-                    action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
-                else:
-                    all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
-                    c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
-                    action = "created"
-                audit_details = json.dumps(
-                    {"review_reason": values["review_reason"]} if values["status"] == "review" else {},
-                    separators=(",", ":"),
+    with get_conn() as c:
+        for values in normalized_batch:
+            fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
+            too_old = (values["source_published_at"] and
+                       _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
+            previously_expired = c.execute(
+                "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
+            ).fetchone()
+            if too_old or previously_expired:
+                c.execute(
+                    "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+                    (fingerprint, _utc().isoformat()),
                 )
-                c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), audit_details))
-                c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
-                c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
-                results.append({"id": values["id"], "result": action, "status": values["status"]})
-    except Exception as exc:
-        logger.warning(
-            "external_feed_import_transaction_failed batch_size=%d error_class=%s duration_ms=%d",
-            len(normalized_batch), type(exc).__name__, round((time.monotonic() - transaction_started) * 1000),
-        )
-        raise
-    duration_ms = round((time.monotonic() - transaction_started) * 1000)
-    logger.info("external_feed_import_transaction batch_size=%d duration_ms=%d", len(normalized_batch), duration_ms)
+                results.append({"id": values["id"], "result": "expired", "status": "expired"})
+                continue
+            current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
+            if current:
+                values["id"] = current["id"]
+                # Replay/edit must keep its original admission time so a new
+                # ingest cannot move the row into an in-progress cursor snapshot.
+                values["ingested_at"] = current["ingested_at"]
+                if current["source_published_at"]:
+                    values["source_published_at"] = current["source_published_at"]
+                    values["expires_at"] = (_utc(current["source_published_at"])
+                                             + timedelta(days=ACTIVE_DAYS)).isoformat()
+                elif current["expires_at"]:
+                    values["expires_at"] = current["expires_at"]
+                unchanged = all(values[key] == current[key] for key in columns
+                                if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
+                if current["status"] in {"hidden", "closed"} or (
+                        current["status"] == "active" and values["status"] == "review" and unchanged):
+                    values["status"] = current["status"]
+                if values["status"] == "closed":
+                    values["kind"] = current["kind"]
+                if values["status"] == "active" and (not values["expires_at"] or _utc(values["expires_at"]) <= _utc()):
+                    values["status"] = "expired"
+                assignments = ",".join(f"{key}=?" for key in columns)
+                c.execute(f"UPDATE external_freight_items SET {assignments} WHERE id=?", [values[key] for key in columns] + [values["id"]])
+                action = "updated" if not unchanged or values["status"] != current["status"] else "replayed"
+            else:
+                all_columns = ["id", "source_id", "source_message_id", "segment_id"] + columns
+                c.execute(f"INSERT INTO external_freight_items ({','.join(all_columns)}) VALUES ({','.join('?' for _ in all_columns)})", [values[k] for k in all_columns])
+                action = "created"
+            c.execute("INSERT INTO external_freight_audit(id,item_id,actor,action,created_at,details) VALUES(?,?,?,?,?,?)", (new_id(), values["id"], "importer", action, _utc().isoformat(), "{}"))
+            c.execute("DELETE FROM external_freight_item_body_types WHERE item_id=?", (values["id"],))
+            c.executemany("INSERT INTO external_freight_item_body_types(item_id,body_type) VALUES(?,?)", [(values["id"], body) for body in json.loads(values["body_types"])])
+            results.append({"id": values["id"], "result": action, "status": values["status"]})
     return results
 
 

@@ -1,6 +1,4 @@
-import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
-import { setForegroundInterval as setInterval, clearForegroundInterval as clearInterval } from '../utils/foregroundPolling';
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -141,7 +139,6 @@ const COPY = {
     archiveEmpty: 'Мұрағат бос',
   },
 };
-Object.assign(COPY, withAdditionalLanguageTree(COPY));
 
 const normalizeNotifPath = (value) => {
   const raw = String(value || "").trim();
@@ -308,35 +305,28 @@ export default function DealsScreen({ navigation, route }) {
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
   const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
-  const loadRequestRef = useRef(0);
 
-  const load = useCallback(async ({ force = false } = {}) => {
-    const request = ++loadRequestRef.current;
+  const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const dashboard = await marketAPI.myDashboard({ force });
-      if (request !== loadRequestRef.current) return;
-      if (!dashboard || dashboard.serverError || dashboard.authRequired || !Array.isArray(dashboard.my_deals)) {
-        throw new Error('invalid_dashboard');
-      }
+      const dashboard = await marketAPI.myDashboard();
+      if (!dashboard) throw new Error('empty_dashboard');
       setAllDeals(dashboard.my_deals || []);
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
       try {
         const notificationData = await notificationsAPI.list(50);
-        if (request !== loadRequestRef.current) return;
         setUnreadNotifPaths(unreadNotificationPaths(notificationData));
       } catch {
         // Notification badges are auxiliary; a notification API outage must
         // not turn an otherwise valid Deals dashboard into an error screen.
-        if (request === loadRequestRef.current) setUnreadNotifPaths([]);
+        setUnreadNotifPaths([]);
       }
     } catch (error) {
-      if (request !== loadRequestRef.current) return;
       setLoadError(true);
       console.warn("deals load failed", error?.message || error);
     } finally {
-      if (request === loadRequestRef.current) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
@@ -344,11 +334,11 @@ export default function DealsScreen({ navigation, route }) {
     useCallback(() => {
       load();
       const interval = setInterval(load, 10000);
-      return () => { loadRequestRef.current++; clearInterval(interval); };
+      return () => clearInterval(interval);
     }, [load]),
   );
 
-  const { refreshing, onRefresh } = useSafeRefresh(() => load({ force: true }));
+  const { refreshing, onRefresh } = useSafeRefresh(load);
 
   const relTime = useCallback(
     (raw) => {
@@ -365,12 +355,12 @@ export default function DealsScreen({ navigation, route }) {
       if (Math.round(hours / 24) === 1) return t("time_yesterday");
       const locale =
         lang === "ZH"
-          ? localizeUiText("zh-CN", lang)
+          ? "zh-CN"
           : lang === "EN"
-            ? localizeUiText("en-GB", lang)
+            ? "en-GB"
             : lang === "KK"
-              ? localizeUiText("kk-KZ", lang)
-              : localizeUiText("ru-RU", lang);
+              ? "kk-KZ"
+              : "ru-RU";
       return date.toLocaleDateString(locale, {
         day: "2-digit",
         month: "2-digit",
@@ -724,7 +714,6 @@ export default function DealsScreen({ navigation, route }) {
       ]}
       testID="deals-minimal-header"
     >
-      {loadError ? <Text testID="deals-refresh-error" style={[styles.errorText, { color: palette.textMuted }]}>{copy.loadError}</Text> : null}
         <RootHeader ceramic={isDriver} navigation={navigation} role={role} testID="deals-minimal-header" menuTestID="deals-menu-btn" />
 
       <View style={styles.tabsRow} testID="deals-primary-tabs">

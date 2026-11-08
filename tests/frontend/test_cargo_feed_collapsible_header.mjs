@@ -17,7 +17,7 @@ test('cargo feed removes heavy brand/title chrome and keeps only compact menu ab
   assert.doesNotMatch(src, /LanguageSwitcher/);
 });
 
-test('route selector and filter chips stay compact and pinned above the cargo list', () => {
+test('route selector and all filter chips scroll away with cargo list like a messenger large header', () => {
   assert.match(src, /const feedControls = \(/);
   assert.match(src, /ListHeaderComponent=\{feedControls\}/);
   assert.match(src, /testID="feed-route-selector"/);
@@ -26,27 +26,16 @@ test('route selector and filter chips stay compact and pinned above the cargo li
   assert.match(src, /filterPill\('body'/);
   assert.match(src, /filterPill\('price'/);
   assert.match(src, /testID="cargo-filter-favorites"/);
-  assert.match(src, /stickyHeaderIndices=\{\[0\]\}/);
-  assert.match(src, /ListHeaderComponentStyle=\{\{ backgroundColor: palette\.pageBg \}\}/);
-  assert.equal((src.match(/<FlatList/g) || []).length, 1);
-  assert.match(src, /cargo-feed-scroll-top/);
+  assert.doesNotMatch(src, /stickyHeaderIndices/);
+  assert.doesNotMatch(src, /position:\s*['"]sticky['"]/);
 });
 
-test('favorites quick filter runs against the complete server result and keeps bookmark state', () => {
+test('favorites quick filter uses the same saved cargo ids as card bookmarks', () => {
   assert.match(src, /const \[savedOnly, setSavedOnly\] = useState\(false\)/);
-  assert.match(src, /savedOnly,\s*limit:\s*50/);
-  assert.match(src, /saved=\{savedOnly \|\| savedIds\.has\(String\(item\.id\)\)\}/);
+  assert.match(src, /savedOnly && !savedIds\.has\(String\(item\.id\)\)/);
   assert.match(src, /setSavedOnly\(\(value\) => !value\)/);
+  assert.match(src, /saved=\{savedIds\.has\(String\(item\.id\)\)\}/);
   assert.match(src, /accessibilityLabel=\{copy\.favorites\}/);
-});
-
-test('cargo feed bounds mounted rows without truncating loaded data or pagination', () => {
-  assert.match(src, /const CARGO_FEED_WINDOW_SIZE = 7/);
-  assert.match(src, /windowSize=\{CARGO_FEED_WINDOW_SIZE\}/);
-  assert.match(src, /data=\{loading \? \[\] : visibleItems\}/);
-  assert.match(src, /const visibleItems = items/);
-  assert.doesNotMatch(src, /visibleItems\s*=\s*items\.(?:slice|splice)/);
-  assert.match(src, /const loadNextPage = useCallback\(\(\) => \{\s*const page = pageRef\.current;/);
 });
 
 test('cargo cards are dense without changing the controls above the list', () => {

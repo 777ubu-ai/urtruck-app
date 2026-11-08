@@ -45,14 +45,32 @@ def push_outbox_drain_job():
         if stats.get("picked"):
             print(
                 f"[push-outbox] picked={stats['picked']} sent={stats['sent']} "
-                f"retry={stats.get('retry', 0)} failed={stats['failed']} "
-                f"expired={stats.get('expired', 0)} dead={stats['dead']}",
+                f"failed={stats['failed']} dead={stats['dead']}",
                 flush=True,
             )
     except Exception as e:
         # A single bad batch must not take the scheduler process down —
         # matches the per-job try/except convention every job here follows.
         print(f"[push-outbox] drain job failed (continuing): {e}", flush=True)
+
+
+def push_receipts_poll_job():
+    """Push-recovery track, Phase 5: bounded, once-per-row Expo delivery-
+    receipt reconciliation (see services/push_gateway.py
+    poll_pending_receipts for the actual query/backoff-free, no-retry-loop
+    logic). Complements the immediate-ticket DeviceNotRegistered handling —
+    some invalid-token errors only surface in the delayed receipt."""
+    try:
+        from services.push_sender import poll_expo_receipts_once
+        stats = poll_expo_receipts_once(limit=50)
+        if stats.get("checked"):
+            print(
+                f"[push-receipts] checked={stats['checked']} delivered={stats['delivered']} "
+                f"invalid_token={stats['invalid_token']} errors={stats['errors']}",
+                flush=True,
+            )
+    except Exception as e:
+        print(f"[push-receipts] poll failed (continuing): {e}", flush=True)
 
 
 def voice_processing_drain_job():
@@ -76,7 +94,6 @@ def voice_processing_drain_job():
     except Exception as e:
         print(f"[voice-stt] worker failed (continuing): {type(e).__name__}", flush=True)
 
-
 def gps_heartbeat_check_job():
     """Push-recovery track, Phase 4: fires trip.gps_lost/gps_restored, which
     previously existed only as declared event-type constants with no
@@ -93,15 +110,47 @@ def gps_heartbeat_check_job():
         print(f"[gps-heartbeat] check failed (continuing): {e}", flush=True)
 
 
-def external_freight_retention_job():
-    """Удаляет ограниченную партию истёкших карточек внешней ленты.
+_external_feed_schema_ready = False
 
-    API продолжает скрывать истёкшие записи сразу по TTL. Эта плановая
-    уборка лишь физически удаляет до 500 старых карточек за запуск и
-    сохраняет отпечатки источника для защиты от повторного импорта.
-    """
+
+def _external_feed_db_path_from_env_file():
+    """Процесс планировщика под PM2 получил окружение без EXTERNAL_FREIGHT_DB_PATH.
+    Берём только эту одну переменную из backend/.env (остальное не трогаем),
+    чтобы очистка шла по настоящей базе Ленты грузов, а не по пустому файлу."""
+    import os
+    if os.getenv("EXTERNAL_FREIGHT_DB_PATH", "").strip():
+        return
+    env_file = Path(__file__).resolve().parent.parent / ".env"
     try:
-        from database.external_freight_dal import purge_expired_items
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.strip().partition("=")
+            if sep and key.strip() == "EXTERNAL_FREIGHT_DB_PATH":
+                value = value.strip().strip("\"'")
+                if value:
+                    os.environ["EXTERNAL_FREIGHT_DB_PATH"] = value
+                return
+    except OSError:
+        return
+
+
+def external_freight_retention_job():
+    """Удаляет ограниченную партию карточек Ленты грузов старше 30 дней (ACTIVE_DAYS).
+
+    Перенесено из QA2 (#647, #665, 2673443f): до 500 карточек за запуск,
+    отпечаток источника сохраняется для защиты от повторного импорта.
+    Если база ленты не найдена — ничего не создаём и пропускаем запуск.
+    """
+    global _external_feed_schema_ready
+    try:
+        _external_feed_db_path_from_env_file()
+        from database.external_freight_connection import database_path
+        if not database_path().exists():
+            print("[external-feed-retention] skipped: feed database not found", flush=True)
+            return
+        from database.external_freight_dal import init_schema, purge_expired_items
+        if not _external_feed_schema_ready:
+            init_schema()
+            _external_feed_schema_ready = True
         removed = purge_expired_items()
         if removed:
             print(f"[external-feed-retention] purged={removed} batch_limit=500", flush=True)
@@ -124,21 +173,181 @@ def monthly_rescore_job():
 
 
 def push_reminders_job():
-    """Напоминания с серверными preferences и устойчивыми событиями."""
-    from services.scheduled_notifications import reminders_job
-    return reminders_job(now=datetime.utcnow())
+    """Ежедневное напоминание в 10:00 (по серверу):
+    - неактивные (>3 дней без логина) → "Загляните в UrTruck, есть новые грузы";
+    - по сохранённым маршрутам есть свежие грузы → "5 новых по Алматы→Иу".
+    """
+    from datetime import timedelta
+    from database.db import get_conn
+    from services import push_sender
+
+    now = datetime.utcnow()
+    threshold = (now - timedelta(days=3)).isoformat()
+    cnt = {"inactive": 0, "route_match": 0}
+
+    # 1) Неактивные водители с токенами
+    with get_conn() as c:
+        # Все юзеры у которых есть хоть один push-токен и нет активности больше 3 дней
+        rows = c.execute("""
+            SELECT DISTINCT d.id, d.full_name
+            FROM drivers_registration d
+            WHERE d.status = 'approved'
+              AND d.role IN ('driver', 'client')
+              AND (d.updated_at IS NULL OR d.updated_at < ?)
+              AND (
+                EXISTS (SELECT 1 FROM push_subscriptions WHERE user_id = d.id)
+                OR EXISTS (SELECT 1 FROM push_tokens_native WHERE user_id = d.id)
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM push_log
+                WHERE user_id = d.id AND kind = 'reminder'
+                  AND created_at > ?
+              )
+            LIMIT 200
+        """, (threshold, (now - timedelta(hours=20)).isoformat())).fetchall()
+    for r in rows:
+        # Блок 6 аудита (P1-8): push может не дойти (нет permission/offline/
+        # провайдер недоступен) — notification создаём НЕЗАВИСИМО и ДО
+        # попытки push, чтобы событие не терялось молча. event_key —
+        # день+юзер, повторный прогон джобы в тот же день не задвоит запись
+        # (UNIQUE(user_id, event_key), см. api/notifications.py).
+        try:
+            from api.notifications import create_notification
+            create_notification(
+                r["id"], "reminder", "🚛 UrTruck ждёт вас",
+                "Есть новые грузы. Загляните в ленту.", "🚛", url="/",
+                event_key=f"reminder-inactive:{now.date().isoformat()}",
+            )
+        except Exception as e:
+            print(f"  reminder notif err {r['id']}: {e}")
+        try:
+            push_sender.send(
+                r["id"],
+                "🚛 UrTruck ждёт вас",
+                "Есть новые грузы. Загляните в ленту.",
+                kind="reminder",
+                url="/",
+            )
+            cnt["inactive"] += 1
+        except Exception as e:
+            print(f"  reminder err {r['id']}: {e}")
+
+    # 2) Сохранённые маршруты: новые грузы по ним за последние 24 часа
+    day_ago = (now - timedelta(hours=24)).isoformat()
+    try:
+        with get_conn() as c:
+            saved = c.execute("""
+                SELECT s.user_id, s.from_city, s.to_city,
+                       (SELECT COUNT(*) FROM cargos c
+                        WHERE c.from_city = s.from_city AND c.to_city = s.to_city
+                          AND c.created_at > ?) AS cnt
+                FROM saved_searches s
+                WHERE EXISTS (SELECT 1 FROM push_subscriptions WHERE user_id = s.user_id)
+                   OR EXISTS (SELECT 1 FROM push_tokens_native WHERE user_id = s.user_id)
+            """, (day_ago,)).fetchall()
+        for r in saved:
+            if (r["cnt"] or 0) < 1:
+                continue
+            _title = f"📦 {r['cnt']} новых грузов"
+            _body = f"{r['from_city']} → {r['to_city']}"
+            try:
+                from api.notifications import create_notification
+                create_notification(
+                    r["user_id"], "reminder", _title, _body, "📦", url="/",
+                    event_key=f"reminder-route:{r['from_city']}:{r['to_city']}:{now.date().isoformat()}",
+                )
+            except Exception as e:
+                print(f"  saved_searches notif err: {e}")
+            try:
+                push_sender.send(
+                    r["user_id"], _title, _body,
+                    kind="reminder",
+                    data={"from": r["from_city"], "to": r["to_city"]},
+                    url="/",
+                )
+                cnt["route_match"] += 1
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"  saved_searches reminder err: {e}")
+
+    print(f"[{now.isoformat()}] reminders: inactive={cnt['inactive']} route_match={cnt['route_match']}")
 
 
 def expired_notify_job():
-    """Lifecycle по 30-дневной публикации, без привязки к дате маршрута."""
-    from services.scheduled_notifications import lifecycle_job
-    return lifecycle_job(now=datetime.utcnow())
+    """Собственные активные объявления продлеваются автоматически; ручных напоминаний нет."""
+    return None
 
 
 def no_bids_notify_job():
-    """Один согласованный inbox/outbox повод на ID публикации."""
-    from services.scheduled_notifications import no_bids_job
-    return no_bids_job(now=datetime.utcnow())
+    """Проактивная подсказка владельцу, если на груз/рейс за 18+ часов не
+    пришло ни одной ставки (стандарт бирж грузоперевозок — Della/АТИ дают
+    похожую нотификацию + предлагают поднять/скорректировать цену). Раз в
+    жизни публикации — дедуп через push_log(kind='no_bids'), не спамим."""
+    from datetime import timedelta
+    from database.db import get_conn
+    from services import push_sender
+
+    now = datetime.utcnow()
+    threshold = (now - timedelta(hours=18)).isoformat()
+    dedup_thresh = (now - timedelta(hours=20)).isoformat()  # шире окна проверки — шлём 1 раз
+    sent = 0
+
+    with get_conn() as c:
+        cargos = c.execute("""
+            SELECT id, owner_id, from_city, to_city FROM cargos
+            WHERE status = 'active' AND bids_count = 0 AND created_at < ?
+        """, (threshold,)).fetchall()
+        trips = c.execute("""
+            SELECT t.id, t.driver_id, t.from_city, t.to_city FROM trips t
+            WHERE t.status = 'active' AND t.created_at < ?
+              AND NOT EXISTS (SELECT 1 FROM bids b WHERE b.trip_id = t.id)
+        """, (threshold,)).fetchall()
+
+    def already_sent(uid, entity_id):
+        with get_conn() as c:
+            return bool(c.execute(
+                "SELECT 1 FROM push_log WHERE user_id = ? AND kind = 'no_bids' "
+                "AND data_json LIKE ? AND created_at > ?",
+                (uid, f"%{entity_id}%", dedup_thresh)).fetchone())
+
+    for cid, owner_id, fr, to in cargos:
+        if not owner_id or already_sent(owner_id, cid):
+            continue
+        _title = "📦 Пока нет предложений"
+        _body = f"{fr} → {to} · 18 часов без ставок. Возможно, стоит скорректировать цену?"
+        # Блок 6 (P1-8): notification — до/независимо от push. event_key
+        # привязан к сущности (не ко времени) — «раз в жизни публикации».
+        try:
+            from api.notifications import create_notification
+            create_notification(owner_id, "no_bids", _title, _body, "📦",
+                                 url=f"/cargos/{cid}", event_key=f"no_bids:cargo:{cid}")
+        except Exception as e:
+            print(f"  no_bids cargo notif err {cid}: {e}")
+        try:
+            push_sender.send(owner_id, _title, _body, kind="no_bids", data={"cargo_id": cid}, url="/")
+            sent += 1
+        except Exception as e:
+            print(f"  no_bids cargo err {cid}: {e}")
+
+    for tid, driver_id, fr, to in trips:
+        if not driver_id or already_sent(driver_id, tid):
+            continue
+        _title = "🚛 Пока нет предложений"
+        _body = f"{fr} → {to} · 18 часов без предложений на рейс. Возможно, стоит скорректировать цену?"
+        try:
+            from api.notifications import create_notification
+            create_notification(driver_id, "no_bids", _title, _body, "🚛",
+                                 url=f"/trips/{tid}", event_key=f"no_bids:trip:{tid}")
+        except Exception as e:
+            print(f"  no_bids trip notif err {tid}: {e}")
+        try:
+            push_sender.send(driver_id, _title, _body, kind="no_bids", data={"trip_id": tid}, url="/")
+            sent += 1
+        except Exception as e:
+            print(f"  no_bids trip err {tid}: {e}")
+
+    print(f"[{now.isoformat()}] no-bids-notify: sent={sent}")
 
 
 # P0-8 (08.08.2026): раньше start_scheduler() вызывался ТОЛЬКО из
@@ -204,7 +413,7 @@ def start_scheduler():
     if not _acquire_singleton_lock():
         print("[scheduler] another process holds the singleton lock, skip")
         return None
-    sched = BackgroundScheduler(timezone="UTC", job_defaults={
+    sched = BackgroundScheduler(job_defaults={
         "max_instances": 1,   # не запускать джобу, если предыдущий прогон ещё идёт
         "coalesce": True,      # пропущенные тики схлопнуть в один
         "misfire_grace_time": 3600,
@@ -228,20 +437,21 @@ def start_scheduler():
     # пользователя без уведомления полчаса неприемлемо. max_instances=1 +
     # атомарный claim в process_pending_once защищают от наложения.
     sched.add_job(push_outbox_drain_job, IntervalTrigger(seconds=30), id="push_outbox_drain")
-    # Hidden voice transcription: sequential by design (CPU/QA2 model limit),
-    # with its own lease/retry state instead of delaying chat or push work.
-    sched.add_job(voice_processing_drain_job, IntervalTrigger(seconds=10), id="voice_processing_drain")
     # GPS heartbeat staleness check — каждые 5 минут (порог staleness сам —
     # 20 минут, см. GPS_LOST_THRESHOLD_MINUTES), достаточно редко, чтобы не
     # быть busy-loop, достаточно часто, чтобы задержка обнаружения была мала
     # относительно самого порога.
     sched.add_job(gps_heartbeat_check_job, IntervalTrigger(minutes=5), id="gps_heartbeat_check")
-    # Истёкшие записи скрываются при запросе; пакетная задача выполняет
-    # физическую очистку независимо от открытия ленты пользователями.
+    # Expo receipt reconciliation — не агрессивный опрос: каждые 20 минут,
+    # каждая строка push_delivery_log проверяется РОВНО один раз (см.
+    # receipt_checked_at в poll_pending_receipts), окно 15 минут..1 сутки.
+    sched.add_job(push_receipts_poll_job, IntervalTrigger(minutes=20), id="push_receipts_poll")
+    # Лента грузов: физическое удаление карточек старше 30 дней, партиями по 500.
     sched.add_job(external_freight_retention_job, IntervalTrigger(minutes=5), id="external_freight_retention")
+    sched.add_job(voice_processing_drain_job, IntervalTrigger(seconds=10), id="voice_processing_drain")
     sched.start()
     _scheduler = sched
-    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, external-feed-retention 5m")
+    print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, push-receipts-poll 20m, external-feed-retention 5m")
     return sched
 
 
@@ -262,13 +472,9 @@ def stop_scheduler():
         _lock_fh = None
 
 
-def run_scheduler_process():
+if __name__ == "__main__":
     db.init_db()
     sched = start_scheduler()
-    if sched is None:
-        # Процесс без lock не исполняет даже первоначальный parser и не
-        # остаётся живым с ложным впечатлением работающего scheduler.
-        return 1
     # Первый запуск парсера сразу
     parse_telegram_job()
     try:
@@ -276,8 +482,3 @@ def run_scheduler_process():
             time.sleep(60)
     except KeyboardInterrupt:
         sched.shutdown()
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(run_scheduler_process())

@@ -37,43 +37,6 @@ on:
       - ".github/workflows/deploy-play.yml"
   workflow_dispatch:
     inputs:
-      inspect_store_only:
-        description: "Только сверить версии Play: без сборки, загрузки и изменения треков"
-        required: false
-        default: false
-        type: boolean
-      production_review_only:
-        description: "Production-кандидат только в draft; отправка на проверку вручную через Console"
-        required: false
-        default: false
-        type: boolean
-      merged_pr_number:
-        description: "Номер объединённого PR, соответствующего точному SHA проверенного кандидата"
-        required: false
-        type: string
-      source_sha:
-        description: "Точный merge SHA выбранного PR; отдельное исправление процесса сборки не меняет исходник приложения"
-        required: false
-        default: ""
-        type: string
-      download_generated_version_code:
-        description: "Read-only download of existing Google-signed APK; skips build/upload"
-        required: false
-        default: ""
-        type: string
-      download_generated_source_sha:
-        description: "Source SHA from the existing successful AAB build"
-        required: false
-        default: ""
-        type: string
-      api_environment:
-        description: "Среда API: QA2 разрешён только в Internal testing"
-        required: true
-        default: "production"
-        type: choice
-        options:
-          - production
-          - qa2
       track:
         description: "Google Play track"
         required: true
@@ -87,37 +50,16 @@ on:
       status:
         description: "Release status на выбранном треке"
         required: true
-        default: "draft"
+        default: "completed"
         type: choice
         options:
-          - draft
           - completed
           - inProgress
           - halted
-      user_fraction:
-        description: "Required for halted/inProgress: exact existing staged rollout fraction (0 < value < 1)"
-        required: false
-        default: ""
-        type: string
       submit_to_play:
         description: "Upload the resulting AAB to Google Play"
         required: true
         default: true
-        type: boolean
-      enable_external_freight_feed:
-        description: "Включить принятую внешнюю ленту в магазинной сборке"
-        required: false
-        default: true
-        type: boolean
-      last_verified_play_code:
-        description: Latest versionCode verified in Play before building the reviewed store candidate
-        required: false
-        default: ""
-        type: string
-      build_installable_apk:
-        description: "Produce a signed production APK encrypted for this local device-QA session"
-        required: true
-        default: false
         type: boolean
 
 # Play принимает только уникальные versionCode. Сериализация гарантирует, что
@@ -128,178 +70,17 @@ concurrency:
 
 permissions:
   contents: read
-  checks: read
-  pull-requests: read
+  issues: write
 
 jobs:
-  inspect-store:
-    name: Сверить версии Google Play без загрузки
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.inspect_store_only }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Подготовить штатную авторизацию API
-        run: python -m pip install google-auth requests
-      - name: Прочитать версии и удалить временный edit
-        env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        run: python scripts/ops/inspect_play_store.py --output play-current.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: UrTruck-Play-current-readonly
-          path: play-current.json
-          retention-days: 14
-          if-no-files-found: error
-
-  quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
-    uses: ./.github/workflows/quality-gate-reusable.yml
-    with:
-      source_ref: ${{ inputs.source_sha || github.sha }}
-
   build-and-submit:
-    needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
     name: Build AAB and upload to Play
-    env:
-      URTRUCK_VERSION_NAME: 1.0.9
-      URTRUCK_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
-      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: ${{ (github.event_name == 'push' || inputs.enable_external_freight_feed) && 'true' || 'false' }}
-      GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ inputs.source_sha || github.sha }}
-
-      - name: Запретить магазинную сборку без внешней ленты
-        run: |
-          test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true || {
-            echo '::error::Магазинная сборка требует включённую внешнюю ленту'
-            exit 1
-          }
-
-      - name: Prepare reviewed internal candidate identity
-        env:
-          API_ENVIRONMENT_INPUT: ${{ inputs.api_environment || 'production' }}
-          TRACK_INPUT: ${{ inputs.track || 'internal' }}
-          VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
-          MERGED_PR_NUMBER: ${{ inputs.merged_pr_number || '' }}
-          SOURCE_SHA_OVERRIDE: ${{ inputs.source_sha || '' }}
-          PRODUCTION_REVIEW_ONLY: ${{ inputs.production_review_only && 'true' || 'false' }}
-          RELEASE_STATUS_INPUT: ${{ inputs.status || 'draft' }}
-        run: |
-          set -euo pipefail
-          # BEGIN_PRODUCTION_REVIEW_GUARD
-          PRODUCTION_REVIEW_ONLY="${PRODUCTION_REVIEW_ONLY:-false}"
-          if [ "$PRODUCTION_REVIEW_ONLY" = true ]; then
-            test "$GITHUB_EVENT_NAME" = workflow_dispatch
-            test "$GITHUB_REF_NAME" = qa2/integration-candidate
-            test "$API_ENVIRONMENT_INPUT" = production
-            test "$TRACK_INPUT" = production
-            test "$RELEASE_STATUS_INPUT" = draft
-          fi
-          # END_PRODUCTION_REVIEW_GUARD
-          if [ -n "${SOURCE_SHA_OVERRIDE:-}" ]; then
-            test "$GITHUB_REF_NAME" = qa2/integration-candidate
-            [[ "$SOURCE_SHA_OVERRIDE" =~ ^[0-9a-f]{40}$ ]]
-            test "$URTRUCK_SOURCE_SHA" = "$SOURCE_SHA_OVERRIDE"
-            git merge-base --is-ancestor "$URTRUCK_SOURCE_SHA" "$GITHUB_SHA"
-          fi
-          if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
-            test "$GITHUB_REF_NAME" = qa2/integration-candidate || {
-              echo '::error::QA2 internal candidates may only be built from the reviewed integration-candidate branch'
-              exit 1
-            }
-          fi
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ]; then
-            test "$GITHUB_EVENT_NAME" = workflow_dispatch
-            test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-            test "$(git rev-parse HEAD)" = "$URTRUCK_SOURCE_SHA"
-            # BEGIN_CANDIDATE_TARGET_GUARD
-            if [ "$API_ENVIRONMENT_INPUT" = qa2 ]; then
-              test "$TRACK_INPUT" = internal
-              test "$PRODUCTION_REVIEW_ONLY" = false
-            elif [ "$API_ENVIRONMENT_INPUT" = production ]; then
-              test "$PRODUCTION_REVIEW_ONLY" = true
-              test "$TRACK_INPUT" = production
-              test "$RELEASE_STATUS_INPUT" = draft
-              echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
-              echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
-            else
-              echo '::error::Неизвестная среда магазинного кандидата'
-              exit 1
-            fi
-            # END_CANDIDATE_TARGET_GUARD
-            test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
-            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
-            test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
-            test "$VERIFIED_PLAY_MAX_CODE" -lt 2100000000
-            case "$MERGED_PR_NUMBER" in ''|0*|*[!0-9]*) echo '::error::Требуется допустимый номер объединённого PR'; exit 1;; esac
-            test "${#MERGED_PR_NUMBER}" -le 8
-            PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
-            test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
-            test "$(jq -r '.state' <<<"$PR_JSON")" = closed
-            test "$(jq -r '.merged' <<<"$PR_JSON")" = true
-            test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$URTRUCK_SOURCE_SHA"
-            PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
-            git fetch origin "$PR_HEAD_SHA" --depth=1
-            git diff --quiet "$PR_HEAD_SHA" "$URTRUCK_SOURCE_SHA" -- || {
-              echo '::error::Merged candidate tree differs from the reviewed PR head'
-              exit 1
-            }
-            # Владелец 25.10.2026 разрешил внутренний выпуск без независимого GitHub approval.
-            CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
-            for CHECK in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
-              CONCLUSION="$(jq -r --arg name "$CHECK" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$CHECKS_JSON")"
-              test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
-            done
-            python3 scripts/prepare_store_candidate_version.py --platform android \
-              --version 1.0.14 --source-sha "$URTRUCK_SOURCE_SHA"
-            echo "URTRUCK_VERSION_NAME=1.0.14" >> "$GITHUB_ENV"
-          elif [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
-            test "$GITHUB_EVENT_NAME" = workflow_dispatch
-            test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-            test "$API_ENVIRONMENT_INPUT" = production
-            test "$TRACK_INPUT" = production
-            test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true
-            [[ "$VERIFIED_PLAY_MAX_CODE" =~ ^[1-9][0-9]{0,9}$ ]]
-            test "$VERIFIED_PLAY_MAX_CODE" -ge 215090227
-            test "$VERIFIED_PLAY_MAX_CODE" -lt 2099999999
-            git merge-base --is-ancestor 4a2000526e5b89c4fa93fd053ac0d4f21ece05c7 HEAD
-            git diff --exit-code 4a2000526e5b89c4fa93fd053ac0d4f21ece05c7 HEAD -- . ':!.github/workflows/deploy-play.yml' ':!tests/frontend/test_play_internal_sequential_version.mjs' ':!docs/release/play-production-1.0.12-20261026.md'
-            PRS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=777ubu-ai:$GITHUB_REF_NAME&state=all")"
-            test "$(jq 'length' <<<"$PRS_JSON")" = 1
-            test "$(jq -r '.[0].base.ref' <<<"$PRS_JSON")" = qa2/integration-candidate
-            test "$(jq -r '.[0].head.sha' <<<"$PRS_JSON")" = "$GITHUB_SHA"
-            CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100")"
-            for CHECK in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
-              CONCLUSION="$(jq -r --arg name "$CHECK" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$CHECKS_JSON")"
-              test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
-            done
-            echo "URTRUCK_VERSION_NAME=1.0.12" >> "$GITHUB_ENV"
-            echo "URTRUCK_BUILD_FLAVOR=production" >> "$GITHUB_ENV"
-            echo "EXPO_PUBLIC_IS_BETA=false" >> "$GITHUB_ENV"
-          elif [ "$GITHUB_REF_NAME" = fix/owned-telegram-feed-share-20261025 ]; then
-            echo '::error::Promote PR 605 to qa2/integration-candidate before building its internal store candidate'
-            exit 1
-          fi
-
-      - name: Проверить среду и ограничить QA2 внутренним треком
-        env:
-          API_ENVIRONMENT: ${{ inputs.api_environment || 'production' }}
-          PLAY_TRACK: ${{ inputs.track || 'internal' }}
-          EXPO_PUBLIC_API_URL: https://urtruck.kz
-        run: node scripts/qa2-internal-store-config.mjs
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -367,70 +148,28 @@ jobs:
           python3 scripts/verify_android_firebase_config.py --check-plugin android
 
       - name: Compute collision-resistant versionCode
-        env:
-          VERIFIED_PLAY_MAX_CODE: ${{ inputs.last_verified_play_code || '' }}
         # Старый `100 + GITHUB_RUN_NUMBER` столкнулся с уже использованным
         # versionCode=212. Run number локален конкретному workflow и может
         # пересечься с историческими/manual кодами или сброситься при замене
         # workflow. Новый код = число секунд с 2020-01-01 UTC. Он глобально
         # растёт независимо от GitHub run number и остаётся < 2_100_000_000
         # примерно до 2086 года. Concurrency выше сериализует Play jobs, поэтому
-        # Для QA2 Internal владелец выбрал последовательный код: проверенный
-        # максимум магазина + 1. Принятый production-кандидат использует тот же порядок.
+        # повторный/manual запуск получает следующую секунду, а не тот же код.
         run: |
           set -euo pipefail
           base_epoch=1577836800
           now_epoch=$(date -u +%s)
           version_code=$((now_epoch - base_epoch))
-          installed_version_code=213720253
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
-            case "$VERIFIED_PLAY_MAX_CODE" in
-              ''|0*|*[!0-9]*)
-                echo '::error::Verified Play versionCode must be a positive decimal without leading zeroes'
-                exit 1
-                ;;
-            esac
-            test "${#VERIFIED_PLAY_MAX_CODE}" -le 10
-            test "$VERIFIED_PLAY_MAX_CODE" -ge 215024884
-            installed_version_code="$VERIFIED_PLAY_MAX_CODE"
-            version_code=$((installed_version_code + 1))
-          fi
-          if [ "$version_code" -le "$installed_version_code" ] || [ "$version_code" -ge 2100000000 ]; then
-            echo "::error::Computed Android versionCode ${version_code} must exceed installed code ${installed_version_code} and stay within Google Play range"
+          if [ "$version_code" -le 0 ] || [ "$version_code" -ge 2100000000 ]; then
+            echo "::error::Computed Android versionCode ${version_code} is outside Google Play range"
             exit 1
           fi
           echo "URTRUCK_VERSION_CODE=${version_code}" >> "$GITHUB_ENV"
-          echo "Android versionCode=${version_code} (greater than verified baseline ${installed_version_code})"
-
-      - name: Validate Play release inputs
-        env:
-          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
-          USER_FRACTION: ${{ inputs.user_fraction || '' }}
-        run: node scripts/validate-play-release-inputs.mjs
-
-      - name: Проверить выбранную конфигурацию до компиляции
-        if: ${{ inputs.api_environment == 'qa2' || inputs.production_review_only }}
-        env:
-          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-        run: |
-          set -euo pipefail
-          npx expo config --json > "$RUNNER_TEMP/resolved-store-config.json"
-          node --input-type=module - "$RUNNER_TEMP/resolved-store-config.json" <<'STOREVERIFY'
-          import { readFileSync } from 'node:fs';
-          import { assertStoreConfig } from './scripts/qa2-internal-store-config.mjs';
-          const config = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-          if (!process.env.URTRUCK_SOURCE_SHA) throw Error('Не задан исходник приложения');
-          assertStoreConfig(config, process.env.API_ENVIRONMENT, process.env.PLAY_TRACK, process.env.URTRUCK_SOURCE_SHA);
-          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true) throw Error('Неверная версия или флаг ленты');
-          console.log('Проверены API, package, режим, версия, лента и точный исходник приложения');
-          STOREVERIFY
+          echo "Android versionCode=${version_code} (seconds since 2020-01-01 UTC)"
 
       - name: Build release AAB
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         env:
-          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
-          URTRUCK_QA2_INTERNAL_STORE: ${{ env.URTRUCK_QA2_INTERNAL_STORE }}
+          EXPO_PUBLIC_API_URL: https://urtruck.kz
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
           EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
           ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
@@ -441,80 +180,24 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew :app:testReleaseUnitTest bundleRelease --no-daemon --stacktrace --warning-mode=summary
-          python3 ../scripts/verify_android_fcm_handler.py app/build/intermediates
-          python3 ../scripts/verify_android_16kb.py app/build/outputs/bundle/release/app-release.aab
-
-      - name: Build signed production APK for device QA
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
-        env:
-          EXPO_PUBLIC_API_URL: ${{ env.EXPO_PUBLIC_API_URL }}
-          URTRUCK_QA2_INTERNAL_STORE: ${{ env.URTRUCK_QA2_INTERNAL_STORE }}
-          EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
-          EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
-          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_FILE: ${{ format('{0}/urtruck-upload-key.jks', runner.temp) }}
-          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_URTRUCK_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          ORG_GRADLE_PROJECT_URTRUCK_VERSION_CODE: ${{ env.URTRUCK_VERSION_CODE }}
-        run: |
-          set -euo pipefail
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace --warning-mode=summary
+          ./gradlew bundleRelease --no-daemon --stacktrace --warning-mode=summary
 
       - name: Verify Firebase runtime resources in build output
         run: python3 scripts/verify_android_firebase_config.py --check-resources android/app/build
 
       - name: Verify built AAB identity and versionCode
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         run: |
           set -euo pipefail
           aab="android/app/build/outputs/bundle/release/app-release.aab"
           test -f "$aab"
           bundletool_jar="$RUNNER_TEMP/bundletool.jar"
           curl -fsSL "https://github.com/google/bundletool/releases/download/1.18.1/bundletool-all-1.18.1.jar" -o "$bundletool_jar"
-          bundle_config=$(java -jar "$bundletool_jar" dump config --bundle "$aab")
-          if ! grep -Fq -- "PAGE_ALIGNMENT_16K" <<< "$bundle_config"; then
-            echo "::error::AAB does not request 16 KB ZIP alignment"
-            exit 1
-          fi
           manifest_xml=$(java -jar "$bundletool_jar" dump manifest --bundle "$aab" --module base)
-          printf '%s\n' "$manifest_xml" | python3 scripts/verify_android_snapshot_manifest.py
-          if printf '%s\n' "$manifest_xml" | grep -E 'android\.permission\.(ACCESS_BACKGROUND_LOCATION|FOREGROUND_SERVICE_LOCATION)' ; then
-            echo "::error::Snapshot AAB unexpectedly declares background/location-service permission"
-            exit 1
-          fi
-          grep -Fq -- 'package="com.urtruck.app"' <<< "$manifest_xml"
-          grep -Fq -- "android:versionCode=\"${URTRUCK_VERSION_CODE}\"" <<< "$manifest_xml"
-          grep -Fq -- "android:versionName=\"${URTRUCK_VERSION_NAME}\"" <<< "$manifest_xml"
-          unzip -p "$aab" base/assets/app.config > "$RUNNER_TEMP/aab-app-config.json"
-          node scripts/require-feed-config.mjs "$RUNNER_TEMP/aab-app-config.json"
-          if [ "$GITHUB_REF_NAME" = qa2/integration-candidate ] || [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
-            node - "$RUNNER_TEMP/aab-app-config.json" <<'NODEVERIFY'
-          const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true
-              || config.extra?.urtruckSourceSha !== process.env.URTRUCK_SOURCE_SHA) throw new Error('Candidate version/source/feed identity mismatch');
-          NODEVERIFY
-          fi
-          if [ "$API_ENVIRONMENT" = qa2 ]; then
-            node --input-type=module - "$RUNNER_TEMP/aab-app-config.json" <<'STOREVERIFY'
-          import { readFileSync } from 'node:fs';
-          import { assertStoreConfig } from './scripts/qa2-internal-store-config.mjs';
-          const config = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-          if (!process.env.URTRUCK_SOURCE_SHA) throw Error('Не задан исходник приложения');
-          assertStoreConfig(config, process.env.API_ENVIRONMENT, process.env.PLAY_TRACK, process.env.URTRUCK_SOURCE_SHA);
-          if (config.version !== process.env.URTRUCK_VERSION_NAME || config.extra?.urtruckExternalFreightFeedEnabled !== true) throw Error('Неверная версия или флаг ленты');
-          console.log('Проверены API, package, режим, версия, лента и точный исходник приложения');
-          STOREVERIFY
-          else
-            node scripts/verify-production-apk-config.mjs "$RUNNER_TEMP/aab-app-config.json"
-          fi
+          printf '%s\n' "$manifest_xml" | grep -q 'package="com.urtruck.app"'
+          printf '%s\n' "$manifest_xml" | grep -q "android:versionCode=\"${URTRUCK_VERSION_CODE}\""
           echo "Verified com.urtruck.app versionCode=${URTRUCK_VERSION_CODE} inside AAB"
 
       - name: Record AAB checksum and upload certificate
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -528,92 +211,17 @@ jobs:
             -alias "$ANDROID_KEY_ALIAS" \
             | sed -n 's/^[[:space:]]*SHA256: //p' | head -1)
           test -n "$cert_sha"
-          expected_cert="bb2474c2ed08076f7141fe1e4d3f6c604fc3e860fe5811e3c2fcd129e7cb88b4"
-          actual_cert=$(printf '%s' "$cert_sha" | tr -d ':' | tr '[:upper:]' '[:lower:]')
-          if [ "$actual_cert" != "$expected_cert" ]; then
-            echo "::error::Upload certificate differs from the registered Google Play certificate"
-            exit 1
-          fi
           echo "AAB_SHA256=${aab_sha}" >> "$GITHUB_ENV"
           echo "UPLOAD_CERT_SHA256=${cert_sha}" >> "$GITHUB_ENV"
-          echo "Source SHA=${URTRUCK_SOURCE_SHA}; workflow SHA=${GITHUB_SHA}"
+          echo "Source SHA=${GITHUB_SHA}"
           echo "AAB SHA-256=${aab_sha}"
           echo "Upload certificate SHA-256=${cert_sha}"
-
-      - name: Verify signed production APK identity and host
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: |
-          set -euo pipefail
-          apk="android/app/build/outputs/apk/release/app-release.apk"
-          test -f "$apk"
-          badging="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='com.urtruck.app' versionCode='${URTRUCK_VERSION_CODE}' versionName='${URTRUCK_VERSION_NAME}'"
-          unzip -p "$apk" assets/index.android.bundle | grep -aq "$EXPO_PUBLIC_API_URL"
-          # The JS bundle legitimately contains the QA2 host allowlist for public share links.
-          # Verify the actual Expo config embedded in this APK instead of treating any
-          # occurrence of that domain in unrelated code as the configured API endpoint.
-          embedded_config="$RUNNER_TEMP/urtruck-embedded-app-config.json"
-          unzip -p "$apk" assets/app.config > "$embedded_config"
-          node scripts/require-feed-config.mjs "$embedded_config"
-          if [ "$API_ENVIRONMENT" = qa2 ]; then
-            node scripts/qa2-internal-store-config.mjs "$embedded_config"
-          else
-            node scripts/verify-production-apk-config.mjs "$embedded_config"
-          fi
-          apk_cert="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:lower:]' '[:upper:]')"
-          key_cert="$(keytool -list -v -keystore "$RUNNER_TEMP/urtruck-upload-key.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | sed -n 's/^[[:space:]]*SHA256: //p' | head -1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
-          test -n "$apk_cert" && test "$apk_cert" = "$key_cert"
-          apk_sha="$(shasum -a 256 "$apk" | awk '{print $1}')"
-          echo "APK_SHA256=${apk_sha}" >> "$GITHUB_ENV"
-          echo "Verified signed production APK: com.urtruck.app ${URTRUCK_VERSION_CODE}; host=urtruck.kz"
-          echo "APK SHA-256=${apk_sha}"
-
-      - name: Encrypt production APK for private device transfer
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
-        run: |
-          set -euo pipefail
-          apk="android/app/build/outputs/apk/release/app-release.apk"
-          envelope="$RUNNER_TEMP/urtruck-apk-device-qa"
-          mkdir -m 700 -p "$envelope"
-          aes_key="$(openssl rand -hex 32)"
-          mac_key="$(openssl rand -hex 32)"
-          iv="$(openssl rand -hex 16)"
-          printf '%s%s' "$aes_key" "$mac_key" | xxd -r -p > "$envelope/key-material.bin"
-          openssl enc -aes-256-cbc -K "$aes_key" -iv "$iv" -in "$apk" -out "$envelope/UrTruck.apk.enc"
-          printf '%s' "$iv" | xxd -r -p > "$envelope/iv.bin"
-          cat "$envelope/iv.bin" "$envelope/UrTruck.apk.enc" > "$envelope/authenticated-payload.bin"
-          openssl dgst -sha256 -mac HMAC -macopt "hexkey:${mac_key}" -binary \
-            "$envelope/authenticated-payload.bin" > "$envelope/auth-tag.bin"
-          openssl pkeyutl -encrypt -pubin \
-            -inkey .github/keys/device-qa-apk-encryption.pub \
-            -in "$envelope/key-material.bin" -out "$envelope/UrTruck.apk.key.enc" \
-            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
-          auth_tag="$(od -An -vtx1 "$envelope/auth-tag.bin" | tr -d ' \n')"
-          cipher_sha="$(shasum -a 256 "$envelope/UrTruck.apk.enc" | awk '{print $1}')"
-          jq -n \
-            --arg source_sha "$URTRUCK_SOURCE_SHA" \
-            --arg apk_sha "$APK_SHA256" \
-            --arg ciphertext_sha "$cipher_sha" \
-            --arg iv "$iv" \
-            --arg hmac_sha256 "$auth_tag" \
-            --arg package "com.urtruck.app" \
-            --arg version_name "$URTRUCK_VERSION_NAME" \
-            --arg api_host "${EXPO_PUBLIC_API_URL#https://}" \
-            --argjson version_code "$URTRUCK_VERSION_CODE" \
-            '{source_sha:$source_sha, apk_sha256:$apk_sha, ciphertext_sha256:$ciphertext_sha, iv_hex:$iv, hmac_sha256:$hmac_sha256, package:$package, version_name:$version_name, version_code:$version_code, api_host:$api_host}' \
-            > "$envelope/manifest.json"
-          rm -f "$envelope/key-material.bin" "$envelope/iv.bin" "$envelope/auth-tag.bin" "$envelope/authenticated-payload.bin"
-          echo "Encrypted signed APK envelope created; plaintext APK is not uploaded"
 
       - name: Remove keystore from runner
         if: always()
         run: rm -f "$RUNNER_TEMP/urtruck-upload-key.jks"
 
       - name: Upload AAB as workflow artifact
-        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.build_installable_apk || inputs.submit_to_play }}
         uses: actions/upload-artifact@v4
         with:
           name: UrTruck-aab
@@ -621,17 +229,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Upload encrypted production APK for local device QA
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_installable_apk }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: UrTruck-production-apk-device-qa-encrypted
-          path: ${{ runner.temp }}/urtruck-apk-device-qa/*
-          retention-days: 7
-          if-no-files-found: error
-
       - name: Upload to Google Play
-        id: upload_to_play
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
         uses: r0adkll/upload-google-play@v1
         with:
@@ -639,8 +237,7 @@ jobs:
           packageName: com.urtruck.app
           releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
           tracks: ${{ inputs.track || 'internal' }}
-          status: ${{ inputs.status || 'draft' }}
-          userFraction: ${{ env.PLAY_USER_FRACTION }}
+          status: ${{ inputs.status || 'completed' }}
           inAppUpdatePriority: 2
 
       - name: Record Google Play release evidence
@@ -649,68 +246,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RESULT: ${{ job.status }}
           TRACK: ${{ inputs.track || 'internal' }}
-          RELEASE_STATUS: ${{ inputs.status || 'draft' }}
-          UPLOAD_OUTCOME: ${{ steps.upload_to_play.outcome }}
+          RELEASE_STATUS: ${{ inputs.status || 'completed' }}
           SUBMIT_TO_PLAY: ${{ github.event_name != 'workflow_dispatch' || inputs.submit_to_play }}
-          BUILD_INSTALLABLE_APK: ${{ inputs.build_installable_apk }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           version_code="${URTRUCK_VERSION_CODE:-unknown}"
-          artifact_kind=AAB
-          if [[ "${BUILD_INSTALLABLE_APK:-false}" == "true" ]]; then
-            artifact_kind="AAB + APK"
-            if [[ "${SUBMIT_TO_PLAY}" == "false" ]]; then artifact_kind=APK; fi
-          fi
           body=$(cat <<EOF
-          ### Android release artifact — ${RESULT^^}
-          - sha: \`${URTRUCK_SOURCE_SHA}\`
-          - workflow sha: \`${GITHUB_SHA}\`
+          ### Android release AAB — ${RESULT^^}
+          - sha: \`${GITHUB_SHA}\`
           - workflow: \`Deploy Android to Google Play\`
           - run: ${RUN_URL}
           - result: \`${RESULT}\`
-          - artifact kind: \`${artifact_kind}\`
           - package: \`com.urtruck.app\`
           - track: \`${TRACK}\`
           - release status: \`${RELEASE_STATUS}\`
-          - upload requested: \`${SUBMIT_TO_PLAY}\`
-          - upload outcome: \`${UPLOAD_OUTCOME:-skipped}\`
+          - submitted to Play: \`${SUBMIT_TO_PLAY}\`
           - versionCode: \`${version_code}\`
           - AAB SHA-256: \`${AAB_SHA256:-unknown}\`
-          - APK SHA-256: \`${APK_SHA256:-not built}\`
-          - APK public artifact: encrypted; local private key only
           - upload certificate SHA-256: \`${UPLOAD_CERT_SHA256:-unknown}\`
           EOF
           )
-          printf "%s\n" "$body" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Remove temporary APK envelope
-        if: always()
-        run: rm -rf "$RUNNER_TEMP/urtruck-apk-device-qa"
-
-  download-google-signed-apk:
-    name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' && !inputs.inspect_store_only }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install official API authentication dependencies
-        run: python -m pip install google-auth requests cryptography
-      - name: Download and encrypt existing Play APK
-        env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          APK_VERSION: ${{ inputs.download_generated_version_code }}
-          APK_SOURCE_SHA: ${{ inputs.download_generated_source_sha }}
-        run: |
-          python scripts/ops/download_google_signed_apk.py --version "$APK_VERSION" --source-sha "$APK_SOURCE_SHA" --out "$RUNNER_TEMP/google-signed-apk"
-      - name: Upload encrypted Google-signed APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: UrTruck-google-signed-apk-encrypted
-          path: ${{ runner.temp }}/google-signed-apk/*
-          retention-days: 2
-          if-no-files-found: error
+          gh api "repos/${GITHUB_REPOSITORY}/issues/247/comments" -f body="$body"

@@ -1,4 +1,3 @@
-import { GPS_TRACKING_PAUSED } from './locationPolicy';
 // Marketplace API — грузы, рейсы, ставки через сервер
 import { Platform } from 'react-native';
 import { storage } from './storage';
@@ -18,14 +17,9 @@ const DASHBOARD_CACHE_MS = 3000;
 let dashboardCache = null;
 let dashboardCacheAt = 0;
 let dashboardInFlight = null;
-let dashboardScope = null;
-let dashboardRevision = 0;
 
-async function headers({ expectedToken = null, isCurrent = () => true } = {}) {
+async function headers() {
   const token = await storage.get(TOKEN_KEY);
-  if (!isCurrent() || (expectedToken && token !== expectedToken)) {
-    const e = new Error('PUBLICATION_SESSION_CHANGED'); e.code = 'PUBLICATION_SESSION_CHANGED'; throw e;
-  }
   return {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -122,19 +116,20 @@ export const marketAPI = {
   },
 
   // ─── Cargos ───
-  async createCargo(data, sessionGuard = {}) {
+  async createCargo(data) {
     const r = await authedFetch(`${BASE}/cargos`, {
-      method: 'POST', headers: await headers(sessionGuard),
+      method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
     const d = await r.json();
-    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status, code: d.detail?.error, originalResult: d.detail?.original_result };
+    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
   },
 
   // Загрузка одного фото груза → storage-ключ (мультипарт, как в чате).
   // Ключ кладётся в cargos.photos; сервер подпишет его на выдаче.
-  async uploadCargoPhoto(uri, sessionGuard = {}) {
+  async uploadCargoPhoto(uri) {
+    const token = await storage.get('ur_reg_token');
     const form = new FormData();
     if (Platform.OS === 'web') {
       const blob = await fetch(uri).then((x) => x.blob());
@@ -144,14 +139,14 @@ export const marketAPI = {
     }
     const r = await authedFetch(`${BASE}/cargos/photo`, {
       method: 'POST',
-      headers: (({ Authorization }) => Authorization ? { Authorization } : {})(await headers(sessionGuard)),
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
     });
     if (!r.ok) throw new Error(`cargo photo upload failed ${r.status}`);
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
+  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', limit = 50, offset = 0 } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
@@ -162,27 +157,12 @@ export const marketAPI = {
         from_country: fromCountry,
         to_country: toCountry,
         cargo_type: cargoType,
-        date_from: dateFrom,
-        date_to: dateTo,
-        currency,
-        sort_by: sortBy.replace('-', '_'),
-        saved_only: savedOnly ? 'true' : 'false',
         limit,
         offset,
       });
-      if (minPrice != null) params.set('min_price', String(minPrice));
-      if (maxPrice != null) params.set('max_price', String(maxPrice));
-      // The server applies saved_only as an owner-scoped EXISTS predicate.
-      // Public listings stay anonymous; only this owner-specific filter needs
-      // the current session so the API can enforce ownership itself.
-      const init = savedOnly ? { headers: await headers() } : undefined;
-      const r = await authedFetch(`${BASE}/cargos?${params}`, init);
+      const r = await authedFetch(`${BASE}/cargos?${params}`);
       if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
-      const data = await r.json();
-      if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
-        return { cargos: [], total: 0, serverError: true, unsupportedSearchContract: true };
-      }
-      return data;
+      return r.json();
     } catch (e) {
       return { cargos: [], total: 0, serverError: true };
     }
@@ -200,7 +180,6 @@ export const marketAPI = {
 
   // Задача B: гео-позиция машины по сделке.
   async sendDealLocation(dealId, coords) {
-    if (GPS_TRACKING_PAUSED) return { ok: false, reason: 'gps_paused' };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, {
         method: 'POST', headers: await headers(),
@@ -210,7 +189,6 @@ export const marketAPI = {
     } catch { return { ok: false }; }
   },
   async getDealLocation(dealId) {
-    if (GPS_TRACKING_PAUSED) return { ok: true, has_location: false, paused: true };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/location`, { headers: await headers() });
       if (!r.ok) return { ok: false, has_location: false, status: r.status };
@@ -227,7 +205,6 @@ export const marketAPI = {
     } catch { return { ok: false, tracking: { status: 'not_requested' } }; }
   },
   async requestDealTracking(dealId) {
-    if (GPS_TRACKING_PAUSED) return { ok: false, reason: 'gps_paused' };
     try {
       const r = await authedFetch(`${BASE}/deals/${dealId}/tracking/request`, {
         method: 'POST', headers: await headers(),
@@ -260,15 +237,6 @@ export const marketAPI = {
       const d = await r.json().catch(() => ({}));
       return r.ok ? d : { ok: false, deal_ids: [] };
     } catch { return { ok: false, deal_ids: [] }; }
-  },
-  async activateSnapshotTracking(dealId) {
-    try {
-      const r = await authedFetch(`${BASE}/deals/${encodeURIComponent(dealId)}/tracking/snapshot-mode`, {
-        method: 'POST', headers: await headers(),
-      });
-      const d = await r.json().catch(() => ({}));
-      return r.ok ? d : { ok: false, status: r.status, detail: normalizeDetail(d.detail, r.status) };
-    } catch { return { ok: false, detail: 'network_error' }; }
   },
 
   // Задача A: правка своего активного груза (цена/описание/вес/объём).
@@ -303,17 +271,15 @@ export const marketAPI = {
   },
 
   // ─── Trips ───
-  async createTrip(data, sessionGuard = {}) {
+  async createTrip(data) {
     const r = await authedFetch(`${BASE}/trips`, {
-      method: 'POST', headers: await headers(sessionGuard),
+      method: 'POST', headers: await headers(),
       body: JSON.stringify(data),
     });
-    const d = await r.json();
-    if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status, code: d.detail?.error, originalResult: d.detail?.original_result };
-    return d;
+    return r.json();
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', limit = 50 } = {}) {
     try {
       const params = new URLSearchParams({
         status,
@@ -322,23 +288,11 @@ export const marketAPI = {
         from_country: fromCountry,
         to_country: toCountry,
         truck_type: truckType,
-        date_from: dateFrom,
-        date_to: dateTo,
-        currency,
-        sort_by: sortBy.replace('-', '_'),
-        saved_only: savedOnly ? 'true' : 'false',
         limit,
-        offset,
       });
-      if (minPrice != null) params.set('min_price', String(minPrice));
-      if (maxPrice != null) params.set('max_price', String(maxPrice));
       const r = await authedFetch(`${BASE}/trips?${params}`);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
-      const data = await r.json();
-      if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
-        return { trips: [], total: 0, serverError: true, unsupportedSearchContract: true };
-      }
-      return data;
+      return r.json();
     } catch (e) {
       return { trips: [], total: 0, serverError: true };
     }
@@ -527,69 +481,20 @@ export const marketAPI = {
     return d;
   },
 
-  // Собственные объявления без общего dashboard-кэша и unread side effects.
-  async myListings({ kind = 'cargo', section = 'active', limit = 50, offset = 0 } = {}) {
-    const h = await headers();
-    const scope = h.Authorization || null;
-    if (!scope) return { authRequired: true, items: [] };
-    try {
-      const params = new URLSearchParams({ kind, section, limit, offset });
-      const r = await authedFetch(`${BASE}/my/listings?${params}`, { headers: h });
-      let d = await r.json().catch(() => null);
-      if ((await headers()).Authorization !== scope) return { authRequired: true, stale: true, items: [] };
-      if (r.status === 401 || r.status === 403) return { authRequired: true, items: [] };
-      // Только 404 старого backend допускает прежний dashboard fallback.
-      // 5xx/сеть не превращаются в успешный пустой список.
-      if (r.status === 404) {
-        d = await marketAPI.myDashboard({ force: true });
-        if (d.authRequired || d.serverError) return { ...d, items: [] };
-        if ((await headers()).Authorization !== scope) return { authRequired: true, stale: true, items: [] };
-        const all = (kind === 'trip' ? d.my_trips : d.my_cargos) || [];
-        const archive = all.filter(item => ['unpublished', 'cancelled', 'rejected'].includes(item.status));
-        const active = all.filter(item => !item.status || item.status === 'active' || (kind === 'trip' && item.status === 'draft'));
-        const history = all.filter(item => item.status && item.status !== 'active' && !(kind === 'trip' && item.status === 'draft'));
-        return { items: section === 'history' ? history : section === 'archive' ? archive : active, archive_total: archive.length,
-          history_total: null,
-          next_offset: null, scope, paginationUnavailable: true };
-      }
-      if (!r.ok || !Array.isArray(d?.items) || !Number.isInteger(d?.total)
-          || !Number.isInteger(d?.archive_total)
-          || !(d.next_offset === null || (Number.isInteger(d.next_offset) && d.next_offset > offset))) {
-        return { serverError: true, items: [] };
-      }
-      return { ...d, scope };
-    } catch {
-      return { serverError: true, items: [] };
-    }
-  },
-
   // ─── My Dashboard ───
   async myDashboard({ force = false } = {}) {
     const empty = { my_trips: [], my_cargos: [], my_bids: [], incoming_bids: [], my_deals: [] };
-    const h = await headers();
-    const scope = h.Authorization || null;
-    if (dashboardScope !== scope) {
-      dashboardScope = scope;
-      dashboardCache = null;
-      dashboardCacheAt = 0;
-      dashboardInFlight = null;
-      dashboardRevision++;
-    }
-    if (!scope) return { ...empty, authRequired: true, skipped: true };
     if (!force && dashboardCache && (Date.now() - dashboardCacheAt) < DASHBOARD_CACHE_MS) {
       return dashboardCache;
     }
-    if (!force && dashboardInFlight) {
-      const result = await dashboardInFlight;
-      const currentHeaders = await headers();
-      if (currentHeaders.Authorization !== scope || dashboardScope !== scope) {
-        return { ...empty, authRequired: true, stale: true };
-      }
-      return result;
-    }
-    const revision = ++dashboardRevision;
+    if (!force && dashboardInFlight) return dashboardInFlight;
     const load = async () => {
       try {
+        // Skip /market/my if no token (guest) — avoids 401/500
+        const h = await headers();
+        if (!h.Authorization) {
+          return { ...empty, authRequired: true, skipped: true };
+        }
         const r = await authedFetch(`${BASE}/my`, { headers: h });
         const d = await r.json().catch(() => ({}));
         if (r.status === 401 || r.status === 403) {
@@ -599,28 +504,20 @@ export const marketAPI = {
           console.warn('[myDashboard] server error:', r.status);
           return { ...empty, serverError: true };
         }
-        if (!Array.isArray(d?.my_deals)) return { ...empty, serverError: true };
         return { ...empty, ...d };
       } catch (e) {
         console.warn('[myDashboard] fetch error:', e.message);
         return { ...empty, serverError: true };
       }
     };
-    const request = load();
-    dashboardInFlight = request;
+    dashboardInFlight = load();
     try {
-      const result = await request;
-      const currentHeaders = await headers();
-      if (currentHeaders.Authorization !== scope || dashboardScope !== scope) {
-        return { ...empty, authRequired: true, stale: true };
-      }
-      if (revision === dashboardRevision && !result.serverError && !result.authRequired) {
-        dashboardCache = result;
-        dashboardCacheAt = Date.now();
-      }
+      const result = await dashboardInFlight;
+      dashboardCache = result;
+      dashboardCacheAt = Date.now();
       return result;
     } finally {
-      if (dashboardInFlight === request) dashboardInFlight = null;
+      dashboardInFlight = null;
     }
   },
 
@@ -644,9 +541,8 @@ export const marketAPI = {
     return d;
   },
 
-  async updateDealStatus(dealId, newStatus, captureMode = null) {
-    const snapshotParam = captureMode === 'snapshot' ? '&capture_mode=snapshot' : '';
-    const r = await authedFetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}${snapshotParam}`, {
+  async updateDealStatus(dealId, newStatus) {
+    const r = await authedFetch(`${BASE}/deals/${dealId}/status?new_status=${newStatus}`, {
       method: 'PATCH', headers: await headers(),
     });
     const d = await r.json();

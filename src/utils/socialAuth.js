@@ -3,7 +3,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
 import { API_BASE } from '../config/env';
 import { storage } from './storage';
-import { commitVerifiedLogin } from './authMutation';
 
 const TOKEN_KEY = 'ur_reg_token';
 const LEVEL_KEY = 'ur_verification_level';
@@ -169,13 +168,8 @@ export function isPendingProviderStale(state, now = Date.now()) {
   return now - state.startedAt > PENDING_PROVIDER_MAX_AGE_MS;
 }
 
-export function shouldRestorePendingProvider(state, { hasCallback = false } = {}) {
-  // A pending provider only describes which OAuth button started the flow.
-  // Without a callback there is no work left to finish: the user may have
-  // cancelled Google or returned with the browser Back button. Restoring the
-  // spinner from storage in that state strands the auth screen for up to ten
-  // minutes. A real callback sets the busy state again in finishSocialUrl().
-  return Boolean(state?.provider) && hasCallback;
+export function shouldRestorePendingProvider(state, { hasCallback = false, now = Date.now() } = {}) {
+  return Boolean(state?.provider) && (hasCallback || !isPendingProviderStale(state, now));
 }
 
 export async function setPendingProvider(provider) {
@@ -392,7 +386,7 @@ async function sessionFromCallback(url, meta, key) {
   return data?.session || null;
 }
 
-export async function completeSocialAuth(url, { isCurrent = () => true } = {}) {
+export async function completeSocialAuth(url) {
   if (!isSocialAuthCallback(url)) return null;
 
   const key = callbackKey(url);
@@ -459,14 +453,8 @@ export async function completeSocialAuth(url, { isCurrent = () => true } = {}) {
   }
   logAuthStage('backend_verify_success', { ...meta, httpStatus: response.status });
 
-  const committed = await commitVerifiedLogin({ expectedToken: guestToken,
-    readToken: () => storage.get(TOKEN_KEY), isCurrent,
-    write: async () => {
-      await storage.set(TOKEN_KEY, data.token);
-      await storage.set(LEVEL_KEY, String(data.verification_level || 1));
-    },
-  });
-  if (!committed) return null;
+  await storage.set(TOKEN_KEY, data.token);
+  await storage.set(LEVEL_KEY, String(data.verification_level || 1));
   logAuthStage('urtruck_session_saved', meta);
   // Only NOW is this callback truly, durably complete — mark it so a
   // late-arriving duplicate delivery no-ops instead of re-navigating.

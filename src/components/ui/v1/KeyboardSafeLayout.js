@@ -23,12 +23,12 @@ export default function KeyboardSafeLayout({ children, style, offset = 0, testID
 const KeyboardSafeFocusContext = createContext(null);
 
 /** Lets shared inputs reveal themselves without every screen owning offsets. */
-export function useKeyboardSafeFocus(onFocus, bottomInset = 0) {
+export function useKeyboardSafeFocus(onFocus) {
   const revealFocusedInput = useContext(KeyboardSafeFocusContext);
   return useCallback((event) => {
-    revealFocusedInput?.(event, bottomInset);
+    revealFocusedInput?.(event);
     onFocus?.(event);
-  }, [onFocus, revealFocusedInput, bottomInset]);
+  }, [onFocus, revealFocusedInput]);
 }
 
 /**
@@ -86,7 +86,6 @@ export const KeyboardSafeScrollView = forwardRef(function KeyboardSafeScrollView
   const lastFocusedTarget = useRef(null);
   const keyboardTop = useRef(null);
   const scrollY = useRef(0);
-  const focusBottomInset = useRef(0);
   useImperativeHandle(forwardedRef, () => ({
     scrollTo: (...args) => ref.current?.scrollTo?.(...args),
     getScrollResponder: () => ref.current?.getScrollResponder?.() || ref.current,
@@ -104,7 +103,7 @@ export const KeyboardSafeScrollView = forwardRef(function KeyboardSafeScrollView
         if (lastFocusedTarget.current !== target || keyboardTop.current == null) return;
         const revealAbove = (visibleBottom) => {
           if (lastFocusedTarget.current !== target || keyboardTop.current == null) return;
-          const overlap = pageY + height + focusBottomInset.current + 16 - visibleBottom;
+          const overlap = pageY + height + 16 - visibleBottom;
           if (overlap <= 0) return;
 
           const nextY = Math.max(0, scrollY.current + overlap);
@@ -144,12 +143,9 @@ export const KeyboardSafeScrollView = forwardRef(function KeyboardSafeScrollView
     };
   }, [revealFocusedInput]);
 
-  const handleFocus = useCallback((event, bottomInset) => {
+  const handleFocus = useCallback((event) => {
     const target = event?.nativeEvent?.target;
     if (target) {
-      if (lastFocusedTarget.current !== target) focusBottomInset.current = 0;
-      // Повторный bubble того же focus не отменяет inset, заданный общим input.
-      if (Number.isFinite(bottomInset)) focusBottomInset.current = Math.max(0, bottomInset);
       lastFocusedTarget.current = target;
       revealFocusedInput(target);
     }

@@ -5,7 +5,7 @@ import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useToast } from './Toast';
-import { PUBLIC_WEB_ORIGIN } from '../config/env';
+import { WEB_URL } from '../config/env';
 
 // ShareModal — UrTruck brand v3.
 //
@@ -21,7 +21,6 @@ export default function ShareModal({
   visible, onClose,
   shareText = 'UrTruck',
   url,                          // explicit deep-link; overrides driverId fallback
-  copyLinkText,
   phone,
   driverId,
 }) {
@@ -29,21 +28,13 @@ export default function ShareModal({
   const { theme } = useTheme();
   const { toast } = useToast();
 
-  const baseUrl = PUBLIC_WEB_ORIGIN;
-  const finalUrl = url || (driverId && baseUrl ? `${baseUrl}/driver/${driverId}` : '');
-  const fullShareText = finalUrl && shareText.includes(finalUrl) ? shareText : [shareText, finalUrl].filter(Boolean).join('\n');
+  const baseUrl = WEB_URL || 'https://urtruck.kz';
+  const finalUrl = url || (driverId ? `${baseUrl}/driver/${driverId}` : baseUrl);
+  const fullShareText = shareText.includes(finalUrl) ? shareText : `${shareText}\n${finalUrl}`;
   const escapedFinalUrl = finalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const shareBody = finalUrl
-    ? fullShareText.replace(new RegExp(`(?:^|\\n)[^\\n]*${escapedFinalUrl}\\s*$`), '').trim()
-    : fullShareText;
-  const requirePublicUrl = () => {
-    if (finalUrl) return true;
-    toast(t('shareError'), 'error');
-    return false;
-  };
+  const shareBody = fullShareText.replace(new RegExp(`\\n?${escapedFinalUrl}\\s*$`), '').trim();
 
   const handleWhatsApp = () => {
-    if (!requirePublicUrl()) return;
     const cleanPhone = (phone || '').replace(/[^0-9]/g, '');
     const msg = encodeURIComponent(fullShareText);
     const link = cleanPhone ? `https://wa.me/${cleanPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
@@ -52,7 +43,6 @@ export default function ShareModal({
   };
 
   const handleTelegram = () => {
-    if (!requirePublicUrl()) return;
     // Telegram's share/url endpoint takes URL + text separately. Including
     // the URL inside `text` too would duplicate it in the preview, so strip
     // the trailing URL line from the body if present.
@@ -82,7 +72,6 @@ export default function ShareModal({
   };
 
   const handleWeChat = async () => {
-    if (!requirePublicUrl()) return;
     // Web Share passes text and URL as separate fields so the system share
     // sheet (including WeChat) receives a real payload without a duplicate
     // URL in the body.
@@ -120,11 +109,9 @@ export default function ShareModal({
   };
 
   const copyLink = async () => {
-    if (!requirePublicUrl()) return;
-    const copyValue = copyLinkText || finalUrl;
-    const ok = await copyToClipboard(copyValue);
+    const ok = await copyToClipboard(finalUrl);
     if (ok) toast('✅ ' + t('share_link_copied'), 'success');
-    else toast(copyValue, 'info', 5000);
+    else toast(finalUrl, 'info', 5000);
     onClose();
   };
 
@@ -141,7 +128,7 @@ export default function ShareModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity testID="share-modal-sheet" style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
+        <TouchableOpacity style={[s.sheet, { backgroundColor: theme.bg, borderColor: theme.border }]} activeOpacity={1} onPress={() => {}}>
           <View style={s.handle} />
           <Text style={[s.title, { color: theme.text }]}>{t('share')}</Text>
 
@@ -157,7 +144,6 @@ export default function ShareModal({
             {CHANNELS.map((ch) => (
               <TouchableOpacity
                 key={ch.name}
-                testID={`share-channel-${ch.icon}`}
                 style={[s.channelBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
                 onPress={ch.onPress}
                 activeOpacity={0.7}

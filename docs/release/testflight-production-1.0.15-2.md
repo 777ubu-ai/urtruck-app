@@ -58,3 +58,9 @@ GitHub уже регистрирует testflight-local.yml, но не новы�
 ## Production695 применён по адресному разрешению
 
 PR695штатноMERGED84d2e8a5395c833e18c85428c7face0c41b3f7df. Применён точный reviewedpayload86704fc4:2файла из183; база не заменялась. Свежий backuppr695-preflight-20261108T161736Z:SQL/code/config,183localstorage,271cloudobjects восстановлены накопиях;cloudверсиистабильны,hashPASS. Правильный runtimeDB:/home/ubuntu/urtruck/runtime/security.db, backend:/home/ubuntu/urtruck/backend. Legacydatabaseвbackend/databaseнеиспользуется production. Первыйapplyоткатилсяпокороткомутаймауту20с; healthпрежнегокода200подтверждён. ПовторныйстартAPIдоschedulerс120сокномуспешен:APPLIED,health200,обаPIDсменились,nullablecolumnесть,counts272/29/92/50сохранены. Физическиетелефонынепроверялись. ВASCвсерии1.0.15толькоbuild1;build2свободенна16:23UTC. ЛокальныедоказательстваPR695-APPLY-20261108/. Workflowread-onlySSHrootзакреплённафактическипроверенныйbackend,безlegacyfallback.
+
+## Запуск через защищённый main
+
+Run42500779679отклонён до шагов: releaseветка не разрешена environmentproduction. Защита не менялась. PR697перенаправленнаmain; ветка сохранена безforce/rebase. Дерево выровнено сproductionmain84d2, поверх остаются ТОЛЬКО5workflow/docs/testфайлов. Приложение/backend/src/nativeвmainнепродвигаются;источникIPAостаётсяec27/PR696. Новыйguardтребуетmain,mergedPR697,exactmergeSHA,treeравенствоreviewedhead,ограниченныйdiffиCIreviewedhead. Передfetchпроверен staleorigin/main403: исправлен только явныйrefspec;authoritativemain84d2.
+
+Сверкасправочников: AXестьвклиенте249, отсутствуетвproduction248. Вконтрольных168/10AXнет; это открытоеограничениевнутреннейбеты. ПубличныйrolloutNO GO;10/10не заявляется.

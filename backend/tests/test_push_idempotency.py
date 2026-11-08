@@ -2,10 +2,10 @@ from services import push_sender
 
 
 def test_push_sender_skips_successfully_delivered_event(monkeypatch):
-    monkeypatch.setattr(push_sender, "_already_delivered", lambda event_id, user_id: True)
+    monkeypatch.setattr(push_sender, "_already_delivered", lambda user_id, event_key: True)
     monkeypatch.setattr(
         push_sender,
-        "_send_web_batch",
+        "_send_web",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("web provider must not run")),
     )
     monkeypatch.setattr(
@@ -23,5 +23,5 @@ def test_push_sender_skips_successfully_delivered_event(monkeypatch):
         url="/deals/deal-1",
     )
 
-    assert result["duplicate"] is True
-    assert result["sent"] == 0
+    assert result["deduped"] is True
+    assert result["total"] == 0

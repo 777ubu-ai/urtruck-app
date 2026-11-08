@@ -1,0 +1,21 @@
+--- runtime/main.py
++++ overlay/main.py
+@@ -212,6 +212,8 @@
+ app.include_router(profile_router, prefix="/api/v1/users")
+ from api.driver_expenses import router as expenses_router, init_expenses_schema
+ app.include_router(expenses_router, prefix="/api/v1/driver/expenses")
++from api.external_freight import router as external_freight_router
++app.include_router(external_freight_router, prefix="/api/v1/external-freight")
+ app.include_router(auth_otp_router, prefix="/api/auth")
+ app.include_router(ss_router, prefix="/api/v1/searches")
+ app.include_router(qa_router, prefix="/api/v1/qa")
+@@ -279,6 +281,9 @@
+     from database import vehicles_dal
+     vehicles_dal.init_vehicles_schema()
+     init_expenses_schema()
++    if os.getenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
++        from database.external_freight_dal import init_schema as init_external_freight_schema
++        init_external_freight_schema()
+     # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
+     # имеет registration-схему. Создаём special users только после неё;
+     # операция идемпотентна для существующих БД.

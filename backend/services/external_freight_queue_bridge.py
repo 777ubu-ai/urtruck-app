@@ -8,29 +8,22 @@ import hashlib
 import json
 import os
 import sqlite3
-import time
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.external_freight_import_adapter import ExternalFreightFeedAdapter
-from services.external_freight_parser import apply_core_review, map_selected_messages, _phone_identity
+from services.external_freight_parser import map_selected_messages
+from services.external_freight_classifier import classify_message, has_vehicle_supply_signal
 from services.owned_telegram_feed import OWNED_SOURCE, map_owned_messages
-from services.external_freight_retention import CARGO_RETENTION_SECONDS
 
-# Scan the 30-day publication lifetime requested for cargo and vehicle offers.
-ACTIVE_SECONDS = CARGO_RETENTION_SECONDS
+ACTIVE_SECONDS = 168 * 3600
 MAX_SCAN = 50
+# Сколько свежих необработанных сообщений проверять на «машину» в Python
+# (перенесено из 014618ed, QA2).
 VEHICLE_RESERVE_LOOKAHEAD = 500
-PARSER_REVISION = '20261101-core-fields-v17'
-
-
-def elapsed_ms(start, end=None):
-    # Общие границы миллисекунд сохраняют сумму неперекрывающихся этапов.
-    finished = time.monotonic() if end is None else end
-    return int(finished * 1000) - int(start * 1000)
+PARSER_REVISION = '20261027-delivery-fair-v12'
 
 
 def validate_qa_target(api_url, *, state_path=None):
@@ -55,7 +48,7 @@ def validate_qa_target(api_url, *, state_path=None):
 
 
 class PublishedQueueBridge:
-    parser_revision = '20261101-core-fields-v12'
+    parser_revision = '20261027-published-delivery-fair-v7'
     parse = staticmethod(map_selected_messages)
 
     def __init__(self, source_path, adapter):
@@ -81,37 +74,21 @@ class PublishedQueueBridge:
                 source_queue_id INTEGER PRIMARY KEY, reason TEXT NOT NULL)""")
 
     def run_once(self):
-        cycle_started = time.monotonic()
         if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
-            return {"status": "disabled", "scanned": 0,
-                    "bridge_duration_ms": 0,
-                    "cycle_duration_ms": elapsed_ms(cycle_started)}
+            return {"status": "disabled", "scanned": 0}
         if not self.adapter.importer_key:
-            return {"status": "not_configured", "scanned": 0,
-                    "bridge_duration_ms": 0,
-                    "cycle_duration_ms": elapsed_ms(cycle_started)}
-        lock_started = cycle_started
+            return {"status": "not_configured", "scanned": 0}
         with open(self.adapter.db_path + ".bridge.lock", "a") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                return {"status": "busy", "scanned": 0,
-                        "lock_wait_ms": elapsed_ms(lock_started),
-                        "bridge_duration_ms": 0,
-                        "cycle_duration_ms": elapsed_ms(cycle_started)}
+                return {"status": "busy", "scanned": 0}
             try:
-                acquired = time.monotonic()
-                result = self._run_locked()
-                finished = time.monotonic()
-                result["lock_wait_ms"] = elapsed_ms(lock_started, acquired)
-                result["bridge_duration_ms"] = elapsed_ms(acquired, finished)
-                result["cycle_duration_ms"] = elapsed_ms(cycle_started, finished)
-                return result
+                return self._run_locked()
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
     def _run_locked(self):
-        selection_started = time.monotonic()
         now = self.adapter.clock()
         # Seen identities rather than a high-water cursor also cover delayed
         # reconciliation of a previously uncertain Telegram publication.
@@ -130,23 +107,17 @@ class PublishedQueueBridge:
             revision_key = f"({revision} || ':{self.parser_revision}')"
             rows = source.execute(f"""SELECT q.*, {revision_key} AS bridge_source_revision FROM queue q
                 WHERE status='published' AND destination_message>0
-                AND source_date>? AND source_date<=?
+                AND source_date>=? AND source_date<=?
                 AND NOT EXISTS (SELECT 1 FROM bridge_state.published_bridge_seen_v2 s
                                 WHERE s.source_queue_id=q.id
                                 AND s.source_revision={revision_key})
                 ORDER BY CASE WHEN bridge_kind(q.text)='vehicle' THEN 0 ELSE 1 END,
                          q.source_date DESC,q.destination_message DESC,q.id DESC LIMIT ?""",
                 (now - ACTIVE_SECONDS, now + 300, MAX_SCAN)).fetchall()
-        source_scan_ms = elapsed_ms(selection_started)
         enqueued = rejected = review = 0
-        enqueue_operations = []
-        seen_updates = []
-        parse_started = time.monotonic()
         for row in rows:
             try:
                 records = self.parse(dict(row))
-                for record in records:
-                    apply_core_review(record)
                 segment_ids = {record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old = state.execute(
@@ -158,57 +129,27 @@ class PublishedQueueBridge:
                     previous = json.loads(previous["payload"])
                     if previous["segment_id"] not in segment_ids and previous.get("status") == "active":
                         previous["status"] = "closed"
-                        enqueue_operations.append(previous)
+                        enqueued += bool(self.adapter.enqueue(previous))
                 for record in records:
                     # Подтверждённые публикации не прячем из-за неполных
                     # структурных полей: исходный текст остаётся доступен в карточке.
                     review += record["status"] == "review"
-                    enqueue_operations.append(record)
+                    enqueued += bool(self.adapter.enqueue(record))
             except (ValueError, TypeError, OverflowError):
                 rejected += 1
                 with self.adapter._connect() as state:
                     state.execute("INSERT OR REPLACE INTO published_bridge_rejections_v2 VALUES(?,?)",
                                   (row["id"], "invalid_source_record"))
             # Durable enqueue precedes acknowledgement: interrupted runs replay.
-            seen_updates.append((row["id"], row["bridge_source_revision"]))
-        parse_ms = elapsed_ms(parse_started)
-        segment_outcomes = {"created": 0, "updated": 0, "unchanged": 0}
-        write_started = time.monotonic()
-        if enqueue_operations:
-            outcomes = self.adapter.enqueue_many_with_outcomes(enqueue_operations)
-            for outcome in outcomes:
-                segment_outcomes[outcome] += 1
-            enqueued = sum(segment_outcomes[key] for key in ("created", "updated"))
-        outbox_write_ms = elapsed_ms(write_started)
-        ack_started = time.monotonic()
-        with self.adapter._connect() as state:
-            state.executemany("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
-                ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""", seen_updates)
-        source_ack_ms = elapsed_ms(ack_started)
-        flush_started = time.monotonic()
-        delivery = self.adapter.flush_bounded()
-        flush_duration_ms = elapsed_ms(flush_started)
-        return {"status": delivery["status"], "scanned": len(rows), "segments": sum(segment_outcomes.values()),
-                "segments_created": segment_outcomes["created"], "segments_updated": segment_outcomes["updated"],
-                "segments_unchanged": segment_outcomes["unchanged"], "enqueued": enqueued,
+            with self.adapter._connect() as state:
+                state.execute("""INSERT INTO published_bridge_seen_v2(source_queue_id,source_revision) VALUES(?,?)
+                              ON CONFLICT(source_queue_id) DO UPDATE SET source_revision=excluded.source_revision""",
+                              (row["id"], row["bridge_source_revision"]))
+        delivery = self.adapter.flush_once()
+        return {"status": delivery["status"], "scanned": len(rows), "enqueued": enqueued,
                 "review": review, "rejected": rejected, "sent": delivery.get("sent", 0),
-                "attempted_records": delivery.get("attempted_records", 0),
-                "api_accepted": delivery.get("api_accepted", delivery.get("sent", 0)),
-                "confirmed_deliveries": delivery.get("confirmed_deliveries", 0),
-                "review_accepted": delivery.get("review_accepted", 0),
-                "api_request_count": delivery.get("api_request_count", 0),
-                "api_duration_ms": delivery.get("api_duration_ms", 0),
-                "batches_attempted": delivery.get("batches_attempted", 0),
                 "pending": delivery.get("pending", self.adapter.pending_count()),
-                "ready_pending": delivery.get("ready_pending", self.adapter.ready_pending_count(now)),
-                "source_scan_ms": source_scan_ms, "parse_ms": parse_ms,
-                "outbox_write_ms": outbox_write_ms, "source_ack_ms": source_ack_ms,
-                "flush_ms": flush_duration_ms,
-                "flush_cycle_duration_ms": delivery.get("cycle_duration_ms", flush_duration_ms),
-                "terminal_expired": delivery.get("terminal_expired", self.adapter.terminal_expired_count()),
-                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count()),
-                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now)),
-                **({"error_type": delivery["error_type"]} if delivery.get("error_type") else {})}
+                "quarantined": delivery.get("quarantined", self.adapter.quarantined_count())}
 
 
 class IncomingQueueBridge(PublishedQueueBridge):
@@ -226,38 +167,22 @@ class IncomingQueueBridge(PublishedQueueBridge):
             state.execute("""CREATE TABLE IF NOT EXISTS incoming_bridge_dedup (
                 fingerprint TEXT PRIMARY KEY, identity TEXT NOT NULL, published_at REAL NOT NULL)""")
             state.execute('CREATE TABLE IF NOT EXISTS incoming_bridge_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
-            state.execute("INSERT OR REPLACE INTO incoming_bridge_meta VALUES('parser_revision',?)", (self.parser_revision,))
-            state.execute("INSERT OR REPLACE INTO incoming_bridge_meta VALUES('owned_source',?)", (OWNED_SOURCE,))
 
     @staticmethod
     def fingerprint(record):
         normalized = " ".join(record["original_text"].casefold().split())
-        # Older outbox rows may have the contact only in `contacts`; use it as
-        # a fallback so parser-mode upgrades keep the same dedup identity.
-        source_contacts = record.get('source_contacts') or record.get('contacts') or []
-        contact_ids = {_phone_identity(contact) or str(contact).strip() for contact in source_contacts}
-        value = [normalized, sorted(contact_ids)]
+        value = [normalized, sorted(set(record.get('source_contacts') or []))]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
-    def find_duplicate(self, fingerprint, now, pending_payloads=None, pending_dedup=None):
+    def find_duplicate(self, fingerprint, now):
         with self.adapter._connect() as state:
-            staged = (pending_dedup or {}).get(fingerprint)
-            if staged and staged[1] > now-ACTIVE_SECONDS:
-                identity = staged[0]
-                record = (pending_payloads or {}).get(tuple(identity.rsplit('/', 2)))
-                if record and record.get('status') == 'active' and self.fingerprint(record) == fingerprint:
-                    return (identity,)
-                pending_dedup.pop(fingerprint, None)
             duplicate = state.execute("SELECT identity FROM incoming_bridge_dedup WHERE fingerprint=? AND published_at>?",
                                       (fingerprint, now-ACTIVE_SECONDS)).fetchone()
             if not duplicate:
                 return None
             parts = duplicate[0].rsplit('/', 2)
-            identity = tuple(parts) if len(parts) == 3 else None
-            record = (pending_payloads or {}).get(identity) if identity else None
-            if record is None:
-                row = state.execute('SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?', parts).fetchone() if identity else None
-                record = json.loads(row['payload']) if row else None
+            row = state.execute('SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=? AND segment_id=?', parts).fetchone() if len(parts) == 3 else None
+            record = json.loads(row['payload']) if row else None
             if record and record.get('status') == 'active' and self.fingerprint(record) == fingerprint:
                 return duplicate
             state.execute('DELETE FROM incoming_bridge_dedup WHERE fingerprint=? AND identity=?', (fingerprint, duplicate[0]))
@@ -285,16 +210,16 @@ class IncomingQueueBridge(PublishedQueueBridge):
             state.execute('INSERT INTO incoming_bridge_meta VALUES(?,?)', (key, 'complete'))
 
     def _run_locked(self):
-        selection_started=time.monotonic()
         now=self.adapter.clock()
         self.seed_dedup(now)
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory=sqlite3.Row
+            source.create_function('bridge_vehicle_hint', 1, has_vehicle_supply_signal, deterministic=True)
             source.execute("ATTACH DATABASE ? AS bridge_state",(Path(self.adapter.db_path).resolve().as_uri()+"?mode=ro",))
             unseen="""NOT EXISTS(SELECT 1 FROM bridge_state.incoming_bridge_seen s
                   WHERE s.source_queue_id=q.id AND s.source_revision=q.revision || ':' || ?)"""
             query=f"""SELECT q.* FROM app_messages q
-                WHERE source_date>? AND source_date<=? AND {unseen}"""
+                WHERE source_date>=? AND source_date<=? AND {unseen}"""
             # Свежий поток не ждёт первоначальную загрузку, старый хвост тоже продвигается.
             # Историческая загрузка имеет новый updated_at, но не должна вытеснять
             # свежие исходные публикации. Правки/старый хвост обслуживаются ниже.
@@ -307,50 +232,34 @@ class IncomingQueueBridge(PublishedQueueBridge):
                 # Его сбор до переключения не создаёт параллельные карточки.
                 query += ' AND lower(q.source)<>?'
                 arguments += (OWNED_SOURCE.lower(),)
-            # Keep the vehicle reserve, but never run Python classification
-            # inside SQLite over the full 30-day history. QA2 measured 137-146s
-            # in source_scan for only 50 selected rows because the UDF was
-            # evaluated before LIMIT. Classify a bounded recent window in Python;
-            # older offers still progress through the indexed oldest-first scan.
+            # Отдельный резерв кандидатов машин: большой грузовой хвост не
+            # расходует всю квоту. Окончательный тип определяет общий парсер.
+            # Python-классификатор внутри SQLite вызывался для КАЖДОЙ
+            # необработанной строки окна (61 тыс. на 2026-11-06, ~60 с при
+            # лимите systemd 45 с) — служба погибала до отправки. Классифицируем
+            # только ограниченное свежее окно; старые объявления по-прежнему
+            # продвигаются через индексированную выборку oldest ниже.
             vehicle_lookahead=source.execute(
                 query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT ?",
                 (*arguments,VEHICLE_RESERVE_LOOKAHEAD)).fetchall()
             vehicles=[row for row in vehicle_lookahead
                       if has_vehicle_supply_signal(row["text"] or "")][:10]
             newest=source.execute(query+" ORDER BY source_date DESC,updated_at DESC,id DESC LIMIT 10",arguments).fetchall()
-            # Backfill in publication order. app_messages_published covers
-            # source_date/updated_at/id; ordering by updated_at alone forced a
-            # temp sort over the entire active history on every short QA2 tick.
-            oldest=source.execute(query+" ORDER BY source_date ASC,updated_at ASC,id ASC LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
+            oldest=source.execute(query+" ORDER BY updated_at,id LIMIT ?",(*arguments,MAX_SCAN)).fetchall()
             unique={row["id"]:row for row in vehicles+newest+oldest}
             rows=list(unique.values())[:MAX_SCAN]
-        source_scan_ms=elapsed_ms(selection_started)
         enqueued=review=rejected=duplicates=0
-        enqueue_operations=[]
-        pending_payloads={}
-        pending_dedup={}
-        seen_updates=[]
-        def enqueue_segment(record):
-            identity=(str(record["source_id"]),str(record["source_message_id"]),str(record.get("segment_id") or "0"))
-            enqueue_operations.append(record)
-            pending_payloads[identity]=record
         active_by_kind = {'cargo': 0, 'vehicle': 0}
         reasons={}
-        parse_started=time.monotonic()
         for row in rows:
             raw=dict(row)
             deleted_source = self.mode == "owned" and str(raw.get("text", "")).strip().casefold() == "заявка закрыта"
             reason="accepted"
-            review_reasons=[]
             try:
                 # A deletion tombstone is control data, not an incomplete listing.
                 # Process it by closing the previous segments below instead of
                 # trying to parse it as a new listing with missing route fields.
                 records=[] if deleted_source else self.parse(raw)
-                for record in records:
-                    # Run only after segmentation and safe footer-contact
-                    # attribution, immediately before the durable outbox.
-                    apply_core_review(record)
                 identities={record["segment_id"] for record in records}
                 with self.adapter._connect() as state:
                     old=state.execute("SELECT payload FROM selected_outbox WHERE source_id=? AND source_message_id=?",
@@ -368,73 +277,48 @@ class IncomingQueueBridge(PublishedQueueBridge):
                             previous.pop("source_text", None)
                             previous["contacts"] = []
                             previous['source_contacts'] = []
-                        enqueue_segment(previous)
+                        enqueued+=bool(self.adapter.enqueue(previous))
                 for record in records:
                     identity="/".join((record["source_id"],record["source_message_id"],record["segment_id"]))
                     fingerprint=self.fingerprint(record)
-                    duplicate=self.find_duplicate(fingerprint, now, pending_payloads, pending_dedup)
+                    duplicate=self.find_duplicate(fingerprint, now)
                     if duplicate and duplicate[0]!=identity and record["status"]=="active":
                         # Редактирование в дубль не должно оставлять старую карточку active.
                         for previous in old:
                             previous=json.loads(previous["payload"])
                             if previous["segment_id"]==record["segment_id"] and previous.get("status")=="active":
                                 previous["status"]="closed"
-                                enqueue_segment(previous)
+                                enqueued+=bool(self.adapter.enqueue(previous))
                         duplicates+=1;reason="exact_content_duplicate";continue
                     if record["status"]=="review":
                         review+=1
-                        review_reasons.append(record.get("review_reason") or "unresolved_direction")
+                        classification=classify_message(record["original_text"])
+                        reason=(classification.get('reason','ambiguous_kind')
+                                if classification.get("kind") is None else "unresolved_direction")
                     if record["status"]=="active":
-                        pending_dedup[fingerprint]=(identity,row["source_date"])
-                    enqueue_segment(record)
+                        with self.adapter._connect() as state:
+                            state.execute("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",(fingerprint,identity,row["source_date"]))
+                    added = bool(self.adapter.enqueue(record))
+                    enqueued += added
+                    if added and record['status'] == 'active':
+                        active_by_kind[record['kind']] += 1
             except (ValueError,TypeError,OverflowError):
                 rejected+=1;reason="invalid_source_record"
-            if review_reasons:
-                review_reason="|".join(sorted(set(review_reasons)))
-                reason=("partial_review:" if reason not in {"accepted", "invalid_source_record"} else "review:")+review_reason
             # ACK разбора только после durable enqueue; HTTP ACK хранится отдельно.
-            seen_updates.append((row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
+            with self.adapter._connect() as state:
+                state.execute("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",(row["id"],row["revision"]+":"+self.parser_revision,self.adapter.clock(),reason))
             reasons[reason]=reasons.get(reason,0)+1
-        parse_ms=elapsed_ms(parse_started)
-        segment_outcomes={"created":0,"updated":0,"unchanged":0}
-        write_started=time.monotonic()
-        if enqueue_operations:
-            outcomes=self.adapter.enqueue_many_with_outcomes(enqueue_operations)
-            for record,outcome in zip(enqueue_operations,outcomes):
-                segment_outcomes[outcome]+=1
-                if outcome in {"created","updated"}:
-                    enqueued+=1
-                    if record.get("status")=="active":active_by_kind[record["kind"]]+=1
-        outbox_write_ms=elapsed_ms(write_started)
-        # Mark source rows only after every corresponding outbox write is durable.
-        ack_started=time.monotonic()
-        with self.adapter._connect() as state:
-            state.executemany("INSERT OR REPLACE INTO incoming_bridge_dedup VALUES(?,?,?)",
-                              [(fingerprint,identity,published) for fingerprint,(identity,published) in pending_dedup.items()])
-            state.executemany("INSERT OR REPLACE INTO incoming_bridge_seen VALUES(?,?,?,?)",seen_updates)
-        source_ack_ms=elapsed_ms(ack_started)
-        flush_started=time.monotonic()
-        delivery=self.adapter.flush_bounded()
-        flush_duration_ms=elapsed_ms(flush_started)
-        return {**delivery,"scanned":len(rows),"segments":sum(segment_outcomes.values()),
-                "segments_created":segment_outcomes["created"],"segments_updated":segment_outcomes["updated"],
-                "segments_unchanged":segment_outcomes["unchanged"],"enqueued":enqueued,"review":review,
+        delivery=self.adapter.flush_once()
+        return {**delivery,"scanned":len(rows),"enqueued":enqueued,"review":review,
                 "rejected":rejected,"duplicates":duplicates,"reasons":reasons,"mode":self.mode,
-                "source_scan_ms":source_scan_ms,"parse_ms":parse_ms,"outbox_write_ms":outbox_write_ms,
-                "source_ack_ms":source_ack_ms,"flush_ms":flush_duration_ms,
-                "api_request_count":delivery.get("api_request_count",0),
-                "api_duration_ms":delivery.get("api_duration_ms",0),
-                "batches_attempted":delivery.get("batches_attempted",0),
-                "flush_cycle_duration_ms":delivery.get("cycle_duration_ms",flush_duration_ms),
-                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind,
-                "expired_pending": delivery.get("expired_pending", self.adapter.expired_pending_count(now))}
+                "vehicle_candidates":len(vehicles), "enqueued_active_by_kind":active_by_kind}
 
 
 class OwnedTelegramQueueBridge(IncomingQueueBridge):
     """Только посты собственного чата, включая сообщения его участников."""
     source_name = OWNED_SOURCE
     mode = 'owned'
-    parser_revision = PARSER_REVISION
+    parser_revision = '20261027-owned-delivery-fair-v12'
     parse = staticmethod(map_owned_messages)
 
     @staticmethod
@@ -445,8 +329,8 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
                  sorted(set(record.get("contacts") or [])), sorted(set(record.get('source_contacts') or []))]
         return hashlib.sha256(json.dumps(value, ensure_ascii=False).encode()).hexdigest()
 
-    def find_duplicate(self, fingerprint, now, pending_payloads=None, pending_dedup=None):
-        duplicate = super().find_duplicate(fingerprint, now, pending_payloads, pending_dedup)
+    def find_duplicate(self, fingerprint, now):
+        duplicate = super().find_duplicate(fingerprint, now)
         if not duplicate:
             return None
         source_id, message_id, segment_id = duplicate[0].rsplit("/", 2)
@@ -455,7 +339,7 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
         with closing(sqlite3.connect(self.source_path.as_uri()+"?mode=ro",uri=True,timeout=2)) as source:
             source.row_factory = sqlite3.Row
             raw = source.execute("SELECT * FROM app_messages WHERE source_id=? AND source_message=? "
-                                 "AND lower(source)=? AND source_date>? AND source_date<=?",
+                                 "AND lower(source)=? AND source_date>=? AND source_date<=?",
                                  (source_id, message_id, self.source_name.lower(), now-ACTIVE_SECONDS, now+300)).fetchone()
         if raw:
             try:
@@ -499,39 +383,30 @@ class OwnedTelegramQueueBridge(IncomingQueueBridge):
 
 
 def main():
-    stage = "configuration"
-    try:
-        if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
-            print(json.dumps({"status": "disabled"}))
-            return 0
-        source = os.getenv("EXTERNAL_FREIGHT_SOURCE_DB", "")
-        state = os.getenv("EXTERNAL_FREIGHT_ADAPTER_DB", "")
-        if not source or not state:
-            raise ValueError("explicit_source_and_state_required")
-        # Отклоняем ошибочный target/state до открытия SQLite адаптером.
-        validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
-        os.umask(0o077)
-        # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
-        mode = os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE", 'published')
-        workers = {'incoming': IncomingQueueBridge, 'published': PublishedQueueBridge, 'owned': OwnedTelegramQueueBridge}
-        if mode not in workers:
-            raise ValueError('invalid_source_mode')
-        stage = "bridge_cycle"
-        result = workers[mode](source, ExternalFreightFeedAdapter()).run_once()
-        print(json.dumps(result, sort_keys=True))
-        return 0 if result["status"] in {
-            "delivered", "terminalized", "idle", "busy", "budget_exhausted", "disabled",
-        } else 1
-    except (ValueError, OSError, sqlite3.Error) as exc:
-        # Only safe diagnostic metadata is emitted. Exception text can contain
-        # paths or request details, so it is intentionally excluded.
-        print(json.dumps({"status": "bridge_configuration_or_source_error",
-                          "failure_stage": stage, "error_type": type(exc).__name__}, sort_keys=True))
-        raise
+    if os.getenv("EXTERNAL_FREIGHT_IMPORT_ENABLED", "").lower() not in {"1", "true", "yes"}:
+        print(json.dumps({"status": "disabled"}))
+        return 0
+    source = os.getenv("EXTERNAL_FREIGHT_SOURCE_DB", "")
+    state = os.getenv("EXTERNAL_FREIGHT_ADAPTER_DB", "")
+    if not source or not state:
+        raise ValueError("explicit_source_and_state_required")
+    # Отклоняем ошибочный target/state до открытия SQLite адаптером.
+    validate_qa_target(os.getenv("EXTERNAL_FREIGHT_API_URL", ""), state_path=state)
+    os.umask(0o077)
+    # Никаких ключей/контактов/текстов в аргументах процесса или stdout.
+    mode = os.getenv("EXTERNAL_FREIGHT_SOURCE_MODE", 'published')
+    workers = {'incoming': IncomingQueueBridge, 'published': PublishedQueueBridge, 'owned': OwnedTelegramQueueBridge}
+    if mode not in workers:
+        raise ValueError('invalid_source_mode')
+    worker = workers[mode]
+    result = worker(source, ExternalFreightFeedAdapter()).run_once()
+    print(json.dumps(result, sort_keys=True))
+    return 0 if result["status"] in {"delivered", "idle", "busy", "disabled"} else 1
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (ValueError, OSError, sqlite3.Error):
+        print(json.dumps({"status": "bridge_configuration_or_source_error"}))
         raise SystemExit(1)

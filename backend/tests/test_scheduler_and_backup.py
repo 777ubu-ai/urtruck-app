@@ -41,29 +41,18 @@ def test_scheduler_singleton_idempotent():
         assert s1 is not None, "первый start должен подняться"
         s2 = jobs.start_scheduler()
         assert s2 is s1, "повторный start должен вернуть тот же scheduler (без второго процесса джоб)"
-        # Native scheduler jobs are registered exactly once; Expo receipt
-        # polling is intentionally absent after the FCM/APNs migration.
-        # Hidden STT gets a separate bounded drain, so slow inference cannot
-        # delay chat delivery or the push outbox worker.
+        # Действующие legacy/native, внешняя лента и voice jobs регистрируются один раз:
+        # push_outbox_drain дренирует push_outbox, gps_heartbeat_check шлёт
+        # gps_lost/gps_restored, push_receipts_poll сверяет отложенные Expo
+        # receipts — см. scheduler/jobs.py).
         ids = sorted(j.id for j in s1.get_jobs())
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
                               "push_reminders", "expired_notify", "no_bids_notify",
-                              "push_outbox_drain", "voice_processing_drain",
-                              "gps_heartbeat_check", "external_freight_retention"]), ids
+                              "push_outbox_drain", "gps_heartbeat_check",
+                              "push_receipts_poll", "external_freight_retention", "voice_processing_drain"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)
-
-
-def test_external_feed_retention_job_uses_existing_bounded_purge(monkeypatch):
-    from database import external_freight_dal
-    from scheduler.jobs import external_freight_retention_job
-
-    calls = []
-    monkeypatch.setattr(external_freight_dal, "purge_expired_items",
-                        lambda: calls.append("purge") or 3)
-    external_freight_retention_job()
-    assert calls == ["purge"]
 
 
 def test_second_process_lock_blocks_duplicate():

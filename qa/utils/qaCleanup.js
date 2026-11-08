@@ -16,18 +16,17 @@ const path = require('path');
 const { API_BASE, QA_TAG, QA_RUN_ID, REPORTS_DIR } = require('./qaConfig');
 
 const argv = process.argv.slice(2);
-// Destructive cleanup requires an explicit --confirm, even for one run.
-const DRY = argv.includes('--dry-run') || !argv.includes('--confirm');
+const DRY = argv.includes('--dry-run');
 const ALL = argv.includes('--all');
-const CONFIRM = argv.includes('--confirm');
+const CONFIRM = argv.includes('--confirm') || !ALL; // single-run cleanup auto-confirms; --all needs explicit --confirm
 
-// TLS verification is mandatory for QA; never weaken it in a cleanup script.
+// TLS for self-signed / not-fully-trusted production certs (same as qaApi.js).
 let _dispatcher;
 function getDispatcher() {
   if (_dispatcher !== undefined) return _dispatcher;
   try {
     const { Agent } = require('undici');
-    _dispatcher = new Agent({ connect: { rejectUnauthorized: true } });
+    _dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
   } catch {
     _dispatcher = null;
   }

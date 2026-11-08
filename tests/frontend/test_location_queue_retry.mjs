@@ -1,4 +1,3 @@
-// Проверка сохранённого legacy background-режима; текущий foreground-only проверен отдельно.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLocationQueue, locationRetryAfterMs, LOCATION_RETRY_PREFIX } from '../../src/utils/locationQueue.js';

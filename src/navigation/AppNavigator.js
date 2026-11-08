@@ -1,21 +1,15 @@
-import { sessionRole } from '../utils/publicationSession';
-import DriverExpensesScreen from '../screens/DriverExpensesScreen';
-import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
-import { View, Text, Animated, AppState } from 'react-native';
+import { View, Text, Animated } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useI18n } from '../utils/useI18n';
 import { useTheme } from '../utils/ThemeContext';
 import { useAuth } from '../utils/AuthContext';
-import { FOREGROUND_LOCATION_ONLY, stopBackgroundTracking } from '../utils/backgroundLocation';
+import { getChats, subscribe, getUnreadNotifications } from '../utils/store';
 import { marketAPI } from '../utils/marketAPI';
-import { storage } from '../utils/storage';
+import useDealLocationBroadcast from '../hooks/useDealLocationBroadcast';
 import BottomNav from '../components/ui/v1/BottomNav';
-import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';
-import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';
-import withExternalFeedFirstVisit from '../components/externalFreight/withExternalFeedFirstVisit';
 
 import HowItWorksScreen from '../screens/HowItWorksScreen';
 import AboutScreen from '../screens/AboutScreen';
@@ -35,6 +29,8 @@ import VehicleChooserScreen from '../screens/vehicle/VehicleChooserScreen';
 import PremiumLoginScreen from '../screens/registration/PremiumLoginScreen';
 import FeedScreen from '../screens/FeedScreen';
 import CargoFeedScreen from '../screens/CargoFeedScreen';
+import ExternalFreightFeedScreen from '../screens/ExternalFreightFeedScreen';
+import { EXTERNAL_FREIGHT_ENABLED } from '../utils/externalFreightFeed';
 import CargoDetailV2 from '../screens/CargoDetailV2';
 import DriverDetail from '../screens/DriverDetail';
 import ChatScreenV2 from '../screens/ChatScreenV2';
@@ -74,73 +70,44 @@ import ProfileV2Screen from '../screens/onboarding/ProfileV2Screen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Chat is a single workspace window. Entry points may identify the same
-// conversation by deal, room, or partner, and may arrive while another root
-// screen is focused. A stable route key makes every Chat navigation return to
-// this one stack entry; ChatScreenV2 resolves the latest params on reuse.
-function chatRouteId() {
-  return 'chat-workspace';
-}
-
 // (Стаб центральной «+»-вкладки удалён 26.07.2026: у клиента размещение груза
 // переехало кнопкой внутрь «Мои грузы», вкладки Publish больше нет.)
 
 function MainTabs({ route }) {
   const { session } = useAuth();
   const { theme } = useTheme();
-  const role = sessionRole(session, route?.params?.role) || 'client';
+  const role = session?.user?.role || route?.params?.role || 'client';
   const isDriver = role === 'driver';
+  const [, setTick] = useState(0);
 
-  // Login/tabs never request a position. Only remove a persisted legacy task.
   useEffect(() => {
-    if (!FOREGROUND_LOCATION_ONLY) return undefined;
-    const stop = () => { stopBackgroundTracking(); };
-    stop();
-    const sub = AppState.addEventListener('change', state => { if (state !== 'active') stop(); });
-    return () => { sub?.remove?.(); stop(); };
+    const unsub = subscribe(() => setTick(n => n + 1));
+    return unsub;
   }, []);
 
-  // A driver updating mid-trip may still have a continuous-mode server row.
-  // Switch only that authenticated driver's active deals, without requesting
-  // location. Old servers omit the capability and remain untouched.
+  // Передача позиции живёт на уровне всего приложения. «Начать рейс» одним
+  // действием переводит сделку в in_progress и включает её на сервере; после
+  // доставки/отмены сервер сразу перестаёт принимать новые координаты.
+  const [inWorkDealIds, setInWorkDealIds] = useState([]);
   useEffect(() => {
-    if (!FOREGROUND_LOCATION_ONLY || session?.user?.role !== 'driver') return undefined;
+    if (!isDriver) { setInWorkDealIds([]); return; }
     let alive = true;
-    let busy = false;
-    let generation = 0;
-    const sync = async () => {
-      if (!alive || busy || AppState.currentState !== 'active') return;
-      busy = true;
-      const epoch = generation;
-      const isCurrent = () => alive && epoch === generation && AppState.currentState === 'active';
+    const IN_WORK = ['in_progress', 'at_border'];
+    const fetchIds = async () => {
       try {
-        const token = await storage.get('ur_reg_token');
-        if (!token || !isCurrent()) return;
-        const sameSession = async () => {
-          const currentToken = await storage.get('ur_reg_token');
-          return isCurrent() && currentToken === token;
-        };
-        const result = await marketAPI.activeTrackingDeals();
-        if (!isCurrent() || result?.ok === false || result?.snapshot_location_supported !== true
-            || !Array.isArray(result.deal_ids) || !await sameSession()) return;
-        for (const id of result.deal_ids) {
-          if (!isCurrent() || !await sameSession()) return;
-          await marketAPI.activateSnapshotTracking(id);
-        }
-      } catch { /* A later foreground entry retries; no GPS is started. */ }
-      finally {
-        busy = false;
-        // Resume may arrive while an obsolete request is still finishing.
-        if (alive && epoch !== generation && AppState.currentState === 'active') sync();
-      }
+        const d = await marketAPI.myDashboard();
+        const ids = (d?.my_deals || [])
+          .filter((x) => IN_WORK.includes(x.status))
+          .map((x) => x.id)
+          .filter(Boolean);
+        if (alive) setInWorkDealIds(ids);
+      } catch { /* тихо */ }
     };
-    sync();
-    const sub = AppState.addEventListener('change', state => {
-      generation += 1;
-      if (state === 'active') sync();
-    });
-    return () => { alive = false; generation += 1; sub?.remove?.(); };
-  }, [session?.user?.id, session?.user?.role]);
+    fetchIds();
+    const iv = setInterval(fetchIds, 15000);
+    return () => { alive = false; clearInterval(iv); };
+  }, [isDriver]);
+  useDealLocationBroadcast(inWorkDealIds);
 
   // Канон таб-баров (приказ владельца 2026-07-26, обе волны).
   // Обе роли живут по одной логике: «Сделки» = единый инбокс (ставки сверху,
@@ -155,7 +122,6 @@ function MainTabs({ route }) {
   // ROLE_ACCENT / LABEL_ACCENT).
   return (
     <Tab.Navigator
-      key={`${session?.user?.id || 'guest'}:${role}`}
       screenOptions={{ headerShown: false }}
       // Без sceneContainerStyle React Navigation красит фон сцены белым
       // (DefaultTheme), и в тёмной теме он просвечивал снизу через
@@ -183,11 +149,9 @@ function MainTabs({ route }) {
   );
 }
 
-const FirstVisitMainTabs = withExternalFeedFirstVisit(MainTabs);
-
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
-  const { session, hasToken, loading, verificationLevel } = useAuth();
+  const { session, hasToken, loading } = useAuth();
   const { theme } = useTheme();
 
   if (loading) {
@@ -229,7 +193,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Favorites" component={FavoritesScreen} />
         <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
         <Stack.Screen name="DriverDetail" component={DriverDetail} />
-        <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+        <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
         <Stack.Screen name="ChatsList" component={ChatsListScreen} />
         <Stack.Screen name="MyTripsList" component={MyTripsScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
@@ -243,7 +207,6 @@ export default function AppNavigator() {
         <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
         <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
         <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
-        <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />
         <Stack.Screen name="VehicleDocs" component={VehicleDocsScreen} />
       </Stack.Navigator>
@@ -257,18 +220,14 @@ export default function AppNavigator() {
   // авторизованном наборе), после logout Navigator пытался остаться на
   // маршруте "Profile", которого в новом (неавторизованном) наборе экранов
   // нет — итог: завис на старом кадре, hasToken/session при этом уже
-  // корректно false (см. [NAV DIAG] лог). Main и onboarding имеют разные
-  // key, поэтому logout сбрасывает стек. Guest → verified без роли сохраняет
-  // тот же onboarding navigator: иначе reset из завершившегося OTP попадает
-  // в уже размонтированный стек. Cold start подтверждённого аккаунта без роли открывает RoleV2.
-  const navKey = onboardingNavKey({ hasToken, session, hasRole, verificationLevel });
+  // корректно false (см. [NAV DIAG] лог). key меняет "категорию" стека
+  // (guest/norole/main) → React полностью размонтирует и заново монтирует
+  // Stack.Navigator при переходе между категориями, что сбрасывает его
+  // internal state и всегда стартует с initialRouteName нового набора.
+  const navKey = (!hasToken || !session) ? 'guest' : (!hasRole ? 'norole' : 'main');
 
   return (
-    <Stack.Navigator
-      key={navKey === 'main' ? `main:${session?.user?.id || 'guest'}` : (navKey === 'norole' ? 'guest' : navKey)}
-      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : 'OnboardingV2')}
-      screenOptions={{ headerShown: false }}
-    >
+    <Stack.Navigator key={navKey} screenOptions={{ headerShown: false }}>
       {!hasToken || !session || !hasRole ? (
         // Нет токена / нет сессии / нет роли → inDrive-style onboarding.
         // RC2 batch 1: первый экран = OnboardingV2 (3-слайдовая карусель +
@@ -296,29 +255,28 @@ export default function AppNavigator() {
               ограниченный вид с приглашением зарегистрироваться. Без этой
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          {EXTERNAL_FREIGHT_ENABLED ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
           <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
-          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         </>
       ) : (
         // Полностью в приложении
         <>
-          <Stack.Screen name="Main" component={FirstVisitMainTabs} />
+          <Stack.Screen name="Main" component={MainTabs} />
           {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
               стека, а не как вкладка таб-бара (её занял «Дела»). */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
-          {EXTERNAL_FREIGHT_ENABLED && (sessionRole(session) === 'driver' || sessionRole(session) === 'client') ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
+          <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />
           <Stack.Screen name="Reviews" component={ReviewsScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="ChatsList" component={ChatsListScreen} />
@@ -332,7 +290,6 @@ export default function AppNavigator() {
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="Stats" component={StatsScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen name="CountryPicker" component={CountryPickerSheet} options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
           <Stack.Screen name="CargoRuqsatInfo" component={CargoRuqsatInfoScreen} />
           <Stack.Screen name="Security" component={SecurityScreen} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
@@ -344,7 +301,6 @@ export default function AppNavigator() {
           <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
           <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
           <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
-          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         <Stack.Screen name="Citizenship" component={CitizenshipScreen} />
         <Stack.Screen name="Identity" component={IdentityStepScreen} />
         <Stack.Screen name="TruckParams" component={TruckParamsScreen} />

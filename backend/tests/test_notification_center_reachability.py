@@ -166,10 +166,6 @@ def test_saved_search_notification_dedupes_by_cargo():
             (uid, "Алматы", "Москва"),
         )
 
-    with get_conn() as c:
-        c.execute("INSERT INTO cargos(id,owner_id,from_city,to_city,cargo_desc,status) VALUES (?,?,?,?,?,'active')",
-                  (cargo_id, 'test-owner', 'Алматы', 'Москва', 'Тестовый груз'))
-
     notify_matching_users("Алматы", "Москва", "тестовый груз", cargo_id)
     notify_matching_users("Алматы", "Москва", "тестовый груз", cargo_id)  # повтор — не дублирует
 
