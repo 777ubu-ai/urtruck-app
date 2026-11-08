@@ -1,0 +1,16 @@
+{
+  "scope": "temporary metadata copy and actual app.config.js; not native build",
+  "source_sha": "ec27f12539f9306b270be348193cc45fa380829e",
+  "identity": {
+    "version": "1.0.15",
+    "build": "2",
+    "bundle": "com.urtruck.app",
+    "api": "https://urtruck.kz",
+    "flavor": "production",
+    "feed": true
+  },
+  "qa2_override_rejected": true,
+  "source_runtime_changed": false,
+  "signed_ipa_created": false,
+  "uploaded": false
+}
