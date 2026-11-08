@@ -1,0 +1,9 @@
+{
+  "base_sha": "50c472f6578e5f1fb910a2096eb1822ab88d0387",
+  "reason": "Дополнение владельца 09.11.2026 прямо требует обновлять выдачу при возврате из карточки и foreground, сохраняя страницы/позицию и не принимая старые ответы. Разрешено минимальное исправление подтверждённой регрессии; меняются только два загрузчика и lifecycle-подписки. Верстка, авторизация, FSM и production runtime не меняются. Поведенческие регрессии сначала FAIL, после исправления PASS; независимое review PASS.",
+  "regression": "tests/frontend/test_public_feed_return_freshness.mjs",
+  "sha256": {
+    "src/screens/CargoFeedScreen.js": "d38665fd9599c732c2373f26e48c713576c44f0a809cd2a8cbf3cd49b0deaaa2",
+    "src/screens/FeedScreen.js": "b85356e6eeec5c12f515ddbce714edba6a8908bc3744c815a71122b02cfdb822"
+  }
+}
