@@ -349,7 +349,7 @@ def _init():
                 c.execute("ALTER TABLE bids ADD COLUMN vehicle_id TEXT")
             deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
             for _name in ("vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
-                          "vehicle_make_snapshot", "vehicle_model_snapshot"):
+                          "vehicle_make_snapshot", "vehicle_model_snapshot", "currency_snapshot"):
                 if _name not in deal_cols:
                     c.execute(f"ALTER TABLE deals ADD COLUMN {_name} TEXT")
             c.commit()
@@ -2979,6 +2979,10 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     )
     deal_id = new_id()
     deal_cols = {row["name"] for row in c.execute("PRAGMA table_info(deals)").fetchall()}
+    if "currency_snapshot" not in deal_cols:
+        # Не принимать ставку без возможности сохранить согласованную валюту.
+        # Исключение откатывает также изменения объявления и ставки.
+        raise HTTPException(status_code=503, detail="Сервис сделок обновляется. Повторите позже")
     snapshot_cols = {"vehicle_id", "vehicle_plate_snapshot", "vehicle_country_snapshot",
                      "vehicle_make_snapshot", "vehicle_model_snapshot"}
     if snapshot_cols.issubset(deal_cols):
@@ -3005,6 +3009,11 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
             (deal_id, bid.get("cargo_id"), bid.get("trip_id"), bid_id, shipper_id, driver_id,
              from_city, to_city, final_amount, "accepted", chat_room_id),
         )
+
+    # Та же транзакция, что и сумма: последующая отмена и правка объявления
+    # не должны менять цену в истории уже заключённой сделки.
+    c.execute("UPDATE deals SET currency_snapshot = ? WHERE id = ?",
+              (_bid_currency(c, bid), deal_id))
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
@@ -3666,6 +3675,14 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         d = dict(row)
         if uid not in (d["shipper_id"], d["driver_id"]):
             raise HTTPException(status_code=403)
+        if d.get("currency_snapshot"):
+            d["currency"] = d["currency_snapshot"]
+            d["currency_source"] = "accepted_snapshot"
+        else:
+            # У старых сделок снимка нет. Сохраняем совместимость ответа,
+            # явно отличая текущую валюту объявления от исторически доказанной.
+            # Миграция не подставляет выдуманные значения в старые записи.
+            d["currency_source"] = "current_listing_unverified"
         # Cargo enrichment — cargo_desc + currency for the "Ставка" line.
         # 2026-08-19 (P1, независимый release review): + вес груза
         # (weight_tons) — единственная реальная величина массы, которую
@@ -3689,8 +3706,9 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         # + capacity_tons (грузоподъёмность рейса) — тот же P1 фикс, что и
         # cargo_weight_tons выше.
         if d.get("trip_id"):
-            tr = c.execute("SELECT driver_id, from_country, to_country, capacity_tons FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
+            tr = c.execute("SELECT driver_id, from_country, to_country, capacity_tons, currency FROM trips WHERE id = ?", (d["trip_id"],)).fetchone()
             if tr:
+                d.setdefault("currency", tr["currency"])
                 d.setdefault("from_country", tr["from_country"])
                 d.setdefault("to_country", tr["to_country"])
                 d.setdefault("trip_capacity_tons", tr["capacity_tons"])
