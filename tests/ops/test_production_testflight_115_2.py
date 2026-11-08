@@ -1,7 +1,8 @@
-"""Исполнение встроенного guard: неизвестный/старый runtime запрещает сборку."""
+"""Исполняет read-only verifier из workflow на точном runtime PR695."""
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,40 +11,65 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / '.github/workflows/testflight-production-115-2.yml'
 
 class ProductionRuntimeGuardTests(unittest.TestCase):
-    def run_guard(self, value):
-        text = WORKFLOW.read_text()
-        code = text.split("<<'PYBACKEND'\n", 1)[1].split('          PYBACKEND', 1)[0]
-        code = '\n'.join(line[10:] for line in code.splitlines())
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'version.json'
-            path.write_text(json.dumps(value))
-            return subprocess.run(['python3', '-c', code, str(path)],
-                env={**os.environ, 'EXPECTED_BACKEND': 'a' * 40},
-                capture_output=True, text=True)
+    @classmethod
+    def setUpClass(cls):
+        cls.snapshot = tempfile.TemporaryDirectory(prefix='urtruck-runtime-test-')
+        cls.backend = Path(cls.snapshot.name)
+        manifest = json.loads((ROOT/'docs/release/testflight-production-115-2-backend.json').read_text())
+        for name in manifest['files']:
+            path = cls.backend/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(subprocess.check_output(['git','show',manifest['source_sha']+':backend/'+name], cwd=ROOT))
 
-    def test_exact_runtime_passes(self):
-        self.assertEqual(self.run_guard({'source_sha': 'a' * 40}).returncode, 0)
+    @classmethod
+    def tearDownClass(cls):
+        cls.snapshot.cleanup()
 
-    def test_old_runtime_is_rejected(self):
-        self.assertNotEqual(self.run_guard({'source_sha': 'b' * 40}).returncode, 0)
+    def run_guard(self, mutation=None):
+        with tempfile.TemporaryDirectory(prefix='urtruck-runtime-check-') as directory:
+            root = Path(directory)
+            backend = root/'backend'
+            shutil.copytree(self.backend, backend)
+            if mutation:
+                mutation(backend)
+            (root/'scripts').symlink_to(ROOT/'scripts', target_is_directory=True)
+            (root/'release-config').symlink_to(ROOT, target_is_directory=True)
+            text = WORKFLOW.read_text()
+            code = text.split("<<'PYPREP'\n",1)[1].split('          PYPREP',1)[0]
+            code = '\n'.join(line[10:] for line in code.splitlines())
+            env = {**os.environ, 'RUNNER_TEMP': str(root), 'BACKEND_DIR': str(backend)}
+            result = subprocess.run(['python3','-c',code], cwd=root, env=env,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr)
+            return subprocess.run(['python3',str(root/'verify-production-readonly.py')],cwd=root,env=env,capture_output=True,text=True)
 
-    def test_current_public_version_without_sha_is_not_proof(self):
-        self.assertNotEqual(self.run_guard({'version': '1.0.50', 'build_time': '2026-11-08 07:15'}).returncode, 0)
+    def test_exact_reviewed_183_files_pass(self):
+        r=self.run_guard()
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(json.loads(r.stdout)['files'],183)
 
-    def test_missing_and_null_sha_are_rejected(self):
-        for value in ({}, {'source_sha': None}, {'source_sha': 'unknown'}):
-            with self.subTest(value=value):
-                self.assertNotEqual(self.run_guard(value).returncode, 0)
+    def test_changed_file_is_rejected(self):
+        self.assertNotEqual(self.run_guard(lambda p:(p/'main.py').write_text('# drift')).returncode,0)
+
+    def test_missing_file_is_rejected(self):
+        self.assertNotEqual(self.run_guard(lambda p:(p/'main.py').unlink()).returncode,0)
+
+    def test_extra_runtime_file_is_rejected(self):
+        self.assertNotEqual(self.run_guard(lambda p:(p/'unexpected.py').write_text('# extra')).returncode,0)
+
+    def test_symlink_is_rejected(self):
+        def mutate(p):
+            (p/'main.py').unlink()
+            (p/'main.py').symlink_to(p/'config.py')
+        self.assertNotEqual(self.run_guard(mutate).returncode,0)
 
     def test_every_embedded_shell_step_has_valid_bash_syntax(self):
-        text = WORKFLOW.read_text()
-        runs = text.split('        run: |\n')[1:]
-        self.assertGreater(len(runs), 5)
-        for index, block in enumerate(runs):
-            block = block.split('\n      - ', 1)[0]
-            script = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
-            result = subprocess.run(['/bin/bash', '-n'], input=script, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, f'step {index}: {result.stderr}')
+        runs=WORKFLOW.read_text().split('        run: |\n')[1:]
+        self.assertGreater(len(runs),5)
+        for index,block in enumerate(runs):
+            block=block.split('\n      - ',1)[0]
+            script='\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+            result=subprocess.run(['/bin/bash','-n'],input=script,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,f'{index}: {result.stderr}')
 
 if __name__ == '__main__':
     unittest.main()

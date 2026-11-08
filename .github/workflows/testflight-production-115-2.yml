@@ -65,6 +65,13 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
 
+      - name: Checkout release guards separately from application source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: release-config
+          persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -101,7 +108,8 @@ jobs:
           allowed = {'.github/workflows/testflight-production-115-2.yml',
                      'docs/release/testflight-production-1.0.15-2.md',
                      'docs/release/testflight-production-1.0.15-2-preflight.json',
-                     'tests/ops/test_production_testflight_115_2.py'}
+                     'tests/ops/test_production_testflight_115_2.py',
+                     'docs/release/testflight-production-115-2-backend.json'}
           changed = set(Path(sys.argv[1]).read_text().splitlines())
           assert changed and changed <= allowed, changed
           PYDIFF
@@ -113,14 +121,7 @@ jobs:
           test "$(jq -r '.merged' <<<"$BACKEND_PR")" = true
           EXPECTED_BACKEND="$(jq -r '.merge_commit_sha' <<<"$BACKEND_PR")"
           export EXPECTED_BACKEND
-          curl -fsS --max-time 20 https://urtruck.kz/api/version > "$RUNNER_TEMP/production-version.json"
-          python3 - "$RUNNER_TEMP/production-version.json" <<'PYBACKEND'
-          import json, os, sys
-          value = json.load(open(sys.argv[1]))
-          # Отсутствие точного runtime SHA не является PASS; формат проверяется до сборки.
-          actual = value.get('source_sha') or value.get('commit_sha') or value.get('git_sha')
-          assert actual == os.environ['EXPECTED_BACKEND'], 'production runtime is not verified PR695'
-          PYBACKEND
+          test "$(jq -r '.head.sha' <<<"$BACKEND_PR")" = 86704fc4c2c560e747d978db6378c4cac456a25e
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
           [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^(0|[1-9][0-9]{0,2})$ ]]
           [[ "$URTRUCK_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,2}$ ]]
@@ -175,6 +176,35 @@ jobs:
           echo "SOURCE_SHA=$APP_SOURCE_SHA"
           echo "production_API_HOST=$PRODUCTION_HOST"
           npx eas-cli@latest whoami
+
+      - name: Verify production backend files over pinned read-only SSH
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR }}
+          URTRUCK_REQUIRE_KEY: '1'
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          python3 - <<'PYPREP'
+          import base64, json, os, re, shlex
+          from pathlib import Path
+          root = os.environ['BACKEND_DIR']
+          assert root.startswith('/') and re.fullmatch(r'[A-Za-z0-9_./-]+', root)
+          manifest = Path('release-config/docs/release/testflight-production-115-2-backend.json').read_bytes()
+          value = json.loads(manifest)
+          assert value['source_sha'] == '86704fc4c2c560e747d978db6378c4cac456a25e'
+          code = Path('scripts/ops/runtime_release_manifest.py').read_text()
+          # Только функции проверки; CLI модуля не запускается на сервере.
+          code = code.split('if __name__ == "__main__":')[0]
+          code += "\nimport base64\nm=json.loads(base64.b64decode(" + repr(base64.b64encode(manifest).decode()) + "))\nprint(json.dumps(verify(Path(" + repr(root) + "),m,'production','86704fc4c2c560e747d978db6378c4cac456a25e')))\n"
+          Path(os.environ['RUNNER_TEMP'], 'verify-production-readonly.py').write_text(code)
+          PYPREP
+          bash scripts/deploy-ssh.sh ssh 'python3 -' < "$RUNNER_TEMP/verify-production-readonly.py"
 
       - name: Install dependencies
         run: npm ci
