@@ -26,6 +26,15 @@ for (const [label, workflow, step] of guards) {
     .split('\n').map(line => line.replace(/^          /, '')).join('\n');
   for (const [scenario, override, valid] of [
     ['без внешнего approval', {}, true],
+    ...(label === 'TestFlight' ? [
+      ['новая серия начинается с 1', { URTRUCK_MIN_IOS_BUILD: '0', URTRUCK_IOS_BUILD_NUMBER: '1' }, true],
+      ['номер 100 после 99', { URTRUCK_MIN_IOS_BUILD: '99', URTRUCK_IOS_BUILD_NUMBER: '100' }, true],
+      ['повтор номера запрещён', { URTRUCK_MIN_IOS_BUILD: '1', URTRUCK_IOS_BUILD_NUMBER: '1' }, false],
+      ['откат номера запрещён', { URTRUCK_MIN_IOS_BUILD: '2', URTRUCK_IOS_BUILD_NUMBER: '1' }, false],
+      ['нулевой номер запрещён', { URTRUCK_IOS_BUILD_NUMBER: '0' }, false],
+      ['выход за согласованную серию', { URTRUCK_IOS_BUILD_NUMBER: '101' }, false],
+      ['команда вместо номера запрещена', { URTRUCK_IOS_BUILD_NUMBER: '1;exit 0' }, false],
+    ] : []),
     ...(label === 'Play' ? [
       ['актуальный объединённый PR671', { MERGED_PR_NUMBER: '671' }, true],
       ['номер PR отсутствует', { MERGED_PR_NUMBER: '' }, false],
@@ -61,7 +70,8 @@ for (const [label, workflow, step] of guards) {
           ...process.env, PATH: `${bin}:${process.env.PATH}`, GITHUB_ENV: join(root, 'env'),
           GITHUB_REPOSITORY: '777ubu-ai/urtruck-app', GITHUB_EVENT_NAME: 'workflow_dispatch',
           GITHUB_REF_NAME: 'qa2/integration-candidate', GITHUB_SHA: sha, QA_SOURCE_SHA: sha, AUDIT_SOURCE_SHA: sha, URTRUCK_SOURCE_SHA: sha,
-          CONFIRMATION: 'BUILD_QA2_TESTFLIGHT', URTRUCK_MIN_IOS_BUILD: '111',
+          CONFIRMATION: 'BUILD_QA2_TESTFLIGHT', URTRUCK_MIN_IOS_BUILD: label === 'TestFlight' ? '0' : '111',
+          URTRUCK_IOS_BUILD_NUMBER: '1',
           MERGED_PR_NUMBER: '605', FAKE_VALIDATE_PR: label === 'Play' ? 'true' : 'false',
           EXPO_TOKEN: 'test-only', EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: 'test-only', EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: 'test-only',
           QA2_API_URL: 'https://qa2.urtruck.kz', API_ENVIRONMENT_INPUT: 'qa2', TRACK_INPUT: 'internal',

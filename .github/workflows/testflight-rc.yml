@@ -16,8 +16,13 @@ on:
         required: true
         type: string
       last_verified_ios_build:
-        description: Latest iOS build verified in App Store Connect before this run
+        description: Последний подтверждённый номер именно в версии 1.0.15; 0 для пустой серии
         required: true
+        type: string
+      ios_build_number:
+        description: Номер новой сборки 1–100 внутри версии 1.0.15 (001 соответствует 1)
+        required: true
+        default: '1'
         type: string
 
 permissions:
@@ -47,6 +52,7 @@ jobs:
       # ASC08.11: публичная 1.0.14(127), TestFlight128; выбираем следующую версию.
       URTRUCK_VERSION_NAME: 1.0.15
       URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}
+      URTRUCK_IOS_BUILD_NUMBER: ${{ inputs.ios_build_number }}
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
@@ -80,8 +86,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           test "$GITHUB_SHA" = "$QA_SOURCE_SHA"
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
-          test "$URTRUCK_MIN_IOS_BUILD" -ge 111
+          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^(0|[1-9][0-9]{0,2})$ ]]
+          [[ "$URTRUCK_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,2}$ ]]
+          test "$URTRUCK_MIN_IOS_BUILD" -le 100
+          test "$URTRUCK_IOS_BUILD_NUMBER" -le 100
+          test "$URTRUCK_IOS_BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
           PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
           test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"
           test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
@@ -139,7 +148,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/prepare_store_candidate_version.py --platform ios \
-            --version "$URTRUCK_VERSION_NAME" --source-sha "$QA_SOURCE_SHA"
+            --version "$URTRUCK_VERSION_NAME" --source-sha "$QA_SOURCE_SHA" \
+            --build-number "$URTRUCK_IOS_BUILD_NUMBER"
 
       - name: Verify resolved Expo QA2 configuration
         shell: bash
@@ -155,6 +165,9 @@ jobs:
           }
           if (config.version !== process.env.URTRUCK_VERSION_NAME) {
             throw new Error(`Unexpected version: ${config.version}`);
+          }
+          if (config.ios?.buildNumber !== process.env.URTRUCK_IOS_BUILD_NUMBER) {
+            throw new Error('Номер сборки Expo не совпадает с выбранным номером серии');
           }
           if (config.extra?.urtruckBuildFlavor !== 'qa2') {
             throw new Error(`Unexpected build flavor: ${config.extra?.urtruckBuildFlavor}`);
@@ -172,6 +185,9 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          // Только runner QA2: глобальный production-счётчик EAS не сбрасываем.
+          eas.cli.appVersionSource = 'local';
+          eas.build.production.ios.autoIncrement = false;
           eas.build.production.env = {
             ...(eas.build.production.env || {}),
             URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR,
@@ -191,15 +207,19 @@ jobs:
           fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
           NODE
 
-      - name: Read remote iOS build counter before incrementing
+      - name: Verify version-local iOS counter without changing remote state
         shell: bash
         run: |
           set -euo pipefail
-          npx eas-cli@latest build:version:get --platform ios --profile production --json --non-interactive > "$RUNNER_TEMP/eas-ios-version.json"
-          remote_build="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).buildNumber || ''" "$RUNNER_TEMP/eas-ios-version.json")"
-          [[ "$remote_build" =~ ^[1-9][0-9]{0,8}$ ]]
-          test "$remote_build" -ge "$URTRUCK_MIN_IOS_BUILD" || { echo '::error::EAS counter is behind verified ASC maximum; synchronize before building'; exit 1; }
-          echo "URTRUCK_EAS_IOS_BUILD_BEFORE=$remote_build" >> "$GITHUB_ENV"
+          node <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          const app = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
+          if (eas.cli.appVersionSource !== 'local' || eas.build.production.ios.autoIncrement !== false
+              || app.ios.buildNumber !== process.env.URTRUCK_IOS_BUILD_NUMBER) {
+            throw new Error('Номер серии должен задаваться локально без изменения remote counter');
+          }
+          NODE
 
       - name: Select Xcode 26
         shell: bash
@@ -234,7 +254,7 @@ jobs:
           test "$VERSION_NAME" = "$URTRUCK_VERSION_NAME"
           case "$BUILD_NUMBER" in (*[!0-9]*|'') echo "::error::Non-numeric iOS build number"; exit 1;; esac
           test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
-          test "$BUILD_NUMBER" -gt "$URTRUCK_EAS_IOS_BUILD_BEFORE"
+          test "$BUILD_NUMBER" = "$URTRUCK_IOS_BUILD_NUMBER"
           codesign --verify --deep --strict "$APP_DIR"
           codesign -d --entitlements :- "$APP_DIR" > "$RUNNER_TEMP/qa2-entitlements.plist" 2>/dev/null
           python3 - "$APP_DIR" "$RUNNER_TEMP/qa2-entitlements.plist" <<'PYVERIFY'
