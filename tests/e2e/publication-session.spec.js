@@ -58,7 +58,7 @@ test('грузоотправитель штатно открывает форм�
 test('черновик сохраняется после reload и не появляется у другого аккаунта',async({page})=>{
  const box=await boot(page);await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId('mytrips-place-cargo').click();
  await page.getByTestId('cargo-desc-input').fill('электросамокаты');await page.getByTestId('cargo-price-field').fill('4500');
- await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ur_publication_draft_v1:cargo:test-publication')||'{}').price)).toBe('4500');
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ur_publication_draft_v1:%2Fapi%2Fv1:cargo:test-publication')||'{}').price)).toBe('4500');
  await page.reload();if(await page.getByTestId('external-feed-back').isVisible())await page.getByTestId('external-feed-back').click();await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId('mytrips-place-cargo').click();
  await expect(page.getByTestId('cargo-price-field')).toHaveValue('4500');await expect(page.getByTestId('cargo-desc-input')).toHaveValue('электросамокаты');
  box.accountId='other-publication';await page.evaluate(()=>{
@@ -83,7 +83,7 @@ test('точный ввод: пробел, удаление, середина с
  await input.fill(pasted+'ni');await input.dispatchEvent('compositionupdate',{data:'ni'});
  await input.fill(pasted+'你');await input.dispatchEvent('compositionend',{data:'你'});
  await expect(input).toHaveValue(pasted+'你');
- await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ur_publication_draft_v1:cargo:test-publication')||'{}').cargoDesc)).toBe(pasted+'你');
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ur_publication_draft_v1:%2Fapi%2Fv1:cargo:test-publication')||'{}').cargoDesc)).toBe(pasted+'你');
  await page.reload();if(await page.getByTestId('external-feed-back').isVisible())await page.getByTestId('external-feed-back').click();await page.getByTestId('bottom-nav-mywork').click();await page.getByTestId('mytrips-place-cargo').click();
  await expect(input).toHaveValue(pasted+'你');
  await input.evaluate(el=>{el.focus();el.setSelectionRange(el.value.length,el.value.length);});await page.keyboard.insertText(' продолжение ');await page.getByTestId('cargo-price-field').fill('5000');

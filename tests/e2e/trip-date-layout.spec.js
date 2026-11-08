@@ -14,7 +14,7 @@ for (const width of [360, 390]) for (const fontScale of [1, 1.6]) for (const the
     const departure = '25.10.2026';
     await page.evaluate(({ ownerId, departure, theme }) => {
       localStorage.setItem('ur_theme', theme);
-      localStorage.setItem(`ur_publication_draft_v1:trip%3Aunbound:${encodeURIComponent(ownerId)}`, JSON.stringify({ from: 'Алматы', to: 'Астана', departure, truckType: 'tent', tons: '25', m3: '150', price: '4500', currency: 'USD', transit: '', arrival: '' }));
+      localStorage.setItem(`ur_publication_draft_v1:%2Fapi%2Fv1:trip%3Aunbound:${encodeURIComponent(ownerId)}`, JSON.stringify({ from: 'Алматы', to: 'Астана', departure, truckType: 'tent', tons: '25', m3: '150', price: '4500', currency: 'USD', transit: '', arrival: '' }));
     }, { ownerId: owner.id, departure, theme });
     await page.reload({ waitUntil: 'networkidle' });
     await page.getByTestId('bottom-nav-mywork').click();

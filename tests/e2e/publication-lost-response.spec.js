@@ -14,7 +14,7 @@ for (const [kind, role, action, submit] of [
     const draft = { from: 'Хоргос', fromPoint: null, to: 'Алматы', toPoint: null, truckType: 'tent', tons: '25', m3: '150', price: '4500', currency: 'USD',
       ...(role === 'client' ? { cargoDesc: 'ТЕСТ: электросамокаты', pickupDate: date, currencyTouched: true, paymentType: 'any', photos: [] }
         : { transit: '', departure: date, arrival: '' }) };
-    const key = `ur_publication_draft_v1:${encodeURIComponent(kind)}:${encodeURIComponent(me.id)}`;
+    const key = `ur_publication_draft_v1:${encodeURIComponent('/api/v1')}:${encodeURIComponent(kind)}:${encodeURIComponent(me.id)}`;
     await openAuthenticated(page, token, role);
     await page.evaluate(({ key, draft }) => localStorage.setItem(key, JSON.stringify(draft)), { key, draft });
     async function open() {

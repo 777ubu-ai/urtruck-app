@@ -52,7 +52,8 @@ export async function migrateVerifiedLegacyDrafts({ apiBase, ownerId }, storage 
     let target;
     if (source.startsWith('ur_publication_draft_v1:')) {
       const parts = source.split(':');
-      if (parts.length === 3 && ['cargo','trip'].includes(parts[1]) && parts[2] === encodeURIComponent(ownerId)) {
+      const knownKind = ['cargo','trip'].includes(parts[1]) || /^trip%3A.+$/.test(parts[1]);
+      if (parts.length === 3 && knownKind && parts[2] === encodeURIComponent(ownerId)) {
         target = `ur_publication_draft_v1:${encodeURIComponent(apiBase)}:${parts[1]}:${parts[2]}`;
       }
     } else if (source.startsWith('ur_draft_chat_')) {

@@ -187,9 +187,13 @@ test('настоящий register/me:таймаут ограничен и не �
   finally{globalThis.fetch=fetch;globalThis.setTimeout=timer;}
 });
 test('bootstrap мигрирует свой legacy-черновик только после200 того же bearer',async()=>{
-  const h=harness();await h.boot();
+  const h=harness();
+  h.data.set('ur_publication_draft_v1:trip%3Aunbound:A','{"price":"4500"}');
+  h.data.set('ur_publication_draft_v1:trip%3Avehicle-1:A','{"price":"5500"}');
+  await h.boot();
   const key='ur_publication_draft_v1:'+encodeURIComponent(origin)+':cargo:A';
   assert.equal(h.data.get(key),h.data.get('ur_publication_draft_v1:cargo:A'));
+  for(const kind of ['trip%3Aunbound','trip%3Avehicle-1'])assert.equal(h.data.get('ur_publication_draft_v1:'+encodeURIComponent(origin)+':'+kind+':A'),h.data.get('ur_publication_draft_v1:'+kind+':A'));
   for(const mode of ['qa2','rejected','other-owner']){
     const x=harness();if(mode==='qa2')x.data.set('ur_session',JSON.stringify({apiBase:'https://qa2.urtruck.kz/api/v1',user:{id:'A',role:'client'}}));
     if(mode==='rejected')x.regAPI.me=async()=>{throw Object.assign(Error('AUTH_REQUIRED'),{status:401,code:'AUTH_REQUIRED'});};
