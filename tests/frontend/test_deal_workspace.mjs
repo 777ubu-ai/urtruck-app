@@ -362,6 +362,6 @@ test('short onboarding requires name and phone; company remains editable but opt
   assert.doesNotMatch(profile, /id="city"/);
   assert.match(profileApi, /PHONE_REQUIRED/);
   assert.match(profileApi, /NAME_REQUIRED/);
-  assert.match(profileApi, /COMPANY_REQUIRED/);
+  assert.doesNotMatch(profileApi, /COMPANY_REQUIRED/);
   assert.doesNotMatch(profileApi, /COUNTRY_REQUIRED/);
 });

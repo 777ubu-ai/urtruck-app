@@ -4,6 +4,7 @@ import ast
 import hashlib
 import importlib.util
 import io
+import os
 import json
 from pathlib import Path
 import sqlite3
@@ -610,11 +611,14 @@ def test_real_carrier_bundle_hashes_match_reviewed_repository(tmp_path):
     root = SCRIPT.parents[2]
     manifest_path = root / 'ops/external-feed-production/carrier-v1-manifest.json'
     manifest = json.loads(manifest_path.read_text())
+    # Старый carrier-v1 пакет проверяется по неизменяемому исходнику, а не
+    # по новым runtime-файлам, уже прошедшим следующие адресные исправления.
+    source = Path(os.environ.get('URTRUCK_CARRIER_V1_SOURCE', root / 'backend'))
     bundle = tmp_path / 'carrier.tar.gz'
     with tarfile.open(bundle, 'w:gz') as archive:
         for name in manifest['files']:
             if name != 'main.py':
-                archive.add(root / 'backend' / name, arcname=name, recursive=False)
+                archive.add(source / name, arcname=name, recursive=False)
         archive.add(root / 'ops/external-feed-production/main.patch', arcname='main.patch', recursive=False)
         archive.add(manifest_path, arcname='manifest.json', recursive=False)
     result = module.unpack_verified(bundle, tmp_path / 'staged')

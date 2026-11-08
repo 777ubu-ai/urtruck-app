@@ -2,22 +2,25 @@
 
 Product rule (2026-08-20):
 - an unaccepted bid is actionable for at most 48 hours since its last activity;
-- a listing's pickup/departure date is a hard ceiling: once that calendar day
-  is in the past, the active listing and its still-open bids expire;
+- активные собственные грузы и рейсы автоматически продлеваются циклами
+  по 30 суток (дополнение владельца от 07.11.2026);
+- past route dates do not shorten the publication window;
 - accepted deals are never deleted or auto-cancelled by this cleanup;
-- expired rows stay in the database for history/audit and move to Archive in UI.
+- expired rows stay in the database for history/audit.
 """
 from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import re
+import sqlite3
 import uuid
 from typing import Optional
 
 from database.db import get_conn
 
 BID_TTL_HOURS = 48
+LISTING_TTL_DAYS = 30
 OPEN_BID_STATUSES = ("pending", "countered")
 ACTIVE_DEAL_STATUSES = (
     "accepted",
@@ -85,6 +88,36 @@ def bid_deadline(updated_at, created_at, ttl_hours: int = BID_TTL_HOURS):
     return activity + timedelta(hours=ttl_hours) if activity else None
 
 
+def listing_deadline(published_at, created_at, ttl_days: int = LISTING_TTL_DAYS):
+    published = parse_market_timestamp(published_at) or parse_market_timestamp(created_at)
+    return published + timedelta(days=ttl_days) if published else None
+
+
+def auto_renewing_listing(row):
+    """Собственное активное объявление продлевается; архив и внешняя лента — нет."""
+    return bool((row.get("driver_id") or row.get("owner_id"))
+                and row.get("status", "active") == "active"
+                and not row.get("taken_by") and not row.get("booked_by"))
+
+
+def owner_is_deleted(conn, user_id):
+    """Проверка тем же соединением, без вложенного housekeeping под write lock."""
+    if not user_id:
+        return False
+    try:
+        return bool(conn.execute(
+            "SELECT 1 FROM drivers_registration WHERE id=? "
+            "AND (lower(status)='deleted' OR lower(role)='deleted') LIMIT 1",
+            (user_id,),
+        ).fetchone())
+    except sqlite3.OperationalError as exc:
+        # Изолированные legacy схемы expiry не содержат account registry.
+        # Полное приложение создаёт registration до готовности HTTP.
+        if str(exc) == "no such table: drivers_registration":
+            return False
+        raise
+
+
 def _has_active_deal(conn, *, cargo_id=None, trip_id=None) -> bool:
     if not cargo_id and not trip_id:
         return False
@@ -114,47 +147,121 @@ def _price_event(conn, bid, reason: str) -> None:
         pass
 
 
+def _expiry_notification_ready(conn, bid) -> bool:
+    # Старые схемы без recipient не получают выдуманного адресата. При
+    # bootstrap полной БД ждём таблицы уведомлений, а не теряем событие.
+    if not bid.get("bidder_id"):
+        return True
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    return {"notifications", "push_outbox"}.issubset(tables)
+
+
+def _queue_expired_bid_notifications(conn, bid):
+    from services import push_gateway, push_i18n
+    bidder = bid.get("bidder_id")
+    if not bidder:
+        return
+    recipients = {bidder}
+    url = "/deals"
+    for table, listing_id, owner_column, route in (
+        ("cargos", bid.get("cargo_id"), "owner_id", "cargos"),
+        ("trips", bid.get("trip_id"), "driver_id", "trips"),
+    ):
+        if not listing_id:
+            continue
+        url = f"/{route}/{listing_id}?bid={bid['id']}"
+        columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if owner_column in columns:
+            row = conn.execute(f"SELECT {owner_column} FROM {table} WHERE id=?", (listing_id,)).fetchone()
+            if row and row[0]:
+                recipients.add(row[0])
+    event_key = f"bid:{bid['id']}:expired"
+    for recipient in recipients:
+        locale = None
+        try:
+            row = conn.execute("SELECT locale FROM push_devices WHERE user_id=? AND enabled=1 ORDER BY last_seen_at DESC, id DESC LIMIT 1", (recipient,)).fetchone()
+            locale = row[0] if row else None
+        except Exception:
+            # Legacy registry без locale: поддерживаем RU fallback.
+            pass
+        title, body = push_i18n.push_text("bid_expired", locale)
+        conn.execute(
+            "INSERT INTO notifications(user_id,type,title,body,icon,url,event_key) VALUES(?,?,?,?,?,?,?) "
+            "ON CONFLICT(user_id,event_key) WHERE event_key IS NOT NULL DO NOTHING",
+            (recipient, "bid_expired", title, body, "⌛", url, event_key),
+        )
+        push_gateway.enqueue_event(event_key, "bid.expired", recipient, {
+            "title": title, "body": body, "data": {
+                "url": url, "type": "bid", "bid_id": bid["id"], "event_key": event_key,
+                "event": "bid.expired", "i18n_event": "bid_expired", "i18n_params": {},
+            },
+        }, conn=conn)
+
+
 def _expire_with_conn(conn, now: datetime) -> dict:
-    today = now.date()
     expired_cargos = []
     expired_trips = []
+    renewed_cargos = []
+    renewed_trips = []
     expired_bids = []
     reasons = {}
 
-    # Date is a hard ceiling for an ACTIVE listing, but never mutate an
-    # accepted/active deal. This repairs the parent status first so new bids
-    # are rejected by the existing create_bid(status == active) guard.
+    # Груз и рейс продлеваются циклами 30 суток с сохранением ID.
+    # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
+    # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
     for row in conn.execute(
-        "SELECT id, pickup_date FROM cargos WHERE status = 'active' AND pickup_date IS NOT NULL"
+        "SELECT * FROM cargos WHERE status='active'"
     ).fetchall():
-        departure = parse_market_date(row["pickup_date"])
-        if departure and departure < today and not _has_active_deal(conn, cargo_id=row["id"]):
+        deadline = listing_deadline(row["published_at"], row["created_at"])
+        has_deal = _has_active_deal(conn, cargo_id=row["id"])
+        if dict(row).get("taken_by") or has_deal or deadline is None:
+            continue
+        if deadline <= now:
+            if owner_is_deleted(conn, dict(row).get("owner_id")):
+                cur = conn.execute("UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                if cur.rowcount:
+                    expired_cargos.append(row["id"])
+                continue
+            period = timedelta(days=LISTING_TTL_DAYS)
+            cycle_start = deadline + ((now - deadline) // period) * period
             cur = conn.execute(
-                "UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active'",
-                (row["id"],),
+                "UPDATE cargos SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND status='active' AND published_at IS ?",
+                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
             )
             if cur.rowcount:
-                expired_cargos.append(row["id"])
+                renewed_cargos.append(row["id"])
 
     for row in conn.execute(
-        "SELECT id, departure FROM trips WHERE status = 'active' AND departure IS NOT NULL"
+        "SELECT * FROM trips WHERE status='active'"
     ).fetchall():
-        departure = parse_market_date(row["departure"])
-        if departure and departure < today and not _has_active_deal(conn, trip_id=row["id"]):
+        deadline = listing_deadline(row["published_at"], row["created_at"])
+        has_deal = _has_active_deal(conn, trip_id=row["id"])
+        if dict(row).get("booked_by") or has_deal or deadline is None:
+            continue
+        if deadline <= now:
+            if owner_is_deleted(conn, dict(row).get("driver_id")):
+                cur = conn.execute("UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                if cur.rowcount:
+                    expired_trips.append(row["id"])
+                continue
+            # Пропущенные циклы сворачиваем одним UPDATE; исходный created_at
+            # и дата выезда сохраняются. Ставки ниже по-прежнему имеют TTL 48ч.
+            period = timedelta(days=LISTING_TTL_DAYS)
+            cycle_start = deadline + ((now - deadline) // period) * period
             cur = conn.execute(
-                "UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active'",
-                (row["id"],),
+                "UPDATE trips SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND status='active' AND published_at IS ?",
+                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
             )
             if cur.rowcount:
-                expired_trips.append(row["id"])
+                renewed_trips.append(row["id"])
 
     # Now close every still-open bid whose 48h activity window ended or whose
     # parent is no longer actionable. Accepted/rejected/cancelled rows are not
     # selected and therefore cannot be changed by this job.
     rows = conn.execute(
-        "SELECT b.id, b.cargo_id, b.trip_id, b.amount, b.created_at, b.updated_at, "
+        "SELECT b.*, "
         "c.status AS cargo_status, c.pickup_date, "
         "t.status AS trip_status, t.departure "
         "FROM bids b "
@@ -172,29 +279,23 @@ def _expire_with_conn(conn, now: datetime) -> dict:
 
         if bid.get("cargo_id"):
             parent_status = bid.get("cargo_status")
-            parent_date = parse_market_date(bid.get("pickup_date"))
             if parent_status is None:
                 reason = "listing_missing"
             elif parent_status != "active":
                 reason = "listing_inactive"
-            elif parent_date and parent_date < today:
-                reason = "listing_date_passed"
         elif bid.get("trip_id"):
             parent_status = bid.get("trip_status")
-            parent_date = parse_market_date(bid.get("departure"))
             if parent_status is None:
                 reason = "listing_missing"
             elif parent_status != "active":
                 reason = "listing_inactive"
-            elif parent_date and parent_date < today:
-                reason = "listing_date_passed"
         elif ttl_expired:
             # Legacy/unlinked bids can still age out by TTL.
             reason = "bid_ttl_48h"
 
         if reason is None and ttl_expired:
             reason = "bid_ttl_48h"
-        if reason is None:
+        if reason is None or not _expiry_notification_ready(conn, bid):
             continue
 
         cur = conn.execute(
@@ -207,6 +308,7 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         expired_bids.append(bid["id"])
         reasons[bid["id"]] = reason
         _price_event(conn, bid, reason)
+        _queue_expired_bid_notifications(conn, bid)
         if bid.get("cargo_id"):
             touched_cargos.add(bid["cargo_id"])
 
@@ -223,13 +325,15 @@ def _expire_with_conn(conn, now: datetime) -> dict:
         "expired_bids": expired_bids,
         "expired_cargos": expired_cargos,
         "expired_trips": expired_trips,
+        "renewed_cargos": renewed_cargos,
+        "renewed_trips": renewed_trips,
         "reasons": reasons,
         "now": now.isoformat(timespec="seconds") + "Z",
     }
 
 
 def expire_stale_marketplace(now: Optional[datetime] = None, conn=None) -> dict:
-    """Expire stale listings/offers atomically.
+    """Атомарно продлить активные объявления и закрыть истёкшие ставки.
 
     `conn` is injectable for deterministic unit tests. Production callers omit
     it and use the normal DB context manager, which commits on success.

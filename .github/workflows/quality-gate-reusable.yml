@@ -42,10 +42,27 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-test.txt
+      - name: Установить ffprobe для проверки реальных аудиоконтейнеров
+        run: |
+          set -euo pipefail
+          if ! command -v ffprobe >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          fi
+          command -v ffprobe
       - name: Compile backend and tests
         run: |
           python -m compileall -q backend
+      - name: Получить неизменяемую исходную версию старого carrier-v1 пакета
+        uses: actions/checkout@v4
+        with:
+          ref: 4a64cf769f422dbc23c7391e4938eececcd4d446
+          path: .carrier-v1-source
+          sparse-checkout: backend
+          persist-credentials: false
       - name: Регрессии узкого production writer
+        env:
+          URTRUCK_CARRIER_V1_SOURCE: ${{ github.workspace }}/.carrier-v1-source/backend
         if: ${{ hashFiles('tests/ops/test_external_feed_production_overlay.py') != '' }}
         run: python -m pytest tests/ops/test_external_feed_production_overlay.py tests/ops/test_public_store_compatibility_overlay.py -q
       - name: Регрессии проверки исходника TestFlight до исполнения кода
@@ -64,6 +81,9 @@ jobs:
       - name: Регрессии production STT timeout
         if: ${{ hashFiles('tests/ops/test_production_voice_timeout_sync.py') != '' }}
         run: python -m pytest tests/ops/test_production_voice_timeout_sync.py -q
+      - name: Регрессии адресного восстановления и review production
+        run: python -m pytest tests/ops/test_owned_listing_production_overlay.py tests/ops/test_owned_listing_review_gate.py -q
+
       - name: Run canonical backend suite
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend

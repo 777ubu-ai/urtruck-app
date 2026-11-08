@@ -130,6 +130,7 @@ from api.metrics import metrics_router, MetricsMiddleware
 from api.leaderboard import leader_router
 from api.saved_searches import ss_router
 from api.marketplace import mp_router
+from api.public_share import share_router
 from api.chat import chat_router
 from api.deal_room import deal_room_router
 from api.notifications import notif_router
@@ -141,6 +142,7 @@ from database import db
 from database import registration_dal
 from database import reviews_dal
 from database import consent_dal
+from api.runtime_errors import install_runtime_error_handlers
 from blacklist import manager as blacklist_mgr
 from services import storage_service
 
@@ -157,6 +159,7 @@ app = FastAPI(
     redoc_url=None if _IS_PRODUCTION else "/redoc",
     openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
+install_runtime_error_handlers(app)
 
 ALLOWED_ORIGINS = os.getenv(
     "CORS_ORIGINS",
@@ -198,12 +201,19 @@ app.include_router(fav_router, prefix="/api/v1/favorites")
 app.include_router(borders_router, prefix="/api/v1/borders")
 app.include_router(leader_router, prefix="/api/v1/leaderboard")
 app.include_router(mp_router, prefix="/api/v1/market")
+# Browser-facing cargo links are intentionally separate from the API. nginx
+# proxies only this exact public path, while all other SPA routes stay static.
+app.include_router(share_router)
 app.include_router(chat_router, prefix="/api/v1/chat")
 # Deal Room foundation — новые endpoints (/chat/conversations, /deals/{id}/timeline,
 # /support/escalate) под /api/v1. Старые /chat/rooms, /chat/messages не трогаются.
 app.include_router(deal_room_router, prefix="/api/v1")
 app.include_router(notif_router, prefix="/api/v1/notifications")
 app.include_router(profile_router, prefix="/api/v1/users")
+from api.driver_expenses import router as expenses_router, init_expenses_schema
+app.include_router(expenses_router, prefix="/api/v1/driver/expenses")
+from api.external_freight import router as external_freight_router
+app.include_router(external_freight_router, prefix="/api/v1/external-freight")
 app.include_router(auth_otp_router, prefix="/api/auth")
 app.include_router(ss_router, prefix="/api/v1/searches")
 app.include_router(qa_router, prefix="/api/v1/qa")
@@ -270,6 +280,10 @@ def startup():
     registration_dal.init_registration_schema()
     from database import vehicles_dal
     vehicles_dal.init_vehicles_schema()
+    init_expenses_schema()
+    if os.getenv("EXTERNAL_FREIGHT_FEED_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
+        from database.external_freight_dal import init_schema as init_external_freight_schema
+        init_external_freight_schema()
     # api.chat импортируется при регистрации роутеров, когда новая БД ещё не
     # имеет registration-схему. Создаём special users только после неё;
     # операция идемпотентна для существующих БД.
@@ -374,6 +388,8 @@ def startup():
     # completion only after the FastAPI startup hook returns, so the health
     # endpoint can bind before the background DDL scans old production data.
     start_deferred_migrations()
+
+
 
 
 @app.on_event("startup")

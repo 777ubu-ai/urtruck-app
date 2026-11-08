@@ -44,6 +44,36 @@ def normalize_locale(raw: Optional[str]) -> str:
 # things a caller is allowed to interpolate: route/amount/reason-style
 # opaque values, never free text.
 TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
+    "bid_not_selected": {
+        "RU": ("❌ Ставка не выбрана", "Выбрано другое предложение. Ваша ставка {amount} отклонена."),
+        "KK": ("❌ Баға таңдалмады", "Басқа ұсыныс таңдалды. Сіздің {amount} бағаңыз қабылданбады."),
+        "ZH": ("❌ 报价未被选择", "已选择其他报价。您的 {amount} 报价已被拒绝。"),
+        "EN": ("❌ Bid not selected", "Another offer was selected. Your bid of {amount} was rejected."),
+    },
+    "bid_counter_declined": {
+        "RU": ("❌ Встречная цена отклонена", "Вторая сторона отклонила встречную цену. Исходная ставка {amount} снова активна."),
+        "KK": ("❌ Қарсы баға қабылданбады", "Екінші тарап қарсы бағаны қабылдамады. Бастапқы {amount} баға қайта белсенді."),
+        "ZH": ("❌ 还价被拒绝", "对方拒绝了还价。原报价 {amount} 已重新生效。"),
+        "EN": ("❌ Counter-offer declined", "The other participant declined the counter-offer. The original bid of {amount} is active again."),
+    },
+    "bid_expired": {
+        "RU": ("⌛ Срок предложения истёк", "Предложение больше не активно. Проверьте архив."),
+        "KK": ("⌛ Ұсыныстың мерзімі аяқталды", "Ұсыныс енді белсенді емес. Мұрағатты тексеріңіз."),
+        "ZH": ("⌛ 报价已过期", "此报价已不再有效。请查看归档。"),
+        "EN": ("⌛ Offer expired", "The offer is no longer active. Check the archive."),
+    },
+    "review_received": {
+        "RU": ("⭐ Новый отзыв", "Оценка {rating} из 5"),
+        "KK": ("⭐ Жаңа пікір", "Баға: 5-тен {rating}"),
+        "ZH": ("⭐ 新评价", "评分：{rating}/5"),
+        "EN": ("⭐ New review", "Rating: {rating} out of 5"),
+    },
+    "review_received_comment": {
+        "RU": ("⭐ Новый отзыв", "{comment}"),
+        "KK": ("⭐ Жаңа пікір", "{comment}"),
+        "ZH": ("⭐ 新评价", "{comment}"),
+        "EN": ("⭐ New review", "{comment}"),
+    },
     "chat_photo": {
         "RU": ("📷 Фото", "Новое фото в чате"),
         "KK": ("📷 Фото", "Чаттағы жаңа фото"),

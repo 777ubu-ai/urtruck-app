@@ -1,16 +1,21 @@
 """Отдельное SQLite-хранилище для внешней ленты. Таблицы не затрагивают сделки UrTruck."""
 import hashlib
 import json
+import logging
 import math
 import re
+import time
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from database.external_freight_connection import get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
-ACTIVE_HOURS = 120
+ACTIVE_DAYS = 30
+PURGE_BATCH_SIZE = 500
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
+logger = logging.getLogger(__name__)
 
 
 def _utc(value=None):
@@ -35,7 +40,7 @@ def init_schema():
           cargo_name TEXT, body_types TEXT, weight REAL, volume REAL,
           vehicle_count INTEGER, loading_date TEXT, ready_text TEXT, amount REAL, currency TEXT,
           price_state TEXT NOT NULL DEFAULT 'unknown' CHECK(price_state IN ('known','negotiable','unknown')),
-          contacts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'review'
+          contacts TEXT NOT NULL DEFAULT '[]', source_contacts TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'review'
             CHECK(status IN ('active','review','closed','hidden','expired')),
           origin_source TEXT, created_by TEXT
         );
@@ -45,6 +50,8 @@ def init_schema():
           ON external_freight_items(kind,status,source_published_at DESC,id DESC,expires_at,ingested_at);
         CREATE INDEX IF NOT EXISTS ix_external_freight_expiry
           ON external_freight_items(status, expires_at);
+        CREATE INDEX IF NOT EXISTS ix_external_freight_ingested_purge
+          ON external_freight_items(ingested_at,id);
         CREATE INDEX IF NOT EXISTS ix_external_freight_price
           ON external_freight_items(status,currency,amount,id);
         CREATE TABLE IF NOT EXISTS external_freight_item_body_types (
@@ -64,10 +71,15 @@ def init_schema():
           id TEXT PRIMARY KEY, item_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
           created_at TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}'
         );
+        CREATE INDEX IF NOT EXISTS ix_external_freight_audit_item
+          ON external_freight_audit(item_id);
         CREATE TABLE IF NOT EXISTS external_freight_delivery (
           source_id TEXT NOT NULL, source_message_id TEXT NOT NULL, segment_id TEXT NOT NULL,
           attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT, delivered_at TEXT, last_error TEXT,
           PRIMARY KEY(source_id, source_message_id, segment_id)
+        );
+        CREATE TABLE IF NOT EXISTS external_freight_expired_sources (
+          source_fingerprint TEXT PRIMARY KEY, expired_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS external_freight_metrics (
           event_day TEXT NOT NULL, event_name TEXT NOT NULL, event_count INTEGER NOT NULL DEFAULT 0,
@@ -78,8 +90,91 @@ def init_schema():
         for name in ("origin_country", "destination_country", "origin_folded", "destination_folded"):
             if name not in columns:
                 c.execute(f"ALTER TABLE external_freight_items ADD COLUMN {name} TEXT")
+        if 'source_contacts' not in columns:
+            c.execute("ALTER TABLE external_freight_items ADD COLUMN source_contacts TEXT NOT NULL DEFAULT '[]'")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_origin_route ON external_freight_items(kind,status,origin_folded,source_published_at DESC,id DESC)")
         c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_destination_route ON external_freight_items(kind,status,destination_folded,source_published_at DESC,id DESC)")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_external_freight_source_purge ON external_freight_items(source_published_at,id)")
+        _apply_publication_retention(c)
+
+
+def _source_fingerprint(source_id, source_message_id, segment_id):
+    value = "\0".join((str(source_id), str(source_message_id), str(segment_id)))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _apply_publication_retention(c, now=None):
+    """Recompute the 30-day source-based expiry without reopening closures.
+
+    The subsequent purge removes expired feed content and leaves only a
+    one-way source-identity digest to prevent a delayed replay from restoring it.
+    """
+    now = _utc(now)
+    rows = c.execute(
+        "SELECT id,source_published_at,status,expires_at FROM external_freight_items "
+        "WHERE status IN ('active','expired') AND source_published_at IS NOT NULL",
+    ).fetchall()
+    for row in rows:
+        try:
+            published = _utc(row["source_published_at"])
+        except (TypeError, ValueError):
+            continue
+        expires = published + timedelta(days=ACTIVE_DAYS)
+        expires_at = expires.isoformat()
+        status = "expired" if expires <= now else "active"
+        if row["status"] != status or row["expires_at"] != expires_at:
+            c.execute(
+                "UPDATE external_freight_items SET status=?,expires_at=? WHERE id=? AND status IN ('active','expired')",
+                (status, expires_at, row["id"]),
+            )
+
+
+def purge_expired_items(now=None):
+    """Delete external feed content after its 30-day source-based lifetime."""
+    now = _utc(now)
+    cutoff = now - timedelta(days=ACTIVE_DAYS)
+    started = time.monotonic()
+    with get_conn() as c:
+        # Split dated and undated retention queries so both can use their
+        # ordered indexes; the previous OR + COALESCE sort scanned all cards.
+        dated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items WHERE source_published_at IS NOT NULL "
+            "AND source_published_at<=? ORDER BY source_published_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+        ).fetchall()
+        undated = c.execute(
+            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
+            "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
+            "WHERE source_published_at IS NULL "
+            "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
+            (cutoff.isoformat(), PURGE_BATCH_SIZE),
+        ).fetchall()
+        rows = sorted(
+            (*dated, *undated),
+            key=lambda row: (row["source_published_at"] or row["ingested_at"], row["id"]),
+        )[:PURGE_BATCH_SIZE]
+        if not rows:
+            return 0
+        item_ids = [row["id"] for row in rows]
+        c.executemany(
+            "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+            [(_source_fingerprint(row["source_id"], row["source_message_id"], row["segment_id"]), now.isoformat())
+             for row in rows],
+        )
+        placeholders = ",".join("?" for _ in item_ids)
+        for table in ("external_freight_bookmarks", "external_freight_item_body_types",
+                      "external_freight_audit"):
+            c.execute(f"DELETE FROM {table} WHERE item_id IN ({placeholders})", item_ids)
+        c.executemany(
+            "DELETE FROM external_freight_delivery WHERE source_id=? AND source_message_id=? AND segment_id=?",
+            [(row["source_id"], row["source_message_id"], row["segment_id"]) for row in rows],
+        )
+        c.execute(f"DELETE FROM external_freight_items WHERE id IN ({placeholders})", item_ids)
+        removed = len(rows)
+    duration_ms = round((time.monotonic() - started) * 1000)
+    logger.info("external_feed_retention_batch removed=%d duration_ms=%d", removed, duration_ms)
+    return removed
 
 
 def count_active_items(kind: str) -> int:
@@ -98,9 +193,14 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         raise ValueError("record_must_be_object")
     if not isinstance(raw.get("original_text"), str):
         raise ValueError("invalid_original_text")
-    text = raw["original_text"]
-    if not text.strip() or len(text) > MAX_TEXT:
+    segment_text = raw["original_text"]
+    if not segment_text.strip() or len(segment_text) > MAX_TEXT:
         raise ValueError("invalid_original_text")
+    # Классификация уже проверила блок до DAL. Существующее поле БД хранит
+    # полный исходник для старых и новых клиентов, без новой схемы/миграции.
+    text = raw.get("source_text", segment_text)
+    if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
+        raise ValueError("invalid_source_text")
     kind = raw.get("kind")
     status = raw.get("status", "active")
     if kind not in {"cargo", "vehicle"}:
@@ -154,6 +254,9 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     contacts = raw.get("contacts") or []
     if not isinstance(contacts, list) or len(contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in contacts):
         raise ValueError("invalid_contacts")
+    source_contacts = raw.get('source_contacts') or []
+    if not isinstance(source_contacts, list) or len(source_contacts) > 20 or any(not isinstance(x, str) or len(x) > 200 for x in source_contacts):
+        raise ValueError('invalid_source_contacts')
     source_revision = str(raw.get("source_revision") or "")
     if len(source_revision) > 160:
         raise ValueError("source_revision_too_long")
@@ -165,7 +268,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
     return {
         "id": item_id, "kind": kind, "source_id": source_id, "source_message_id": source_message_id,
         "segment_id": segment_id, "source_published_at": published.isoformat() if published else None, "ingested_at": now.isoformat(),
-        "updated_at": now.isoformat(), "expires_at": (published + timedelta(hours=ACTIVE_HOURS)).isoformat() if published else None,
+        "updated_at": now.isoformat(), "expires_at": (published + timedelta(days=ACTIVE_DAYS)).isoformat() if published else None,
         "original_text": text, "source_revision": revision,
         "origin": _bounded(raw.get("origin"), 240), "destination": _bounded(raw.get("destination"), 240),
         "origin_country": origin_country, "destination_country": destination_country,
@@ -175,7 +278,7 @@ def normalize_record(raw: dict, *, require_reviewed=True):
         "weight": weight, "volume": volume, "vehicle_count": vehicle_count,
         "loading_date": _bounded(raw.get("loading_date"), 80), "ready_text": _bounded(raw.get("ready_text"), 240),
         "amount": amount, "currency": currency, "price_state": price_state,
-        "contacts": json.dumps(contacts, ensure_ascii=False), "status": "expired" if published and published + timedelta(hours=ACTIVE_HOURS) <= now else status,
+        "contacts": json.dumps(contacts, ensure_ascii=False), "source_contacts": json.dumps(source_contacts, ensure_ascii=False), "status": "expired" if status == "active" and published and published + timedelta(days=ACTIVE_DAYS) <= now else status,
         "origin_source": _bounded(raw.get("origin_source"), 120), "created_by": _bounded(raw.get("created_by"), 120),
     }
 
@@ -194,18 +297,34 @@ def import_records(records):
         raise ValueError("invalid_batch_size")
     normalized_batch = [normalize_record(raw) for raw in records]
     results = []
-    columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "status", "origin_source", "created_by"]
+    columns = ["kind", "source_published_at", "ingested_at", "updated_at", "expires_at", "original_text", "source_revision", "origin", "destination", "origin_country", "destination_country", "origin_folded", "destination_folded", "cargo_name", "body_types", "weight", "volume", "vehicle_count", "loading_date", "ready_text", "amount", "currency", "price_state", "contacts", "source_contacts", "status", "origin_source", "created_by"]
     with get_conn() as c:
         for values in normalized_batch:
+            fingerprint = _source_fingerprint(values["source_id"], values["source_message_id"], values["segment_id"])
+            too_old = (values["source_published_at"] and
+                       _utc(values["source_published_at"]) <= _utc() - timedelta(days=ACTIVE_DAYS))
+            previously_expired = c.execute(
+                "SELECT 1 FROM external_freight_expired_sources WHERE source_fingerprint=?", (fingerprint,)
+            ).fetchone()
+            if too_old or previously_expired:
+                c.execute(
+                    "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
+                    (fingerprint, _utc().isoformat()),
+                )
+                results.append({"id": values["id"], "result": "expired", "status": "expired"})
+                continue
             current = c.execute("SELECT * FROM external_freight_items WHERE source_id=? AND source_message_id=? AND segment_id=?", (values["source_id"], values["source_message_id"], values["segment_id"])).fetchone()
             if current:
                 values["id"] = current["id"]
-                values["expires_at"] = current["expires_at"]
                 # Replay/edit must keep its original admission time so a new
                 # ingest cannot move the row into an in-progress cursor snapshot.
                 values["ingested_at"] = current["ingested_at"]
                 if current["source_published_at"]:
                     values["source_published_at"] = current["source_published_at"]
+                    values["expires_at"] = (_utc(current["source_published_at"])
+                                             + timedelta(days=ACTIVE_DAYS)).isoformat()
+                elif current["expires_at"]:
+                    values["expires_at"] = current["expires_at"]
                 unchanged = all(values[key] == current[key] for key in columns
                                 if key not in {"status", "ingested_at", "updated_at", "expires_at", "source_published_at"})
                 if current["status"] in {"hidden", "closed"} or (
@@ -229,27 +348,46 @@ def import_records(records):
     return results
 
 
+@lru_cache(maxsize=512)
+def _source_contacts(text):
+    from services.external_freight_parser import block_contacts
+    return tuple(block_contacts(text or ""))
+
+
 def _serialize(row):
     item = dict(row)
     item.pop("origin_folded", None)
     item.pop("destination_folded", None)
-    for key in ("body_types", "contacts"):
+    for key in ("body_types", "contacts", "source_contacts"):
         try:
             item[key] = json.loads(item[key] or "[]")
         except (TypeError, ValueError):
             item[key] = []
+    # Контакты других блоков не приписываем этому маршруту. Они доступны
+    # отдельно как контакты полного исходника, в том числе для старых строк БД.
+    from services.external_freight_parser import _phone_identity
+    assigned = {_phone_identity(value) for value in item["contacts"]}
+    source_contacts = []
+    for value in (*item['source_contacts'], *_source_contacts(item.get('original_text'))):
+        identity = _phone_identity(value)
+        if identity and identity not in assigned:
+            source_contacts.append(value)
+            assigned.add(identity)
+    item['source_contacts'] = source_contacts
     return item
 
 
-def list_items(*, kind, origin=None, destination=None, body_type=None, published_from=None, published_to=None,
+def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
                sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
+    decoded = {}
     cursor_filters = {
         "owner_id": str(owner_id) if owner_id is not None else None, "saved_only": bool(saved_only),
         "origin": origin, "destination": destination, "body_type": body_type,
+        **({"body_query": body_query} if body_query else {}),
         "origin_country": origin_country.upper() if origin_country else None,
         "destination_country": destination_country.upper() if destination_country else None,
         "published_from": published_from, "published_to": published_to,
@@ -264,6 +402,10 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
             if decoded.get("filters") != cursor_filters:
                 raise ValueError
             snapshot_at, last_date, last_id = decoded["snapshot"], decoded["date"], decoded["id"]
+            if decoded.get("unpriced") and decoded.get("effective_sort", sort).startswith("price_"):
+                if not isinstance(decoded.get("publication"), str):
+                    raise ValueError
+                _utc(decoded["publication"])
         except Exception as exc:
             raise ValueError("invalid_cursor") from exc
     clauses = ["kind=?", "ingested_at<=?"]
@@ -289,6 +431,11 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
     if body_type:
         clauses.append("EXISTS (SELECT 1 FROM external_freight_item_body_types b WHERE b.item_id=external_freight_items.id AND b.body_type=?)")
         params.append(body_type)
+    if body_query:
+        escaped = str(body_query).strip().casefold().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        clauses.append("(EXISTS (SELECT 1 FROM external_freight_item_body_types b WHERE b.item_id=external_freight_items.id AND CASEFOLD(b.body_type) LIKE ? ESCAPE '\\') OR CASEFOLD(original_text) LIKE ? ESCAPE '\\')")
+        params.extend([pattern, pattern])
     if published_from:
         clauses.append("source_published_at>=?")
         params.append(_utc(published_from).isoformat())
@@ -317,19 +464,32 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
         if sort.startswith("price_") and not currency and len(price_currencies) != 1:
             effective_sort = "newest"
             sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
-    if effective_sort.startswith("price_"):
-        clauses.append("amount IS NOT NULL")
-    if last_date is not None and last_id:
+    # Порядок фиксируется на весь курсор: новая валюта между страницами
+    # не должна превращать ценовой курсор в курсор даты.
+    if decoded.get("effective_sort") in {"newest", "price_asc", "price_desc"}:
+        effective_sort = decoded["effective_sort"]
+        sort_error = decoded.get("sort_error")
+    known = "(price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL)"
+    unknown = f"NOT {known}"
+    if last_id and effective_sort.startswith("price_") and decoded.get("unpriced"):
+        clauses.append(f"({unknown} AND (source_published_at<? OR (source_published_at=? AND id<?)))")
+        params.extend([decoded["publication"], decoded["publication"], last_id])
+    elif last_date is not None and last_id:
         if effective_sort == "price_asc":
-            clauses.append("(amount>? OR (amount=? AND id>?))")
+            clauses.append(f"({unknown} OR ({known} AND (amount>? OR (amount=? AND id>?))))")
             params.extend([float(last_date), float(last_date), last_id])
         elif effective_sort == "price_desc":
-            clauses.append("(amount<? OR (amount=? AND id<?))")
+            clauses.append(f"({unknown} OR ({known} AND (amount<? OR (amount=? AND id<?))))")
             params.extend([float(last_date), float(last_date), last_id])
         else:
             clauses.append("(source_published_at<? OR (source_published_at=? AND id<?))")
             params.extend([last_date, last_date, last_id])
-    order = "amount ASC, id ASC" if effective_sort == "price_asc" else "amount DESC, id DESC" if effective_sort == "price_desc" else "source_published_at DESC, id DESC"
+    order = "source_published_at DESC, id DESC"
+    if effective_sort.startswith("price_"):
+        direction = "ASC" if effective_sort == "price_asc" else "DESC"
+        order = (f"CASE WHEN {known} THEN 0 ELSE 1 END ASC, "
+                 f"CASE WHEN {known} THEN amount END {direction}, "
+                 f"CASE WHEN {known} THEN id END {direction}, source_published_at DESC,id DESC")
     with get_conn() as c:
         rows = c.execute(f"SELECT * FROM external_freight_items WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?", (*params, min(max(int(limit), 1), 100) + 1)).fetchall()
     has_more = len(rows) > min(max(int(limit), 1), 100)
@@ -339,7 +499,10 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, published
         import base64
         final = rows[-1]
         cursor_value = final["amount"] if effective_sort.startswith("price_") else final["source_published_at"]
-        raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at, "date": cursor_value, "id": final["id"]}, separators=(",", ":")).encode()
+        unpriced = final["price_state"] != "known" or final["amount"] is None or final["currency"] is None
+        raw = json.dumps({"kind": kind, "sort": sort, "filters": cursor_filters, "snapshot": snapshot_at,
+                          "date": cursor_value, "id": final["id"], "effective_sort": effective_sort,
+                          "sort_error": sort_error, "unpriced": unpriced, "publication": final["source_published_at"]}, separators=(",", ":")).encode()
         next_cursor = base64.urlsafe_b64encode(raw).decode().rstrip("=")
     saved_ids = set()
     if owner_id and rows:

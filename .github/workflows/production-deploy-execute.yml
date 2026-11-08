@@ -37,6 +37,21 @@ on:
         required: false
         type: string
         default: "deploy"
+      owned_mode:
+        description: "Режим адресного восстановления: preflight/apply"
+        required: false
+        type: string
+        default: preflight
+      owned_source_pr:
+        description: "Merged PR с обязательным независимым approval"
+        required: false
+        type: number
+        default: 0
+      owned_backup_proof:
+        description: "Закрытое подтверждение свежего backup/restore на сервере"
+        required: false
+        type: string
+        default: ''
     secrets:
       SERVER_HOST:
         required: false
@@ -97,7 +112,7 @@ jobs:
           set -euo pipefail
           case "$OPERATION:$DEPLOY_SCOPE" in
             deploy:full|sync_push_mode:full) ;;
-            deploy:external_feed_overlay|sync_openai_key:full|sync_voice_timeout:full)
+            deploy:external_feed_overlay|deploy:owned_listing_overlay|sync_openai_key:full|sync_voice_timeout:full)
               test "$CALLER_REF" = refs/heads/main
               test "$CALLER_SHA" = "$DEPLOY_SHA"
               ;;
@@ -586,3 +601,57 @@ jobs:
           bash scripts/deploy-ssh.sh scp "$bundle" "$SERVER_USER@$SERVER_HOST:${remote}.tar.gz"
           bash scripts/deploy-ssh.sh scp scripts/ops/external_feed_production_overlay.py "$SERVER_USER@$SERVER_HOST:${remote}.py"
           bash scripts/deploy-ssh.sh ssh "python3 '${remote}.py' --bundle '${remote}.tar.gz' --bundle-sha256 '$checksum' --source-sha '$DEPLOY_SHA'"
+
+  owned-listing-overlay:
+    needs: [validate-scope]
+    if: ${{ inputs.operation == 'deploy' && inputs.deploy_scope == 'owned_listing_overlay' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      DEPLOY_SHA: ${{ inputs.deploy_sha }}
+      OWNED_MODE: ${{ inputs.owned_mode }}
+      OWNED_PR: ${{ inputs.owned_source_pr }}
+      BACKUP_PROOF: ${{ inputs.owned_backup_proof }}
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      URTRUCK_REQUIRE_KEY: "1"
+    steps:
+      - name: Получить точный проверенный источник
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+      - name: Проверить независимое решение review текущего HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ops/owned_listing_review_gate.py --pr "$OWNED_PR" --sha "$DEPLOY_SHA"
+      - name: Собрать адресный пакет из точного дерева Git
+        run: |
+          set -euo pipefail
+          test "$(cat .production-deploy-mode)" = manual_external_feed_overlay
+          test "$OWNED_MODE" = preflight || test "$OWNED_MODE" = apply
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [ "$OWNED_MODE" = apply ]; then
+            [[ "$BACKUP_PROOF" =~ ^/home/ubuntu/urtruck-backups/[a-zA-Z0-9_/-]+/result\.json$ ]]
+            [[ "$BACKUP_PROOF" != *..* ]]
+          else
+            test -z "$BACKUP_PROOF"
+          fi
+          python3 scripts/ops/build_owned_listing_overlay.py --output "$RUNNER_TEMP/owned.tar.gz" --source-sha "$DEPLOY_SHA"
+      - name: Выполнить проверенный адресный writer
+        run: |
+          set -euo pipefail
+          remote="/tmp/urtruck-owned-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          bash scripts/deploy-ssh.sh ssh "umask 077; mkdir -m700 '$remote'"
+          bundle="$RUNNER_TEMP/owned.tar.gz"
+          checksum=$(sha256sum "$bundle" | cut -d' ' -f1)
+          bash scripts/deploy-ssh.sh scp "$bundle" scripts/ops/owned_listing_production_overlay.py scripts/ops/owned_listing_recovery.py scripts/ops/runtime_release_manifest.py scripts/ops/external_feed_production_overlay.py "$SERVER_USER@$SERVER_HOST:$remote/"
+          proof_argument=""
+          if [ "$OWNED_MODE" = apply ]; then proof_argument="--backup-proof '$BACKUP_PROOF'"; fi
+          bash scripts/deploy-ssh.sh ssh "python3 '$remote/owned_listing_production_overlay.py' --bundle '$remote/owned.tar.gz' --bundle-sha256 '$checksum' --source-sha '$DEPLOY_SHA' --mode '$OWNED_MODE' $proof_argument"

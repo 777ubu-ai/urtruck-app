@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from database.db import get_conn
 from api.verification_gate import require_level
 
@@ -28,6 +28,59 @@ DEAL_NOTIFICATION_TYPES = {
     "trip_status",
     "tracking",
 }
+
+_CHAT_NOTIFICATION_TYPES = ("chat_message", "chat_attachment")
+_DEAL_BADGE_NOTIFICATION_TYPES = tuple(sorted(DEAL_NOTIFICATION_TYPES))
+_ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
+    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
+)
+
+
+def unread_badge_count(user_id: str) -> int:
+    """Return the one authoritative native-app badge total for ``user_id``.
+
+    Bottom navigation, launcher and push payloads share a Deals attention
+    counter: durable deal/bid/tracking events plus unread messages in live
+    participant rooms. General reminders and profile reviews remain in the
+    notification history, but must not make a fully read Deals tab show 9+.
+    Chat notification mirrors are excluded to avoid counting a message twice.
+    """
+    if not user_id:
+        return 0
+    placeholders = ",".join("?" for _ in _ACTIVE_CHAT_BADGE_DEAL_STATUSES)
+    chat_query = f"""
+        SELECT COUNT(*) AS cnt FROM chat_messages m
+        JOIN chat_rooms r ON m.room_id = r.id
+        WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+          AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
+          AND (
+            (r.cargo_id IS NULL AND r.trip_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id))
+            OR EXISTS (
+              SELECT 1 FROM deals d
+              WHERE d.status IN ({placeholders})
+                AND (
+                  d.chat_room_id = r.id
+                  OR (d.chat_room_id IS NULL AND (
+                    (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                    OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                  ))
+                )
+            )
+          )
+    """
+    with get_conn() as c:
+        event_placeholders = ",".join("?" for _ in _DEAL_BADGE_NOTIFICATION_TYPES)
+        notification_row = c.execute(
+            "SELECT COUNT(*) AS cnt FROM notifications "
+            f"WHERE user_id = ? AND is_read = 0 AND type IN ({event_placeholders})",
+            (user_id, *_DEAL_BADGE_NOTIFICATION_TYPES),
+        ).fetchone()
+        chat_row = c.execute(
+            chat_query,
+            (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
+        ).fetchone()
+    return int(notification_row["cnt"] if notification_row else 0) + int(chat_row["cnt"] if chat_row else 0)
 
 
 def _init():
@@ -91,7 +144,10 @@ def _notification_path(value: str) -> str:
     return path.rstrip("/") or "/"
 
 
-def mark_notifications_read_by_urls(user_id: str, urls) -> int:
+def mark_notifications_read_by_urls(
+    user_id: str, urls, *, read_through_id: int | None = None,
+    chat_message_read_through: int | None = None,
+) -> int:
     """Mark unread notifications whose canonical path was actually opened.
 
     Matching is performed in Python after selecting only this user's unread
@@ -106,11 +162,26 @@ def mark_notifications_read_by_urls(user_id: str, urls) -> int:
 
     try:
         with get_conn() as c:
-            rows = c.execute(
-                "SELECT id, url FROM notifications WHERE user_id = ? AND is_read = 0",
-                (user_id,),
-            ).fetchall()
-            ids = [row["id"] for row in rows if _notification_path(row["url"]) in target_paths]
+            query = "SELECT id, url, type, event_key FROM notifications WHERE user_id = ? AND is_read = 0"
+            params = [user_id]
+            if read_through_id is not None:
+                query += " AND id <= ?"
+                params.append(read_through_id)
+            rows = c.execute(query, params).fetchall()
+            ids = []
+            for row in rows:
+                if _notification_path(row["url"]) not in target_paths:
+                    continue
+                # Chat event_key содержит исходный message id. Пагинация
+                # старой истории не читает более новые события той же комнаты.
+                # Старые записи без ключа ограничены снимком notification id.
+                if chat_message_read_through is not None and row["type"] in _CHAT_NOTIFICATION_TYPES:
+                    event_key = str(row["event_key"] or "")
+                    message_id = event_key.rsplit(":msg:", 1)[-1]
+                    if event_key.startswith("chat:") and ":msg:" in event_key and message_id.isdigit():
+                        if int(message_id) > chat_message_read_through:
+                            continue
+                ids.append(row["id"])
             if not ids:
                 return 0
             placeholders = ",".join("?" for _ in ids)
@@ -147,15 +218,33 @@ def unread_count(user=Depends(require_level(1))):
     return {"unread": row["cnt"] if row else 0}
 
 
+@notif_router.get("/badge")
+def badge_count(user=Depends(require_level(1))):
+    """Canonical launcher badge, including zero after completed deals."""
+    return {"badge": unread_badge_count(user["id"])}
+
+
 @notif_router.post("/read-all")
 def mark_all_read(user=Depends(require_level(1))):
     with get_conn() as c:
-        c.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0", (user["id"],))
-    return {"ok": True}
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
+        rows = c.execute("SELECT id,event_key FROM notifications WHERE user_id=? AND is_read=0", (user["id"],)).fetchall()
+        if rows:
+            boundary = max(row["id"] for row in rows)
+            c.execute("UPDATE notifications SET is_read=1 WHERE user_id=? AND is_read=0 AND id<=?", (user["id"], boundary))
+    return {"ok": True, "read_ids": [row["id"] for row in rows],
+            "read_event_keys": [row["event_key"] for row in rows if row["event_key"]]}
 
 
 @notif_router.post("/read/{notif_id}")
 def mark_read(notif_id: int, user=Depends(require_level(1))):
     with get_conn() as c:
-        c.execute("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?", (notif_id, user["id"]))
-    return {"ok": True}
+        if not c.in_transaction:
+            c.execute("BEGIN IMMEDIATE")
+        row = c.execute("SELECT id,event_key FROM notifications WHERE id=? AND user_id=?", (notif_id, user["id"])).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Notification not found")
+        c.execute("UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?", (notif_id, user["id"]))
+    return {"ok": True, "read_ids": [row["id"]],
+            "read_event_keys": [row["event_key"]] if row["event_key"] else []}
