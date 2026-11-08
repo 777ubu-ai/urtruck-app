@@ -184,7 +184,7 @@ jobs:
           SERVER_USER: ${{ secrets.SERVER_USER }}
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
           SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
-          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+          BACKEND_DIR: /home/ubuntu/urtruck/backend
           URTRUCK_REQUIRE_KEY: '1'
         run: |
           set -euo pipefail
