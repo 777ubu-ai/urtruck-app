@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, chmodSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -11,27 +11,35 @@ function block(file, name) {
   const run = text.split('        run: |\n')[1].split('\n      - name:')[0];
   return run.split('\n').map(line => line.replace(/^          /, '')).join('\n');
 }
-function execute(script, environment) {
+function execute(script, environment, files = {}) {
   const root = mkdtempSync(join(tmpdir(), 'urtruck-counters-'));
   try {
     mkdirSync(join(root, 'bin'));
+    for (const [name, value] of Object.entries(files)) writeFileSync(join(root, name), JSON.stringify(value));
     for (const [name, body] of Object.entries({ npx: 'printf \'%s\\n\' "$FAKE_EAS_JSON"', date: 'printf \'%s\\n\' "$FAKE_EPOCH"' })) {
       const path = join(root, 'bin', name); writeFileSync(path, '#!/bin/sh\n' + body + '\n'); chmodSync(path, 0o755);
     }
     const output = join(root, 'environment');
-    const result = spawnSync('/bin/bash', ['-c', script], { encoding: 'utf8', env: {
+    const result = spawnSync('/bin/bash', ['-c', script], { cwd: root, encoding: 'utf8', env: {
       ...process.env, PATH: join(root, 'bin') + ':' + process.env.PATH,
       RUNNER_TEMP: root, GITHUB_ENV: output, GITHUB_REF_NAME: 'qa2/integration-candidate', ...environment,
     } });
-    return { status: result.status, output: result.status === 0 ? readFileSync(output, 'utf8') : '', stderr: result.stderr };
+    return { status: result.status, output: result.status === 0 && existsSync(output) ? readFileSync(output, 'utf8') : '', stderr: result.stderr };
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
-const ios = block('.github/workflows/testflight-rc.yml', 'Read remote iOS build counter before incrementing');
-for (const [remote, floor, ok] of [['111', '111', true], ['115', '112', true], ['110', '111', false], ['', '111', false], ['bad', '111', false]]) {
-  test(`iOS EAS ${remote || 'missing'} / ASC ${floor}: ${ok ? 'PASS' : 'отказ до сборки'}`, () => {
-    const result = execute(ios, { FAKE_EAS_JSON: JSON.stringify({ buildNumber: remote }), URTRUCK_MIN_IOS_BUILD: floor });
+const ios = block('.github/workflows/testflight-rc.yml', 'Verify version-local iOS counter without changing remote state');
+for (const [source, autoIncrement, configured, requested, ok] of [
+  ['local', false, '1', '1', true], ['local', false, '100', '100', true],
+  ['remote', false, '1', '1', false], ['local', true, '1', '1', false],
+  ['local', false, '2', '1', false], ['local', false, undefined, '1', false],
+]) {
+  test(`iOS серия: ${source}, autoIncrement=${autoIncrement}, ${configured}/${requested}: ${ok ? 'PASS' : 'отказ до сборки'}`, () => {
+    const result = execute(ios, { URTRUCK_IOS_BUILD_NUMBER: requested }, {
+      'eas.json': { cli: { appVersionSource: source }, build: { production: { ios: { autoIncrement } } } },
+      'app.json': { expo: { ios: { buildNumber: configured } } },
+    });
     assert.equal(result.status === 0, ok, result.stderr);
-    if (ok) assert.equal(result.output, `URTRUCK_EAS_IOS_BUILD_BEFORE=${remote}\n`);
+    if (ok) assert.equal(result.output, '', 'remote counter не перезаписывается');
   });
 }
 const android = block('.github/workflows/deploy-play.yml', 'Compute collision-resistant versionCode');
