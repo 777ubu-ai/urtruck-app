@@ -199,8 +199,21 @@ def test_stale_snapshot_visible_and_actionable_before_cleanup(kind):
     app = FastAPI()
     app.include_router(market.mp_router, prefix="/market")
     for demo in (False, True):
-        response = TestClient(app).get("/market/" + table, params={"show_demo": demo, "limit": 200})
-        assert [r["id"] for r in response.json()[table]].count(iid) == 1
+        # Старое объявление может находиться после первых 200 записей
+        # общего набора. Проверяем выдачу целиком, включая пустые страницы.
+        offset, visible_ids = 0, []
+        while True:
+            response = TestClient(app).get("/market/" + table,
+                                           params={"show_demo": demo, "limit": 200, "offset": offset})
+            assert response.status_code == 200
+            page = response.json()
+            visible_ids.extend(r["id"] for r in page[table])
+            next_offset = page["next_offset"]
+            if next_offset is None:
+                break
+            assert next_offset > offset
+            offset = next_offset
+        assert visible_ids.count(iid) == 1
     result = market.create_bid(market.BidIn(**{kind + "_id": iid}, amount=100), user={"id": db.new_id(), "role": "driver" if kind == "cargo" else "client"})
     assert result["ok"]
     with db.get_conn() as c:
