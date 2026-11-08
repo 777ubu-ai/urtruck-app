@@ -36,3 +36,13 @@ test('public cargo search remains unauthenticated when saved-only is off', async
   assert.equal(harness.captured.init?.headers?.Authorization, undefined);
   assert.equal(result.serverError, undefined);
 });
+
+test('избранные рейсы передают текущую сессию, обычные остаются публичными',async()=>{
+  const method=api.slice(api.indexOf('  async listTrips('),api.indexOf('  async getTrip('));
+  let captured;
+  const fn=new Function('authedFetch','BASE','URLSearchParams','headers','return {'+method+'}.listTrips;')(
+    async(url,init)=>{captured={url,init};return{ok:true,json:async()=>({trips:[],search_contract:1})};},
+    '/api/v1/market',URLSearchParams,async()=>({Authorization:'Bearer current-session'}));
+  await fn({savedOnly:true});assert.equal(captured.init?.headers?.Authorization,'Bearer current-session');
+  await fn({savedOnly:false});assert.equal(captured.init?.headers?.Authorization,undefined);
+});

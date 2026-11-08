@@ -332,7 +332,8 @@ export const marketAPI = {
       });
       if (minPrice != null) params.set('min_price', String(minPrice));
       if (maxPrice != null) params.set('max_price', String(maxPrice));
-      const r = await authedFetch(`${BASE}/trips?${params}`);
+      const init = savedOnly ? { headers: await headers() } : undefined;
+      const r = await authedFetch(`${BASE}/trips?${params}`, init);
       if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
       const data = await r.json();
       if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {

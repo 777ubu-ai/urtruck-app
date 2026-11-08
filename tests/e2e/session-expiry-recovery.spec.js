@@ -3,7 +3,7 @@ const base = process.env.E2E_BASE_URL || 'http://127.0.0.1:4799';
 if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) throw new Error('Тест восстановления требует локальную web-сборку');
 
 async function setup(page, status, role = 'client') {
-  const errors = [], sends = [];
+  const errors = [], sends = [], favoriteHeaders = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(r => {
     if (sessionStorage.getItem('session-fixture')) return;
@@ -18,6 +18,7 @@ async function setup(page, status, role = 'client') {
   },role);
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),url=new URL(request.url()),bearer=request.headers().authorization;
+    if(url.pathname.endsWith('/market/trips') && url.searchParams.get('saved_only')==='true')favoriteHeaders.push(bearer);
     let body={ok:true,items:[],threads:[],favorites:[],my_cargos:[],my_trips:[],my_bids:[],incoming_bids:[],my_deals:[],count:0};
     if(url.pathname.endsWith('/register/me')){
       if(bearer==='Bearer old-A' && status==='offline')return route.abort('internetdisconnected');
@@ -33,7 +34,7 @@ async function setup(page, status, role = 'client') {
     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
   });
   await page.goto(base,{waitUntil:'domcontentloaded'});
-  return {errors,sends};
+  return {errors,sends,favoriteHeaders};
 }
 
 for(const role of ['driver','client'])test(`${role}:401 открывает повторный вход с сохранением работы`,async({page})=>{
@@ -67,4 +68,12 @@ test('после401 входB не получает общую форму и о�
   expect(await page.evaluate(()=>localStorage.getItem('ur_draft_registration'))).toBeNull();
   expect(await page.evaluate(()=>localStorage.getItem('ur_chat_outbox'))).toContain('Не отправленоA');
   expect(state.errors).toEqual([]);expect(state.sends).toEqual([]);
+});
+
+test('избранные рейсы передают bearer текущего аккаунта из настоящего UI',async({page})=>{
+  const state=await setup(page,200);
+  await page.getByTestId('bottom-nav-feed').click();
+  await page.getByTestId('trip-filter-favorites').click();
+  await expect.poll(()=>state.favoriteHeaders).toEqual(['Bearer old-A']);
+  expect(state.errors).toEqual([]);
 });

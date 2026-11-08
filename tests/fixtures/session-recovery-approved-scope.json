@@ -5,6 +5,7 @@
     "src/utils/AuthContext.js": "38af9fc9de284b22475c54fa13afdb040665c8565c402fe11376d526c1bb208a",
     "src/utils/registration.js": "89f967b9cbca8d24c855b05658e5b8642d2365633d9e774bafd13d2fb3b54181",
     "src/screens/DealWorkspaceScreenV2.js": "784c7d4d0ce41b602db36c196f136a8ca77a5c7c9509257964c071f5685b12b1",
-    "src/navigation/AppNavigator.js": "ea8c3aae8ce55f0e930139b4ae6f1df605468f062c68ac6aae598f039dc64551"
+    "src/navigation/AppNavigator.js": "ea8c3aae8ce55f0e930139b4ae6f1df605468f062c68ac6aae598f039dc64551",
+    "src/utils/marketAPI.js": "b75bc8a770919e5155a9c25c89d35a437a2ababd786d47b4723c77b3d4bcb9a8"
   }
 }
