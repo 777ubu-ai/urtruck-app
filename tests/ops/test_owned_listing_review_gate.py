@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts/ops'))
 from owned_listing_review_gate import validate, REPOSITORY, owner_authorization, AUTHORIZED_FILES
 from datetime import datetime, timezone
 import json
-import shutil
+import hashlib
 
 SHA = 'a' * 40
 HEAD = 'b' * 40
@@ -75,8 +75,32 @@ def test_owner_exception_is_reported_without_fabricated_approval():
             validate(altered, reviews, main, SHA, owner_authorized=True)
 
 
-def test_exact_reviewed_tree_qualifies_only_for_owner_operation():
-    root = Path(__file__).resolve().parents[2]
+@pytest.fixture
+def approved_payload(tmp_path, monkeypatch):
+    """Положительный эталон не должен зависеть от последующих изменений runtime."""
+    import owned_listing_review_gate as gate
+    main = b'baseline main\n'
+    market = b'reviewed marketplace\n'
+    files = {'backend/main.py': main, 'backend/api/marketplace.py': market}
+    manifest = {
+        'baseline_files': {'main.py': hashlib.sha256(main).hexdigest(),
+                           'api/marketplace.py': hashlib.sha256(b'old marketplace').hexdigest()},
+        'files': {'api/marketplace.py': hashlib.sha256(market).hexdigest()},
+    }
+    for name in AUTHORIZED_FILES:
+        files[name] = (json.dumps(manifest).encode() if name.endswith('/manifest.json')
+                       else ('reviewed fixture: ' + name).encode())
+    for name, value in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(value)
+    monkeypatch.setattr(gate, 'AUTHORIZED_FILES',
+                        {name: hashlib.sha256(files[name]).hexdigest() for name in AUTHORIZED_FILES})
+    return tmp_path
+
+
+def test_exact_reviewed_tree_qualifies_only_for_owner_operation(approved_payload):
+    root = approved_payload
     pr = authorized_pr()
     now = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
     assert owner_authorization(pr, root, now)
@@ -91,20 +115,25 @@ def test_exact_reviewed_tree_qualifies_only_for_owner_operation():
 @pytest.mark.parametrize('changed', ['backend/api/marketplace.py', 'backend/main.py',
     'scripts/ops/owned_listing_recovery.py', 'ops/owned-listing-production/manifest.json',
     '.github/workflows/production-deploy-execute.yml'])
-def test_owner_exception_rejects_runtime_controller_manifest_and_workflow_drift(tmp_path, changed):
-    root = Path(__file__).resolve().parents[2]
-    manifest = json.loads((root / 'ops/owned-listing-production/manifest.json').read_text())
-    names = list(AUTHORIZED_FILES) + ['backend/' + name for name in manifest['baseline_files']]
-    for name in names:
-        destination = tmp_path / name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / name, destination)
+def test_owner_exception_rejects_runtime_controller_manifest_and_workflow_drift(approved_payload, changed):
+    tmp_path = approved_payload
     pr = authorized_pr()
     now = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
     assert owner_authorization(pr, tmp_path, now)
     with (tmp_path / changed).open('ab') as stream:
         stream.write(b'\n# drift\n')
     assert not owner_authorization(pr, tmp_path, now)
+
+
+def test_current_changed_payload_does_not_inherit_original_owner_exception():
+    """Новые runtime-изменения не получают разрешение прежнего пакета PR693."""
+    root = Path(__file__).resolve().parents[2]
+    manifest = json.loads((root / 'ops/owned-listing-production/manifest.json').read_text())
+    expected = {**manifest['baseline_files'], **manifest['files']}
+    changed = any(hashlib.sha256((root / 'backend' / name).read_bytes()).hexdigest() != digest
+                  for name, digest in expected.items())
+    if changed:
+        assert not owner_authorization(authorized_pr(), root, datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
 
 
 def test_existing_production_callers_do_not_lose_required_read_permissions():

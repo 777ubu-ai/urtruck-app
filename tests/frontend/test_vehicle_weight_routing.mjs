@@ -122,6 +122,6 @@ test('ORS restrictions.weight is derived only from weight_t, never from payload_
 test('backend get_deal() returns the cargo/trip weight data that already exists in the schema, not fabricated fields', () => {
   assert.match(marketplace, /SELECT cargo_desc, currency, from_country, to_country, weight_tons FROM cargos WHERE id = \?/);
   assert.match(marketplace, /d\.setdefault\("cargo_weight_tons", cr\["weight_tons"\]\)/);
-  assert.match(marketplace, /SELECT driver_id, from_country, to_country, capacity_tons FROM trips WHERE id = \?/);
+  assert.match(marketplace, /SELECT driver_id, from_country, to_country, capacity_tons, currency FROM trips WHERE id = \?/);
   assert.match(marketplace, /d\.setdefault\("trip_capacity_tons", tr\["capacity_tons"\]\)/);
 });
