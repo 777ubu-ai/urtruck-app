@@ -98,8 +98,8 @@ const api = readFileSync('src/utils/marketAPI.js', 'utf8');
 test('listTrips передаёт offset в настоящий запрос API', async () => {
   const method = api.slice(api.indexOf('  async listTrips('), api.indexOf('  async getTrip('));
   let url;
-  const load = new Function('authedFetch', 'BASE', 'URLSearchParams', 'return {' + method + '}.listTrips;')(
-    async value => { url = value; return { ok: true, json: async () => ({ trips: [], search_contract: 1 }) }; }, '/market', URLSearchParams);
+  const load = new Function('authedFetch', 'BASE', 'URLSearchParams', 'headers', 'return {' + method + '}.listTrips;')(
+    async value => { url = value; return { ok: true, json: async () => ({ trips: [], search_contract: 1 }) }; }, '/market', URLSearchParams, async()=>({Authorization:'Bearer pagination-test'}));
   await load({ limit: 50, offset: 250, dateFrom: '2099-10-20', minPrice: 500, currency: 'USD', sortBy: 'price-asc', savedOnly: true });
   assert.match(url, /limit=50/); assert.match(url, /offset=250/);
   assert.match(url, /date_from=2099-10-20/); assert.match(url, /min_price=500/);
