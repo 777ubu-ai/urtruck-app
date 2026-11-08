@@ -1,4 +1,4 @@
-name: UrTruck Production TestFlight Candidate
+name: UrTruck Production TestFlight 1.0.15 (2)
 
 on:
   workflow_dispatch:
@@ -7,9 +7,22 @@ on:
         description: Type BUILD_PRODUCTION_TESTFLIGHT
         required: true
         type: string
-      last_verified_ios_build:
-        description: Latest iOS build number confirmed in App Store Connect immediately before dispatch
+      source_sha:
+        description: Exact source SHA of merged PR696; client changes require a new review
         required: true
+        type: string
+      merged_pr_number:
+        description: Merged QA2 source PR; must be 696 for this candidate
+        required: true
+        type: string
+      last_verified_ios_build:
+        description: Последний подтверждённый номер именно в версии 1.0.15; 0 для пустой серии
+        required: true
+        type: string
+      ios_build_number:
+        description: Номер новой сборки 1–100 внутри версии 1.0.15 (001 соответствует 1)
+        required: true
+        default: '2'
         type: string
 
 permissions:
@@ -22,100 +35,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  quality-gate:
-    uses: ./.github/workflows/quality-gate-reusable.yml
-
   build-and-upload:
-    needs: quality-gate
     runs-on: macos-15
     timeout-minutes: 180
+    # Боевые credentials остаются за штатным environment gate.
+    environment: production
     env:
+      APP_SOURCE_SHA: ${{ inputs.source_sha }}
       GH_TOKEN: ${{ github.token }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      PRODUCTION_API_URL: https://urtruck.kz
       EXPO_PUBLIC_API_URL: https://urtruck.kz
-      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
-      EXPO_PUBLIC_IS_BETA: 'false'
       URTRUCK_BUILD_FLAVOR: production
-      URTRUCK_SOURCE_SHA: dc982a291c5f0190612710b20da2be925bd5aa91
-      URTRUCK_RELEASE_COMMIT_SHA: ${{ github.sha }}
-      URTRUCK_VERSION_NAME: 1.0.12
+      URTRUCK_SOURCE_SHA: ${{ inputs.source_sha }}
+      EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
+      # Только версия1.0.15: build2; общий EAS counter не сбрасываем.
+      URTRUCK_VERSION_NAME: 1.0.15
       URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}
+      URTRUCK_IOS_BUILD_NUMBER: ${{ inputs.ios_build_number }}
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
       EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: ${{ secrets.YANDEX_MAPKIT_API_KEY }}
       YANDEX_ROUTER_API_KEY: ${{ secrets.YANDEX_ROUTER_API_KEY }}
       OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
 
     steps:
-      - name: Checkout release configuration candidate
+      - name: Checkout exact reviewed application source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Checkout release guards separately from application source
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Verify source, PR, CI, and production credentials
-        shell: bash
-        env:
-          CONFIRMATION: ${{ inputs.confirmation }}
-        run: |
-          set -euo pipefail
-          test "$GITHUB_EVENT_NAME" = workflow_dispatch
-          test "$GITHUB_REF_NAME" = release/appstore-1.0.12-20261026
-          test "$CONFIRMATION" = BUILD_PRODUCTION_TESTFLIGHT
-          test "$(git rev-parse HEAD)" = "$URTRUCK_RELEASE_COMMIT_SHA"
-          test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-          test "$URTRUCK_SOURCE_SHA" = dc982a291c5f0190612710b20da2be925bd5aa91
-          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
-          test -n "${EXPO_TOKEN:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
-          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
-
-          git merge-base --is-ancestor "$URTRUCK_SOURCE_SHA" "$URTRUCK_RELEASE_COMMIT_SHA"
-          RELEASE_DIFF="$(git diff --name-only "$URTRUCK_SOURCE_SHA" "$URTRUCK_RELEASE_COMMIT_SHA" | sort)"
-          EXPECTED_DIFF="$(printf '%s\n' \
-            .github/workflows/testflight-local.yml \
-            android/app/build.gradle \
-            app.config.js \
-            app.json \
-            eas.json \
-            ios/UrTruck.xcodeproj/project.pbxproj \
-            ios/UrTruck/Info.plist | sort)"
-          test "$RELEASE_DIFF" = "$EXPECTED_DIFF" || {
-            echo '::error::Release candidate contains changes outside release metadata/workflow'
-            exit 1
-          }
-
-          SOURCE_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
-          test "$(jq -r '.state' <<<"$SOURCE_PR")" = closed
-          test "$(jq -r '.merged' <<<"$SOURCE_PR")" = true
-          test "$(jq -r '.merge_commit_sha' <<<"$SOURCE_PR")" = "$URTRUCK_SOURCE_SHA"
-
-          RELEASE_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=$GITHUB_REPOSITORY:$GITHUB_REF_NAME&state=all")"
-          test "$(jq 'length' <<<"$RELEASE_PR")" = 1
-          test "$(jq -r '.[0].base.ref' <<<"$RELEASE_PR")" = qa2/integration-candidate
-          test "$(jq -r '.[0].head.sha' <<<"$RELEASE_PR")" = "$GITHUB_SHA"
-          RELEASE_PR_STATE="$(jq -r '.[0].state' <<<"$RELEASE_PR")"
-          RELEASE_PR_MERGED="$(jq -r '.[0].merged' <<<"$RELEASE_PR")"
-          test "$RELEASE_PR_STATE" = open || { test "$RELEASE_PR_STATE" = closed && test "$RELEASE_PR_MERGED" = true; } || {
-            echo '::error::Release PR must remain open or be merged; closed unmerged PRs cannot build'
-            exit 1
-          }
-
-          SOURCE_PR_HEAD="$(jq -r '.head.sha' <<<"$SOURCE_PR")"
-          SOURCE_CHECKS="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_PR_HEAD/check-runs?per_page=100")"
-          for CHECK_NAME in \
-            'quality-gate / Backend tests' \
-            'quality-gate / Frontend tests, lint, and build' \
-            'quality-gate / Mandatory web E2E subset'; do
-            CONCLUSION="$(jq -r --arg name "$CHECK_NAME" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"' <<<"$SOURCE_CHECKS")"
-            test "$CONCLUSION" = success || {
-              echo "::error::PR605 source check '$CHECK_NAME' is '$CONCLUSION'"
-              exit 1
-            }
-          done
-
-          echo "SOURCE_SHA=$URTRUCK_SOURCE_SHA"
-          echo "RELEASE_CONFIG_SHA=$URTRUCK_RELEASE_COMMIT_SHA"
-          echo "Required signing and MapKit secrets are present (values suppressed)."
+          path: release-config
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -123,62 +78,213 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Verify protected production TestFlight intent
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          MERGED_PR_NUMBER: ${{ inputs.merged_pr_number }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          test "$GITHUB_REF_NAME" = release/testflight-production-1.0.15-2-20261108
+          test "$CONFIRMATION" = BUILD_PRODUCTION_TESTFLIGHT
+          [[ "$APP_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MERGED_PR_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]]
+          test "$(git rev-parse HEAD)" = "$APP_SOURCE_SHA"
+          test "$APP_SOURCE_SHA" = ec27f12539f9306b270be348193cc45fa380829e
+          test "$MERGED_PR_NUMBER" = 696
+          test "$URTRUCK_IOS_BUILD_NUMBER" = 2
+          test "$URTRUCK_MIN_IOS_BUILD" = 1
+          # Сборка приложения берётся из reviewed merge696; release workflow имеет отдельный SHA.
+          RELEASE_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=777ubu-ai:$GITHUB_REF_NAME&state=open")"
+          test "$(jq 'length' <<<"$RELEASE_PR")" = 1
+          test "$(jq -r '.[0].head.sha' <<<"$RELEASE_PR")" = "$GITHUB_SHA"
+          test "$(jq -r '.[0].base.ref' <<<"$RELEASE_PR")" = qa2/integration-candidate
+          git fetch origin "$GITHUB_SHA" --depth=1
+          git diff --name-only "$APP_SOURCE_SHA" "$GITHUB_SHA" > "$RUNNER_TEMP/release-diff.txt"
+          python3 - "$RUNNER_TEMP/release-diff.txt" <<'PYDIFF'
+          from pathlib import Path
+          import sys
+          allowed = {'.github/workflows/testflight-local.yml',
+                     'docs/release/testflight-production-1.0.15-2.md',
+                     'docs/release/testflight-production-1.0.15-2-preflight.json',
+                     'tests/ops/test_production_testflight_115_2.py',
+                     'docs/release/testflight-production-115-2-backend.json'}
+          changed = set(Path(sys.argv[1]).read_text().splitlines())
+          assert changed and changed <= allowed, changed
+          PYDIFF
+          RELEASE_CHECKS="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100")"
+          for name in 'quality-gate / Backend tests' 'quality-gate / Frontend tests, lint, and build' 'quality-gate / Mandatory web E2E subset'; do
+            test "$(jq -r --arg name "$name" '[.check_runs[]|select(.name==$name)]|sort_by(.id)|last|.conclusion // "missing"' <<<"$RELEASE_CHECKS")" = success
+          done
+          BACKEND_PR="$(gh api "repos/$GITHUB_REPOSITORY/pulls/695")"
+          test "$(jq -r '.merged' <<<"$BACKEND_PR")" = true
+          EXPECTED_BACKEND="$(jq -r '.merge_commit_sha' <<<"$BACKEND_PR")"
+          export EXPECTED_BACKEND
+          test "$(jq -r '.head.sha' <<<"$BACKEND_PR")" = 86704fc4c2c560e747d978db6378c4cac456a25e
+          test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
+          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^(0|[1-9][0-9]{0,2})$ ]]
+          [[ "$URTRUCK_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,2}$ ]]
+          test "$URTRUCK_MIN_IOS_BUILD" -le 100
+          test "$URTRUCK_IOS_BUILD_NUMBER" -le 100
+          test "$URTRUCK_IOS_BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
+          PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
+          test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"
+          test "$(jq -r '.base.ref' <<<"$PR_JSON")" = qa2/integration-candidate
+          test "$(jq -r '.state' <<<"$PR_JSON")" = closed
+          test "$(jq -r '.merged' <<<"$PR_JSON")" = true
+          test "$(jq -r '.merge_commit_sha' <<<"$PR_JSON")" = "$APP_SOURCE_SHA"
+          PR_HEAD_SHA="$(jq -r '.head.sha' <<<"$PR_JSON")"
+          BASE_PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/605")"
+          BASE_PR_SHA="$(jq -r '.merge_commit_sha' <<<"$BASE_PR_JSON")"
+          test "$(jq -r '.merged' <<<"$BASE_PR_JSON")" = true
+          git fetch origin "$BASE_PR_SHA" --depth=1
+          git merge-base --is-ancestor "$BASE_PR_SHA" "$APP_SOURCE_SHA"
+          git fetch origin "$PR_HEAD_SHA" --depth=1
+          git diff --quiet "$PR_HEAD_SHA" "$APP_SOURCE_SHA" -- || {
+            echo '::error::Merged candidate tree differs from the reviewed PR head'
+            exit 1
+          }
+          # Сверяем обязательные проверки PR, merge которого и есть точный source_sha.
+          CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/check-runs?per_page=100")"
+          for CHECK_NAME in \
+            'quality-gate / Backend tests' \
+            'quality-gate / Frontend tests, lint, and build' \
+            'quality-gate / Mandatory web E2E subset'; do
+            CHECK_CONCLUSION="$(printf '%s' "$CHECKS_JSON" | jq -r --arg name "$CHECK_NAME" '[.check_runs[] | select(.name == $name)] | sort_by(.id) | last | .conclusion // "missing"')"
+            test "$CHECK_CONCLUSION" = success || {
+              echo "::error::Required check '$CHECK_NAME' is '$CHECK_CONCLUSION' for $APP_SOURCE_SHA"
+              exit 1
+            }
+          done
+          test -n "${EXPO_TOKEN:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}"
+          test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
+          test -n "${PRODUCTION_API_URL:-}"
+          PRODUCTION_HOST="$(python3 - <<'PY'
+          from urllib.parse import urlparse
+          import os
+          print(urlparse(os.environ['PRODUCTION_API_URL']).hostname or '')
+          PY
+          )"
+          test "$PRODUCTION_HOST" = urtruck.kz || {
+            echo "::error::production TestFlight must target exactly urtruck.kz"
+            exit 1
+          }
+          test "${PRODUCTION_API_URL%/}" = https://urtruck.kz
+          curl -fsS --max-time 20 "${PRODUCTION_API_URL%/}/health" >/dev/null
+          echo "SOURCE_SHA=$APP_SOURCE_SHA"
+          echo "production_API_HOST=$PRODUCTION_HOST"
+          npx eas-cli@latest whoami
+
+      - name: Verify production backend files over pinned read-only SSH
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+          BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+          URTRUCK_REQUIRE_KEY: '1'
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          python3 - <<'PYPREP'
+          import base64, json, os, re, shlex
+          from pathlib import Path
+          root = os.environ['BACKEND_DIR']
+          assert root.startswith('/') and re.fullmatch(r'[A-Za-z0-9_./-]+', root)
+          manifest = Path('release-config/docs/release/testflight-production-115-2-backend.json').read_bytes()
+          value = json.loads(manifest)
+          assert value['source_sha'] == '86704fc4c2c560e747d978db6378c4cac456a25e'
+          code = Path('scripts/ops/runtime_release_manifest.py').read_text()
+          # Только функции проверки; CLI модуля не запускается на сервере.
+          code = code.split('if __name__ == "__main__":')[0]
+          code += "\nimport base64\nm=json.loads(base64.b64decode(" + repr(base64.b64encode(manifest).decode()) + "))\nprint(json.dumps(verify(Path(" + repr(root) + "),m,'production','86704fc4c2c560e747d978db6378c4cac456a25e')))\n"
+          Path(os.environ['RUNNER_TEMP'], 'verify-production-readonly.py').write_text(code)
+          PYPREP
+          bash scripts/deploy-ssh.sh ssh 'python3 -' < "$RUNNER_TEMP/verify-production-readonly.py"
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify production configuration and EAS build counter
-        id: release-config
+      - name: Prepare runner-only candidate version without native regeneration
         shell: bash
         run: |
           set -euo pipefail
-          EXPO_PUBLIC_API_URL=https://urtruck.kz \
-          EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED=true \
-          EXPO_PUBLIC_IS_BETA=false \
-          URTRUCK_BUILD_FLAVOR=production \
-          URTRUCK_SOURCE_SHA="$URTRUCK_SOURCE_SHA" \
-            npx expo config --type public --json > "$RUNNER_TEMP/production-config.json"
-          node - "$RUNNER_TEMP/production-config.json" <<'NODE'
+          python3 scripts/prepare_store_candidate_version.py --platform ios \
+            --version "$URTRUCK_VERSION_NAME" --source-sha "$APP_SOURCE_SHA" \
+            --build-number "$URTRUCK_IOS_BUILD_NUMBER"
+
+      - name: Verify resolved Expo production configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx expo config --type public --json > "$RUNNER_TEMP/expo-public.json"
+          node - "$RUNNER_TEMP/expo-public.json" "$PRODUCTION_API_URL" <<'NODE'
           const fs = require('fs');
-          const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const fail = (message) => { console.error(`::error::${message}`); process.exit(1); };
-          if (config.version !== '1.0.12') fail('Production marketing version mismatch');
-          if (config.ios?.bundleIdentifier !== 'com.urtruck.app') fail('iOS bundle ID mismatch');
-          if (config.extra?.urtruckApiUrl !== 'https://urtruck.kz') fail('Production API mismatch');
-          if (config.extra?.urtruckBuildFlavor !== 'production') fail('Production build flavor mismatch');
-          if (config.extra?.urtruckSourceSha !== 'dc982a291c5f0190612710b20da2be925bd5aa91') fail('Base source SHA mismatch');
-          if (config.extra?.urtruckExternalFreightFeedEnabled !== true) fail('External freight feed is not enabled in the production config');
-          console.log('Production Expo config identity: PASS');
+          const [configPath, expectedApi] = process.argv.slice(2);
+          const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          if (config.ios?.bundleIdentifier !== 'com.urtruck.app') {
+            throw new Error(`Unexpected iOS bundle: ${config.ios?.bundleIdentifier}`);
+          }
+          if (config.version !== process.env.URTRUCK_VERSION_NAME) {
+            throw new Error(`Unexpected version: ${config.version}`);
+          }
+          if (config.ios?.buildNumber !== process.env.URTRUCK_IOS_BUILD_NUMBER) {
+            throw new Error('Номер сборки Expo не совпадает с выбранным номером серии');
+          }
+          if (config.extra?.urtruckBuildFlavor !== 'production') {
+            throw new Error(`Unexpected build flavor: ${config.extra?.urtruckBuildFlavor}`);
+          }
+          if ((config.extra?.urtruckApiUrl || '').replace(/\/+$/, '') !== expectedApi.replace(/\/+$/, '')) {
+            throw new Error('Resolved Expo config does not contain the exact production API URL');
+          }
+          if (config.extra?.urtruckSourceSha !== process.env.APP_SOURCE_SHA || config.extra?.urtruckExternalFreightFeedEnabled !== true) throw new Error('Source/feed identity missing');
+          console.log('production_EXPO_CONFIG=pass');
           NODE
 
-          EXPO_PUBLIC_IS_BETA=false EAS_BUILD_PROFILE=production node scripts/check-production-config.mjs
-          npx eas-cli@latest whoami
-          npx eas-cli@latest build:version:get --platform ios --profile production --json --non-interactive > "$RUNNER_TEMP/eas-ios-version.json"
-          REMOTE_BUILD="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).buildNumber || ''" "$RUNNER_TEMP/eas-ios-version.json")"
-          [[ "$REMOTE_BUILD" =~ ^[1-9][0-9]{0,8}$ ]]
-          test "$REMOTE_BUILD" -ge "$URTRUCK_MIN_IOS_BUILD" || {
-            echo '::error::EAS build counter is behind the latest ASC build; sync counters before building'
-            exit 1
-          }
-          echo "remote_ios_build=$REMOTE_BUILD" >> "$GITHUB_OUTPUT"
-          echo "Next auto-incremented iOS build must be $((REMOTE_BUILD + 1))."
-
-      - name: Inject production runtime secrets into the local build profile
+      - name: Inject production runtime configuration
         shell: bash
         run: |
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          // Только runner production: глобальный production-счётчик EAS не сбрасываем.
+          eas.cli.appVersionSource = 'local';
+          eas.build.production.ios.autoIncrement = false;
           eas.build.production.env = {
             ...(eas.build.production.env || {}),
-            EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
-            EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED,
-            EXPO_PUBLIC_IS_BETA: process.env.EXPO_PUBLIC_IS_BETA,
+            URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR,
+            URTRUCK_VERSION_NAME: process.env.URTRUCK_VERSION_NAME,
+            URTRUCK_SOURCE_SHA: process.env.APP_SOURCE_SHA,
+            EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true',
+            EXPO_PUBLIC_API_URL: process.env.PRODUCTION_API_URL,
             EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY,
-            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY,
+            EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY: process.env.EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY
           };
-          if (process.env.YANDEX_ROUTER_API_KEY) eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
-          if (process.env.OPENROUTESERVICE_API_KEY) eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          if (process.env.YANDEX_ROUTER_API_KEY) {
+            eas.build.production.env.YANDEX_ROUTER_API_KEY = process.env.YANDEX_ROUTER_API_KEY;
+          }
+          if (process.env.OPENROUTESERVICE_API_KEY) {
+            eas.build.production.env.OPENROUTESERVICE_API_KEY = process.env.OPENROUTESERVICE_API_KEY;
+          }
           fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
+          NODE
+
+      - name: Verify version-local iOS counter without changing remote state
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          const app = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
+          if (eas.cli.appVersionSource !== 'local' || eas.build.production.ios.autoIncrement !== false
+              || app.ios.buildNumber !== process.env.URTRUCK_IOS_BUILD_NUMBER) {
+            throw new Error('Номер серии должен задаваться локально без изменения remote counter');
+          }
           NODE
 
       - name: Select Xcode 26
@@ -194,64 +300,66 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck.ipa"
-          test -s "$RUNNER_TEMP/UrTruck.ipa"
-          shasum -a 256 "$RUNNER_TEMP/UrTruck.ipa" | tee "$RUNNER_TEMP/UrTruck.ipa.sha256"
+          npx eas-cli@latest build --platform ios --profile production --local --non-interactive --output "$RUNNER_TEMP/UrTruck-production.ipa"
+          test -s "$RUNNER_TEMP/UrTruck-production.ipa"
+          shasum -a 256 "$RUNNER_TEMP/UrTruck-production.ipa" | tee "$RUNNER_TEMP/UrTruck-production.ipa.sha256"
 
-      - name: Verify signed production IPA before submission
+      - name: Verify signed production IPA identity
         shell: bash
-        env:
-          VERIFIED_EAS_BUILD: ${{ steps.release-config.outputs.remote_ios_build }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/ios-verified"
-          unzip -q "$RUNNER_TEMP/UrTruck.ipa" -d "$RUNNER_TEMP/ios-verified"
-          APP_DIR="$(find "$RUNNER_TEMP/ios-verified/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          mkdir -p "$RUNNER_TEMP/ipa-unpacked"
+          unzip -q "$RUNNER_TEMP/UrTruck-production.ipa" -d "$RUNNER_TEMP/ipa-unpacked"
+          APP_DIR="$(find "$RUNNER_TEMP/ipa-unpacked/Payload" -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$APP_DIR"
+          INFO="$APP_DIR/Info.plist"
+          BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw -o - "$INFO")"
+          VERSION_NAME="$(plutil -extract CFBundleShortVersionString raw -o - "$INFO")"
+          BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$INFO")"
+          test "$BUNDLE_ID" = com.urtruck.app
+          test "$VERSION_NAME" = "$URTRUCK_VERSION_NAME"
+          case "$BUILD_NUMBER" in (*[!0-9]*|'') echo "::error::Non-numeric iOS build number"; exit 1;; esac
+          test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
+          test "$BUILD_NUMBER" = "$URTRUCK_IOS_BUILD_NUMBER"
           codesign --verify --deep --strict "$APP_DIR"
-          python3 - "$APP_DIR" "$RUNNER_TEMP/UrTruck-manifest.json" <<'PYVERIFY'
-          import json, os, pathlib, plistlib, sys, subprocess
-          app = pathlib.Path(sys.argv[1])
-          info = plistlib.loads((app / 'Info.plist').read_bytes())
-          config = json.loads((app / 'EXConstants.bundle/app.config').read_text())
-          assert info['CFBundleIdentifier'] == 'com.urtruck.app'
-          assert info['CFBundleShortVersionString'] == '1.0.12'
-          number = int(info['CFBundleVersion'])
-          assert number > int(os.environ['URTRUCK_MIN_IOS_BUILD'])
-          assert number > int(os.environ['VERIFIED_EAS_BUILD'])
+          codesign -d --entitlements :- "$APP_DIR" > "$RUNNER_TEMP/production-entitlements.plist" 2>/dev/null
+          python3 - "$APP_DIR" "$RUNNER_TEMP/production-entitlements.plist" <<'PYVERIFY'
+          import json, os, plistlib, sys
+          from pathlib import Path
+          app = Path(sys.argv[1])
+          config = json.loads((app/'EXConstants.bundle/app.config').read_text())
           extra = config['extra']
           assert extra['urtruckApiUrl'].rstrip('/') == 'https://urtruck.kz'
           assert extra['urtruckBuildFlavor'] == 'production'
-          assert extra['urtruckSourceSha'] == 'dc982a291c5f0190612710b20da2be925bd5aa91'
+          assert extra['urtruckSourceSha'] == os.environ['APP_SOURCE_SHA']
           assert extra['urtruckExternalFreightFeedEnabled'] is True
-          entitlements = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL))
+          entitlements = plistlib.loads(Path(sys.argv[2]).read_bytes())
           assert entitlements['aps-environment'] == 'production'
           assert entitlements['application-identifier'].endswith('.com.urtruck.app')
+          info = plistlib.loads((app/'Info.plist').read_bytes())
           assert 'NSLocationAlwaysAndWhenInUseUsageDescription' not in info
           assert 'location' not in info.get('UIBackgroundModes', [])
-          mapkit = os.environ['EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY'].encode()
-          assert mapkit and any(mapkit in path.read_bytes() for path in app.rglob('*') if path.is_file()), 'MapKit key not embedded'
-          manifest = dict(
-              baseSourceSHA='dc982a291c5f0190612710b20da2be925bd5aa91',
-              releaseConfigSHA=os.environ['URTRUCK_RELEASE_COMMIT_SHA'],
-              bundleIdentifier=info['CFBundleIdentifier'], versionName='1.0.12',
-              buildNumber=str(number), apiHost='urtruck.kz', flavor='production',
-              externalFreightFeedEnabled=True, apsEnvironment='production',
-          )
-          pathlib.Path(sys.argv[2]).write_text(json.dumps(manifest, indent=2) + '\n')
-          print(json.dumps(manifest))
           PYVERIFY
+          grep -R -a -F -q "${PRODUCTION_API_URL%/}" "$APP_DIR"
+          {
+            echo "sourceSHA=$APP_SOURCE_SHA"
+            echo "bundleIdentifier=$BUNDLE_ID"
+            echo "versionName=$VERSION_NAME"
+            echo "buildNumber=$BUILD_NUMBER"
+            echo "apiHost=urtruck.kz"
+            echo "ipaSHA256=$(shasum -a 256 "$RUNNER_TEMP/UrTruck-production.ipa" | awk '{print $1}')"
+          } | tee "$RUNNER_TEMP/UrTruck-production-manifest.txt"
 
-      - name: Upload verified IPA artifact
+      - name: Upload private production IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: UrTruck-Production-TestFlight-IPA
+          name: UrTruck-production-TestFlight-IPA
           path: |
-            ${{ runner.temp }}/UrTruck.ipa
-            ${{ runner.temp }}/UrTruck.ipa.sha256
-            ${{ runner.temp }}/UrTruck-manifest.json
+            ${{ runner.temp }}/UrTruck-production.ipa
+            ${{ runner.temp }}/UrTruck-production.ipa.sha256
+            ${{ runner.temp }}/UrTruck-production-manifest.txt
           retention-days: 14
 
-      - name: Submit verified IPA to TestFlight
+      - name: Submit production IPA to TestFlight
         shell: bash
-        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck.ipa" --non-interactive --wait
+        run: npx eas-cli@latest submit --platform ios --profile production --path "$RUNNER_TEMP/UrTruck-production.ipa" --non-interactive --wait

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / '.github/workflows/testflight-production-115-2.yml'
+WORKFLOW = ROOT / '.github/workflows/testflight-local.yml'
 
 class ProductionRuntimeGuardTests(unittest.TestCase):
     @classmethod
