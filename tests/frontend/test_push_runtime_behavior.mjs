@@ -64,3 +64,46 @@ test('slow or failed opened ACK never delays deeplink and duplicate callbacks ro
   ack.resolve({ ok: true });
   await tick();
 });
+
+async function withinNativeBudget(work) {
+  let timer;
+  try {
+    return await Promise.race([work, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('presentation_deadline_exceeded')), 1600);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+test('зависшее локальное хранилище не блокирует решение о foreground push', async () => {
+  const claim = deferred();
+  const policy = await withinNativeBudget(decideForegroundPresentation({
+    data: { event_id: 'slow-local-storage', type: 'bid_created' },
+    claimDisplay: () => claim.promise,
+  }));
+  assert.equal(policy.shouldShowBanner, true);
+  claim.resolve(true);
+});
+
+test('ошибка локальной проверки дубля не теряет foreground push', async () => {
+  const policy = await decideForegroundPresentation({
+    data: { event_id: 'failed-local-storage', type: 'bid_created' },
+    claimDisplay: async () => { throw new Error('storage_unavailable'); },
+  });
+  assert.equal(policy.shouldShowBanner, true);
+});
+
+test('подтверждённый дубль по-прежнему не показывается', async () => {
+  const policy = await decideForegroundPresentation({
+    data: { event_id: 'duplicate', type: 'bid_created' }, claimDisplay: async () => false,
+  });
+  assert.equal(policy.shouldShowBanner, false);
+});
+
+test('открытая комната подавляет push без обращения к зависшему хранилищу', async () => {
+  let claims = 0;
+  const policy = await decideForegroundPresentation({
+    data: { event_id: 'open-room', type: 'chat_message', room_id: 'room' }, activeRoom: 'room',
+    claimDisplay: () => { claims++; return new Promise(() => {}); },
+  });
+  assert.equal(policy.shouldShowBanner, false); assert.equal(claims, 0);
+});

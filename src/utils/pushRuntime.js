@@ -24,6 +24,20 @@ function scheduleTelemetry(acknowledge, eventId, options) {
     .catch(() => {});
 }
 
+// Нативный SDK ждёт решение лишь 3 секунды. Медленный SecureStore не должен
+// съедать этот срок: после 1 секунды предпочитаем показать уведомление.
+// Памятный claimPushEvent уже резервирует eventId до своего первого await;
+// подтверждённые дубли и открытая комната по-прежнему подавляются.
+async function claimDisplayWithinBudget(claimDisplay, eventId) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => claimDisplay(eventId)).catch(() => true),
+      new Promise(resolve => { timer = setTimeout(() => resolve(true), 1000); }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 export async function decideForegroundPresentation({
   data = {},
   activeRoom = null,
@@ -40,7 +54,7 @@ export async function decideForegroundPresentation({
   ) {
     return SUPPRESS_NOTIFICATION;
   }
-  if (eventId && typeof claimDisplay === 'function' && !(await claimDisplay(eventId))) {
+  if (eventId && typeof claimDisplay === 'function' && !(await claimDisplayWithinBudget(claimDisplay, eventId))) {
     return SUPPRESS_NOTIFICATION;
   }
   return SHOW_NOTIFICATION;
