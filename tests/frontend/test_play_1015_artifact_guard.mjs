@@ -72,3 +72,64 @@ test('production 1.0.15: номер следует за прочитанным P
     assert.notEqual(spawnSync('bash', ['-c', script], { env: { ...env, VERIFIED_PLAY_MAX_CODE: '2100000000' } }).status, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+
+// Исполняется только чистая проверка входного отчёта; никаких GitHub/store запросов.
+const existingGateBlock = workflow.match(/# BEGIN_EXISTING_AAB_GATE\n([\s\S]*?)# END_GATE_FUNCTION/)[1];
+const existingGatePython = existingGateBlock.split("python3 - <<'PYGATE'\n")[1].split('\n').map(line => line.replace(/^          /, '')).join('\n');
+const acceptanceKeys = ['native_update_preserves_data','apple_google_login','cards_scroll_back','deal_chat_documents','real_push','gps_snapshot','play_console_restrictions','production_ids_personal_external'];
+function acceptanceReport() {
+  return { source_sha: '3e1c845461a91c8c21531183c2259bb256c13588', version: '1.0.15', version_code: 215771498,
+    aab_sha256: 'a'.repeat(64), checks: Object.fromEntries(acceptanceKeys.map(key => [key, { status: 'PASS', evidence_url: 'https://example.invalid/synthetic-test-only' }])) };
+}
+function checkAcceptance(gate) {
+  return spawnSync('python3', ['-c', existingGatePython + '\nvalidate_release_gate(json.loads(os.environ["SYNTHETIC_GATE"]))'], {
+    env: { ...process.env, SYNTHETIC_GATE: JSON.stringify(gate) }, encoding: 'utf8',
+  });
+}
+test('отправка готового AAB не запускает повторную сборку и сохраняет provenance/signature gates', () => {
+  assert.equal(checkAcceptance(acceptanceReport()).status, 0);
+  assert.notEqual(checkAcceptance({}).status, 0);
+  assert.match(workflow, /inputs\.existing_aab_run_id == ''/);
+  const job = workflow.split('  submit-existing-reviewed-aab:')[1].split('  download-google-signed-apk:')[0];
+  assert.doesNotMatch(job, /gradlew|bundleRelease|eas build|setup-node/);
+  assert.match(job, /hashlib\.sha256\(aab\.read_bytes\(\)\)/);
+  assert.match(job, /bb2474c2ed08076f7141fe1e4d3f6c604fc3e860fe5811e3c2fcd129e7cb88b4/);
+  assert.match(job, /run.get\('conclusion'\) == 'success'/);
+  assert.match(job, /run.get\('head_sha'\) == '32d40da0027a978a31f2ceba7df7c1e58ff905e6'/);
+});
+for (const criterion of acceptanceKeys) {
+  test('непройденная обязательная приёмка блокирует upload: ' + criterion, () => {
+    const gate = acceptanceReport(); gate.checks[criterion].status = 'NOT RUN';
+    assert.notEqual(checkAcceptance(gate).status, 0);
+    gate.checks[criterion].status = 'PASS'; delete gate.checks[criterion].evidence_url;
+    assert.notEqual(checkAcceptance(gate).status, 0);
+  });
+}
+for (const [field, value] of [['source_sha','a'.repeat(40)],['version','1.0.14'],['version_code',215771497],['aab_sha256','bad']]) {
+  test('чужая identity отчёта не допускается: ' + field, () => {
+    const gate = acceptanceReport(); gate[field] = value;
+    assert.notEqual(checkAcceptance(gate).status, 0);
+  });
+}
+
+
+test('upload-only не обходит выбранный production_review_only', () => {
+  const job = workflow.split('  submit-existing-reviewed-aab:')[1].split('  download-google-signed-apk:')[0];
+  const prefix = job.split('run: |\n')[1].split('          gh api ')[0].split('\n').map(line => line.replace(/^          /, '')).join('\n');
+  const env = { ...process.env, GITHUB_REPOSITORY: '777ubu-ai/urtruck-app', GITHUB_REF_NAME: branch,
+    AAB_RUN_ID: '42566989119', SOURCE_SHA: source, API_ENVIRONMENT: 'production', TRACK: 'production',
+    RELEASE_STATUS: 'completed', SUBMIT_TO_PLAY: 'true', REVIEW_ONLY: 'false', BUILD_APK: 'false', FEED_ENABLED: 'true', DOWNLOAD_CODE: '' };
+  assert.equal(spawnSync('bash', ['-c', prefix], { env }).status, 0);
+  assert.notEqual(spawnSync('bash', ['-c', prefix], { env: { ...env, REVIEW_ONLY: 'true' } }).status, 0);
+});
+
+
+test('смешанные режимы не запускают дополнительный download APK с Play credentials', () => {
+  const job = workflow.split('  download-google-signed-apk:')[1];
+  const expression = job.match(/if: \$\{\{ (.*?) \}\}/)[1];
+  const eligible = new Function('inputs', 'github', 'return ' + expression);
+  const inputs = { download_generated_version_code: '215771497', inspect_store_only: false, existing_aab_run_id: '' };
+  assert.equal(eligible(inputs, { event_name: 'workflow_dispatch' }), true);
+  assert.equal(eligible({ ...inputs, existing_aab_run_id: '42566989119' }, { event_name: 'workflow_dispatch' }), false);
+});

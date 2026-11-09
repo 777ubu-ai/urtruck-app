@@ -42,6 +42,16 @@ on:
         required: false
         default: false
         type: boolean
+      existing_aab_run_id:
+        description: "Отправить ранее проверенный AAB без сборки; обязательна полная release-приёмка"
+        required: false
+        default: ""
+        type: string
+      release_gate_json:
+        description: "Обезличенный отчёт обязательной приёмки с SHA-256 AAB и ссылками на доказательства"
+        required: false
+        default: "{}"
+        type: string
       production_review_only:
         description: "Production-кандидат только в draft; отправка на проверку вручную через Console"
         required: false
@@ -156,14 +166,14 @@ jobs:
           if-no-files-found: error
 
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only && inputs.existing_aab_run_id == '' }}
     uses: ./.github/workflows/quality-gate-reusable.yml
     with:
       source_ref: ${{ inputs.source_sha || github.sha }}
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only && inputs.existing_aab_run_id == '' }}
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
@@ -720,9 +730,119 @@ jobs:
         if: always()
         run: rm -rf "$RUNNER_TEMP/urtruck-apk-device-qa"
 
+
+  submit-existing-reviewed-aab:
+    name: Отправить проверенный AAB без повторной сборки
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.existing_aab_run_id != '' && !inputs.inspect_store_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_GATE_JSON: ${{ inputs.release_gate_json }}
+      AAB_RUN_ID: ${{ inputs.existing_aab_run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      API_ENVIRONMENT: ${{ inputs.api_environment }}
+      TRACK: ${{ inputs.track }}
+      RELEASE_STATUS: ${{ inputs.status }}
+      SUBMIT_TO_PLAY: ${{ inputs.submit_to_play }}
+      BUILD_APK: ${{ inputs.build_installable_apk }}
+      FEED_ENABLED: ${{ inputs.enable_external_freight_feed }}
+      DOWNLOAD_CODE: ${{ inputs.download_generated_version_code }}
+      REVIEW_ONLY: ${{ inputs.production_review_only }}
+    steps:
+      - name: Проверить обязательную приёмку до доступа к upload credentials
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
+          test "$GITHUB_REF_NAME" = fix/play-production-1.0.15-20261109
+          test "$AAB_RUN_ID" = 42566989119
+          test "$SOURCE_SHA" = 3e1c845461a91c8c21531183c2259bb256c13588
+          test "$API_ENVIRONMENT" = production
+          test "$TRACK" = production
+          test "$RELEASE_STATUS" = completed
+          test "$SUBMIT_TO_PLAY" = true
+          test "$REVIEW_ONLY" = false
+          test "$BUILD_APK" = false
+          test "$FEED_ENABLED" = true
+          test -z "$DOWNLOAD_CODE"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$AAB_RUN_ID" > aab-run.json
+          # BEGIN_EXISTING_AAB_GATE
+          python3 - <<'PYGATE'
+          import hashlib,json,os,re
+          from pathlib import Path
+          def validate_release_gate(gate):
+              assert isinstance(gate,dict), 'release_gate_required'
+              assert gate.get('source_sha') == '3e1c845461a91c8c21531183c2259bb256c13588', 'wrong_source'
+              assert gate.get('version') == '1.0.15' and gate.get('version_code') == 215771498, 'wrong_version'
+              assert re.fullmatch(r'[0-9a-f]{64}',str(gate.get('aab_sha256',''))), 'artifact_hash_required'
+              criteria = ('native_update_preserves_data','apple_google_login','cards_scroll_back',
+                          'deal_chat_documents','real_push','gps_snapshot','play_console_restrictions','production_ids_personal_external')
+              checks=gate.get('checks',{})
+              for key in criteria:
+                  item=checks.get(key,{})
+                  assert item.get('status') == 'PASS', 'acceptance_missing:'+key
+                  assert re.fullmatch(r'https://[^\s]+',str(item.get('evidence_url',''))), 'evidence_required:'+key
+              return gate
+          # END_GATE_FUNCTION
+          gate=validate_release_gate(json.loads(os.environ['RELEASE_GATE_JSON']))
+          run=json.loads(Path('aab-run.json').read_text())
+          assert run.get('id') == 42566989119 and run.get('conclusion') == 'success' and run.get('status') == 'completed'
+          assert run.get('head_sha') == '32d40da0027a978a31f2ceba7df7c1e58ff905e6'
+          assert run.get('event') == 'workflow_dispatch' and run.get('path') == '.github/workflows/deploy-play.yml'
+          assert run.get('head_branch') == 'fix/play-production-1.0.15-20261109'
+          Path('verified-release-gate.json').write_text(json.dumps(gate,ensure_ascii=False,indent=2))
+          PYGATE
+          # END_EXISTING_AAB_GATE
+      - uses: actions/download-artifact@v4
+        with:
+          name: UrTruck-aab
+          run-id: ${{ inputs.existing_aab_run_id }}
+          github-token: ${{ github.token }}
+          path: reviewed-aab
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Проверить байты и прежнюю подпись артефакта
+        run: |
+          python3 - <<'PYARTIFACT'
+          import base64,hashlib,json,re,subprocess
+          from pathlib import Path
+          gate=json.loads(Path('verified-release-gate.json').read_text())
+          files=list(Path('reviewed-aab').rglob('*.aab'));assert len(files)==1
+          aab=files[0];assert aab.name == 'app-release.aab'
+          assert hashlib.sha256(aab.read_bytes()).hexdigest() == gate['aab_sha256']
+          subprocess.run(['jarsigner','-verify',str(aab)],check=True,capture_output=True)
+          pem=subprocess.check_output(['keytool','-printcert','-jarfile',str(aab),'-rfc'],text=True)
+          cert=re.search(r'-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----',pem,re.S).group(1)
+          assert hashlib.sha256(base64.b64decode(cert)).hexdigest() == 'bb2474c2ed08076f7141fe1e4d3f6c604fc3e860fe5811e3c2fcd129e7cb88b4'
+          assert aab == Path('reviewed-aab/app-release.aab')
+          print('Байты, успешный исходный workflow и upload certificate проверены; повторной сборки нет')
+          PYARTIFACT
+      - name: Отправить тот же AAB в Production на проверку
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.urtruck.app
+          releaseFiles: reviewed-aab/app-release.aab
+          tracks: production
+          status: completed
+          inAppUpdatePriority: 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: UrTruck-existing-aab-submission-proof
+          path: |
+            verified-release-gate.json
+            aab-run.json
+          retention-days: 30
+
   download-google-signed-apk:
     name: Download existing Google-signed APK without rebuilding
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' && !inputs.inspect_store_only }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.download_generated_version_code != '' && !inputs.inspect_store_only && inputs.existing_aab_run_id == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
