@@ -24,3 +24,24 @@ export function buildExternalFreightShare(item, { origin, lang = 'RU', summary =
   ].filter(Boolean).join('\n');
   return { url, text };
 }
+
+// Отдельный тип карточки: не объявление о свободной машине.
+const CARRIER_COPY = {
+  RU: { title: 'Контакт перевозчика', availability: 'Наличие свободной машины уточняйте', view: 'Перевозчики в UrTruck' },
+  KK: { title: 'Тасымалдаушы байланысы', availability: 'Бос көлік бар-жоғын нақтылаңыз', view: 'UrTruck тасымалдаушылары' },
+  ZH: { title: '承运商联系方式', availability: '请确认是否有空车', view: 'UrTruck 承运商' },
+  EN: { title: 'Carrier contact', availability: 'Confirm truck availability', view: 'Carriers in UrTruck' },
+};
+
+export function buildCarrierContactShare(item, { origin, lang = 'RU' } = {}) {
+  if (item?.kind !== 'carrier_contact' || item.status !== 'active') return null;
+  const base = String(origin || '').replace(/\/+$/, '');
+  if (!/^https:\/\/(?:urtruck\.kz|qa2\.urtruck\.kz)$/.test(base)) return null;
+  const copy = CARRIER_COPY[lang] || CARRIER_COPY.EN;
+  const url = `${base}/`;
+  // Только поля, уже разрешённые к отображению. Телефоны/личные поля не экспортируем.
+  const text = ['UrTruck · ' + copy.title, line(item.name),
+    [line(item.city), line(item.country), line(item.transport_type)].filter(Boolean).join(' · '),
+    copy.availability, `${copy.view}: ${url}`].filter(Boolean).join('\n');
+  return { url, text };
+}
