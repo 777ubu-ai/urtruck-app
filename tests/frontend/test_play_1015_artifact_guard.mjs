@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const source = 'a2258821b5daff8bfa5ec0f54f14999c00df7338';
+const source = 'cfa18a51346da9ec9c364bae8cd79f7dd1eece62';
 const branch = 'fix/play-production-1.0.15-20261109';
 const workflow = readFileSync('.github/workflows/deploy-play.yml', 'utf8');
 const guard = workflow.split('# BEGIN_PRODUCTION_1015_ARTIFACT_GUARD\n')[1]
