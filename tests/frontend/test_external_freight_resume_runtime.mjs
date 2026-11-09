@@ -371,3 +371,36 @@ for (const role of ['driver', 'client']) test(`${role}: компактные п�
   assert.deepEqual(h.copied, ['+998901234567']);
 });
 
+
+for (const role of ['driver', 'client']) for (const platform of ['ios', 'android']) for (const empty of [true, false]) {
+  test(`${role}/${platform}: обновление ${empty ? 'пустой' : 'загруженной'} ленты показывает только системный индикатор`, async () => {
+    const h = harness({ role, platform, fixtures: empty ? [] : cards });
+    await h.flush();
+    h.suspend();
+    h.list().props.onRefresh();
+    await h.flush();
+    try {
+      const list = h.list();
+      assert.equal(list.props.refreshing, true);
+      if (empty) assert.equal(list.props.ListEmptyComponent, null, 'второй индикатор пустого списка скрыт');
+      assert.equal(list.props.ListFooterComponent, null, 'второй индикатор страниц скрыт');
+    } finally { h.release(); await h.flush(); }
+    assert.equal(h.list().props.refreshing, false);
+  });
+}
+
+for (const role of ['driver', 'client']) test(`${role}: начальная загрузка и пагинация сохраняют свои индикаторы`, async () => {
+  const h = harness({ role, platform: 'ios' });
+  h.suspend(); await h.flush();
+  assert.equal(h.list().props.refreshing, false);
+  assert.equal(h.list().props.ListEmptyComponent.type, 'ActivityIndicator');
+  h.release(); await h.flush();
+  h.suspend(); h.list().props.onEndReached(); await h.flush();
+  try {
+    assert.equal(h.list().props.refreshing, false);
+    assert.equal(h.list().props.ListFooterComponent.type, 'ActivityIndicator');
+    assert.equal(h.list().props.data.length, 30);
+  } finally { h.release(); await h.flush(); }
+  assert.equal(h.list().props.data.length, 60);
+  assert.equal(h.list().props.ListFooterComponent, null);
+});

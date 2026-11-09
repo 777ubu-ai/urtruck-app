@@ -452,7 +452,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         if (webTimeline || !cursor) return;
         if (busyRef.current) { paginationPendingRef.current = true; return; }
         load();
-      }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
+      }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? (refreshing ? null : <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} />) : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && !refreshing && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
       onPress={() => {
         anchorRef.current = null;
