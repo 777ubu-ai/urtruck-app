@@ -17,6 +17,7 @@ import { CURRENCY_SYMBOLS, parseWeightTonsInput } from '../utils/normalizers';
 import { TRUCK_KEYS } from '../utils/truckConstants';
 import Feather from '@expo/vector-icons/Feather';
 import DatePicker from './DatePicker';
+import RouteCountryClarification from './RouteCountryClarification';
 import { formatDateForDisplay, normalizeDateInput } from '../utils/dateInput';
 
 const PAY_KEYS = ['cashless', 'cash', 'any'];
@@ -126,6 +127,7 @@ export default function EditCargoModal({ visible, cargo, onClose, onSaved, role 
               contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 48 }}
             >
               <Text style={[s.title, { color: theme.text }]}>{t('edit_cargo_title')}</Text>
+              {visible ? <RouteCountryClarification kind="cargo" entity={cargo} onChanged={onSaved} /> : null}
 
               <Text style={[s.label, { color: theme.textMuted }]}>{t('edit_cargo_price')} ({curSym})</Text>
               <TextInput

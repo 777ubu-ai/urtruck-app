@@ -144,7 +144,7 @@ def badge(uid: str) -> int:
 def create_cargo(description: str, price: int = 3000) -> str:
     as_user(CLIENT_ID)
     response = client.post("/api/v1/market/cargos", json={
-        "from_city": "Almaty",
+        "from_city": "Almaty", "from_country": "KZ", "to_country": "KZ",
         "to_city": "Astana",
         "cargo_type": "tent",
         "cargo_desc": description,

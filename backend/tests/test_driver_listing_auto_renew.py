@@ -37,7 +37,7 @@ def seed(kind, age=30, status="active", published=None):
     stamp = published or (NOW - timedelta(days=age)).isoformat()
     extra_col, extra_value = (",cargo_desc", ",'Оборудование'") if kind == "cargo" else ("", "")
     with db.get_conn() as c:
-        c.execute(f"INSERT INTO {table}(id,{owner_col},from_city,to_city,{date_col},status,published_at,created_at{extra_col}) VALUES(?,?,'Алматы','Астана','2020-01-01',?,?,?{extra_value})", (iid, owner, status, stamp, stamp))
+        c.execute(f"INSERT INTO {table}(id,{owner_col},from_city,to_city,from_country,to_country,{date_col},status,published_at,created_at{extra_col}) VALUES(?,?,'Алматы','Астана','KZ','KZ','2020-01-01',?,?,?{extra_value})", (iid, owner, status, stamp, stamp))
     return table, iid, owner, stamp
 
 

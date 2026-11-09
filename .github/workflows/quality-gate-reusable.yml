@@ -230,6 +230,7 @@ jobs:
             tests/e2e/urtruck-full-e2e-web.spec.js \
             tests/e2e/profile-save-recovery.spec.js \
             tests/e2e/session-expiry-recovery.spec.js \
+            tests/e2e/route-country-clarification.spec.js \
             tests/e2e/urtruck-runtime-crash-regression.spec.js \
             tests/e2e/urtruck-deal-confirmation.spec.js \
             tests/e2e/publication-session.spec.js \
