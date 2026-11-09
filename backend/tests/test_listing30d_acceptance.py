@@ -26,7 +26,7 @@ def seed(kind, age=timedelta(days=1), status="active", bid_age=timedelta(hours=1
     extra_col = ",cargo_desc" if kind == "cargo" else ""
     extra_value = ",'Оборудование'" if kind == "cargo" else ""
     with db.get_conn() as c:
-        c.execute(f"INSERT INTO {table}(id,{owner_col},from_city,to_city,{route_col},status,published_at,created_at{extra_col}) VALUES(?,?,'Алматы','Астана','2020-01-01',?,?,?{extra_value})", (listing, owner, status, (NOW-age).isoformat(), (NOW-timedelta(days=90)).isoformat()))
+        c.execute(f"INSERT INTO {table}(id,{owner_col},from_city,to_city,from_country,to_country,{route_col},status,published_at,created_at{extra_col}) VALUES(?,?,'Алматы','Астана','KZ','KZ','2020-01-01',?,?,?{extra_value})", (listing, owner, status, (NOW-age).isoformat(), (NOW-timedelta(days=90)).isoformat()))
         c.execute(f"INSERT INTO bids(id,{kind}_id,bidder_id,amount,status,created_at,updated_at) VALUES(?,?,?,900,'pending',?,?)", (bid, listing, bidder, (NOW-bid_age).isoformat(), (NOW-bid_age).isoformat()))
     return table, listing, owner, bidder, bid
 

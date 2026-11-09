@@ -65,7 +65,7 @@ def seed_cargo(owner_id: str, price: int = 1000, status: str = "active") -> str:
     with get_conn() as c:
         c.execute(
             "INSERT INTO cargos (id, owner_id, owner_phone, owner_name, from_city, to_city, "
-            "cargo_desc, cargo_type, price, bids_count, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "cargo_desc, cargo_type, price, bids_count, status,from_country,to_country) VALUES (?,?,?,?,?,?,?,?,?,?,?,'KZ','RU')",
             (cargo_id, owner_id, "+700", "Owner", "Almaty", "Moscow", "Мебель для офиса", "tent", price, 0, status),
         )
     return cargo_id
@@ -76,7 +76,7 @@ def seed_trip(driver_id: str, price: int = 5000, status: str = "active") -> str:
     with get_conn() as c:
         c.execute(
             "INSERT INTO trips (id, driver_id, driver_phone, driver_name, from_city, to_city, "
-            "truck_type, capacity_tons, price, status) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "truck_type, capacity_tons, price, status,from_country,to_country) VALUES (?,?,?,?,?,?,?,?,?,?,'KZ','RU')",
             (trip_id, driver_id, "+700", "Driver", "Almaty", "Moscow", "tent", 20, price, status),
         )
     return trip_id

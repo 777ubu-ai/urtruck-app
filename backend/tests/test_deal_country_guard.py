@@ -95,7 +95,12 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
     before accepted→in_progress, this helper establishes that prerequisite
     instead of bypassing the production guard.
     """
-    cargo_id = seed_cargo(owner_id=owner_id, from_country=from_country, to_country=to_country)
+    from services.geo_normalize import is_international_route
+    legacy_unknown = is_international_route(from_country, to_country)[1] != 'ok'
+    # Неизвестный маршрут теперь нельзя принять. Старые уже принятые сделки
+    # воспроизводим отдельной fixture после законного создания новой сделки.
+    cargo_id = seed_cargo(owner_id=owner_id, from_country='KZ' if legacy_unknown else from_country,
+                          to_country='IR' if legacy_unknown else to_country)
     as_user(driver_id, role="driver")
     bid_id = client.post("/api/v1/market/bids", json={"cargo_id": cargo_id, "amount": 2500}).json()["id"]
     as_user(owner_id)
@@ -118,6 +123,10 @@ def _make_in_progress_deal(owner_id, driver_id, from_country, to_country):
 
     r = client.patch(f"/api/v1/market/deals/{deal_id}/status?new_status=in_progress")
     expect(r.status_code == 200, f"accepted -> in_progress 200 (got {r.status_code} {r.text})")
+    if legacy_unknown:
+        with _get_conn_for_setup() as c:
+            c.execute('UPDATE cargos SET from_country=?,to_country=? WHERE id=?', (from_country, to_country, cargo_id))
+            c.execute('UPDATE deals SET from_country_snapshot=NULL,to_country_snapshot=NULL WHERE id=?', (deal_id,))
     return deal_id
 
 

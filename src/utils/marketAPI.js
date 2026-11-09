@@ -7,6 +7,27 @@ import { authedFetch } from './authEvents';  // QA-аудит P1-6: 401 → auth
 import { t as tGlobal } from './i18n';
 
 const BASE = `${API_BASE}/market`;
+async function routeCountryMutation(path, payload, scope) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const auth = await headers(scope);
+    if (scope.isCurrent && !scope.isCurrent()) return { ok: false, stale: true };
+    const r = await authedFetch(BASE + path, {
+      method: 'POST', headers: auth, signal: controller.signal,
+      ...(payload ? { body: JSON.stringify(payload) } : {}),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (scope.isCurrent && !scope.isCurrent()) return { ok: false, stale: true };
+    return r.ok ? data : { ok: false, status: r.status, code: data.detail?.error || null,
+      detail: normalizeDetail(data.detail, r.status) };
+  } catch (error) {
+    return { ok: false, code: error?.code || 'NETWORK_ERROR' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 
 const TOKEN_KEY = 'ur_reg_token';
 // Several mounted screens (BottomNav, Deals, Chats, Profile) need the same
@@ -643,6 +664,15 @@ export const marketAPI = {
     const d = await r.json();
     if (!r.ok) return { ok: false, detail: normalizeDetail(d.detail, r.status), status: r.status };
     return d;
+  },
+
+  async clarifyRouteCountry(kind, entityId, payload, scope = {}) {
+    if (!['cargo', 'trip', 'deal'].includes(kind)) return { ok: false, code: 'INVALID_ROUTE_ENTITY' };
+    return routeCountryMutation(`/${kind}s/${encodeURIComponent(entityId)}/route-country`, payload, scope);
+  },
+
+  async confirmDealRouteCountry(dealId, clarificationId, scope = {}) {
+    return routeCountryMutation(`/deals/${encodeURIComponent(dealId)}/route-country/${encodeURIComponent(clarificationId)}/confirm`, null, scope);
   },
 
   async updateDealStatus(dealId, newStatus, captureMode = null) {
