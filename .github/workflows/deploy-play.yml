@@ -210,7 +210,7 @@ jobs:
           # END_PRODUCTION_REVIEW_GUARD
           if [ -n "${SOURCE_SHA_OVERRIDE:-}" ]; then
             if [ "$GITHUB_REF_NAME" = fix/play-production-1.0.15-20261109 ]; then
-              test "$SOURCE_SHA_OVERRIDE" = cfa18a51346da9ec9c364bae8cd79f7dd1eece62
+              test "$SOURCE_SHA_OVERRIDE" = 3e1c845461a91c8c21531183c2259bb256c13588
             else
               test "$GITHUB_REF_NAME" = qa2/integration-candidate
             fi
@@ -279,7 +279,7 @@ jobs:
             test "$PRODUCTION_REVIEW_ONLY" = false
             test "${{ inputs.submit_to_play && 'true' || 'false' }}" = false
             test "${{ inputs.build_installable_apk && 'true' || 'false' }}" = false
-            test "$SOURCE_SHA_OVERRIDE" = cfa18a51346da9ec9c364bae8cd79f7dd1eece62
+            test "$SOURCE_SHA_OVERRIDE" = 3e1c845461a91c8c21531183c2259bb256c13588
             test "$URTRUCK_SOURCE_SHA" = "$SOURCE_SHA_OVERRIDE"
             test "$(git rev-parse HEAD)" = "$SOURCE_SHA_OVERRIDE"
             test "$EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED" = true

@@ -4,7 +4,7 @@
 Открытые физические и Console-проверки не считаются пройденными.
 
 PRE-FLIGHT: ветка fix/play-production-1.0.15-20261109; frozen app source
-cfa18a51346da9ec9c364bae8cd79f7dd1eece62, PR698, CI42565307552 (ожидается).
+3e1c845461a91c8c21531183c2259bb256c13588, PR698, CI42565307552 (ожидается).
 Scope: только штатный Android workflow, исполняемые guards и этот документ.
 Runtime-файлы, backend, production SQLite, существующие установки и сессии
 не изменяются. Откат — остановить продвижение нового артефакта; не заменять
@@ -12,7 +12,7 @@ Runtime-файлы, backend, production SQLite, существующие уст�
 
 Для отдельной подготовки одного AAB workflow допускает только эту ветку,
 workflow_dispatch, production API/package, production track, status=draft,
-submit_to_play=false, build_installable_apk=false и точный source_sha cfa18a51.
+submit_to_play=false, build_installable_apk=false и точный source_sha 3e1c8454.
 PR698 должен по-прежнему иметь тот же HEAD, три обязательных CI — success.
 Delta workflow против исходника ограничена этим workflow, тестом guard и
 этим документом. Старые ограничения QA2/Internal и upload-сертификата сохранены.
