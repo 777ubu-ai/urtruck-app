@@ -159,7 +159,7 @@ async function apiEmailToken(request, email, role) {
 
 async function apiCreateCargo(request, token, overrides = {}) {
   const payload = {
-    from_city: 'Алматы', to_city: 'Урумчи', cargo_desc: 'Стройматериалы',
+    from_city: 'Алматы', to_city: 'Урумчи', from_country: 'KZ', to_country: 'CN', cargo_desc: 'Стройматериалы',
     cargo_type: 'tent', weight_tons: 20, volume_m3: 40,
     price: 420000, currency: 'KZT',
     pickup_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
