@@ -11,10 +11,7 @@ const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const backend = read('backend/api/profile.py');
 
 
-test('role selection is explicit step 1 of 2 and preserves Role -> Profile navigation', () => {
-  assert.match(role, /testID="role-v2-step"/);
-  assert.match(role, />1\s*<\/Text>/);
-  assert.match(role, />2\s*<\/Text>/);
+test('role selection is explicit and preserves Role -> Profile navigation', () => {
   assert.match(role, /testID="role-v2-client"/);
   assert.match(role, /testID="role-v2-driver"/);
   assert.match(role, /navigation\.navigate\('ProfileV2'/);
@@ -33,7 +30,7 @@ test('role is not committed to AuthContext before required profile saves success
 
 test('minimal registration asks only name and phone after confirmed email identity', () => {
   assert.match(profile, /id="name"/);
-  assert.match(profile, /id="phone"/);
+  assert.match(profile, /testID="profile-v2-phone"/);
   for (const field of ['company','country','city','messenger','iin','birthDate']) {
     assert.doesNotMatch(profile, new RegExp(`id="${field}"`));
   }
@@ -48,7 +45,7 @@ test('minimal registration asks only name and phone after confirmed email identi
 test('profile keeps the unauthenticated onboarding palette consistently light', () => {
   assert.match(profile, /const baseColors = brandLight/);
   assert.doesNotMatch(profile, /useBrand\(\)/);
-  assert.match(profile, /const colors = role === 'driver' \? driverColors : shipperColors/);
+  assert.match(profile, /const colors = registrationColors/);
   assert.match(profile, /makeStyles\(colors\)/);
   assert.match(profile, /backgroundColor:\s*colors\.bg/);
   assert.match(profile, /backgroundColor:\s*colors\.surface/);

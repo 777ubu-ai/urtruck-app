@@ -10,7 +10,7 @@ const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
 test('active ProfileV2 keeps additional company and location fields outside registration', () => {
   assert.match(profile, /id="name"/);
-  assert.match(profile, /id="phone"/);
+  assert.match(profile, /testID="profile-v2-phone"/);
   assert.doesNotMatch(profile, /id="company"/);
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);
@@ -30,7 +30,7 @@ test('driver basic form requires only name and phone; birth date and IIN are abs
   assert.doesNotMatch(profile, /id="iin"/);
   assert.doesNotMatch(profile, /birth_date:\s*birthDate/);
   assert.doesNotMatch(profile, /iin:\s*digitsOnly/);
-  assert.match(profile, /disabled=\{busy\}[\s\S]*accessibilityState=\{\{ disabled: busy \}\}/);
+  assert.match(profile, /disabled=\{busy \|\| !basicFormValid\}[\s\S]*accessibilityState=\{\{ disabled: busy \|\| !basicFormValid \}\}/);
   assert.ok(
     profile.indexOf('</KeyboardSafeScrollView>') < profile.indexOf('testID="profile-v2-cta"'),
     'CTA must stay visible outside the long form scroll area',
@@ -47,13 +47,14 @@ test('backend independently requires only name+phone for both roles', () => {
   assert.doesNotMatch(api, /COUNTRY_REQUIRED/);
 });
 
-test('shipper has its own visual identity while only driver enters vehicle setup', () => {
+test('both roles share green registration without mandatory vehicle setup', () => {
   assert.match(profile, /shipperTitle: 'Профиль грузоотправителя'/);
-  assert.match(profile, /shipperColors/);
-  assert.match(profile, /primary: '#C2410C'/);
+  assert.match(profile, /const colors = registrationColors/);
   assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
   assert.match(profile, /await regAPI\.completeBasic\(/);
-  assert.match(profile, /await setRole\(role, \{ expectedToken: ownerToken, isCurrent: \(\) => formMountedRef\.current \}\);\s*if \(roleSaved\?\.ok === false \|\| !await formIsCurrent\(\)\) return;\s*navigation\.reset/);
+  assert.match(profile, /await setRole\(role, \{ expectedToken: ownerToken/);
+  assert.match(profile, /if \(!await formIsCurrent\(\)\) return;/);
+  assert.match(profile, /navigation\.reset/);
   assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });

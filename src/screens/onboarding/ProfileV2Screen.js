@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -24,7 +23,8 @@ import AuthAccountHint from '../../components/AuthAccountHint';
 import { brandLight, radius, typography } from '../../theme/brandV2';
 import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
-import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
+import { RegistrationHeader, RegistrationCompletion, registrationColors } from './RegistrationPresentation';
+import { registrationCountry, registrationNational, registrationNumber, validRegistrationPhone } from '../../utils/registrationPhone';
 
 const COPY = {
   RU: {
@@ -33,8 +33,8 @@ const COPY = {
     shipperTitle: 'Профиль грузоотправителя',
     shipperSubtitle: 'Ваше имя и номер телефона',
     nameLabel: 'Имя *',
-    namePlaceholder: 'Например, Иван Петров',
-    phoneLabel: 'Основной телефон *',
+    namePlaceholder: 'Например, Иван',
+    phoneLabel: 'Номер телефона *',
     companyLabel: 'Компания / ИП *',
     companyOptionalLabel: 'Компания / ИП',
     companyPlaceholder: 'Название компании или ИП',
@@ -232,6 +232,7 @@ function ProfileField({
   placeholder,
   keyboardType,
   inputMode,
+  editable = true,
   autoCapitalize = 'sentences',
   s,
   colors,
@@ -255,8 +256,10 @@ function ProfileField({
         placeholderTextColor={colors.textTertiary}
         keyboardType={keyboardType}
         inputMode={inputMode}
+        accessibilityLabel={label}
         textContentType={id === 'phone' ? 'telephoneNumber' : 'none'}
         autoComplete={id === 'phone' ? 'tel' : 'off'}
+        editable={editable}
         autoCorrect={false}
         autoCapitalize={autoCapitalize}
         style={[s.input, focused === id && s.inputFocused, errors[id] && s.inputError]}
@@ -269,37 +272,16 @@ function ProfileField({
 
 export default function ProfileV2Screen({ navigation, route }) {
   const baseColors = brandLight;
-  const driverColors = useMemo(() => ({
-    ...baseColors,
-    bg: DRIVER_CERAMIC.bg,
-    surface: DRIVER_CERAMIC.surface,
-    surfaceSoft: DRIVER_CERAMIC.surface,
-    surfaceMuted: DRIVER_CERAMIC.surfaceMuted,
-    textPrimary: DRIVER_CERAMIC.text,
-    textSecondary: DRIVER_CERAMIC.textMuted,
-    textTertiary: DRIVER_CERAMIC.textDim,
-    primary: DRIVER_CERAMIC.active,
-    primarySoft: DRIVER_CERAMIC.activeSoft,
-    border: DRIVER_CERAMIC.border,
-    borderStrong: DRIVER_CERAMIC.border,
-    divider: DRIVER_CERAMIC.border,
-    textOnPrimary: DRIVER_CERAMIC.activeText,
-  }), [baseColors]);
-  const shipperColors = useMemo(() => ({
-    ...baseColors,
-    primary: '#C2410C',
-    primarySoft: '#FFF3E6',
-    textOnPrimary: '#FFFFFF',
-  }), [baseColors]);
+  const colors = registrationColors;
   const { t, lang } = useI18n();
   const ui = COPY[lang] || COPY.RU;
   const { session, setRole } = useAuth();
   const role = route?.params?.role || session?.user?.role || 'driver';
-  const colors = role === 'driver' ? driverColors : shipperColors;
   const s = useMemo(() => makeStyles(colors), [colors]);
 
-  const signupIdentity = route?.params?.phone || session?.user?.phone || '';
-  const initialPhone = isRealPhone(signupIdentity) ? signupIdentity : '';
+  const signupIdentity = route?.params?.phone || session?.user?.email || session?.user?.phone || '';
+  const existingPhone = isRealPhone(signupIdentity) ? signupIdentity : session?.user?.phone;
+  const initialPhone = isRealPhone(existingPhone) ? '+' + digitsOnly(existingPhone) : '';
   const initialName = String(session?.user?.name || '').trim();
   const hasVerifiedEmail = Boolean(
     /@/.test(String(route?.params?.phone || '')) || session?.user?.email,
@@ -307,6 +289,20 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [phoneCountry, setPhoneCountry] = useState(() => registrationCountry(initialPhone));
+  const [completion, setCompletion] = useState('');
+  const changePhone = (value) => {
+    const next = registrationNumber(value, phoneCountry);
+    if (String(value).trim().startsWith('+')) setPhoneCountry(registrationCountry(next));
+    setPhone(next);
+  };
+  const pickPhoneCountry = () => navigation.navigate('CountryPicker', {
+    onSelect: (nextCountry) => {
+      setPhone('+' + nextCountry.dial + registrationNational(phone, phoneCountry));
+      setPhoneCountry(nextCountry);
+      setErrors((prev) => ({ ...prev, phone: null }));
+    },
+  });
   const [focused, setFocused] = useState('');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -319,7 +315,7 @@ export default function ProfileV2Screen({ navigation, route }) {
   }, []);
 
   const validName = name.trim().length >= 2;
-  const validPhone = isRealPhone(phone);
+  const validPhone = validRegistrationPhone(phone, phoneCountry);
   // Дополнительная связь не блокирует завершение регистрации.
   const basicFormValid = validName && validPhone;
 
@@ -337,6 +333,7 @@ export default function ProfileV2Screen({ navigation, route }) {
     setBusy(true);
     setServerError('');
     let ownerToken = null;
+    let profileSaved = false;
     const formIsCurrent = async () => {
       try {
         return formMountedRef.current && Boolean(ownerToken)
@@ -415,12 +412,18 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (!completed?.ok) throw new Error('basic_profile_complete_failed');
       }
 
+      profileSaved = true;
+      setCompletion('success');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!await formIsCurrent()) return;
       const roleSaved = await setRole(role, { expectedToken: ownerToken, isCurrent: () => formMountedRef.current });
-      if (roleSaved?.ok === false || !await formIsCurrent()) return;
+      if (!await formIsCurrent()) return;
+      if (roleSaved?.ok === false) throw new Error('profile_role_commit_failed');
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
       if (formMountedRef.current && (!ownerToken || await formIsCurrent())) {
         setServerError(t('profile_v2_save_failed'));
+        if (profileSaved) setCompletion('error');
       }
     } finally {
       savingRef.current = false;
@@ -430,36 +433,25 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
-      {role === 'driver' ? <DriverRouteBackdrop /> : null}
-      <KeyboardSafeLayout style={s.flex}>
-        <View style={s.header}>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={({ pressed }) => [s.backBtn, pressed && s.pressed]}
-            testID="profile-v2-back"
-            accessibilityRole="button"
-          >
-            <Feather name="arrow-left" size={22} color={colors.textPrimary} />
-          </Pressable>
-        </View>
+      {completion ? <RegistrationCompletion error={completion === 'error'} onRetry={() => { setCompletion(''); onContinue(); }} /> : <KeyboardSafeLayout style={s.flex}>
+        <RegistrationHeader navigation={navigation} disabled={busy} />
 
         <KeyboardSafeScrollView
           contentContainerStyle={s.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <StepIndicator s={s} colors={colors} />
-          <Text style={s.stepCaption}>2 / 2</Text>
           <Text style={s.title}>{role === 'driver' ? ui.driverTitle : ui.shipperTitle}</Text>
           <Text style={s.subtitle}>{role === 'driver' ? ui.driverSubtitle : ui.shipperSubtitle}</Text>
-          <AuthAccountHint identifier={signupIdentity} navigation={navigation} disabled={busy} />
+          <AuthAccountHint identifier={signupIdentity} navigation={navigation} disabled={busy} compact />
 
           <ProfileField
             id="name"
+            editable={!busy}
             label={ui.nameLabel}
             value={name}
             onChange={setName}
-            placeholder=""
+            placeholder={ui.namePlaceholder}
             autoCapitalize="words"
             s={s}
             colors={colors}
@@ -469,34 +461,16 @@ export default function ProfileV2Screen({ navigation, route }) {
             setErrors={setErrors}
           />
 
-          <ProfileField
-            id="phone"
-            label={ui.phoneLabel}
-            value={phone}
-            onChange={setPhone}
-            placeholder=""
-            keyboardType="phone-pad"
-            inputMode="tel"
-            autoCapitalize="none"
-            s={s}
-            colors={colors}
-            focused={focused}
-            setFocused={setFocused}
-            errors={errors}
-            setErrors={setErrors}
-          />
-
-          <View style={s.infoCard}>
-            {hasVerifiedEmail ? (
-              <View style={s.infoRow}>
-                <Feather name="check-circle" size={17} color={colors.success} />
-                <Text style={s.infoText}>{ui.emailConfirmed}</Text>
-              </View>
-            ) : null}
-            <View style={s.infoRow}>
-              <Feather name="shield" size={17} color={colors.textSecondary} />
-              <Text style={s.infoText}>{ui.privacy}</Text>
+          <View style={s.field}>
+            <Text style={s.label}>{ui.phoneLabel}</Text>
+            <View style={[s.phoneRow, focused === 'phone' && s.inputFocused, errors.phone && s.inputError]}>
+              <Pressable onPress={pickPhoneCountry} disabled={busy} style={s.dialButton} accessibilityRole="button" accessibilityLabel={t('country_picker_title')} testID="profile-v2-phone-country">
+                <Text style={s.dialText}>+{phoneCountry.dial}</Text>
+                <Feather name="chevron-down" size={16} color={colors.textSecondary} />
+              </Pressable>
+              <TextInput value={registrationNational(phone, phoneCountry)} onChangeText={(value) => { changePhone(value); if (errors.phone) setErrors((prev) => ({ ...prev, phone: null })); }} onFocus={() => setFocused('phone')} onBlur={() => setFocused('')} placeholder={phoneCountry.dial === '7' ? '705 123 45 67' : ''} placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" inputMode="tel" textContentType="telephoneNumber" autoComplete="tel-national" autoCorrect={false} autoCapitalize="none" editable={!busy} style={s.phoneInput} testID="profile-v2-phone" accessibilityLabel={ui.phoneLabel} />
             </View>
+            {errors.phone ? <Text style={s.errText}>{errors.phone}</Text> : null}
           </View>
 
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
@@ -505,13 +479,13 @@ export default function ProfileV2Screen({ navigation, route }) {
         <View style={s.ctaWrap}>
           <Pressable
             onPress={onContinue}
-            disabled={busy}
+            disabled={busy || !basicFormValid}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy }}
+            accessibilityState={{ disabled: busy || !basicFormValid }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
               s.ctaPrimary,
-              { backgroundColor: basicFormValid ? colors.primary : colors.borderStrong },
+              { backgroundColor: basicFormValid ? colors.primary : colors.disabled },
               pressed && !busy && s.pressed,
             ]}
           >
@@ -520,12 +494,11 @@ export default function ProfileV2Screen({ navigation, route }) {
             ) : (
               <>
                 <Text style={s.ctaPrimaryText}>{ui.save}</Text>
-                <Feather name="arrow-right" size={20} color={colors.textOnPrimary} />
               </>
             )}
           </Pressable>
         </View>
-      </KeyboardSafeLayout>
+      </KeyboardSafeLayout>}
     </SafeAreaView>
   );
 }
@@ -554,9 +527,9 @@ const makeStyles = (colors) => StyleSheet.create({
     opacity: 0.7,
   },
   scroll: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 36,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
   stepWrap: {
     flexDirection: 'row',
@@ -601,36 +574,44 @@ const makeStyles = (colors) => StyleSheet.create({
   },
   title: {
     ...typography.h1,
+    fontSize: 28,
+    lineHeight: 34,
     color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: 6,
+    textAlign: 'left',
+    marginBottom: 12,
   },
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 24,
+    textAlign: 'left',
+    marginBottom: 28,
   },
   field: {
     marginBottom: 16,
   },
   label: {
-    ...typography.bodySmall,
+    ...typography.body,
+    fontSize: 16,
     color: colors.textPrimary,
-    fontWeight: '700',
+    fontWeight: '600',
     marginBottom: 8,
   },
   input: {
-    minHeight: 52,
-    borderRadius: 10,
+    minHeight: 56,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     paddingHorizontal: 16,
     paddingVertical: 13,
     ...typography.bodyLarge,
+    fontSize: 16,
     color: colors.textPrimary,
   },
+  phoneRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface },
+  dialButton: { minHeight: 54, minWidth: 76, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRightWidth: 1, borderRightColor: colors.border },
+  dialText: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  phoneInput: { flex: 1, minWidth: 0, minHeight: 54, paddingHorizontal: 12, paddingVertical: 13, fontSize: 16, color: colors.textPrimary },
   inputFocused: {
     borderColor: colors.primary,
   },
@@ -639,7 +620,7 @@ const makeStyles = (colors) => StyleSheet.create({
   },
   errText: {
     ...typography.caption,
-    color: colors.error,
+    color: colors.errorText,
     marginTop: 6,
   },
   helperText: {
@@ -652,9 +633,10 @@ const makeStyles = (colors) => StyleSheet.create({
     marginBottom: 18,
   },
   sectionLabel: {
-    ...typography.bodySmall,
+    ...typography.body,
+    fontSize: 16,
     color: colors.textPrimary,
-    fontWeight: '700',
+    fontWeight: '600',
     marginBottom: 10,
   },
   messengerRow: {
@@ -723,19 +705,19 @@ const makeStyles = (colors) => StyleSheet.create({
   },
   serverError: {
     ...typography.bodySmall,
-    color: colors.error,
+    color: colors.errorText,
     textAlign: 'center',
     marginBottom: 10,
   },
   ctaWrap: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 20,
     backgroundColor: colors.bg,
   },
   ctaPrimary: {
-    minHeight: 48,
-    borderRadius: 10,
+    minHeight: 56,
+    borderRadius: 14,
     flexDirection: 'row',
     gap: 10,
     alignItems: 'center',
@@ -744,6 +726,7 @@ const makeStyles = (colors) => StyleSheet.create({
   },
   ctaPrimaryText: {
     ...typography.button,
+    fontSize: 16,
     color: colors.textOnPrimary,
   },
 });

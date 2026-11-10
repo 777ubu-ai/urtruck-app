@@ -367,7 +367,7 @@ test('failed status writes always explain the error and preserve the server FSM'
 
 test('short onboarding requires only name and phone; company and location stay optional', () => {
   assert.match(profile, /id="name"/);
-  assert.match(profile, /id="phone"/);
+  assert.match(profile, /testID="profile-v2-phone"/);
   assert.doesNotMatch(profile, /id="company"/);
   assert.doesNotMatch(profile, /id="country"/);
   assert.doesNotMatch(profile, /id="city"/);

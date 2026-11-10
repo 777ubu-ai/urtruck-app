@@ -16,6 +16,8 @@ function harness(saved, extra = {}) {
     setErrors: (fn) => { state.errors = fn(state.errors); },
     setServerError: (value) => { state.serverError = value; },
     setBusy: (value) => { state.busy = value; },
+    setCompletion: (value) => { state.completion = value; },
+    setTimeout: (fn) => fn(),
     setRole: (role) => state.roles.push(role),
     regAPI: {
       getToken: async () => 'mock-token',
@@ -230,4 +232,22 @@ test('ответ complete-basic прежнего аккаунта не меня�
   const pending = h.run(); await new Promise(resolve => setImmediate(resolve));
   token = 'B'; finish({ ok: true }); await pending;
   assert.deepEqual(h.state.roles, []); assert.deepEqual(h.state.navigation, []);
+});
+
+test('смена аккаунта во время показа успеха не назначает роль новой сессии', async () => {
+  let token = 'mock-token';
+  const h = harness({ ok: true }, {
+    setTimeout: (fn) => { token = 'new-account-token'; fn(); },
+    regAPI: { getToken: async () => token, updateProfile: async () => ({ ok: true }) },
+  });
+  await h.run();
+  assert.deepEqual(h.state.roles, []);
+  assert.deepEqual(h.state.navigation, []);
+});
+test('отказ локального назначения роли даёт повтор без потери сохранённого профиля', async () => {
+  const h = harness({ ok: true }, { setRole: async () => ({ ok: false }) });
+  await h.run();
+  assert.equal(h.state.completion, 'error');
+  assert.deepEqual(h.state.navigation, []);
+  assert.equal(h.state.busy, false);
 });

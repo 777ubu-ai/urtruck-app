@@ -51,6 +51,10 @@ async function openProfile(page, role, response = { ok: true }) {
   await page.getByTestId('otp-v2-cells').click();
   await page.getByTestId('otp-v2-input').fill('0000');
   await expect(page.getByTestId('role-v2-screen')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByTestId('role-v2-cta')).toBeDisabled();
+  if (process.env.REGISTRATION_SCREENSHOTS && page.viewportSize().width === 393) {
+    await page.getByTestId('role-v2-screen').screenshot({ path: process.env.REGISTRATION_SCREENSHOTS + '/role-selection.png' });
+  }
   await page.getByTestId(`role-v2-${role}`).click();
   await page.getByTestId('role-v2-cta').click();
   await expect(page.getByTestId('profile-v2-screen')).toBeVisible();
@@ -62,7 +66,7 @@ async function openProfile(page, role, response = { ok: true }) {
   return state;
 }
 
-for (const viewport of [{ width: 1440, height: 900 }, { width: 393, height: 852 }]) {
+for (const viewport of [{ width: 1440, height: 900 }, { width: 393, height: 852 }, { width: 360, height: 800 }]) {
 test.describe(`Profile recovery ${viewport.width}px`, () => {
   test.use({ viewport, permissions: ['notifications'] });
 
@@ -70,6 +74,10 @@ test('client сохраняет профиль с пустыми optional fields
   const state = await openProfile(page, 'client');
   await expect(page.getByTestId('profile-v2-cta')).toBeVisible();
   await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('registration-completion')).toBeVisible();
+  if (process.env.REGISTRATION_SCREENSHOTS && page.viewportSize().width === 393) {
+    await page.getByTestId('registration-completion').screenshot({ path: process.env.REGISTRATION_SCREENSHOTS + '/success.png' });
+  }
   await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
   expect(state.patches).toHaveLength(1);
   expect(state.patches[0]).toEqual({ role: 'client', name: 'QA Profile', phone: '+77000000001' });
@@ -89,7 +97,7 @@ test('ошибка смены телефона видна, данные сохр
   await page.getByTestId('profile-v2-cta').click();
   await expect(page.getByText(/Этот аккаунт уже имеет подтверждённый номер/)).toBeVisible();
   await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
-  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('+77000000001');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('7000000001');
   await expect(page.getByTestId('profile-v2-cta')).toBeEnabled();
   state.response = { ok: true };
   await page.getByTestId('profile-v2-phone').fill('+77000000002');
@@ -108,6 +116,70 @@ test('driver после сохранения входит без добавле�
   expect(state.patches).toHaveLength(1);
 });
 
+
+
+test('пустая форма блокирует сохранение; неверный номер не отправляется', async ({ page }) => {
+  const state = await openProfile(page, 'driver');
+  await page.getByTestId('profile-v2-name').fill('');
+  await expect(page.getByTestId('profile-v2-cta')).toBeDisabled();
+  await page.getByTestId('profile-v2-name').fill('Иван');
+  await page.getByTestId('profile-v2-phone').fill('123');
+  await expect(page.getByTestId('profile-v2-cta')).toBeDisabled();
+  expect(state.patches).toHaveLength(0);
+});
+test('код Китая и международный номер сохраняются без потери цифр', async ({ page }) => {
+  const state = await openProfile(page, 'driver');
+  await page.getByTestId('profile-v2-phone-country').click();
+  await page.getByTestId('country-row-CN').click();
+  await page.getByTestId('profile-v2-phone').fill('13800138000');
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+  expect(state.patches[0].phone).toBe('+8613800138000');
+});
+test('ошибка complete-basic сохраняет форму, повторный запрос успешен', async ({ page }) => {
+  const state = await openProfile(page, 'driver');
+  state.completeResponse = { ok: false };
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByText('Не удалось сохранить. Попробуйте ещё раз.')).toBeVisible();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
+  state.completeResponse = { ok: true };
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+  expect(state.completes).toBe(2);
+});
+test('смена языка не очищает форму, регистрация остаётся светлой', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-screen').getByTestId('registration-language').click();
+  await page.getByTestId('lang-en').click();
+  await expect(page.getByTestId('profile-v2-cta')).toContainText('Save and enter');
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
+  for (const [code, label] of [['cn', '保存并进入'], ['kz', 'Сақтау және кіру']]) {
+    await page.getByTestId('profile-v2-screen').getByTestId('registration-language').click();
+    await page.getByTestId('lang-' + code).click();
+    await expect(page.getByTestId('profile-v2-cta')).toContainText(label);
+    await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
+  }
+  await expect(page.getByTestId('profile-v2-screen')).toHaveCSS('background-color', 'rgb(247, 243, 236)');
+  expect(state.pageErrors).toEqual([]);
+});
+
+
+test('повторные нажатия создают один запрос сохранения', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-cta').evaluate((button) => { button.click(); button.click(); button.click(); });
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+  expect(state.patches).toHaveLength(1);
+});
+test('ошибка сервера сохраняет данные и позволяет повторить', async ({ page }) => {
+  const state = await openProfile(page, 'client', { status: 503, body: { ok: false } });
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByText(/Сервер временно недоступен/)).toBeVisible();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('7000000001');
+  state.response = { ok: true };
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+});
 
 test('гостевая сессия после reload не пропускает подтверждение входа', async ({ page }) => {
   const state = await openProfile(page, 'client');

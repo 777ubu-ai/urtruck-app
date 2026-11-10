@@ -19,7 +19,7 @@ function setup(lang) {
   const require = (name) => {
     if (name === 'react') return React;
     if (name === 'react-native') return {
-      View: 'div', Text: ({ testID, ...props }) => React.createElement('span', { ...props, 'data-testid': testID }),
+      View: ({ style, ...props }) => React.createElement('div', { ...props, style: Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean)) : style || undefined }), Text: ({ testID, ...props }) => React.createElement('span', { ...props, 'data-testid': testID }),
       StyleSheet: { create: (s) => s },
       Pressable: ({ onPress, testID, children }) => {
         buttons.push(onPress);
@@ -27,6 +27,7 @@ function setup(lang) {
       },
     };
     if (name.endsWith('useI18n')) return { useI18n: () => ({ t: (key) => translations[lang][key] }) };
+    if (name === '@expo/vector-icons/Feather') return () => null;
     if (name.endsWith('brandV2')) return { brandLight: {} };
     throw new Error(`Неожиданная зависимость: ${name}`);
   };
