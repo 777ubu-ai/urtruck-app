@@ -89,3 +89,8 @@ test('сбой счётчика отмечен ошибкой, не успешн
   const h=harness('client',{ok:false,status:503,error:'server_error'});
   await h.flush();assert.equal(h.result().error,true);assert.equal(h.result().count,undefined);h.unmount();
 });
+
+test('несогласованный общий счётчик отмечается ошибкой', async () => {
+  const h = harness('client', { ok: true, kind: 'vehicle', count: 1353, offer_count: 56, carrier_count: 0 });
+  await h.flush(); assert.equal(h.result().error, true); assert.equal(h.result().count, undefined); h.unmount();
+});

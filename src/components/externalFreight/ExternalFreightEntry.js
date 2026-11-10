@@ -44,9 +44,11 @@ export default function ExternalFreightEntry(props) {
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
         // Счётчик объединённой выдачи включает и предложения, и контакты.
         const count = data.count;
-        if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0) {
-          const offerCount = Number.isSafeInteger(data.offer_count) && data.offer_count >= 0 ? data.offer_count : null;
-          const carrierCount = Number.isSafeInteger(data.carrier_count) && data.carrier_count >= 0 ? data.carrier_count : null;
+        const offerCount = Number.isSafeInteger(data.offer_count) && data.offer_count >= 0 ? data.offer_count : null;
+        const carrierCount = Number.isSafeInteger(data.carrier_count) && data.carrier_count >= 0 ? data.carrier_count : null;
+        const hasParts = data.offer_count != null || data.carrier_count != null;
+        const partsMatch = !hasParts || (offerCount !== null && carrierCount !== null && count === offerCount + carrierCount);
+        if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0 && partsMatch) {
           setResult({ ownerKey, count, offerCount, carrierCount });
         } else setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
       } catch {
