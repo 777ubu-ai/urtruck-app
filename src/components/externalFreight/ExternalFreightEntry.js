@@ -42,10 +42,12 @@ export default function ExternalFreightEntry(props) {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
         if (!current() || request.signal.aborted) return;
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
-        // Контакты каталога не являются предложениями машин.
-        const count = data.offer_count ?? (data.carrier_count == null ? data.count : null);
+        // Счётчик объединённой выдачи включает и предложения, и контакты.
+        const count = data.count;
         if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0) {
-          setResult({ ownerKey, count });
+          const offerCount = Number.isSafeInteger(data.offer_count) && data.offer_count >= 0 ? data.offer_count : null;
+          const carrierCount = Number.isSafeInteger(data.carrier_count) && data.carrier_count >= 0 ? data.carrier_count : null;
+          setResult({ ownerKey, count, offerCount, carrierCount });
         } else setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
       } catch {
         if (current()) setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));

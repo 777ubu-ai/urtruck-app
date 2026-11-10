@@ -1570,3 +1570,39 @@ def test_explicit_partial_vehicle_location_without_phone_is_not_public():
     assert _import(record).json()['results'][0]['result']=='replayed'
     _actor={'id':'partial-driver','role':'driver'}
     assert client.get('/api/v1/external-freight').json()['items']==[]
+
+
+def test_count_and_first_page_share_read_snapshot_during_concurrent_update(monkeypatch):
+    from contextlib import contextmanager
+    record = _record(kind='vehicle', source='snapshot-test', message='snapshot-test', text='машина +7 777 000 00 00')
+    record['classification_status'] = 'approved'
+    item_id = dal.import_records([record])[0]['id']
+    original = dal.get_conn
+    changed = False
+
+    class ConnectionProxy:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, sql, *args):
+            nonlocal changed
+            result = self.conn.execute(sql, *args)
+            if not changed and sql.startswith('SELECT COUNT(*) FROM external_freight_items'):
+                changed = True
+                with original() as writer:
+                    writer.execute("UPDATE external_freight_items SET status='closed' WHERE id=?", (item_id,))
+            return result
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+    @contextmanager
+    def wrapped():
+        with original() as conn:
+            yield ConnectionProxy(conn)
+
+    monkeypatch.setattr(dal, 'get_conn', wrapped)
+    page = dal.list_items(kind='vehicle', include_total=True, limit=30)
+    assert changed
+    assert page['total'] == 1
+    assert [item['id'] for item in page['items']] == [item_id]

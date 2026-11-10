@@ -81,9 +81,9 @@ for (const role of ['driver', 'client']) test(`${role}: счётчик загр�
   h.unmount(); h.advance(120000); await h.flush(); assert.equal(h.calls(), before + 1);
 });
 
-test('счётчик машин не включает1297контактов каталога',async()=>{
+test('счётчик машин включает контакты с раздельными категориями',async()=>{
   const h=harness('client',{ok:true,kind:'vehicle',count:1464,offer_count:167,carrier_count:1297});
-  await h.flush();assert.equal(h.result().count,167);h.unmount();
+  await h.flush();assert.equal(h.result().count,1464);assert.equal(h.result().offerCount,167);assert.equal(h.result().carrierCount,1297);h.unmount();
 });
 test('сбой счётчика отмечен ошибкой, не успешным нулём',async()=>{
   const h=harness('client',{ok:false,status:503,error:'server_error'});
