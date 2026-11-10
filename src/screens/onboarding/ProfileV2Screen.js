@@ -25,6 +25,8 @@ import { DRIVER_CERAMIC } from '../../theme/designV1Palette';
 import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/v1/KeyboardSafeLayout';
 import { RegistrationHeader, RegistrationCompletion, registrationColors } from './RegistrationPresentation';
 import { registrationCountry, registrationNational, registrationNumber, validRegistrationPhone } from '../../utils/registrationPhone';
+import { usePublicationDraft } from '../../hooks/usePublicationDraft';
+import { COUNTRIES } from '../../utils/countries';
 
 const COPY = {
   RU: {
@@ -270,7 +272,14 @@ function ProfileField({
   );
 }
 
-export default function ProfileV2Screen({ navigation, route }) {
+export default function ProfileV2Screen(props) {
+  const { session } = useAuth();
+  const role = props.route?.params?.role || session?.user?.role || 'driver';
+  // Новый владелец/роль получают новый экземпляр формы до первого отображения.
+  return <ProfileV2Form key={`${session?.user?.id || 'no-owner'}:${role}`} {...props} />;
+}
+
+function ProfileV2Form({ navigation, route }) {
   const baseColors = brandLight;
   const colors = registrationColors;
   const { t, lang } = useI18n();
@@ -307,6 +316,15 @@ export default function ProfileV2Screen({ navigation, route }) {
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
+  const draft = usePublicationDraft(`registration_basic_${role}`, session?.user?.id,
+    { name, phone, phoneCountryIso: phoneCountry.iso }, {
+      name: (value) => { if (typeof value === 'string') setName(value); },
+      phone: (value) => { if (typeof value === 'string') setPhone(value); },
+      phoneCountryIso: (iso) => {
+        const country = COUNTRIES.find((item) => item.iso === iso);
+        if (country) setPhoneCountry(country);
+      },
+    });
   const formMountedRef = useRef(true);
   const savingRef = useRef(false);
   useEffect(() => {
@@ -328,7 +346,7 @@ export default function ProfileV2Screen({ navigation, route }) {
   };
 
   const onContinue = async () => {
-    if (busy || savingRef.current || !validate()) return;
+    if (!draft.ready || busy || savingRef.current || !validate()) return;
     savingRef.current = true;
     setBusy(true);
     setServerError('');
@@ -342,6 +360,8 @@ export default function ProfileV2Screen({ navigation, route }) {
     };
     try {
       ownerToken = await regAPI.getToken();
+      if (!await formIsCurrent()) return;
+      await draft.save();
       if (!await formIsCurrent()) return;
       // Не отправляем пустые дополнительные поля: они могли быть заполнены ранее.
       const payload = { name: name.trim(), phone: phone.trim(), role };
@@ -417,8 +437,12 @@ export default function ProfileV2Screen({ navigation, route }) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       if (!await formIsCurrent()) return;
       const roleSaved = await setRole(role, { expectedToken: ownerToken, isCurrent: () => formMountedRef.current });
-      if (!await formIsCurrent()) return;
       if (roleSaved?.ok === false) throw new Error('profile_role_commit_failed');
+      // setRole может уже размонтировать форму. Очищаем только её сохранённый
+      // снимок после успешного commit той же сессии; retry до этого хранит черновик.
+      if (await regAPI.getToken() !== ownerToken) return;
+      await draft.clear();
+      if (!await formIsCurrent()) return;
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
     } catch {
       if (formMountedRef.current && (!ownerToken || await formIsCurrent())) {
@@ -447,7 +471,7 @@ export default function ProfileV2Screen({ navigation, route }) {
 
           <ProfileField
             id="name"
-            editable={!busy}
+            editable={!busy && draft.ready}
             label={ui.nameLabel}
             value={name}
             onChange={setName}
@@ -464,24 +488,25 @@ export default function ProfileV2Screen({ navigation, route }) {
           <View style={s.field}>
             <Text style={s.label}>{ui.phoneLabel}</Text>
             <View style={[s.phoneRow, focused === 'phone' && s.inputFocused, errors.phone && s.inputError]}>
-              <Pressable onPress={pickPhoneCountry} disabled={busy} style={s.dialButton} accessibilityRole="button" accessibilityLabel={t('country_picker_title')} testID="profile-v2-phone-country">
+              <Pressable onPress={pickPhoneCountry} disabled={busy || !draft.ready} style={s.dialButton} accessibilityRole="button" accessibilityLabel={t('country_picker_title')} testID="profile-v2-phone-country">
                 <Text style={s.dialText}>+{phoneCountry.dial}</Text>
                 <Feather name="chevron-down" size={16} color={colors.textSecondary} />
               </Pressable>
-              <TextInput value={registrationNational(phone, phoneCountry)} onChangeText={(value) => { changePhone(value); if (errors.phone) setErrors((prev) => ({ ...prev, phone: null })); }} onFocus={() => setFocused('phone')} onBlur={() => setFocused('')} placeholder={phoneCountry.dial === '7' ? '705 123 45 67' : ''} placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" inputMode="tel" textContentType="telephoneNumber" autoComplete="tel-national" autoCorrect={false} autoCapitalize="none" editable={!busy} style={s.phoneInput} testID="profile-v2-phone" accessibilityLabel={ui.phoneLabel} />
+              <TextInput value={registrationNational(phone, phoneCountry)} onChangeText={(value) => { changePhone(value); if (errors.phone) setErrors((prev) => ({ ...prev, phone: null })); }} onFocus={() => setFocused('phone')} onBlur={() => setFocused('')} placeholder={phoneCountry.dial === '7' ? '705 123 45 67' : ''} placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" inputMode="tel" textContentType="telephoneNumber" autoComplete="tel-national" autoCorrect={false} autoCapitalize="none" editable={!busy && draft.ready} style={s.phoneInput} testID="profile-v2-phone" accessibilityLabel={ui.phoneLabel} />
             </View>
             {errors.phone ? <Text style={s.errText}>{errors.phone}</Text> : null}
           </View>
 
+          {draft.loadError ? <View testID="registration-draft-error"><Text style={s.serverError}>{t('publication_draft_load_failed')}</Text><Pressable onPress={draft.retry} accessibilityRole="button" testID="registration-draft-retry"><Text style={s.subtitle}>{t('repeat_action')}</Text></Pressable></View> : null}
           {serverError ? <Text style={s.serverError}>{serverError}</Text> : null}
         </KeyboardSafeScrollView>
 
         <View style={s.ctaWrap}>
           <Pressable
             onPress={onContinue}
-            disabled={busy || !basicFormValid}
+            disabled={!draft.ready || busy || !basicFormValid}
             accessibilityRole="button"
-            accessibilityState={{ disabled: busy || !basicFormValid }}
+            accessibilityState={{ disabled: !draft.ready || busy || !basicFormValid }}
             testID="profile-v2-cta"
             style={({ pressed }) => [
               s.ctaPrimary,

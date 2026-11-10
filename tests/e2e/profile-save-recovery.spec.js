@@ -7,7 +7,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) {
 }
 
 async function openProfile(page, role, response = { ok: true }) {
-  const state = { role: 'guest', level: 1, patches: [], completes: 0, completeResponse: { ok: true }, response, pageErrors: [] };
+  const state = { userId: 'mock-profile-user', role: 'guest', level: 1, patches: [], completes: 0, completeResponse: { ok: true }, response, pageErrors: [] };
   page.on('pageerror', (error) => state.pageErrors.push(error.message));
   await page.route('**/*', async (route) => {
     const request = route.request();
@@ -19,7 +19,7 @@ async function openProfile(page, role, response = { ok: true }) {
       } else if (url.pathname.endsWith('/register/email/verify')) {
         body = { token: 'mock-profile-token', verification_level: 1, role: null, is_new: true };
       } else if (url.pathname.endsWith('/register/me')) {
-        body = { id: 'mock-profile-user', role: state.role, verification_level: state.level, phone: null, full_name: '' };
+        body = { id: state.userId, role: state.role, verification_level: state.level, phone: null, full_name: '' };
       } else if (url.pathname.endsWith('/users/me')) {
         if (request.method() === 'PATCH') {
           state.patches.push(request.postDataJSON());
@@ -27,7 +27,7 @@ async function openProfile(page, role, response = { ok: true }) {
           if (body.ok) state.role = role;
           return route.fulfill({ status: state.response.status || 200, contentType: 'application/json', body: JSON.stringify(body) });
         }
-        body = { id: 'mock-profile-user', name: '', phone: null, role: state.role };
+        body = { id: state.userId, name: '', phone: null, role: state.role };
       } else if (url.pathname.endsWith('/driver/registration/complete-basic')) {
         state.completes++;
         return route.fulfill({ status: state.completeResponse.ok ? 200 : 503, contentType: 'application/json', body: JSON.stringify(state.completeResponse) });
@@ -69,6 +69,58 @@ async function openProfile(page, role, response = { ok: true }) {
 for (const viewport of [{ width: 1440, height: 900 }, { width: 393, height: 852 }, { width: 360, height: 800 }]) {
 test.describe(`Profile recovery ${viewport.width}px`, () => {
   test.use({ viewport, permissions: ['notifications'] });
+
+test('черновик регистрации сохраняется после возврата к роли и перезапуска страницы', async ({ page }) => {
+  await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-name').fill('QA Draft');
+  await page.getByTestId('profile-v2-phone').fill('+8613800138000');
+  await page.getByTestId('profile-v2-screen').getByRole('button', { name: 'Назад', exact: true }).click();
+  await expect(page.getByTestId('role-v2-screen')).toBeVisible();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Draft');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('13800138000');
+  await page.reload();
+  await expect(page.getByTestId('role-v2-screen')).toBeVisible();
+  await page.getByTestId('role-v2-client').click();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Draft');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('13800138000');
+});
+
+test('черновики регистрации изолированы по владельцу и роли', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-name').fill('Owner A Draft');
+  await page.getByTestId('profile-v2-phone').fill('+77000000002');
+  await page.getByTestId('profile-v2-screen').getByRole('button', { name: 'Назад', exact: true }).click();
+  await page.getByTestId('role-v2-driver').click();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('');
+  state.userId = 'mock-other-owner';
+  await page.reload();
+  await page.getByTestId('role-v2-client').click();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('');
+  state.userId = 'mock-profile-user';
+  await page.reload();
+  await page.getByTestId('role-v2-client').click();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('Owner A Draft');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('7000000002');
+});
+
+test('черновик очищается после успешного сохранения', async ({ page }) => {
+  const state = await openProfile(page, 'client');
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+  state.role = 'guest';
+  await page.reload();
+  await page.getByTestId('role-v2-client').click();
+  await page.getByTestId('role-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-name')).toHaveValue('');
+  await expect(page.getByTestId('profile-v2-phone')).toHaveValue('');
+});
 
 test('client сохраняет профиль с пустыми optional fields', async ({ page }) => {
   const state = await openProfile(page, 'client');

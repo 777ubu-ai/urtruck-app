@@ -11,6 +11,7 @@ function harness(saved, extra = {}) {
   const env = {
     busy: false, validate: () => true, name: ' QA User ', phone: '+77000000001', role: 'client',
     formMountedRef: { current: true }, savingRef: { current: false },
+    draft: { ready: true, save: async () => {}, clear: async () => {} },
     company: '', country: '', city: '', messengerType: '', sameAsPhone: true, messengerId: '',
     ui: copy.RU, t: (key) => key,
     setErrors: (fn) => { state.errors = fn(state.errors); },
@@ -250,4 +251,43 @@ test('отказ локального назначения роли даёт п�
   assert.equal(h.state.completion, 'error');
   assert.deepEqual(h.state.navigation, []);
   assert.equal(h.state.busy, false);
+});
+
+
+test('ошибка локального завершения сохраняет поколение черновика для штатного retry', async () => {
+  let cleared = 0, attempts = 0;
+  const draft = { ready: true, save: async () => { if (cleared) throw new Error('stale_generation'); }, clear: async () => { cleared++; } };
+  const h = harness({ ok: true }, { draft, setRole: () => ({ ok: ++attempts > 1 }) });
+  await h.run();
+  assert.equal(h.state.completion, 'error');
+  assert.equal(cleared, 0);
+  await h.run();
+  assert.equal(attempts, 2);
+  assert.equal(cleared, 1);
+  assert.equal(h.state.navigation[0][0], 'reset');
+});
+
+test('успешный role commit очищает свой черновик после размонтирования формы', async () => {
+  const mounted = { current: true };
+  let cleared = 0;
+  const h = harness({ ok: true }, {
+    formMountedRef: mounted,
+    draft: { ready: true, save: async () => {}, clear: async () => { cleared++; } },
+    setRole: () => { mounted.current = false; return { ok: true }; },
+  });
+  await h.run();
+  assert.equal(cleared, 1);
+  assert.deepEqual(h.state.navigation, []);
+});
+
+test('поздний role commit не очищает черновик после смены bearer', async () => {
+  let token = 'mock-token', cleared = 0;
+  const h = harness({ ok: true }, {
+    draft: { ready: true, save: async () => {}, clear: async () => { cleared++; } },
+    setRole: () => { token = 'other-token'; return { ok: true }; },
+    regAPI: { getToken: async () => token, updateProfile: async () => ({ ok: true }) },
+  });
+  await h.run();
+  assert.equal(cleared, 0);
+  assert.deepEqual(h.state.navigation, []);
 });

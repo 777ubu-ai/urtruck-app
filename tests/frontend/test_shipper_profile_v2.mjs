@@ -30,7 +30,7 @@ test('driver basic form requires only name and phone; birth date and IIN are abs
   assert.doesNotMatch(profile, /id="iin"/);
   assert.doesNotMatch(profile, /birth_date:\s*birthDate/);
   assert.doesNotMatch(profile, /iin:\s*digitsOnly/);
-  assert.match(profile, /disabled=\{busy \|\| !basicFormValid\}[\s\S]*accessibilityState=\{\{ disabled: busy \|\| !basicFormValid \}\}/);
+  assert.match(profile, /disabled=\{!draft\.ready \|\| busy \|\| !basicFormValid\}[\s\S]*accessibilityState=\{\{ disabled: !draft\.ready \|\| busy \|\| !basicFormValid \}\}/);
   assert.ok(
     profile.indexOf('</KeyboardSafeScrollView>') < profile.indexOf('testID="profile-v2-cta"'),
     'CTA must stay visible outside the long form scroll area',
