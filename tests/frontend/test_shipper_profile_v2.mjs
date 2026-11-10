@@ -8,12 +8,12 @@ const driverRegistration = fs.readFileSync('backend/api/driver_registration.py',
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
-test('active ProfileV2 keeps company and location optional for both roles', () => {
+test('active ProfileV2 keeps additional company and location fields outside registration', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /id="phone"/);
-  assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
-  assert.match(profile, /id="city"/);
+  assert.doesNotMatch(profile, /id="company"/);
+  assert.doesNotMatch(profile, /id="country"/);
+  assert.doesNotMatch(profile, /id="city"/);
   assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
@@ -21,9 +21,6 @@ test('active ProfileV2 keeps company and location optional for both roles', () =
   assert.match(profile, /testID=\{`profile-v2-\$\{id\}`\}/);
   assert.match(profile, /name:\s*name\.trim\(\)/);
   assert.match(profile, /phone:\s*phone\.trim\(\)/);
-  assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.match(profile, /country:\s*country\.trim\(\)/);
-  assert.match(profile, /city:\s*city\.trim\(\)/);
   assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
 });
 
@@ -54,7 +51,8 @@ test('shipper has its own visual identity while only driver enters vehicle setup
   assert.match(profile, /shipperTitle: 'Профиль грузоотправителя'/);
   assert.match(profile, /shipperColors/);
   assert.match(profile, /primary: '#C2410C'/);
-  assert.match(profile, /if \(role === 'driver'\)[\s\S]*navigation\.replace\('VehicleSetupCountry'/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
+  assert.match(profile, /await regAPI\.completeBasic\(/);
   assert.match(profile, /await setRole\(role, \{ expectedToken: ownerToken, isCurrent: \(\) => formMountedRef\.current \}\);\s*if \(roleSaved\?\.ok === false \|\| !await formIsCurrent\(\)\) return;\s*navigation\.reset/);
   assert.doesNotMatch(profileMenu, /testID: 'profile-favorites'/);
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);

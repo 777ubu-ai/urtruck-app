@@ -1,7 +1,7 @@
 import { withAdditionalLanguageTree, } from '../../utils/additionalLocales.js';
 // ProfileV2Screen — личные данные после выбора роли.
-// Водитель после этого шага обязательно добавляет машину на одной странице.
-// Компания, страна/город и preferred messenger — необязательные контактные данные.
+// Обе роли входят после имени и телефона; машина добавляется позже по желанию.
+// Дополнительные сведения редактируются в профиле, не в регистрации.
 // Дата рождения и ИИН не запрашиваются в базовой регистрации.
 // Email принадлежит auth-identity и повторно у пользователя не спрашивается.
 
@@ -29,10 +29,10 @@ import DriverRouteBackdrop from '../../components/ui/v1/DriverRouteBackdrop';
 const COPY = {
   RU: {
     driverTitle: 'Профиль водителя',
-    driverSubtitle: 'Личные данные для рейсов и автомобиля',
+    driverSubtitle: 'Ваше имя и номер телефона',
     shipperTitle: 'Профиль грузоотправителя',
-    shipperSubtitle: 'Данные компании и контактного лица',
-    nameLabel: 'Фамилия и имя *',
+    shipperSubtitle: 'Ваше имя и номер телефона',
+    nameLabel: 'Имя *',
     namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Основной телефон *',
     companyLabel: 'Компания / ИП *',
@@ -64,10 +64,10 @@ const COPY = {
   },
   EN: {
     driverTitle: 'Driver profile',
-    driverSubtitle: 'Personal details for trips and your vehicle',
+    driverSubtitle: 'Your name and phone number',
     shipperTitle: 'Shipper profile',
-    shipperSubtitle: 'Company and contact person details',
-    nameLabel: 'First and last name *',
+    shipperSubtitle: 'Your name and phone number',
+    nameLabel: 'Name *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
     companyLabel: 'Company / business *',
@@ -99,9 +99,9 @@ const COPY = {
   },
   ZH: {
     driverTitle: '司机资料',
-    driverSubtitle: '填写运输和车辆所需的个人信息',
+    driverSubtitle: '您的姓名和手机号',
     shipperTitle: '货主资料',
-    shipperSubtitle: '填写公司和联系人信息',
+    shipperSubtitle: '您的姓名和手机号',
     nameLabel: '姓名 *',
     namePlaceholder: '例如：张伟',
     phoneLabel: '主要手机号 *',
@@ -134,10 +134,10 @@ const COPY = {
   },
   KK: {
     driverTitle: 'Жүргізуші профилі',
-    driverSubtitle: 'Рейстер мен көлікке арналған жеке деректер',
+    driverSubtitle: 'Атыңыз және телефон нөміріңіз',
     shipperTitle: 'Жүк жөнелтуші профилі',
-    shipperSubtitle: 'Компания және байланыс тұлғасының деректері',
-    nameLabel: 'Тегі және аты *',
+    shipperSubtitle: 'Атыңыз және телефон нөміріңіз',
+    nameLabel: 'Аты *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
     companyLabel: 'Компания / ЖК *',
@@ -307,12 +307,6 @@ export default function ProfileV2Screen({ navigation, route }) {
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
-  const [company, setCompany] = useState('');
-  const [country, setCountry] = useState('');
-  const [city, setCity] = useState('');
-  const [messengerType, setMessengerType] = useState('');
-  const [messengerId, setMessengerId] = useState('');
-  const [sameAsPhone, setSameAsPhone] = useState(true);
   const [focused, setFocused] = useState('');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -337,14 +331,6 @@ export default function ProfileV2Screen({ navigation, route }) {
     return Object.keys(next).length === 0;
   };
 
-  const selectMessenger = (nextType) => {
-    const togglingOff = messengerType === nextType;
-    setMessengerType(togglingOff ? '' : nextType);
-    setMessengerId('');
-    setSameAsPhone(!togglingOff && nextType === 'whatsapp');
-    if (errors.messenger) setErrors((prev) => ({ ...prev, messenger: null }));
-  };
-
   const onContinue = async () => {
     if (busy || savingRef.current || !validate()) return;
     savingRef.current = true;
@@ -360,20 +346,8 @@ export default function ProfileV2Screen({ navigation, route }) {
     try {
       ownerToken = await regAPI.getToken();
       if (!await formIsCurrent()) return;
-      const effectiveMessengerId = messengerType === 'whatsapp' && sameAsPhone
-        ? phone.trim()
-        : messengerId.trim();
-
-      const payload = {
-        name: name.trim(),
-        phone: phone.trim(),
-        role,
-        company_name: company.trim(),
-        country: country.trim(),
-        city: city.trim(),
-        messenger_type: messengerType,
-        messenger_id: messengerType ? effectiveMessengerId : '',
-      };
+      // Не отправляем пустые дополнительные поля: они могли быть заполнены ранее.
+      const payload = { name: name.trim(), phone: phone.trim(), role };
 
       const saved = await regAPI.updateProfile(payload, { expectedToken: ownerToken });
       if (!await formIsCurrent()) return;
@@ -433,18 +407,14 @@ export default function ProfileV2Screen({ navigation, route }) {
         if (!draftSaved?.ok) throw new Error('basic_profile_save_failed');
       }
 
-      // Для водителя машина входит в обязательный базовый onboarding.
-      // Роль фиксируется в AuthContext только после сохранения машины и
-      // успешного complete-basic на финальном экране.
       if (role === 'driver') {
-        navigation.replace('VehicleSetupCountry', {
-          role: 'driver',
-          origin: 'basic_onboarding',
+        const completed = await regAPI.completeBasic({
+          expectedToken: ownerToken, isCurrent: () => formMountedRef.current,
         });
-        return;
+        if (!await formIsCurrent()) return;
+        if (!completed?.ok) throw new Error('basic_profile_complete_failed');
       }
 
-      // Для не-driver ролей сохраняем прежний переход после профиля.
       const roleSaved = await setRole(role, { expectedToken: ownerToken, isCurrent: () => formMountedRef.current });
       if (roleSaved?.ok === false || !await formIsCurrent()) return;
       navigation.reset({ index: 0, routes: [{ name: 'Main', params: { role } }] });
@@ -457,9 +427,6 @@ export default function ProfileV2Screen({ navigation, route }) {
       if (formMountedRef.current) setBusy(false);
     }
   };
-
-  const showMessengerContact = Boolean(messengerType)
-    && !(messengerType === 'whatsapp' && sameAsPhone);
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']} testID="profile-v2-screen">
@@ -518,104 +485,6 @@ export default function ProfileV2Screen({ navigation, route }) {
             errors={errors}
             setErrors={setErrors}
           />
-
-          <ProfileField
-            id="company"
-            label={ui.companyOptionalLabel}
-            value={company}
-            onChange={setCompany}
-            placeholder=""
-            autoCapitalize="words"
-            s={s}
-            colors={colors}
-            focused={focused}
-            setFocused={setFocused}
-            errors={errors}
-            setErrors={setErrors}
-          />
-          <Text style={s.helperText}>{ui.companyOptionalHint}</Text>
-
-          <ProfileField
-            id="country"
-            label={ui.countryLabel}
-            value={country}
-            onChange={setCountry}
-            placeholder=""
-            autoCapitalize="words"
-            s={s}
-            colors={colors}
-            focused={focused}
-            setFocused={setFocused}
-            errors={errors}
-            setErrors={setErrors}
-          />
-
-          <ProfileField
-            id="city"
-            label={ui.cityLabel}
-            value={city}
-            onChange={setCity}
-            placeholder=""
-            autoCapitalize="words"
-            s={s}
-            colors={colors}
-            focused={focused}
-            setFocused={setFocused}
-            errors={errors}
-            setErrors={setErrors}
-          />
-          <Text style={s.helperText}>{ui.locationOptionalHint}</Text>
-
-          <View style={s.section}>
-            <Text style={s.sectionLabel}>{ui.messengerLabel}</Text>
-            <View style={s.messengerRow}>
-              {MESSENGERS.map((item) => (
-                <MessengerOption
-                  key={item.key}
-                  item={item}
-                  selected={messengerType === item.key}
-                  onPress={() => selectMessenger(item.key)}
-                  s={s}
-                  colors={colors}
-                  ui={ui}
-                />
-              ))}
-            </View>
-
-            {messengerType === 'whatsapp' ? (
-              <View style={s.samePhoneRow}>
-                <Text style={s.samePhoneText}>{ui.samePhone}</Text>
-                <Switch
-                  value={sameAsPhone}
-                  onValueChange={(value) => {
-                    setSameAsPhone(value);
-                    if (errors.messenger) setErrors((prev) => ({ ...prev, messenger: null }));
-                  }}
-                  trackColor={{ false: colors.borderStrong, true: colors.primary }}
-                  thumbColor={colors.textOnPrimary}
-                  ios_backgroundColor={colors.borderStrong}
-                  testID="profile-v2-messenger-same-phone"
-                />
-              </View>
-            ) : null}
-
-            {showMessengerContact ? (
-            <ProfileField
-              id="messenger"
-              label={ui.messengerContact}
-              value={messengerId}
-              onChange={setMessengerId}
-              placeholder=""
-              autoCapitalize="none"
-              s={s}
-              colors={colors}
-              focused={focused}
-              setFocused={setFocused}
-              errors={errors}
-              setErrors={setErrors}
-            />
-            ) : null}
-          </View>
 
           <View style={s.infoCard}>
             {hasVerifiedEmail ? (

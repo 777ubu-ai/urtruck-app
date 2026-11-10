@@ -7,7 +7,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) {
 }
 
 async function openProfile(page, role, response = { ok: true }) {
-  const state = { role: 'guest', level: 1, patches: [], response, pageErrors: [] };
+  const state = { role: 'guest', level: 1, patches: [], completes: 0, completeResponse: { ok: true }, response, pageErrors: [] };
   page.on('pageerror', (error) => state.pageErrors.push(error.message));
   await page.route('**/*', async (route) => {
     const request = route.request();
@@ -28,6 +28,9 @@ async function openProfile(page, role, response = { ok: true }) {
           return route.fulfill({ status: state.response.status || 200, contentType: 'application/json', body: JSON.stringify(body) });
         }
         body = { id: 'mock-profile-user', name: '', phone: null, role: state.role };
+      } else if (url.pathname.endsWith('/driver/registration/complete-basic')) {
+        state.completes++;
+        return route.fulfill({ status: state.completeResponse.ok ? 200 : 503, contentType: 'application/json', body: JSON.stringify(state.completeResponse) });
       } else if (url.pathname.includes('/driver/registration')) {
         body = { ok: true, draft: {} };
       } else if (/unread|notifications/.test(url.pathname)) {
@@ -53,12 +56,15 @@ async function openProfile(page, role, response = { ok: true }) {
   await expect(page.getByTestId('profile-v2-screen')).toBeVisible();
   await page.getByTestId('profile-v2-name').fill('QA Profile');
   await page.getByTestId('profile-v2-phone').fill('+77000000001');
+  if (process.env.REGISTRATION_SCREENSHOTS && page.viewportSize().width === 393) {
+    await page.getByTestId('profile-v2-screen').screenshot({ path: process.env.REGISTRATION_SCREENSHOTS + '/' + role + '-registration.png' });
+  }
   return state;
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 393, height: 852 }]) {
 test.describe(`Profile recovery ${viewport.width}px`, () => {
-  test.use({ viewport });
+  test.use({ viewport, permissions: ['notifications'] });
 
 test('client сохраняет профиль с пустыми optional fields', async ({ page }) => {
   const state = await openProfile(page, 'client');
@@ -66,16 +72,16 @@ test('client сохраняет профиль с пустыми optional fields
   await page.getByTestId('profile-v2-cta').click();
   await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
   expect(state.patches).toHaveLength(1);
-  expect(state.patches[0]).toMatchObject({ role: 'client', company_name: '', country: '', city: '' });
+  expect(state.patches[0]).toEqual({ role: 'client', name: 'QA Profile', phone: '+77000000001' });
 });
 
-test('выбранный мессенджер без контакта не блокирует вход', async ({ page }) => {
-  const state = await openProfile(page, 'client');
-  await page.getByTestId('profile-v2-messenger-wechat').click();
+test('обе роли видят только имя и телефон, подтверждённая почта показана отдельно', async ({ page }) => {
+  await openProfile(page, 'client');
+  for (const field of ['company', 'country', 'city', 'messenger', 'iin', 'birthDate']) {
+    await expect(page.getByTestId(`profile-v2-${field}`)).toHaveCount(0);
+  }
+  await expect(page.getByTestId('profile-v2-screen').getByTestId('auth-confirmed-email')).toBeVisible();
   await expect(page.getByTestId('profile-v2-cta')).toBeEnabled();
-  await page.getByTestId('profile-v2-cta').click();
-  await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
-  expect(state.patches[0]).toMatchObject({ messenger_type: 'wechat', messenger_id: '' });
 });
 
 test('ошибка смены телефона видна, данные сохранены, повторный Save возможен', async ({ page }) => {
@@ -92,11 +98,13 @@ test('ошибка смены телефона видна, данные сохр
   expect(state.patches).toHaveLength(2);
 });
 
-test('driver после сохранения переходит к обязательной машине', async ({ page }) => {
+test('driver после сохранения входит без добавления машины', async ({ page }) => {
   const state = await openProfile(page, 'driver');
   await page.getByTestId('profile-v2-cta').click();
   await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
-  await expect(page.getByTestId('vehicle-setup-single-screen')).toBeVisible();
+  await expect(page.getByTestId('vehicle-setup-single-screen')).toHaveCount(0);
+  await expect(page.getByTestId('bottom-nav')).toBeVisible();
+  expect(state.completes).toBe(1);
   expect(state.patches).toHaveLength(1);
 });
 

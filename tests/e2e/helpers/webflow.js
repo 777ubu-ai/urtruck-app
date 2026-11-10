@@ -75,8 +75,7 @@ async function passOtpAndOnboard(page, role, { name = 'QA Tester', phone = '+770
       await phoneInput.waitFor({ state: 'visible', timeout: 8000 });
       await phoneInput.fill(phone);
       const company = page.locator(tid('profile-v2-company'));
-      await company.waitFor({ state: 'visible', timeout: 8000 });
-      await company.fill('UrTruck E2E');
+      if (await company.isVisible()) await company.fill('UrTruck E2E');
       await expect(page.locator(tid('profile-v2-cta'))).toBeEnabled();
       await page.locator(tid('profile-v2-cta')).click();
     }
