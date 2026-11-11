@@ -40,6 +40,7 @@ test('photo/voice and document sources use the bounded expiry-aware cache', () =
 test('tapping a photo bubble opens a full-screen viewer with an explicit close button', () => {
   assert.match(workspace, /<ProtectedChatPhoto[\s\S]*?onOpen=\{setFullImage\}/);
   assert.match(fs.readFileSync('src/components/deal/ProtectedChatPhoto.web.js', 'utf8'), /getPrivateFile\('media'/);
+  assert.match(fs.readFileSync('src/components/deal/ProtectedChatPhoto.native.js', 'utf8'), /getPrivateFile\('media'/);
   assert.match(workspace, /testID="deal-chat-photo-bubble"/);
   assert.match(workspace, /testID="deal-chat-photo-fullscreen"/);
   assert.match(workspace, /testID="deal-chat-photo-close"/);

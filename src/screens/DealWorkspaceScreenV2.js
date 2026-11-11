@@ -71,7 +71,7 @@ import {
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
-import VoiceMessageBubble from '../components/deal/ProtectedVoiceMessageBubble';
+import VoiceMessageBubble from '../components/VoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
 import { createManualTextTranslationState } from '../utils/manualTextTranslationState';
 import { routeMetricValues } from '../utils/routeMetricValues';
@@ -1599,7 +1599,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {datePill}
         <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
-            {item.attachmentUnavailable && !(Platform.OS === 'web' && (item.photo || item.voice) && !item.optimistic) ? (
+            {item.attachmentUnavailable && !(Platform.OS === 'web' && item.photo && !item.optimistic) ? (
               <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
                 {t('chat_attachment_unavailable')}
               </Text>
@@ -1612,12 +1612,6 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             {item.voice ? (
               <VoiceMessageBubble
                 uri={item.mediaUrl}
-                roomId={roomId}
-                messageId={item.id}
-                optimistic={item.optimistic}
-                unavailableText={t('chat_attachment_unavailable')}
-                retryText={t('chat_attach_retry')}
-                textColor={item.mine ? bubbleMineColors.textColor : colors.text}
                 fallbackDurationSec={item.voiceDuration}
                 mine={item.mine}
                 transcript={item.mine ? undefined : voiceTranscripts[item.id]}
