@@ -74,7 +74,8 @@ def test_existing_cargo_photo_and_external_url_remain_visible(monkeypatch):
     photo = 'https://fixture.supabase.co/storage/v1/object/sign/fixture-private/cargo_photos/photo.jpg?token=fixture'
     external = 'https://example.org/vehicle.jpg'
     local_photo = 'https://app.example/security/storage/cargo_photos/photo.jpg?exp=fixture&sig=fixture'
-    assert marketplace._sign_cargo_photos([photo, external, local_photo]) == [photo, external, local_photo]
+    qa2_photo = '/qa2/storage/cargo_photos/photo.jpg?exp=fixture&sig=fixture'
+    assert marketplace._sign_cargo_photos([photo, external, local_photo, qa2_photo]) == [photo, external, local_photo, qa2_photo]
 
 
 @pytest.mark.parametrize('prefix', [

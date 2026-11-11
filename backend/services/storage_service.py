@@ -134,6 +134,12 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
             return True, None
         source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
         if not source.scheme:
+            if value.startswith('/qa2/storage/'):
+                path = unquote(source.path)
+                parts = path[len('/qa2/storage/'):].split('/')
+                if '%' in path or any(part in ('', '.', '..') for part in parts) or len(parts) < 2:
+                    return True, None
+                return True, parts[0]
             local_prefixes = (LOCAL_PUBLIC_BASE.rstrip('/') + '/', '/security/storage/', '/storage/')
             if not any(value.startswith(prefix) for prefix in local_prefixes):
                 return True, None
