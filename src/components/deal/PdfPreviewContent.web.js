@@ -1,5 +1,6 @@
 import React from 'react';
 import { getLanguage } from '../../utils/i18n';
+import { chatAPI } from '../../utils/chatAPI';
 
 const viewerFailure = {
   RU: ['Не удалось открыть просмотр документа.', 'Повторить'],
@@ -15,14 +16,28 @@ const viewerFailure = {
 
 // PDF остаётся на собственном origin: ссылка передаётся в viewer через
 // postMessage, а не попадает в адрес страницы или сторонний сервис.
-export default function PdfPreviewContent({ url, title, onMetadata, onRendered, onError }) {
+export default function PdfPreviewContent({ url, secureFile, title, onMetadata, onRendered, onError }) {
   const frame = React.useRef(null);
   const ready = React.useRef(false);
+  const request = React.useRef(null);
   const [generation, setGeneration] = React.useState(0);
   const [failed, setFailed] = React.useState(false);
-  const current = React.useRef({ url, onMetadata, onRendered, onError });
-  current.current = { url, onMetadata, onRendered, onError };
-  const sendDocument = () => frame.current?.contentWindow?.postMessage({ channel: 'urtruck-pdf-parent', type: 'open', url: current.current.url, language: getLanguage() }, window.location.origin);
+  const current = React.useRef({ url, secureFile, onMetadata, onRendered, onError });
+  current.current = { url, secureFile, onMetadata, onRendered, onError };
+  const sendDocument = async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    try {
+      const file = current.current.secureFile;
+      const data = file ? await chatAPI.getPrivateFile('attachment', file.roomId, file.fileId, { signal: controller.signal }) : null;
+      if (controller.signal.aborted || request.current !== controller) return;
+      frame.current?.contentWindow?.postMessage({ channel: 'urtruck-pdf-parent', type: 'open',
+        ...(data ? { bytes: data.bytes } : { url: current.current.url }), language: getLanguage() }, window.location.origin);
+    } catch {
+      if (!controller.signal.aborted) { setFailed(true); current.current.onError?.(); }
+    }
+  };
   React.useEffect(() => {
     const receive = event => {
       if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow || event.data?.channel !== 'urtruck-pdf-viewer') return;
@@ -33,11 +48,12 @@ export default function PdfPreviewContent({ url, title, onMetadata, onRendered, 
       } else if (event.data.type === 'metadata') current.current.onMetadata?.({ pages: event.data.pages });
       else if (event.data.type === 'rendered') current.current.onRendered?.({ page: event.data.page, pages: event.data.pages });
       else if (event.data.type === 'error') current.current.onError?.();
+      else if (event.data.type === 'retry-request') sendDocument();
     };
     window.addEventListener('message', receive);
-    return () => window.removeEventListener('message', receive);
+    return () => { request.current?.abort(); window.removeEventListener('message', receive); };
   }, []);
-  React.useEffect(() => { if (ready.current) sendDocument(); }, [url]);
+  React.useEffect(() => { if (ready.current) sendDocument(); return () => request.current?.abort(); }, [url, secureFile?.roomId, secureFile?.fileId]);
   React.useEffect(() => {
     ready.current = false;
     setFailed(false);

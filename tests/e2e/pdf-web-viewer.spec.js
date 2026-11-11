@@ -39,6 +39,14 @@ test('PDF реально рисуется; ошибка сети и истёкш
   await page.evaluate(()=>{const f=document.querySelector('#qa-pdf-viewer');f.contentWindow.postMessage({channel:'urtruck-pdf-parent',type:'open',url:'/qa2/storage/qa-pdf-fixture.pdf',language:'RU'},location.origin)});
   expect((await qa2Response).status()).toBe(200);
   await expect(frame.locator('#page')).toBeVisible();
+  // Байты из авторизованного запроса передаются viewer без токена и URL.
+  await page.evaluate((bytes)=>new Promise((resolve,reject)=>{const f=document.querySelector('#qa-pdf-viewer');const timer=setTimeout(()=>reject(Error('PDF не отрисован')),15000);const receive=e=>{if(e.source===f.contentWindow&&e.origin===location.origin&&e.data?.channel==='urtruck-pdf-viewer'&&e.data.type==='rendered'){clearTimeout(timer);window.removeEventListener('message',receive);resolve()}};window.addEventListener('message',receive);f.contentWindow.postMessage({channel:'urtruck-pdf-parent',type:'open',bytes:new Uint8Array(bytes).buffer,language:'RU'},location.origin)}), Array.from(pdf));
+  await expect(frame.locator('#page')).toBeVisible();
+  expect(await frame.locator('#page').evaluate(canvas => {
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    let ink=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]&&pixels[i]<180&&pixels[i+1]<180&&pixels[i+2]<180)ink++;
+    return ink;
+  })).toBeGreaterThan(10);
   await page.locator('#qa-pdf-viewer').evaluate(node=>node.remove());
   await expect(page.locator('#qa-pdf-viewer')).toHaveCount(0);
 });

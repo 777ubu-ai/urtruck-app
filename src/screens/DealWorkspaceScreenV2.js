@@ -762,6 +762,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           const docName = displayAttachmentFilename(a.original_name) || a.id;
           return {
             id: `doc_${a.id}`,
+            attachmentId: a.id,
             clientUploadId: a.client_upload_id || null,
             mine: isOwnDocument(a, session?.user?.id),
             kind: 'document',
@@ -1554,7 +1555,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
               onPress={() => {
                 if (!item.docUrl) return;
                 if (meta.ext === 'pdf') {
-                  setPdfPreview({ url: item.docUrl, title: item.docName });
+                  setPdfPreview({ url: item.docUrl, title: item.docName, secureFile: item.attachmentId ? { roomId, fileId: item.attachmentId } : null });
                   return;
                 }
                 Linking.openURL(item.docDownloadUrl || item.docUrl).catch(() => {});
@@ -2296,6 +2297,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         <PdfPreviewModal
           visible={Boolean(pdfPreview)}
           url={pdfPreview?.url}
+          secureFile={pdfPreview?.secureFile}
           title={pdfPreview?.title}
           onClose={() => setPdfPreview(null)}
         />

@@ -6,6 +6,7 @@ import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
 import translations, { getLanguage } from './i18n';
 import { withNativeUploadFile } from './nativeAttachmentStaging';
+import { fetchPrivateFile } from './privateFileTransport';
 
 const BASE = `${API_BASE}/chat`;
 const TOKEN_KEY = 'ur_reg_token';
@@ -128,6 +129,10 @@ export function documentKindFromFile(mimeType, name) {
 }
 
 export const chatAPI = {
+  async getPrivateFile(kind, roomId, fileId, { signal } = {}) {
+    return fetchPrivateFile({ base: API_BASE, kind, roomId, fileId, signal,
+      getToken: () => storage.get(TOKEN_KEY), fetcher: authedFetch });
+  },
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }, { isCurrent = () => true } = {}) {
     let r;
     try {

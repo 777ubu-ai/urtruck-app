@@ -14,7 +14,7 @@ const text = {
 };
 const status=document.getElementById('status'), retry=document.getElementById('retry'), controls=document.getElementById('controls');
 const canvas=document.getElementById('page'), prev=document.getElementById('previous'), next=document.getElementById('next'), count=document.getElementById('page-count');
-let language='RU', url='', task, documentPdf, abort, serial=0, pageNumber=1, renderTask, drawing=false;
+let language='RU', url='', documentBytes=null, task, documentPdf, abort, serial=0, pageNumber=1, renderTask, drawing=false;
 const copy=()=>text[language]||text.EN;
 function allowed(value) {
   try {
@@ -41,10 +41,15 @@ async function open() {
     serial++; cleanup(); status.hidden=false; status.textContent=copy()[1]; retry.hidden=false; controls.hidden=true; canvas.hidden=true; signal('error');
   },20000);
   try {
-    if(!allowed(url))throw Error('unsupported_url');
-    abort=new AbortController(); const response=await fetch(url,{signal:abort.signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
-    if(!response.ok)throw Error('http_error');
-    const bytes=await response.arrayBuffer(); if(seq!==serial)return;
+    let bytes;
+    if(documentBytes) bytes=documentBytes.slice(0);
+    else {
+      if(!allowed(url))throw Error('unsupported_url');
+      abort=new AbortController(); const response=await fetch(url,{signal:abort.signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok)throw Error('http_error');
+      bytes=await response.arrayBuffer();
+    }
+    if(seq!==serial)return;
     task=pdfjs.getDocument({data:bytes,isEvalSupported:false,enableXfa:false,cMapUrl:'./cmaps/',cMapPacked:true,standardFontDataUrl:'./standard_fonts/',wasmUrl:'./wasm/',iccUrl:'./iccs/'});
     documentPdf=await task.promise; if(seq!==serial)return;
     signal('metadata',{pages:documentPdf.numPages}); await draw(1,seq);
@@ -53,7 +58,7 @@ async function open() {
     cleanup();status.hidden=false;status.textContent=copy()[1];retry.hidden=false;controls.hidden=true;canvas.hidden=true;signal('error');
   } finally { clearTimeout(timeout); }
 }
-retry.addEventListener('click',open);
+retry.addEventListener('click',()=>{ if(documentBytes) signal('retry-request'); else open(); });
 async function changePage(n) {
   if (!documentPdf || drawing) return;
   const seq=serial; drawing=true; prev.disabled=true; next.disabled=true;
@@ -67,6 +72,7 @@ next.addEventListener('click',()=>{if(documentPdf&&pageNumber<documentPdf.numPag
 window.addEventListener('message',event=>{
   if(event.origin!==location.origin||event.source!==parent||event.data?.channel!=='urtruck-pdf-parent'||event.data?.type!=='open')return;
   language=Object.hasOwn(text,event.data.language)?event.data.language:'EN';url=String(event.data.url||'');
+  documentBytes=event.data.bytes instanceof ArrayBuffer && event.data.bytes.byteLength<=12*1024*1024 ? event.data.bytes : null;
   retry.textContent=copy()[2];prev.setAttribute('aria-label',copy()[3]);next.setAttribute('aria-label',copy()[4]);open();
 });
 window.addEventListener('pagehide',()=>{serial++;cleanup();});

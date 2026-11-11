@@ -219,11 +219,11 @@ export default function DealAttachments({
     const url = item?.url || item?.signed_url || item?.download_url;
     if (!url) return;
     if (isPdfAttachment(item)) {
-      setPdfPreview({ url, title: attachmentLabel(t, item) });
+      setPdfPreview({ url, title: attachmentLabel(t, item), secureFile: conversationId && item.id ? { roomId: conversationId, fileId: item.id } : null });
       return;
     }
     try { await Linking.openURL(url); } catch { /* next load refreshes signed URL */ }
-  }, [t]);
+  }, [t, conversationId]);
 
   const prevTrigger = React.useRef(attachTrigger);
   useEffect(() => {
@@ -331,6 +331,7 @@ export default function DealAttachments({
       <PdfPreviewModal
         visible={Boolean(pdfPreview)}
         url={pdfPreview?.url}
+        secureFile={pdfPreview?.secureFile}
         title={pdfPreview?.title || t('attachment_document')}
         onClose={() => setPdfPreview(null)}
       />

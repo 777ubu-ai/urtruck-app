@@ -9,11 +9,13 @@ const nativeViewer = fs.readFileSync('src/components/deal/PdfPreviewContent.nati
 const webViewer = fs.readFileSync('src/components/deal/PdfPreviewContent.web.js', 'utf8');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 
-test('PDF viewer stays inside UrTruck and receives the original signed URL', () => {
+test('PDF viewer stays inside UrTruck and supports protected content', () => {
   assert.doesNotMatch(viewer, /react-native-pdf/);
   assert.match(nativeViewer, /import Pdf from 'react-native-pdf'/);
   assert.match(webViewer, /iframe/);
-  assert.match(nativeViewer, /source=\{\{ uri: url, cacheFileName \}\}/);
+  assert.match(nativeViewer, /chatAPI\.getPrivateFile/);
+  assert.match(nativeViewer, /uri: loaded\.uri/);
+  assert.match(webViewer, /chatAPI\.getPrivateFile/);
   assert.match(viewer, /testID="pdf-preview-modal"/);
   assert.match(viewer, /testID="pdf-preview-close"/);
   assert.match(viewer, /import \{ SafeAreaProvider, SafeAreaView \} from 'react-native-safe-area-context'/);
@@ -39,7 +41,7 @@ test('attachment list routes PDF to the in-app viewer but keeps non-PDF fallback
 
 test('deal document bubbles route PDF to the same viewer', () => {
   assert.match(workspace, /meta\.ext === 'pdf'/);
-  assert.match(workspace, /setPdfPreview\(\{ url: item\.docUrl, title: item\.docName \}\)/);
+  assert.match(workspace, /setPdfPreview\(\{ url: item\.docUrl, title: item\.docName, secureFile:/);
   assert.match(workspace, /<PdfPreviewModal/);
   assert.match(workspace, /Linking\.openURL\(item\.docDownloadUrl \|\| item\.docUrl\)/);
 });
