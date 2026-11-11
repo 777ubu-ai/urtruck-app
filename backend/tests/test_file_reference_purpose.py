@@ -57,6 +57,21 @@ def test_cargo_cannot_claim_another_users_uploaded_photo(monkeypatch):
     assert marketplace.create_cargo(body, {'id': owner, 'role': 'client'})['ok'] is True
 
 
+def test_configured_qa2_storage_upload_remains_publishable(monkeypatch):
+    import asyncio
+    import io
+    import uuid
+    from fastapi import UploadFile
+    owner = uuid.uuid4().hex
+    monkeypatch.setattr(storage_service, 'LOCAL_PUBLIC_BASE', '/qa2/storage')
+    ref = '/qa2/storage/cargo_photos/' + uuid.uuid4().hex + '.jpg'
+    monkeypatch.setattr(storage_service, 'save_image', lambda *args, **kwargs: ref)
+    image = UploadFile(filename='photo.jpg', file=io.BytesIO(b'\xff\xd8\xff\xe0fixture'))
+    assert asyncio.run(marketplace.upload_cargo_photo(file=image, user={'id': owner}))['photo_key'] == ref
+    body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
+    assert marketplace.create_cargo(body, {'id': owner, 'role': 'client'})['ok'] is True
+
+
 def test_cargo_rejects_signed_private_storage_url(monkeypatch):
     monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')
     monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
