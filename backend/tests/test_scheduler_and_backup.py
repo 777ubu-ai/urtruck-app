@@ -49,7 +49,8 @@ def test_scheduler_singleton_idempotent():
         assert ids == sorted(["telegram_parse", "monthly_rescore", "db_backup",
                               "push_reminders", "expired_notify", "no_bids_notify",
                               "push_outbox_drain", "voice_processing_drain",
-                              "gps_heartbeat_check", "external_freight_retention"]), ids
+                              "gps_heartbeat_check", "external_freight_retention",
+                              "owned_publication_expiry"]), ids
     finally:
         jobs.stop_scheduler()
         os.environ.pop("URTRUCK_SCHEDULER_LOCK", None)
