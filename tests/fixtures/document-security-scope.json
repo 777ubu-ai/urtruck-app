@@ -2,7 +2,7 @@
   "base_sha": "1147dc6fe3560c753c16126cec7d25ab35465d4f",
   "reason": "Адресная защита файлов и сохранность повторной отправки: проверка назначения и принадлежности загрузок, проверка сообщения и сессии; manifest не заменяет review и поведенческие проверки.",
   "sha256": {
-    "backend/api/marketplace.py": "e9abb46b15840dd0d8465bf41aaece1d0e8a5b15a28bfa70206d901888be4d48",
+    "backend/api/marketplace.py": "8eadf3b8ecc2bd4d27b5cb63dfb2b1c6578f0fdd8138c67a877728c349a9ed57",
     "backend/api/profile.py": "6a58b4b37e11f90c48e63df562257dc6d1f87f545955790ad0599c5a6d89b2c8",
     "backend/main.py": "8ef0ac1e016b6a6b810a92df441209e3281be787e189f1d3e044f4b818767dfa",
     "backend/api/chat.py": "83dd7ea63a791fc35b0094c081204e95a4544bb47e771583f3bf0dc53624962e",

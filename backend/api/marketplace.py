@@ -45,6 +45,9 @@ def _sign_cargo_photos(photos):
     for p in (photos or []):
         if not isinstance(p, str) or not p:
             continue
+        owned_url, category = _cargo_storage.own_supabase_object_url(p)
+        if owned_url and category != 'cargo_photos':
+            continue
         if (p.startswith('supabase://') or _cargo_file_signing.is_local_storage_path(p)) and not _cargo_storage.ref_has_purpose(p, {'cargo_photos'}):
             continue
         if p.startswith(('http://', 'https://', 'data:', 'blob:', 'file:', '/security/storage/', '/storage/')):
@@ -763,6 +766,8 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
         for ref in body.photos or []:
             if not isinstance(ref, str):
                 raise HTTPException(status_code=400, detail='Некорректная ссылка на фото')
+            if _cargo_storage.own_supabase_object_url(ref)[0]:
+                raise HTTPException(status_code=403, detail='Фото требуется загрузить повторно')
             if (ref.startswith('supabase://') or _cargo_file_signing.is_local_storage_path(ref)
                     or _cargo_storage.ref_has_purpose(ref, {'cargo_photos'})):
                 if not _cargo_storage.ref_has_purpose(ref, {'cargo_photos'}):

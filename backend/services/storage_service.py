@@ -12,6 +12,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
@@ -124,6 +125,29 @@ def _split_supabase_ref(value: Optional[str]) -> Optional[tuple[str, str]]:
 
 def is_private_remote_ref(value: Optional[str]) -> bool:
     return _split_supabase_ref(value) is not None
+
+
+def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
+    """Распознать URL объекта своего хранилища и его категорию без подписи."""
+    try:
+        source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
+        if (not configured.hostname or not source.hostname or source.scheme not in ('http', 'https')
+                or source.hostname.rstrip('.') != configured.hostname.rstrip('.')):
+            return False, None
+        path = unquote(source.path)
+        if '%' in path:
+            path = unquote(path)
+        prefix = configured.path.rstrip('/') + '/storage/v1/object/'
+        if not path.startswith(prefix):
+            return False, None
+        parts = path[len(prefix):].split('/')
+        if len(parts) < 4 or parts[0] not in ('sign', 'public', 'authenticated') or parts[1] != SUPABASE_BUCKET:
+            return True, None
+        if any(part in ('', '.', '..') or '\\' in part or '%' in part for part in parts):
+            return True, None
+        return True, parts[2]
+    except (TypeError, ValueError):
+        return False, None
 
 
 def ref_has_purpose(value: Optional[str], categories: set[str]) -> bool:

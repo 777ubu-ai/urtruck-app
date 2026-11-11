@@ -55,3 +55,39 @@ def test_cargo_cannot_claim_another_users_uploaded_photo(monkeypatch):
         marketplace.create_cargo(body, {'id': other, 'role': 'client'})
     assert error.value.status_code == 403
     assert marketplace.create_cargo(body, {'id': owner, 'role': 'client'})['ok'] is True
+
+
+def test_cargo_rejects_signed_private_storage_url(monkeypatch):
+    monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')
+    monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
+    ref = 'https://fixture.supabase.co/storage/v1/object/sign/fixture-private/chat_attachments/private.pdf?token=fixture'
+    body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
+    with pytest.raises(HTTPException) as error:
+        marketplace.create_cargo(body, {'id': 'fixture-owner', 'role': 'client'})
+    assert error.value.status_code in (400, 403)
+    assert marketplace._sign_cargo_photos([ref]) == []
+
+
+def test_existing_cargo_photo_and_external_url_remain_visible(monkeypatch):
+    monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')
+    monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
+    photo = 'https://fixture.supabase.co/storage/v1/object/sign/fixture-private/cargo_photos/photo.jpg?token=fixture'
+    external = 'https://example.org/vehicle.jpg'
+    assert marketplace._sign_cargo_photos([photo, external]) == [photo, external]
+
+
+@pytest.mark.parametrize('prefix', [
+    'https://fixture.supabase.co:443/storage/v1/object/sign/',
+    'https://fixture.supabase.co./storage/v1/object/sign/',
+    'https://fixture.supabase.co/storage%2fv1/object/authenticated/',
+    'https://fixture.supabase.co/storage/v1/object/public/',
+])
+def test_storage_url_variants_do_not_bypass_photo_guard(monkeypatch, prefix):
+    monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')
+    monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
+    ref = prefix + 'fixture-private/id_documents/private.pdf?token=fixture'
+    assert storage_service.own_supabase_object_url(ref) == (True, 'id_documents')
+    assert marketplace._sign_cargo_photos([ref]) == []
+    body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
+    with pytest.raises(HTTPException):
+        marketplace.create_cargo(body, {'id': 'fixture-owner', 'role': 'client'})
