@@ -150,7 +150,7 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
         if source.scheme in ('http', 'https') and ('%' in path or any(part in ('.', '..') for part in path.split('/'))):
             return True, None
         if source.scheme in ('http', 'https'):
-            for prefix in ('/security/storage/', '/storage/'):
+            for prefix in ('/security/storage/', '/qa2/storage/', '/storage/'):
                 if path.startswith(prefix) and not path.startswith('/storage/v1/object/'):
                     parts = path[len(prefix):].split('/')
                     return True, parts[0] if len(parts) >= 2 and all(parts) else None

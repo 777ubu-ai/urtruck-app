@@ -104,6 +104,7 @@ def test_storage_url_variants_do_not_bypass_photo_guard(monkeypatch, prefix):
     'https://ｆixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://fixture。supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://app.example/security/storage/id_documents/private.pdf?exp=fixture&sig=fixture',
+    'https://qa2.example/qa2/storage/id_documents/private.pdf?exp=fixture&sig=fixture',
     ' //fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     '\t//fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     r'/\fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
