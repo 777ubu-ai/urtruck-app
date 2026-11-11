@@ -1120,7 +1120,7 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             # вложения в одном ответе; следующий poll попробует снова.
             private_ref = m["photo_url"]
             m["photo_url"] = None
-            if not signing_failed and storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice'}):
+            if not signing_failed and storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice', 'chat'}):
                 try:
                     m["photo_url"] = file_signing.sign(private_ref)
                 except Exception:

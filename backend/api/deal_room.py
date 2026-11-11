@@ -243,7 +243,7 @@ def conversation_messages(conversation_id: str, limit: int = 100, offset: int = 
     for m in msgs:
         if m.get("photo_url"):
             ref = m["photo_url"]
-            m["photo_url"] = file_signing.sign(ref) if storage_service.ref_has_purpose(ref, {'chat_photos', 'chat_voice'}) else None
+            m["photo_url"] = file_signing.sign(ref) if storage_service.ref_has_purpose(ref, {'chat_photos', 'chat_voice', 'chat'}) else None
             m["attachment_unavailable"] = not bool(m["photo_url"])
     return {"messages": msgs}
 
