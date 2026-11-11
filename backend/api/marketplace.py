@@ -95,6 +95,10 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
                  and not row.get("taken_by") and not row.get("booked_by")
                  and not _active_deal_exists(c, **{table[:-1] + "_id": listing_id}))
     if is_public:
+        from services import owned_publication_periods as periods
+        if periods.is_due(c, kind='cargo' if table == 'cargos' else 'trip', listing_id=listing_id, now=datetime.utcnow()):
+            is_public = False
+    if is_public:
         if table == "cargos":
             return _public_cargo_ok(row)
         return _public_trip_ok(row)
@@ -848,6 +852,9 @@ def list_cargos(
     params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
+        from services import owned_publication_periods as periods
+        if periods.is_enabled(c):
+            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='cargo' AND p.listing_id=cargos.id AND julianday(p.expires_at)<=julianday('now'))"
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
@@ -1421,6 +1428,43 @@ td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-
     return HTMLResponse(html)
 
 
+class PublicationRenewIn(BaseModel):
+    period_id: str = Field(min_length=1, max_length=80)
+
+
+def _publication_action(kind: str, listing_id: str, user: dict, action: str, period_id: str = ''):
+    from services import owned_publication_periods as periods
+    try:
+        with get_conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if action == 'renew':
+                return periods.renew(c, kind=kind, listing_id=listing_id, owner_id=user['id'],
+                                     expected_period_id=period_id, now=datetime.utcnow())
+            return periods.disposition(c, kind=kind, listing_id=listing_id, owner_id=user['id'], action=action)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail='Доступно только владельцу') from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail='Действие недоступно для текущего объявления') from exc
+
+
+@mp_router.post('/{kind}/{listing_id}/publication/renew')
+def renew_owned_publication(kind: Literal['cargos', 'trips'], listing_id: str, body: PublicationRenewIn,
+                            user=Depends(require_active_level(1))):
+    return _publication_action('cargo' if kind == 'cargos' else 'trip', listing_id, user, 'renew', body.period_id)
+
+
+@mp_router.post('/{kind}/{listing_id}/publication/archive')
+def archive_owned_publication(kind: Literal['cargos', 'trips'], listing_id: str,
+                              user=Depends(require_active_level(1))):
+    return _publication_action('cargo' if kind == 'cargos' else 'trip', listing_id, user, 'archive')
+
+
+@mp_router.post('/{kind}/{listing_id}/publication/hide')
+def hide_owned_publication(kind: Literal['cargos', 'trips'], listing_id: str,
+                           user=Depends(require_active_level(1))):
+    return _publication_action('cargo' if kind == 'cargos' else 'trip', listing_id, user, 'hide')
+
+
 # ── Продление одним тапом (Модель А): «Ещё актуально» ────────────────────
 # Дата загрузки/выезда сбрасывается на сегодня → публикация снова живёт
 # 3 дня и возвращается в общую ленту. Без ручного ввода даты.
@@ -1505,6 +1549,11 @@ def republish_trip(trip_id: str, user=Depends(require_driver_trip_publication)):
             raise HTTPException(status_code=403, detail="Можно публиковать только свой рейс")
         if row["status"] not in ("unpublished", "expired"):
             raise HTTPException(status_code=409, detail="Рейс не в статусе unpublished/expired")
+        from services import owned_publication_periods as periods
+        if periods.is_enabled(c) and (row['status'] == 'expired' or
+                                      periods.is_due(c, kind='trip', listing_id=trip_id, now=datetime.utcnow()) or
+                                      not c.execute("SELECT 1 FROM owned_publication_periods WHERE kind='trip' AND listing_id=?", (trip_id,)).fetchone()):
+            raise HTTPException(status_code=409, detail="Для продления обновите приложение")
         c.execute(
             "UPDATE trips SET status = 'active', "
             "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -1523,6 +1572,11 @@ def republish_cargo(cargo_id: str, user=Depends(require_active_level(1))):
             raise HTTPException(status_code=403, detail="Можно публиковать только свой груз")
         if row["status"] not in ("unpublished", "expired"):
             raise HTTPException(status_code=409, detail="Груз не в статусе unpublished/expired")
+        from services import owned_publication_periods as periods
+        if periods.is_enabled(c) and (row['status'] == 'expired' or
+                                      periods.is_due(c, kind='cargo', listing_id=cargo_id, now=datetime.utcnow()) or
+                                      not c.execute("SELECT 1 FROM owned_publication_periods WHERE kind='cargo' AND listing_id=?", (cargo_id,)).fetchone()):
+            raise HTTPException(status_code=409, detail="Для продления обновите приложение")
         c.execute(
             "UPDATE cargos SET status = 'active', "
             "published_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -1739,6 +1793,9 @@ def list_trips(
     params.extend(_ACTIVE_DEAL_STATUSES)
     where_sql = " AND ".join(where)
     with get_conn() as c:
+        from services import owned_publication_periods as periods
+        if periods.is_enabled(c):
+            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='trip' AND p.listing_id=trips.id AND julianday(p.expires_at)<=julianday('now'))"
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
@@ -1860,6 +1917,11 @@ def _require_current_bid_listing(row, conn=None):
         occupied = occupied or _active_deal_exists(conn, **link)
     if occupied:
         raise HTTPException(status_code=409, detail="Объявление уже занято и недоступно для предложений")
+    if conn is not None:
+        from services import owned_publication_periods as periods
+        kind = 'cargo' if 'owner_id' in value else 'trip'
+        if periods.is_due(conn, kind=kind, listing_id=value.get('id'), now=datetime.utcnow()):
+            raise HTTPException(status_code=409, detail="Срок публикации объявления истёк")
     if auto_renewing_listing(value):
         return
     deadline = listing_deadline(value.get("published_at"), value.get("created_at"))
@@ -2362,6 +2424,7 @@ def my_listings(
     section: str = Query("active", pattern="^(active|archive|history)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    listing_id: Optional[str] = None,
     user=Depends(require_level(1)),
 ):
     table, owner = ("cargos", "owner_id") if kind == "cargo" else ("trips", "driver_id")
@@ -2371,22 +2434,36 @@ def my_listings(
     operator = "NOT IN" if section == "history" else "IN"
     where = f"{owner} = ? AND COALESCE(status, 'active') {operator} ({placeholders})"
     params = (user["id"], *statuses)
+    if listing_id:
+        where += " AND id = ?"
+        params += (listing_id,)
     with get_conn() as c:
+        from services import owned_publication_periods as periods
+        policy_enabled = periods.is_enabled(c)
+        hidden_filter = (f" AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='{kind}' AND p.listing_id={table}.id AND p.owner_id={table}.{owner} AND p.owner_hidden=1)" if periods.has_periods_table(c) else '')
+        where += hidden_filter
         total = c.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}", params).fetchone()[0]
         archive_total = c.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
-            "AND status IN ('unpublished','cancelled','rejected')", (user["id"],)
+            "AND status IN ('unpublished','cancelled','rejected')" + hidden_filter, (user["id"],)
         ).fetchone()[0]
         active_placeholders = ",".join("?" for _ in active_statuses)
         history_total = c.execute(
             f"SELECT COUNT(*) FROM {table} WHERE {owner} = ? "
-            f"AND COALESCE(status, 'active') NOT IN ({active_placeholders})",
+            f"AND COALESCE(status, 'active') NOT IN ({active_placeholders})" + hidden_filter,
             (user["id"], *active_statuses),
         ).fetchone()[0]
         items = [dict(row) for row in c.execute(
             f"SELECT * FROM {table} WHERE {where} "
             "ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", (*params, limit, offset)
         ).fetchall()]
+        if policy_enabled:
+            for item in items:
+                period = c.execute('SELECT period_id,expires_at FROM owned_publication_periods WHERE kind=? AND listing_id=? AND owner_id=?',
+                                   (kind,item['id'],user['id'])).fetchone()
+                if period:
+                    item['publication_period_id'] = period['period_id']
+                    item['publication_expires_at'] = period['expires_at']
     if kind == "cargo":
         for item in items:
             try:
@@ -2407,10 +2484,15 @@ def my_dashboard(user=Depends(require_level(1))):
     """Всё что касается текущего юзера: мои грузы, мои рейсы, входящие/исходящие ставки."""
     uid = user["id"]
     with get_conn() as c:
+        from services import owned_publication_periods as periods
+        policy_enabled = periods.is_enabled(c)
+        has_periods = periods.has_periods_table(c)
+        cargo_hidden = " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='cargo' AND p.listing_id=cargos.id AND p.owner_id=cargos.owner_id AND p.owner_hidden=1)" if has_periods else ''
+        trip_hidden = " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='trip' AND p.listing_id=trips.id AND p.owner_id=trips.driver_id AND p.owner_hidden=1)" if has_periods else ''
         my_cargos = [dict(r) for r in c.execute(
-            "SELECT * FROM cargos WHERE owner_id = ? ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
+            "SELECT * FROM cargos WHERE owner_id = ?" + cargo_hidden + " ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
         my_trips = [dict(r) for r in c.execute(
-            "SELECT * FROM trips WHERE driver_id = ? ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
+            "SELECT * FROM trips WHERE driver_id = ?" + trip_hidden + " ORDER BY created_at DESC, id DESC", (uid,)).fetchall()]
         # Ставки которые Я сделал. currency берём у родителя (груз ИЛИ рейс) —
         # для my_bids это единственный источник: груз/рейс чужой, в payload его
         # нет, без JOIN фронт рисовал сумму хардкодным «$». COALESCE: ставка

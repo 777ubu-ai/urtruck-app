@@ -206,56 +206,62 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     expired_bids = []
     reasons = {}
 
-    # Груз и рейс продлеваются циклами 30 суток с сохранением ID.
-    # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
-    # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
-    for row in conn.execute(
-        "SELECT * FROM cargos WHERE status='active'"
-    ).fetchall():
-        deadline = listing_deadline(row["published_at"], row["created_at"])
-        has_deal = _has_active_deal(conn, cargo_id=row["id"])
-        if dict(row).get("taken_by") or has_deal or deadline is None:
-            continue
-        if deadline <= now:
-            if owner_is_deleted(conn, dict(row).get("owner_id")):
-                cur = conn.execute("UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
-                if cur.rowcount:
-                    expired_cargos.append(row["id"])
+    # Новая политика включается только отдельной миграцией после backup и dry-run.
+    from services import owned_publication_periods
+    if owned_publication_periods.is_enabled(conn):
+        for kind, listing_id in owned_publication_periods.expire_due(conn, now=now):
+            (expired_cargos if kind == 'cargo' else expired_trips).append(listing_id)
+    else:
+        # Груз и рейс продлеваются циклами 30 суток с сохранением ID.
+        # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.
+        # Конечные состояния не восстанавливаем автоматически; сделки сохраняются.
+        for row in conn.execute(
+            "SELECT * FROM cargos WHERE status='active'"
+        ).fetchall():
+            deadline = listing_deadline(row["published_at"], row["created_at"])
+            has_deal = _has_active_deal(conn, cargo_id=row["id"])
+            if dict(row).get("taken_by") or has_deal or deadline is None:
                 continue
-            period = timedelta(days=LISTING_TTL_DAYS)
-            cycle_start = deadline + ((now - deadline) // period) * period
-            cur = conn.execute(
-                "UPDATE cargos SET published_at=?, updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active' AND published_at IS ?",
-                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
-            )
-            if cur.rowcount:
-                renewed_cargos.append(row["id"])
+            if deadline <= now:
+                if owner_is_deleted(conn, dict(row).get("owner_id")):
+                    cur = conn.execute("UPDATE cargos SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                    if cur.rowcount:
+                        expired_cargos.append(row["id"])
+                    continue
+                period = timedelta(days=LISTING_TTL_DAYS)
+                cycle_start = deadline + ((now - deadline) // period) * period
+                cur = conn.execute(
+                    "UPDATE cargos SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                    "WHERE id=? AND status='active' AND published_at IS ?",
+                    (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
+                )
+                if cur.rowcount:
+                    renewed_cargos.append(row["id"])
 
-    for row in conn.execute(
-        "SELECT * FROM trips WHERE status='active'"
-    ).fetchall():
-        deadline = listing_deadline(row["published_at"], row["created_at"])
-        has_deal = _has_active_deal(conn, trip_id=row["id"])
-        if dict(row).get("booked_by") or has_deal or deadline is None:
-            continue
-        if deadline <= now:
-            if owner_is_deleted(conn, dict(row).get("driver_id")):
-                cur = conn.execute("UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
-                if cur.rowcount:
-                    expired_trips.append(row["id"])
+        for row in conn.execute(
+            "SELECT * FROM trips WHERE status='active'"
+        ).fetchall():
+            deadline = listing_deadline(row["published_at"], row["created_at"])
+            has_deal = _has_active_deal(conn, trip_id=row["id"])
+            if dict(row).get("booked_by") or has_deal or deadline is None:
                 continue
-            # Пропущенные циклы сворачиваем одним UPDATE; исходный created_at
-            # и дата выезда сохраняются. Ставки ниже по-прежнему имеют TTL 48ч.
-            period = timedelta(days=LISTING_TTL_DAYS)
-            cycle_start = deadline + ((now - deadline) // period) * period
-            cur = conn.execute(
-                "UPDATE trips SET published_at=?, updated_at=CURRENT_TIMESTAMP "
-                "WHERE id=? AND status='active' AND published_at IS ?",
-                (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
-            )
-            if cur.rowcount:
-                renewed_trips.append(row["id"])
+            if deadline <= now:
+                if owner_is_deleted(conn, dict(row).get("driver_id")):
+                    cur = conn.execute("UPDATE trips SET status='expired', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'", (row["id"],))
+                    if cur.rowcount:
+                        expired_trips.append(row["id"])
+                    continue
+                # Пропущенные циклы сворачиваем одним UPDATE; исходный created_at
+                # и дата выезда сохраняются. Ставки ниже по-прежнему имеют TTL 48ч.
+                period = timedelta(days=LISTING_TTL_DAYS)
+                cycle_start = deadline + ((now - deadline) // period) * period
+                cur = conn.execute(
+                    "UPDATE trips SET published_at=?, updated_at=CURRENT_TIMESTAMP "
+                    "WHERE id=? AND status='active' AND published_at IS ?",
+                    (cycle_start.isoformat(timespec="microseconds") + "Z", row["id"], row["published_at"]),
+                )
+                if cur.rowcount:
+                    renewed_trips.append(row["id"])
 
     # Now close every still-open bid whose 48h activity window ended or whose
     # parent is no longer actionable. Accepted/rejected/cancelled rows are not

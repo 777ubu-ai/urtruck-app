@@ -135,6 +135,22 @@ def expired_notify_job():
     return lifecycle_job(now=datetime.utcnow())
 
 
+def owned_publication_expiry_job():
+    """Истечение без открытия приложения; до отдельной миграции — no-op."""
+    import sqlite3
+    from pathlib import Path
+    import config
+    from services import owned_publication_periods
+    path = Path(config.DB_PATH).resolve()
+    if not path.is_file():
+        return
+    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as conn:
+        if not owned_publication_periods.is_enabled(conn):
+            return
+    from services.bid_expiry import expire_stale_marketplace
+    return expire_stale_marketplace()
+
+
 def no_bids_notify_job():
     """Один согласованный inbox/outbox повод на ID публикации."""
     from services.scheduled_notifications import no_bids_job
@@ -219,6 +235,7 @@ def start_scheduler():
     sched.add_job(push_reminders_job, CronTrigger(hour=4, minute=0), id="push_reminders")
     # Уведомление о просроченных публикациях: 05:00 UTC (11:00 Алматы)
     sched.add_job(expired_notify_job, CronTrigger(hour=5, minute=0), id="expired_notify")
+    sched.add_job(owned_publication_expiry_job, IntervalTrigger(minutes=1), id="owned_publication_expiry")
     # «Пока нет предложений» (18ч без ставок) — проверяем каждые 3 часа,
     # дедуп по data_json удерживает один пуш на публикацию.
     sched.add_job(no_bids_notify_job, IntervalTrigger(hours=3), id="no_bids_notify")

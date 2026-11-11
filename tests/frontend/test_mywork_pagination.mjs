@@ -12,12 +12,12 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const page = (ids, next = null, scope = 'fixture-A') => ({
   items: ids.map(id => ({ id, status: 'active' })), next_offset: next, archive_total: 70, scope,
 });
-function harness({ driver = false, createdCargo = null, token = 'fixture-A', data = null, pageRef = null } = {}) {
+function harness({ driver = false, createdCargo = null, token = 'fixture-A', data = null, pageRef = null, targetPublicationId = null } = {}) {
   const state = { data, createdCargoOverlay: createdCargo };
   const calls = [];
   const env = {
     pageRef: { current: pageRef || { busy: false, nextOffset: null, scope: null } },
-    loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver,
+    loadRequestRef: { current: 0 }, mounted: { current: true }, isDriver: driver, targetPublicationId,
     createdCargoOverlayRef: { current: createdCargo }, reconcileCreatedCargoOverlay,
     useCallback: fn => fn, withTimeout: promise => promise,
     require: () => ({ storage: { get: async () => typeof token === 'function' ? token() : token } }),
@@ -32,6 +32,14 @@ function harness({ driver = false, createdCargo = null, token = 'fixture-A', dat
     screen.slice(start, end) + '\nreturn load;')(...Object.values(env), tab);
   return { state, env, calls, render };
 }
+test('уведомление запрашивает нужную карточку в личной истории', async () => {
+  const h = harness({ targetPublicationId: 'listing-1' });
+  const pending = h.render('archive')(); await tick();
+  assert.equal(h.calls[0].args.listingId, 'listing-1');
+  assert.equal(h.calls[0].args.section, 'history');
+  h.calls[0].resolve(page(['listing-1'])); await pending;
+  assert.equal(h.state.data.my_cargos[0].id, 'listing-1');
+});
 test('5000 записей доступны порциями по 50, без повторов и запроса всего набора', async () => {
   for (const driver of [false, true]) {
     const h = harness({ driver }); const load = h.render('routes');

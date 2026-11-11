@@ -178,7 +178,9 @@ export default function NotificationsScreen({ navigation }) {
     if (!parsed) return;
     const { kind, id, params } = parsed;
     try {
-      if (kind === "cargos" && id) {
+      if ((kind === "cargos" || kind === "trips") && id && params.publication_expired === '1') {
+        navigation.navigate("MyTripsList", { role, initialTab: 'archive', targetPublicationId: id });
+      } else if (kind === "cargos" && id) {
         navigation.navigate("CargoDetail", { cargoId: id, bidId: params.bid || null, role });
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
