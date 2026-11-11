@@ -26,6 +26,7 @@ import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/
 import { RegistrationHeader, RegistrationCompletion, registrationColors } from './RegistrationPresentation';
 import { registrationCountry, registrationNational, registrationNumber, validRegistrationPhone } from '../../utils/registrationPhone';
 import { usePublicationDraft } from '../../hooks/usePublicationDraft';
+import { optionalProfileFields, changedOptionalProfileFields } from '../../utils/registrationOptionalProfile';
 import { COUNTRIES } from '../../utils/countries';
 
 const COPY = {
@@ -34,8 +35,8 @@ const COPY = {
     driverSubtitle: 'Ваше имя и номер телефона',
     shipperTitle: 'Профиль грузоотправителя',
     shipperSubtitle: 'Ваше имя и номер телефона',
-    nameLabel: 'Имя *',
-    namePlaceholder: 'Например, Иван',
+    nameLabel: 'Фамилия и имя *',
+    namePlaceholder: 'Например, Иван Петров',
     phoneLabel: 'Номер телефона *',
     companyLabel: 'Компания / ИП *',
     companyOptionalLabel: 'Компания / ИП',
@@ -69,7 +70,7 @@ const COPY = {
     driverSubtitle: 'Your name and phone number',
     shipperTitle: 'Shipper profile',
     shipperSubtitle: 'Your name and phone number',
-    nameLabel: 'Name *',
+    nameLabel: 'First and last name *',
     namePlaceholder: 'For example, Alex Morgan',
     phoneLabel: 'Primary phone *',
     companyLabel: 'Company / business *',
@@ -139,7 +140,7 @@ const COPY = {
     driverSubtitle: 'Атыңыз және телефон нөміріңіз',
     shipperTitle: 'Жүк жөнелтуші профилі',
     shipperSubtitle: 'Атыңыз және телефон нөміріңіз',
-    nameLabel: 'Аты *',
+    nameLabel: 'Тегі және аты *',
     namePlaceholder: 'Мысалы, Айдан Нұрлан',
     phoneLabel: 'Негізгі телефон *',
     companyLabel: 'Компания / ЖК *',
@@ -275,11 +276,40 @@ function ProfileField({
 export default function ProfileV2Screen(props) {
   const { session } = useAuth();
   const role = props.route?.params?.role || session?.user?.role || 'driver';
-  // Новый владелец/роль получают новый экземпляр формы до первого отображения.
-  return <ProfileV2Form key={`${session?.user?.id || 'no-owner'}:${role}`} {...props} />;
+  const { t } = useI18n();
+  const owner = session?.user?.id || null;
+  const [loaded, setLoaded] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setLoaded(null);
+    if (!owner) return () => { alive = false; };
+    let timer;
+    (async () => {
+      const token = await regAPI.getToken();
+      if (!alive) return;
+      const profile = token ? await Promise.race([
+        regAPI.profile(),
+        new Promise(resolve => { timer = setTimeout(() => resolve(null), 15000); }),
+      ]) : null;
+      clearTimeout(timer);
+      const currentToken = await regAPI.getToken();
+      if (!alive) return;
+      if (!token || currentToken !== token) { setLoaded({ owner, error: 'session_expired' }); return; }
+      if (!profile || String(profile.id) !== String(owner)) {
+        setLoaded({ owner, error: 'no_connection' });
+        return;
+      }
+      setLoaded({ owner, profile });
+    })().catch(() => { if (alive) setLoaded({ owner, error: 'no_connection' }); });
+    return () => { alive = false; clearTimeout(timer); };
+  }, [owner, attempt]);
+  if (!loaded || loaded.owner !== owner) return <SafeAreaView><ActivityIndicator /></SafeAreaView>;
+  if (loaded.error) return <SafeAreaView><Text>{t(loaded.error)}</Text><Pressable onPress={() => setAttempt(value => value + 1)} accessibilityRole="button"><Text>{t('repeat_action')}</Text></Pressable></SafeAreaView>;
+  return <ProfileV2Form key={`${owner}:${role}`} {...props} initialProfile={loaded.profile} />;
 }
 
-function ProfileV2Form({ navigation, route }) {
+function ProfileV2Form({ navigation, route, initialProfile }) {
   const baseColors = brandLight;
   const colors = registrationColors;
   const { t, lang } = useI18n();
@@ -289,15 +319,22 @@ function ProfileV2Form({ navigation, route }) {
   const s = useMemo(() => makeStyles(colors), [colors]);
 
   const signupIdentity = route?.params?.phone || session?.user?.email || session?.user?.phone || '';
-  const existingPhone = isRealPhone(signupIdentity) ? signupIdentity : session?.user?.phone;
+  const existingPhone = isRealPhone(initialProfile?.phone) ? initialProfile.phone : (isRealPhone(signupIdentity) ? signupIdentity : session?.user?.phone);
   const initialPhone = isRealPhone(existingPhone) ? '+' + digitsOnly(existingPhone) : '';
-  const initialName = String(session?.user?.name || '').trim();
+  const initialName = String(initialProfile?.name || session?.user?.name || '').trim();
   const hasVerifiedEmail = Boolean(
     /@/.test(String(route?.params?.phone || '')) || session?.user?.email,
   );
 
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
+  const [optionalInitial] = useState(() => optionalProfileFields(initialProfile));
+  const [optional, setOptional] = useState(optionalInitial);
+  const [optionalDirty, setOptionalDirty] = useState([]);
+  const changeOptional = (key, value) => {
+    setOptional(previous => ({ ...previous, [key]: value }));
+    setOptionalDirty(previous => previous.includes(key) ? previous : [...previous, key]);
+  };
   const [phoneCountry, setPhoneCountry] = useState(() => registrationCountry(initialPhone));
   const [completion, setCompletion] = useState('');
   const changePhone = (value) => {
@@ -317,7 +354,14 @@ function ProfileV2Form({ navigation, route }) {
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
   const draft = usePublicationDraft(`registration_basic_${role}`, session?.user?.id,
-    { name, phone, phoneCountryIso: phoneCountry.iso }, {
+    { name, phone, phoneCountryIso: phoneCountry.iso, optionalDraft: Object.fromEntries(optionalDirty.map(key => [key, optional[key]])) }, {
+      optionalDraft: (value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+        const clean = optionalProfileFields(value);
+        const keys = Object.keys(clean).filter(key => Object.hasOwn(value, key));
+        setOptional(previous => ({ ...previous, ...Object.fromEntries(keys.map(key => [key, clean[key]])) }));
+        setOptionalDirty(keys);
+      },
       name: (value) => { if (typeof value === 'string') setName(value); },
       phone: (value) => { if (typeof value === 'string') setPhone(value); },
       phoneCountryIso: (iso) => {
@@ -363,8 +407,8 @@ function ProfileV2Form({ navigation, route }) {
       if (!await formIsCurrent()) return;
       await draft.save();
       if (!await formIsCurrent()) return;
-      // Не отправляем пустые дополнительные поля: они могли быть заполнены ранее.
-      const payload = { name: name.trim(), phone: phone.trim(), role };
+      // Неизменённые поля не отправляем; намеренную очистку передаём серверу.
+      const payload = { name: name.trim(), phone: phone.trim(), role, ...changedOptionalProfileFields(optionalInitial, optional, optionalDirty) };
 
       const saved = await regAPI.updateProfile(payload, { expectedToken: ownerToken });
       if (!await formIsCurrent()) return;
@@ -495,6 +539,25 @@ function ProfileV2Form({ navigation, route }) {
               <TextInput value={registrationNational(phone, phoneCountry)} onChangeText={(value) => { changePhone(value); if (errors.phone) setErrors((prev) => ({ ...prev, phone: null })); }} onFocus={() => setFocused('phone')} onBlur={() => setFocused('')} placeholder={phoneCountry.dial === '7' ? '705 123 45 67' : ''} placeholderTextColor={colors.textTertiary} keyboardType="phone-pad" inputMode="tel" textContentType="telephoneNumber" autoComplete="tel-national" autoCorrect={false} autoCapitalize="none" editable={!busy && draft.ready} style={s.phoneInput} testID="profile-v2-phone" accessibilityLabel={ui.phoneLabel} />
             </View>
             {errors.phone ? <Text style={s.errText}>{errors.phone}</Text> : null}
+          </View>
+
+          {[
+            ['company_name', 'company', ui.companyOptionalLabel],
+            ['country', 'country', ui.countryLabel],
+            ['city', 'city', ui.cityLabel],
+          ].map(([key, id, label]) => <ProfileField key={key} id={id} label={label}
+            value={optional[key]} onChange={value => changeOptional(key, value)} editable={!busy && draft.ready}
+            s={s} colors={colors} focused={focused} setFocused={setFocused} errors={errors} setErrors={setErrors} />)}
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>{ui.messengerLabel}</Text>
+            <View style={s.messengerRow}>
+              {MESSENGERS.map(item => <MessengerOption key={item.key} item={item} selected={optional.messenger_type === item.key}
+                onPress={() => { if (!busy && draft.ready) { const next = optional.messenger_type === item.key ? '' : item.key; changeOptional('messenger_type', next); if (!next) changeOptional('messenger_id', ''); } }}
+                s={s} colors={colors} ui={ui} />)}
+            </View>
+            {optional.messenger_type ? <ProfileField id="messenger" label={ui.messengerContact} value={optional.messenger_id}
+              onChange={value => changeOptional('messenger_id', value)} editable={!busy && draft.ready}
+              s={s} colors={colors} focused={focused} setFocused={setFocused} errors={errors} setErrors={setErrors} /> : null}
           </View>
 
           {draft.loadError ? <View testID="registration-draft-error"><Text style={s.serverError}>{t('publication_draft_load_failed')}</Text><Pressable onPress={draft.retry} accessibilityRole="button" testID="registration-draft-retry"><Text style={s.subtitle}>{t('repeat_action')}</Text></Pressable></View> : null}

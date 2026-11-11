@@ -182,3 +182,22 @@ def test_invalid_messenger_type_is_rejected(monkeypatch):
 
     assert exc.value.status_code == 400
     assert exc.value.detail["error"] == "INVALID_MESSENGER_TYPE"
+
+@pytest.mark.parametrize("role", ["driver", "client"])
+def test_omitted_optional_profile_fields_preserve_existing_values(monkeypatch, role):
+    existing = {
+        "company_name": "ТОО Сохранено", "country": "KZ", "city": "Алматы",
+        "messenger_type": "telegram", "messenger_id": "owner-contact",
+        "phone": "+77771234567", "full_name": "Владелец", "role": role,
+    }
+    _, captured = _run(monkeypatch, profile.UpdateProfileIn(role=role, name="Владелец", phone="+77771234567"), current=existing)
+    for field in ("company_name", "country", "city", "messenger_type", "messenger_id"):
+        assert field not in captured["values"]
+
+
+def test_explicit_empty_optional_field_is_cleared_without_affecting_others(monkeypatch):
+    _, captured = _run(monkeypatch, profile.UpdateProfileIn(company_name=""), current={
+        "company_name": "Компания", "country": "KZ", "city": "Алматы",
+        "messenger_type": "telegram", "messenger_id": "owner-contact",
+    })
+    assert captured["values"] == {"company_name": ""}

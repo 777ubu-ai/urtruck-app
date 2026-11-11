@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { changedOptionalProfileFields } from '../../src/utils/registrationOptionalProfile.js';
 
 const source = readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
 const body = source.split('const onContinue = async () => {')[1].split('\n  };\n\n  return (')[0];
@@ -12,7 +13,7 @@ function harness(saved, extra = {}) {
     busy: false, validate: () => true, name: ' QA User ', phone: '+77000000001', role: 'client',
     formMountedRef: { current: true }, savingRef: { current: false },
     draft: { ready: true, save: async () => {}, clear: async () => {} },
-    company: '', country: '', city: '', messengerType: '', sameAsPhone: true, messengerId: '',
+    optionalInitial: {}, optional: {}, optionalDirty: [], changedOptionalProfileFields,
     ui: copy.RU, t: (key) => key,
     setErrors: (fn) => { state.errors = fn(state.errors); },
     setServerError: (value) => { state.serverError = value; },

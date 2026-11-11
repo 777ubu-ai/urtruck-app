@@ -8,12 +8,12 @@ const driverRegistration = fs.readFileSync('backend/api/driver_registration.py',
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
-test('active ProfileV2 keeps additional company and location fields outside registration', () => {
+test('active ProfileV2 permits additional company and location fields during registration', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /testID="profile-v2-phone"/);
-  assert.doesNotMatch(profile, /id="company"/);
-  assert.doesNotMatch(profile, /id="country"/);
-  assert.doesNotMatch(profile, /id="city"/);
+  assert.match(profile, /'company'/);
+  assert.match(profile, /'country'/);
+  assert.match(profile, /'city'/);
   assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
