@@ -11,8 +11,18 @@ const html = await readFile(path, 'utf8');
 const marker = '<script>window.__URTRUCK_YANDEX_MAPS_CONFIGURED__=true;window.__URTRUCK_YANDEX_MAPS_VERSION__="2.1";</script>';
 const script = `<script src="https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(key)}&lang=ru_RU" defer></script>`;
 
-if (!html.includes('api-maps.yandex.ru/2.1/')) {
+const appShellMatch = html.match(/window\.__URTRUCK_APP_SHELL_BASE64__="([A-Za-z0-9+/=]+)";/);
+if (appShellMatch) {
+  let appShell = Buffer.from(appShellMatch[1], 'base64').toString('utf8');
+  if (!appShell.includes('api-maps.yandex.ru/2.1/')) {
+    appShell = appShell.replace('</head>', `  ${marker}\n  ${script}\n</head>`);
+    const encoded = Buffer.from(appShell, 'utf8').toString('base64');
+    await writeFile(path, html.replace(appShellMatch[0], `window.__URTRUCK_APP_SHELL_BASE64__="${encoded}";`));
+  }
+  console.log('Yandex Maps: JavaScript API 2.1 injected into the preserved auth web shell.');
+} else if (!html.includes('api-maps.yandex.ru/2.1/')) {
   await writeFile(path, html.replace('</head>', `  ${marker}\n  ${script}\n</head>`));
+  console.log('Yandex Maps: JavaScript API 2.1 injected with ru_RU localization.');
+} else {
+  console.log('Yandex Maps: JavaScript API 2.1 already present.');
 }
-
-console.log('Yandex Maps: JavaScript API 2.1 injected with ru_RU localization.');

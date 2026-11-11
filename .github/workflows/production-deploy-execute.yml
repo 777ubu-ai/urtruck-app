@@ -124,6 +124,7 @@ jobs:
       - name: Build production web bundle with Yandex Maps
         env:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
+          URTRUCK_PUBLIC_STORE_LANDING: "1"
         run: |
           set -euo pipefail
           test -n "${EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY:-}" || {
@@ -133,9 +134,17 @@ jobs:
           npm run build:web
           node scripts/injectYandexMaps.mjs
           test -s dist/index.html
-          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
-          grep -q 'lang=ru_RU' dist/index.html
-          echo 'YANDEX_WEB_BUILD=ok'
+          grep -q 'data-store-link="android"' dist/index.html
+          grep -q 'data-store-link="ios"' dist/index.html
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('dist/index.html', 'utf8');
+          const match = html.match(/window\.__URTRUCK_APP_SHELL_BASE64__="([A-Za-z0-9+/=]+)";/);
+          if (!match) throw new Error('Auth shell is missing from store landing');
+          const shell = Buffer.from(match[1], 'base64').toString('utf8');
+          if (!shell.includes('api-maps.yandex.ru/2.1/') || !shell.includes('lang=ru_RU')) throw new Error('Yandex Maps config missing from auth shell');
+          console.log('PUBLIC_STORE_LANDING=ok AUTH_SHELL_MAPS=ok');
+          NODE
 
       - name: Prepare production PWA and build marker
         run: |
@@ -149,7 +158,8 @@ jobs:
             "$DEPLOY_SHA" "${DEPLOY_SHA::7}" "$BUILT_AT" "$(cat .version)" > dist/build-info.json
           test -s dist/index.html
           test -s dist/build-info.json
-          grep -q 'api-maps.yandex.ru/2.1/' dist/index.html
+          grep -q 'data-store-link="android"' dist/index.html
+          grep -q 'data-store-link="ios"' dist/index.html
 
       - name: Preflight optional server-side Yandex Router
         run: |

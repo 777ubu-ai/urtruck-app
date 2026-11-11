@@ -15,6 +15,10 @@ import pytest
 from fastapi import HTTPException
 
 from api import profile
+from database import db as dbm
+from database import registration_dal as reg_dal
+
+_ensure_profile_columns = profile._ensure_columns
 
 
 @pytest.fixture(autouse=True)
@@ -201,3 +205,46 @@ def test_explicit_empty_optional_field_is_cleared_without_affecting_others(monke
         "messenger_type": "telegram", "messenger_id": "owner-contact",
     })
     assert captured["values"] == {"company_name": ""}
+
+
+@pytest.mark.parametrize("role", ["driver", "client"])
+def test_real_isolated_database_keeps_untouched_profile_and_vehicle_data(monkeypatch, tmp_path, role):
+    """Exercise the actual PATCH handler and SQLite DAL against a disposable DB."""
+    monkeypatch.setattr(dbm.config, "DB_PATH", str(tmp_path / "profile-preservation.sqlite3"))
+    dbm.init_db()
+    reg_dal.init_registration_schema()
+    _ensure_profile_columns()
+    driver = reg_dal.get_or_create_driver_by_email(f"{role}@example.test")
+    user_id = driver["id"]
+    original = {
+        "phone": "+77015554322",
+        "role": role,
+        "full_name": "Сохранённый пользователь",
+        "company_name": "ТОО Сохранено",
+        "country": "KZ",
+        "city": "Алматы",
+        "messenger_type": "telegram",
+        "messenger_id": "owner-contact",
+        "vehicle_brand": "Existing Truck",
+        "vehicle_plate": "A123BC01",
+    }
+    reg_dal.update_driver(user_id, original)
+
+    result = profile.update_profile(
+        profile.UpdateProfileIn(role=role, name="Сохранённый пользователь", phone=original["phone"]),
+        user={"id": user_id},
+    )
+
+    assert result == {"ok": True}
+    saved = reg_dal.get_driver(user_id)
+    for field in ("company_name", "country", "city", "messenger_type", "messenger_id", "vehicle_brand", "vehicle_plate"):
+        assert saved[field] == original[field]
+
+    # Explicit clearing is distinct from an omitted field and does not clear
+    # the other optional profile values or an existing vehicle.
+    result = profile.update_profile(profile.UpdateProfileIn(company_name=""), user={"id": user_id})
+    assert result == {"ok": True}
+    saved = reg_dal.get_driver(user_id)
+    assert saved["company_name"] == ""
+    for field in ("country", "city", "messenger_type", "messenger_id", "vehicle_brand", "vehicle_plate"):
+        assert saved[field] == original[field]

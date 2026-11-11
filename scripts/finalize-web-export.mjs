@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
@@ -85,6 +86,34 @@ try {
   // WeChat/WhatsApp/Telegram. Inject it into the actual server HTML.
   if (!html.includes('property="og:title"')) {
     html = html.replace('</head>', `${SOCIAL_META}\n</head>`);
+    writeFileSync(index, html);
+  }
+
+  // The production public website is an installation landing page. Keep the
+  // existing Expo web shell embedded only for real auth callbacks; QA builds
+  // and the normal local export continue to serve the web app unchanged.
+  if (process.env.URTRUCK_PUBLIC_STORE_LANDING === '1') {
+    const landingPath = resolve('web/store/index.html');
+    const runtimePath = resolve('web/store/store-landing-runtime.js');
+    requireFile(landingPath);
+    requireFile(runtimePath);
+    requireFile(resolve('web/store/google-play-qr.png'));
+    requireFile(resolve('web/store/app-store-qr.png'));
+    const landingTemplate = readFileSync(landingPath, 'utf8');
+    const appShellBase64 = Buffer.from(html, 'utf8').toString('base64');
+    const runtimeHash = createHash('sha256').update(readFileSync(runtimePath)).digest('hex').slice(0, 12);
+    const publicIndex = landingTemplate
+      .replace('window.__URTRUCK_APP_SHELL_BASE64__="__URTRUCK_APP_SHELL_BASE64__";', `window.__URTRUCK_APP_SHELL_BASE64__="${appShellBase64}";`)
+      .replace('/store/store-landing-runtime.js?v=1', `/store/store-landing-runtime.js?v=${runtimeHash}`);
+    if (publicIndex === landingTemplate || publicIndex.includes('="__URTRUCK_APP_SHELL_BASE64__"')) {
+      throw new Error('Не удалось встроить сохранённую web-оболочку входа в страницу магазинов');
+    }
+    const storeDir = resolve(dist, 'store');
+    mkdirSync(storeDir, { recursive: true });
+    copyFileSync(resolve('web/store/google-play-qr.png'), resolve(storeDir, 'google-play-qr.png'));
+    copyFileSync(resolve('web/store/app-store-qr.png'), resolve(storeDir, 'app-store-qr.png'));
+    copyFileSync(runtimePath, resolve(storeDir, 'store-landing-runtime.js'));
+    html = publicIndex;
     writeFileSync(index, html);
   }
 
