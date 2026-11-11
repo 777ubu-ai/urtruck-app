@@ -42,6 +42,7 @@ import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import DealSystemEventCard from '../components/deal/DealSystemEventCard';
 import PdfPreviewModal from '../components/deal/PdfPreviewModal';
+import { downloadPrivateAttachment } from '../utils/privateFileDownload';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
@@ -1552,10 +1553,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             <TouchableOpacity
               activeOpacity={item.docUrl ? 0.72 : 1}
               disabled={!item.docUrl}
-              onPress={() => {
+              onPress={async () => {
                 if (!item.docUrl) return;
                 if (meta.ext === 'pdf') {
                   setPdfPreview({ url: item.docUrl, title: item.docName, secureFile: item.attachmentId ? { roomId, fileId: item.attachmentId } : null });
+                  return;
+                }
+                if (Platform.OS === 'web' && roomId && item.attachmentId) {
+                  try { await downloadPrivateAttachment(roomId, item.attachmentId, item.docName); }
+                  catch { toast(t('chat_attachment_unavailable'), 'error'); }
                   return;
                 }
                 Linking.openURL(item.docDownloadUrl || item.docUrl).catch(() => {});
@@ -1681,7 +1687,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, retryVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, retryVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor, roomId]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage

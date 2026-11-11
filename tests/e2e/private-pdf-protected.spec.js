@@ -32,6 +32,13 @@ test('оба участника читают защищённый PDF, пост�
   });
   expect(uploaded.status()).toBe(200);
   const id = (await uploaded.json()).attachment.id;
+  const csv = Buffer.from('item,weight\nbox,12\n');
+  const csvUpload = await request.post(`${H.API}/chat/conversations/${room}/attachments`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+    multipart: { kind: 'document', file: { name: 'private-fixture.csv', mimeType: 'text/csv', buffer: csv } },
+  });
+  expect(csvUpload.status()).toBe(200);
+  const csvId = (await csvUpload.json()).attachment.id;
   const path = `${H.API}/chat/conversations/${room}/attachments/${id}/content`;
   for (const token of [owner.token, driver.token]) {
     const response = await request.get(path, { headers: { Authorization: `Bearer ${token}` } });
@@ -61,7 +68,7 @@ test('оба участника читают защищённый PDF, пост�
       });
     }
     let download = exerciseRetry ? null : target.waitForResponse(r => r.url().endsWith(`/attachments/${id}/content`));
-    await target.getByTestId('deal-chat-document-bubble').click();
+    await target.getByTestId('deal-chat-document-bubble').filter({ hasText: 'private-fixture.pdf' }).click();
     if (exerciseRetry) await expect(target.getByText('Не удалось открыть просмотр документа.')).toBeVisible();
     if (exerciseRetry) {
       download = target.waitForResponse(r => r.url().endsWith(`/attachments/${id}/content`));
@@ -76,6 +83,14 @@ test('оба участника читают защищённый PDF, пост�
       return count;
     });
     expect(ink).toBeGreaterThan(10);
+    await target.getByTestId('pdf-preview-close').click();
+    const csvResponse = target.waitForResponse(r => r.url().endsWith(`/attachments/${csvId}/content`));
+    const fileDownload = target.waitForEvent('download');
+    await target.getByTestId('deal-chat-document-bubble').filter({ hasText: 'private-fixture.csv' }).click();
+    expect((await csvResponse).status()).toBe(200);
+    const downloaded = await fileDownload;
+    expect(downloaded.suggestedFilename()).toBe('private-fixture.csv');
+    expect(fs.readFileSync(await downloaded.path())).toEqual(csv);
   }
   await open(driver, page, true);
   const context = await browser.newContext({ locale: 'ru-RU' });

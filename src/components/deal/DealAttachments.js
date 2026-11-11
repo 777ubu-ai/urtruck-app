@@ -12,6 +12,8 @@ import { compressImage } from '../../utils/imageCompress';
 import { displayAttachmentFilename } from '../../utils/attachmentFilename';
 import { accentFor } from './DealRoom';
 import PdfPreviewModal from './PdfPreviewModal';
+import { downloadPrivateAttachment } from '../../utils/privateFileDownload';
+import { useToast } from '../Toast';
 
 const STATUS_META = {
   queued:    { icon: 'clock',        color: '#7C8B82', key: 'chat_attach_status_queued' },
@@ -93,6 +95,7 @@ export default function DealAttachments({
 }) {
   const { t } = useI18n();
   const { theme } = useTheme();
+  const { toast } = useToast();
   const accent = accentFor(role);
   const [server, setServer] = useState([]);
   const [local, setLocal] = useState([]);
@@ -222,8 +225,13 @@ export default function DealAttachments({
       setPdfPreview({ url, title: attachmentLabel(t, item), secureFile: conversationId && item.id ? { roomId: conversationId, fileId: item.id } : null });
       return;
     }
+    if (Platform.OS === 'web' && conversationId && item.id) {
+      try { await downloadPrivateAttachment(conversationId, item.id, attachmentLabel(t, item)); }
+      catch { toast(t('chat_attachment_unavailable'), 'error'); }
+      return;
+    }
     try { await Linking.openURL(url); } catch { /* next load refreshes signed URL */ }
-  }, [t, conversationId]);
+  }, [t, toast, conversationId]);
 
   const prevTrigger = React.useRef(attachTrigger);
   useEffect(() => {
