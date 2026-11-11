@@ -63,6 +63,11 @@ const EXPIRY_COPY = {
   KK: { expired: 'Жариялау мерзімі аяқталды', renew: '30 күнге ұзарту', archive: 'Мұрағатта қалдыру', hide: 'Жою', confirm: 'Хабарландыруды жеке тізімдерден жасыру керек пе?', success: 'Өзгеріс сақталды', error: 'Сақтау мүмкін болмады. Қайталаңыз.' },
   ZH: { expired: '发布期限已过', renew: '延长30天', archive: '保留在归档中', hide: '删除', confirm: '从个人列表中隐藏此信息？', success: '更改已保存', error: '保存失败，请重试。' },
   EN: { expired: 'Publication period expired', renew: 'Extend for 30 days', archive: 'Keep in archive', hide: 'Delete', confirm: 'Hide this listing from your lists?', success: 'Change saved', error: 'Could not save. Please try again.' },
+  TR: { expired: 'İlanın yayın süresi doldu', renew: '30 gün uzat', archive: 'Arşivde tut', hide: 'Sil', confirm: 'İlan listelerinizden gizlensin mi?', success: 'Değişiklik kaydedildi', error: 'Kaydedilemedi. Tekrar deneyin.' },
+  UZ: { expired: 'Eʼlonning joylashtirish muddati tugadi', renew: '30 kunga uzaytirish', archive: 'Arxivda qoldirish', hide: 'Oʻchirish', confirm: 'Eʼlon shaxsiy roʻyxatlardan yashirilsinmi?', success: 'Oʻzgarish saqlandi', error: 'Saqlab boʻlmadi. Qayta urinib koʻring.' },
+  KY: { expired: 'Жарыялоонун мөөнөтү аяктады', renew: '30 күнгө узартуу', archive: 'Архивде калтыруу', hide: 'Өчүрүү', confirm: 'Жарыя жеке тизмелерден жашырылсынбы?', success: 'Өзгөртүү сакталды', error: 'Сактоо мүмкүн болгон жок. Кайра аракет кылыңыз.' },
+  TG: { expired: 'Муҳлати нашри эълон ба охир расид', renew: '30 рӯз дароз кардан', archive: 'Дар бойгонӣ мондан', hide: 'Нест кардан', confirm: 'Эълон аз рӯйхатҳои шахсӣ пинҳон шавад?', success: 'Тағйирот сабт шуд', error: 'Сабт нашуд. Дубора кӯшиш кунед.' },
+  BE: { expired: 'Тэрмін публікацыі аб’явы скончыўся', renew: 'Падоўжыць на 30 дзён', archive: 'Пакінуць у архіве', hide: 'Выдаліць', confirm: 'Схаваць аб’яву з асабістых спісаў?', success: 'Змена захавана', error: 'Не ўдалося захаваць. Паспрабуйце яшчэ раз.' },
 };
 
 export default function MyTripsScreen({ navigation, route }) {
@@ -518,7 +523,7 @@ export default function MyTripsScreen({ navigation, route }) {
       const result = await marketAPI.ownedPublicationAction(isDriver ? 'trip' : 'cargo', item.id, action, item.publication_period_id);
       if (publicationOwner.current !== owner) return;
       if (result?.ok === true) { toast((EXPIRY_COPY[lang] || EXPIRY_COPY.EN).success, 'success'); load(); }
-      else toast(result?.detail || (EXPIRY_COPY[lang] || EXPIRY_COPY.EN).error, 'error');
+      else toast((EXPIRY_COPY[lang] || EXPIRY_COPY.EN).error, 'error');
     } finally {
       publicationLocks.current.delete(key);
       setPublicationBusy(current => { const next = { ...current }; delete next[key]; return next; });

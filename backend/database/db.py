@@ -97,7 +97,7 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
             SELECT 1 FROM owned_publication_periods p
             LEFT JOIN cargos c ON p.kind='cargo' AND c.id=p.listing_id
             LEFT JOIN trips t ON p.kind='trip' AND t.id=p.listing_id
-            WHERE julianday(p.expires_at)<=julianday('now')
+            WHERE p.expires_at<=strftime('%Y-%m-%dT%H:%M:%f','now') || '000Z'
               AND ((p.kind='cargo' AND c.status='active' AND COALESCE(c.taken_by,'')=''
                     AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.cargo_id=c.id AND d.status IN ({active_deals})))
                 OR (p.kind='trip' AND t.status='active' AND COALESCE(t.booked_by,'')=''

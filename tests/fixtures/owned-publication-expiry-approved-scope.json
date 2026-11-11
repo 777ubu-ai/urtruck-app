@@ -2,9 +2,9 @@
   "base_sha": "7960b9d09d05d6ecb5ff0efd32fb468d56f8d248",
   "reason": "Новое явное решение владельца: срок собственных объявлений 30 суток без автоматического продления; только перечисленные файлы изменены в этой области, манифест не заменяет независимую проверку и регрессию.",
   "sha256": {
-    "backend/api/marketplace.py": "ec088939205493df17b1c61c28ee7d47c96f206b6c6527194e1fe8b7aa759b46",
-    "backend/database/db.py": "0494cfb7129d4659842b9e986d110a9a8ebf7e077f5f6f316322e03e3379e66f",
-    "src/screens/MyTripsScreen.js": "087d9ffbac6295d267c54777fb457f3af3c712b92591e7cc2b679e66359b92b7",
+    "backend/api/marketplace.py": "4dd71c31f11b6908c3653286b0dd8146ce1bd75733dbf8c730bb913de5474e5d",
+    "backend/database/db.py": "647c5644fa4c30927dbb07b0a78e6ee292e5ddfc9d608b755cbaa75b1ca57bbd",
+    "src/screens/MyTripsScreen.js": "9f24903393e9c0b75bf05caed3ca0e5e31f05a7d966528fc9c0b48e012dc278e",
     "src/utils/marketAPI.js": "1d6b9163ded3e7f0431924c90df9c2e424b0f035df77c6ec7514c9c31479c646"
   }
 }

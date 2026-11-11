@@ -80,6 +80,26 @@ def test_expiry_notification_renewal_and_idempotency(kind, listing_id, owner):
     assert c.execute('SELECT COUNT(*) FROM notifications WHERE user_id=?',(owner,)).fetchone()[0] == 2
 
 
+def test_boundary_does_not_depend_on_sqlite_julianday_rounding():
+    c = lifecycle_database()
+    c.create_function('julianday', 1, lambda _: 1.0)
+    at = NOW + timedelta(days=30)
+    assert periods.expire_due(c, now=at-timedelta(microseconds=1)) == []
+    assert set(periods.expire_due(c, now=at)) == {('cargo','c1'), ('trip','t1')}
+
+
+@pytest.mark.parametrize('locale', ['RU','KK','EN','ZH','TR','UZ','KY','TG','BE'])
+@pytest.mark.parametrize('kind,owner', [('cargo','u1'),('trip','u2')])
+def test_expiry_inbox_has_each_supported_locale_for_both_roles(kind, owner, locale):
+    c = lifecycle_database()
+    c.execute('CREATE TABLE push_devices(id INTEGER PRIMARY KEY,user_id TEXT,locale TEXT,enabled INTEGER,last_seen_at TEXT)')
+    c.execute('INSERT INTO push_devices VALUES(1,?,?,1,?)', (owner, locale, '2026-11-11'))
+    periods.expire_due(c, now=NOW+timedelta(days=30))
+    row = c.execute('SELECT title,body FROM notifications WHERE user_id=?', (owner,)).fetchone()
+    assert tuple(row) == periods.EXPIRY_TEXT[locale]
+    assert all(row) and (locale == 'RU' or tuple(row) != periods.EXPIRY_TEXT['RU'])
+
+
 def test_blocked_owner_deals_and_wrong_owner_cannot_renew():
     c = lifecycle_database()
     at = NOW + timedelta(days=30)

@@ -854,7 +854,7 @@ def list_cargos(
     with get_conn() as c:
         from services import owned_publication_periods as periods
         if periods.is_enabled(c):
-            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='cargo' AND p.listing_id=cargos.id AND julianday(p.expires_at)<=julianday('now'))"
+            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='cargo' AND p.listing_id=cargos.id AND p.expires_at<=strftime('%Y-%m-%dT%H:%M:%f','now') || '000Z')"
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
@@ -1795,7 +1795,7 @@ def list_trips(
     with get_conn() as c:
         from services import owned_publication_periods as periods
         if periods.is_enabled(c):
-            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='trip' AND p.listing_id=trips.id AND julianday(p.expires_at)<=julianday('now'))"
+            where_sql += " AND NOT EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind='trip' AND p.listing_id=trips.id AND p.expires_at<=strftime('%Y-%m-%dT%H:%M:%f','now') || '000Z')"
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,

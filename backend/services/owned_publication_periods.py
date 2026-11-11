@@ -13,6 +13,11 @@ EXPIRY_TEXT = {
     'KK': ('Жариялау мерзімі аяқталды', 'Хабарландыру жеке тарихта сақталды.'),
     'ZH': ('发布期限已过', '信息已保存在个人历史记录中。'),
     'EN': ('Publication period expired', 'The listing remains in your history.'),
+    'TR': ('İlanın yayın süresi doldu', 'İlan kişisel geçmişinizde saklandı.'),
+    'UZ': ('Eʼlonning joylashtirish muddati tugadi', 'Eʼlon shaxsiy tarixingizda saqlandi.'),
+    'KY': ('Жарыялоонун мөөнөтү аяктады', 'Жарыя жеке тарыхыңызда сакталды.'),
+    'TG': ('Муҳлати нашри эълон ба охир расид', 'Эълон дар таърихи шахсии шумо нигоҳ дошта шуд.'),
+    'BE': ('Тэрмін публікацыі аб’явы скончыўся', 'Аб’ява захавана ў вашай асабістай гісторыі.'),
 }
 
 
@@ -166,7 +171,7 @@ def _expire_due(conn, *, now):
         rows = conn.execute(f'''SELECT l.id,l.{owner} AS owner_id,l.{occupied} AS occupied,
             p.period_id,p.expires_at,p.owner_id AS period_owner
             FROM {table} l JOIN owned_publication_periods p ON p.kind=? AND p.listing_id=l.id
-            WHERE l.status='active' AND julianday(p.expires_at)<=julianday(?)''', (kind,_stamp(now))).fetchall()
+            WHERE l.status='active' AND p.expires_at<=?''', (kind,_stamp(now))).fetchall()
         for row in rows:
             if row['occupied'] or _deal_exists(conn,kind,row['id'],include_completed=False):
                 continue
@@ -178,7 +183,7 @@ def _expire_due(conn, *, now):
                 WHERE id=? AND {owner}=? AND status='active' AND COALESCE({occupied},'')=''
                 AND NOT EXISTS (SELECT 1 FROM deals WHERE {deal_column}=? AND status IN ({placeholders}))
                 AND EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind=? AND p.listing_id=?
-                            AND p.owner_id=? AND p.period_id=? AND julianday(p.expires_at)<=julianday(?))''',
+                            AND p.owner_id=? AND p.period_id=? AND p.expires_at<=?)''',
                 (row['id'], row['owner_id'], row['id'], *ACTIVE_DEALS, kind, row['id'], row['owner_id'], row['period_id'], _stamp(now)))
             if not updated.rowcount:
                 continue
