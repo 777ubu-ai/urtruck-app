@@ -486,11 +486,21 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
 @deal_room_router.get('/chat/conversations/{conversation_id}/attachments/{attachment_id}/content')
 def get_attachment_content(conversation_id: str, attachment_id: str, user=Depends(require_level(1))):
     """Выдача байтов с проверкой участника и связи файла."""
+    def assert_exact_room_open():
+        from api.chat import _assert_chat_is_accepted
+        with get_conn() as c:
+            room = c.execute('SELECT participant_1,participant_2 FROM chat_rooms WHERE id=?', (conversation_id,)).fetchone()
+        if not room or user['id'] not in (room['participant_1'], room['participant_2']):
+            raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+        partner = room['participant_2'] if room['participant_1'] == user['id'] else room['participant_1']
+        _assert_chat_is_accepted(user['id'], partner, room_id=conversation_id)
+
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail='Беседа не найдена')
     if not dr.is_participant(conversation_id, user['id']):
         raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
     _assert_deal_room_open(conversation_id, user['id'])
+    assert_exact_room_open()
     def find_attachment():
         with get_conn() as c:
             return c.execute('''SELECT a.url,a.mime_type FROM message_attachments a
@@ -515,6 +525,7 @@ def get_attachment_content(conversation_id: str, attachment_id: str, user=Depend
     if not dr.is_participant(conversation_id, user['id']):
         raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
     _assert_deal_room_open(conversation_id, user['id'])
+    assert_exact_room_open()
     current = find_attachment()
     if not current or current['url'] != attachment['url'] or current['mime_type'] != attachment['mime_type']:
         raise HTTPException(status_code=404, detail='Вложение не найдено')

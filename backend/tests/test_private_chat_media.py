@@ -92,3 +92,16 @@ def test_media_change_during_read_is_not_disclosed(legacy_media, monkeypatch):
     with pytest.raises(HTTPException) as error:
         chat.get_message_media(room, message, user={'id': owner})
     assert error.value.status_code == 404
+
+
+def test_different_accepted_deal_cannot_reopen_cancelled_room(legacy_media):
+    owner, driver, _, room, deal, message, calls = legacy_media
+    with get_conn() as c:
+        cargo = c.execute('SELECT cargo_id FROM chat_rooms WHERE id=?', (room,)).fetchone()['cargo_id']
+        c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (deal,))
+        c.execute('INSERT INTO deals (id,cargo_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  (uuid.uuid4().hex, cargo, uuid.uuid4().hex, owner, driver, 'A', 'B', 1, 'accepted', uuid.uuid4().hex))
+    with pytest.raises(HTTPException) as error:
+        chat.get_message_media(room, message, user={'id': owner})
+    assert error.value.status_code == 403
+    assert not calls

@@ -96,3 +96,16 @@ def test_changed_attachment_during_read_is_not_returned(attachment_case, monkeyp
     with pytest.raises(HTTPException) as error:
         deal_room.get_attachment_content(a['room'], a['attachment'], {'id':a['owner']})
     assert error.value.status_code == 404
+
+
+def test_other_accepted_deal_cannot_reopen_cancelled_room(attachment_case):
+    a = attachment_case
+    with get_conn() as c:
+        cargo = c.execute('SELECT cargo_id FROM chat_rooms WHERE id=?', (a['room'],)).fetchone()['cargo_id']
+        c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (a['deal'],))
+        c.execute('INSERT INTO deals (id,bid_id,cargo_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  (uuid.uuid4().hex, uuid.uuid4().hex, cargo, a['owner'], a['partner'], 'A', 'B', 1, 'accepted', uuid.uuid4().hex))
+    with pytest.raises(HTTPException) as error:
+        deal_room.get_attachment_content(a['room'], a['attachment'], {'id':a['owner']})
+    assert error.value.status_code == 403
+    assert not a['calls']
