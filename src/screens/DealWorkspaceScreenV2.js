@@ -42,6 +42,7 @@ import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import DealSystemEventCard from '../components/deal/DealSystemEventCard';
 import PdfPreviewModal from '../components/deal/PdfPreviewModal';
+import ProtectedChatPhoto from '../components/deal/ProtectedChatPhoto';
 import { downloadPrivateAttachment } from '../utils/privateFileDownload';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
@@ -1598,15 +1599,15 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {datePill}
         <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
-            {item.attachmentUnavailable ? (
+            {item.attachmentUnavailable && !(Platform.OS === 'web' && item.photo && !item.optimistic) ? (
               <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
                 {t('chat_attachment_unavailable')}
               </Text>
             ) : null}
-            {item.photo && item.mediaUrl ? (
-              <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
-                <Image source={{ uri: item.mediaUrl }} style={s.photo} />
-              </TouchableOpacity>
+            {item.photo && (item.mediaUrl || (Platform.OS === 'web' && !item.optimistic)) ? (
+              <ProtectedChatPhoto roomId={roomId} messageId={item.id} uri={item.mediaUrl} optimistic={item.optimistic}
+                style={s.photo} textColor={item.mine ? bubbleMineColors.textColor : colors.text} onOpen={setFullImage} unavailableText={t('chat_attachment_unavailable')}
+                retryText={t('chat_attach_retry')} testID="deal-chat-photo-bubble" />
             ) : null}
             {item.voice ? (
               <VoiceMessageBubble
@@ -2294,7 +2295,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             the platform's own long-press "save image" menu (section 4). */}
         <Modal visible={!!fullImage} transparent animationType="fade" onRequestClose={() => setFullImage(null)}>
           <Pressable style={s.fullBackdrop} onPress={() => setFullImage(null)} testID="deal-chat-photo-fullscreen">
-            {fullImage ? <Image source={{ uri: fullImage }} style={s.fullImage} resizeMode="contain" /> : null}
+            {fullImage ? <ProtectedChatPhoto {...fullImage} style={s.fullImage} fullscreen
+              unavailableText={t('chat_attachment_unavailable')} retryText={t('chat_attach_retry')} /> : null}
             <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="deal-chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Feather name="x" size={26} color="#fff" />
             </TouchableOpacity>

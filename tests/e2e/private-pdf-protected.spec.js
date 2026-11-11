@@ -39,6 +39,21 @@ test('оба участника читают защищённый PDF, пост�
   });
   expect(csvUpload.status()).toBe(200);
   const csvId = (await csvUpload.json()).attachment.id;
+  const photo = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+  const photoUpload = await request.post(`${H.API}/chat/photo`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+    multipart: { file: { name: 'photo.png', mimeType: 'image/png', buffer: photo } },
+  });
+  expect(photoUpload.status()).toBe(200);
+  const sent = await request.post(`${H.API}/chat/send`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+    data: { room_id: room, photo_url: (await photoUpload.json()).photo_key, client_msg_id: `photo-${suffix}` },
+  });
+  expect(sent.status()).toBe(200);
+  const photoId = (await sent.json()).message_id;
+  const mediaPath = `${H.API}/chat/messages/${room}/media/${photoId}`;
+  expect((await request.get(mediaPath, { headers: { Authorization: `Bearer ${outsiderToken}` } })).status()).toBe(403);
+  expect([401, 403]).toContain((await request.get(mediaPath)).status());
   const path = `${H.API}/chat/conversations/${room}/attachments/${id}/content`;
   for (const token of [owner.token, driver.token]) {
     const response = await request.get(path, { headers: { Authorization: `Bearer ${token}` } });
@@ -49,6 +64,15 @@ test('оба участника читают защищённый PDF, пост�
   expect([401, 403]).toContain((await request.get(path)).status());
   expect((await request.get(`${H.API}/chat/conversations/${room}/attachments/not-the-id/content`, { headers: { Authorization: `Bearer ${owner.token}` } })).status()).toBe(404);
   async function open(actor, target, exerciseRetry = false) {
+    const mediaResponses = [];
+    target.on('response', r => { if (r.url().endsWith(`/messages/${room}/media/${photoId}`)) mediaResponses.push(r); });
+    if (exerciseRetry) {
+      let firstMedia = true;
+      await target.route(`**/messages/${room}/media/${photoId}`, route => {
+        if (firstMedia) { firstMedia = false; return route.abort('failed'); }
+        return route.continue();
+      });
+    }
     await target.goto(H.BASE, { waitUntil: 'networkidle' });
     await target.evaluate(({ token, id, role }) => {
       localStorage.setItem('ur_reg_token', token);
@@ -60,6 +84,15 @@ test('оба участника читают защищённый PDF, пост�
     await target.getByTestId('bottom-nav-deals').click();
     await target.getByTestId('deals-tab-active').click();
     await target.getByTestId('deals-deal-card').click();
+    if (exerciseRetry) await target.getByText('Вложение временно недоступно · Повторить').click();
+    const bubble = target.getByTestId('deal-chat-photo-bubble');
+    await expect(bubble).toBeVisible({ timeout: 15000 });
+    await expect.poll(() => mediaResponses.some(r => r.status() === 200)).toBe(true);
+    await expect(bubble.locator('img')).toHaveCount(1);
+    await expect(bubble.locator('img')).toHaveAttribute('src', /^blob:/);
+    await bubble.click();
+    await expect(target.getByTestId('deal-chat-photo-fullscreen').locator('img')).toBeVisible();
+    await target.getByTestId('deal-chat-photo-close').click();
     if (exerciseRetry) {
       let first = true;
       await target.route(`**/attachments/${id}/content`, route => {
