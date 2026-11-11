@@ -17,11 +17,12 @@ test('decoding is presentation-only and PDF classification uses the readable suf
   const source = readFileSync('src/components/deal/DealAttachments.js', 'utf8');
   assert.match(source, /import \{ displayAttachmentFilename \} from '..\/..\/utils\/attachmentFilename'/);
   assert.match(source, /displayAttachmentFilename\(item\?\.original_name/);
-  assert.match(source, /const url = item\?\.url \|\| item\?\.signed_url \|\| item\?\.download_url/);
+  assert.match(source, /secureFile: \{ roomId: conversationId, fileId: item\.id \}/);
+  assert.doesNotMatch(source, /Linking\.openURL\(/);
 });
 
 
-test('chat hydration decodes the document label while preserving its URL and owner', async () => {
+test('chat hydration decodes the document label and owner while retaining legacy URL metadata only for compatibility', async () => {
   const { readFileSync } = await import('node:fs');
   const { parse } = await import('@babel/parser');
   const source = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
@@ -60,6 +61,7 @@ test('chat hydration decodes the document label while preserving its URL and own
   assert.equal(doc.docKind.name, 'Заказ.pdf');
   assert.equal(doc.docUrl, signedUrl);
   assert.equal(doc.docDownloadUrl, signedUrl);
+  assert.equal(doc.attachmentId, 'attachment-a');
   assert.equal(doc.id, 'doc_attachment-a');
   assert.equal(doc.mine, true);
   assert.equal(hydrate({ id: 'attachment-b', owner_id: 'owner-b', url: signedUrl }).mine, false);

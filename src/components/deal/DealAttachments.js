@@ -1,7 +1,7 @@
 // DealAttachments — private deal files rendered inline with the chat.
 // Documents are sent from the chat "+" menu, messenger-style.
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import Feather from '@expo/vector-icons/Feather';
@@ -13,6 +13,7 @@ import { displayAttachmentFilename } from '../../utils/attachmentFilename';
 import { accentFor } from './DealRoom';
 import PdfPreviewModal from './PdfPreviewModal';
 import { downloadPrivateAttachment } from '../../utils/privateFileDownload';
+import { openPrivateChatAttachment } from '../../utils/openPrivateChatAttachment';
 import { useToast } from '../Toast';
 
 const STATUS_META = {
@@ -219,18 +220,23 @@ export default function DealAttachments({
   }, [runUpload]);
 
   const openAttachment = useCallback(async (item) => {
-    const url = item?.url || item?.signed_url || item?.download_url;
-    if (!url) return;
+    if (!conversationId || !item?.id) {
+      toast(t('chat_attachment_unavailable'), 'error');
+      return;
+    }
     if (isPdfAttachment(item)) {
-      setPdfPreview({ url, title: attachmentLabel(t, item), secureFile: conversationId && item.id ? { roomId: conversationId, fileId: item.id } : null });
+      setPdfPreview({ url: '', title: attachmentLabel(t, item), secureFile: { roomId: conversationId, fileId: item.id } });
       return;
     }
-    if (Platform.OS === 'web' && conversationId && item.id) {
-      try { await downloadPrivateAttachment(conversationId, item.id, attachmentLabel(t, item)); }
-      catch { toast(t('chat_attachment_unavailable'), 'error'); }
-      return;
+    try {
+      if (Platform.OS === 'web') {
+        await downloadPrivateAttachment(conversationId, item.id, attachmentLabel(t, item));
+      } else {
+        await openPrivateChatAttachment(conversationId, item.id, attachmentLabel(t, item));
+      }
+    } catch {
+      toast(t('chat_attachment_unavailable'), 'error');
     }
-    try { await Linking.openURL(url); } catch { /* next load refreshes signed URL */ }
   }, [t, toast, conversationId]);
 
   const prevTrigger = React.useRef(attachTrigger);
@@ -314,7 +320,7 @@ export default function DealAttachments({
                   sublabel={formatBytes(a.size_bytes)}
                   statusKey={meta.key}
                   statusColor={meta.color}
-                  onOpen={a.url ? () => openAttachment(a) : null}
+                  onOpen={a.id ? () => openAttachment(a) : null}
                 />
               );
             })}

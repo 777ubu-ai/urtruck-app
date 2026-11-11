@@ -126,6 +126,26 @@ test('document type classification is shared, not duplicated, between DealAttach
   assert.match(workspace, /documentKindFromFile/);
 });
 
+test('native office-document opening uses authorized attachment IDs, never signed URL fallback', () => {
+  const workspace = fs.readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
+  const opener = fs.readFileSync('src/utils/openPrivateChatAttachment.js', 'utf8');
+  const transport = fs.readFileSync('src/utils/privateAttachmentOpen.js', 'utf8');
+  assert.match(ui, /import \{ openPrivateChatAttachment \} from '\.\.\/\.\.\/utils\/openPrivateChatAttachment'/);
+  assert.match(ui, /if \(!conversationId \|\| !item\?\.id\)/);
+  assert.match(ui, /onOpen=\{a\.id \? \(\) => openAttachment\(a\) : null\}/);
+  assert.doesNotMatch(ui, /Linking\.openURL\(url\)/);
+  assert.match(workspace, /import \{ openPrivateChatAttachment \} from '\.\.\/utils\/openPrivateChatAttachment'/);
+  assert.match(workspace, /if \(!roomId \|\| !item\.attachmentId\)/);
+  assert.match(workspace, /await openPrivateChatAttachment\(roomId, item\.attachmentId, item\.docName\)/);
+  assert.doesNotMatch(workspace, /Linking\.openURL\(item\.docDownloadUrl \|\| item\.docUrl\)/);
+  assert.match(opener, /chatAPI\.getPrivateFile\('attachment', room, file\)/);
+  assert.match(opener, /actionViewIntent\(path, mime/);
+  assert.match(opener, /presentPreview\(path\)/);
+  assert.match(transport, /getPrivateFile\(roomId, fileId\)/);
+  assert.match(transport, /private_document_type_mismatch/);
+  assert.match(transport, /jpg: 'image\/jpeg'/);
+});
+
 test('native multipart uses expo/fetch without bypassing auth expiry or timeouts', () => {
   assert.match(api, /import \{ fetch as expoFetch \} from 'expo\/fetch'/);
   assert.equal((api.match(/\}, expoFetch\);/g) || []).length, 3);

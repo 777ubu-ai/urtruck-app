@@ -59,9 +59,11 @@ test('both roles share green registration without mandatory vehicle setup', () =
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });
 
-test('uploaded deal documents are openable signed attachments inside chat', () => {
-  assert.match(attachments, /Linking\.openURL\(url\)/);
-  assert.match(attachments, /item\?\.url \|\| item\?\.signed_url \|\| item\?\.download_url/);
+test('uploaded deal documents open through the protected room and attachment API', () => {
+  assert.match(attachments, /openPrivateChatAttachment\(conversationId, item\.id/);
+  assert.match(attachments, /downloadPrivateAttachment\(conversationId, item\.id/);
+  assert.match(attachments, /secureFile: \{ roomId: conversationId, fileId: item\.id \}/);
+  assert.doesNotMatch(attachments, /Linking\.openURL\(/);
   assert.match(attachments, /testID=\{onOpen \? 'deal-attachment-open'/);
   assert.match(attachments, /formatBytes\(a\.size_bytes\)/);
 });

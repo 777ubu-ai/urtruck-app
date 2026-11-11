@@ -14,7 +14,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -44,6 +43,7 @@ import DealSystemEventCard from '../components/deal/DealSystemEventCard';
 import PdfPreviewModal from '../components/deal/PdfPreviewModal';
 import ProtectedChatPhoto from '../components/deal/ProtectedChatPhoto';
 import { downloadPrivateAttachment } from '../utils/privateFileDownload';
+import { openPrivateChatAttachment } from '../utils/openPrivateChatAttachment';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
@@ -1553,20 +1553,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           {datePill}
           <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
             <TouchableOpacity
-              activeOpacity={item.docUrl ? 0.72 : 1}
-              disabled={!item.docUrl}
+              activeOpacity={item.attachmentId ? 0.72 : 1}
+              disabled={!item.attachmentId}
               onPress={async () => {
-                if (!item.docUrl) return;
+                if (!roomId || !item.attachmentId) {
+                  toast(t('chat_attachment_unavailable'), 'error');
+                  return;
+                }
                 if (meta.ext === 'pdf') {
-                  setPdfPreview({ url: item.docUrl, title: item.docName, secureFile: item.attachmentId ? { roomId, fileId: item.attachmentId } : null });
+                  setPdfPreview({ url: '', title: item.docName, secureFile: { roomId, fileId: item.attachmentId } });
                   return;
                 }
-                if (Platform.OS === 'web' && roomId && item.attachmentId) {
-                  try { await downloadPrivateAttachment(roomId, item.attachmentId, item.docName); }
-                  catch { toast(t('chat_attachment_unavailable'), 'error'); }
-                  return;
+                try {
+                  if (Platform.OS === 'web') {
+                    await downloadPrivateAttachment(roomId, item.attachmentId, item.docName);
+                  } else {
+                    await openPrivateChatAttachment(roomId, item.attachmentId, item.docName);
+                  }
+                } catch {
+                  toast(t('chat_attachment_unavailable'), 'error');
                 }
-                Linking.openURL(item.docDownloadUrl || item.docUrl).catch(() => {});
               }}
               style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
               testID="deal-chat-document-bubble"

@@ -58,11 +58,13 @@ test('voice duration trusts monotonic elapsed time when native value is implausi
   assert.equal(selectVoiceDurationSeconds({ elapsedMs: 12_000, durationMillis: 49 }), 12);
 });
 
-test('PDF preview and download URLs remain separate', () => {
+test('legacy signed URL metadata remains compatible while the current UI fetches by protected IDs', () => {
   const backend = readFileSync('backend/api/deal_room.py', 'utf8');
   const workspace = readFileSync('src/screens/DealWorkspaceScreenV2.js', 'utf8');
   assert.match(backend, /"download_url": download_url/);
   assert.match(backend, /return \{\*\*att, "url": url, "download_url": download_url\}/);
   assert.match(workspace, /docDownloadUrl: a\.download_url \|\| docUrl/);
-  assert.match(workspace, /Linking\.openURL\(item\.docDownloadUrl \|\| item\.docUrl\)/);
+  assert.match(workspace, /secureFile: \{ roomId, fileId: item\.attachmentId \}/);
+  assert.match(workspace, /openPrivateChatAttachment\(roomId, item\.attachmentId, item\.docName\)/);
+  assert.doesNotMatch(workspace, /Linking\.openURL\(item\.docDownloadUrl \|\| item\.docUrl\)/);
 });
