@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -480,3 +481,45 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
         {**_sign_attachment(a), "mine": a.get("uploader_id") == user["id"]}
         for a in atts
     ]}
+
+
+@deal_room_router.get('/chat/conversations/{conversation_id}/attachments/{attachment_id}/content')
+def get_attachment_content(conversation_id: str, attachment_id: str, user=Depends(require_level(1))):
+    """Выдача байтов с проверкой участника и связи файла."""
+    if not dr.room_exists(conversation_id):
+        raise HTTPException(status_code=404, detail='Беседа не найдена')
+    if not dr.is_participant(conversation_id, user['id']):
+        raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+    _assert_deal_room_open(conversation_id, user['id'])
+    def find_attachment():
+        with get_conn() as c:
+            return c.execute('''SELECT a.url,a.mime_type FROM message_attachments a
+            JOIN chat_rooms r ON r.id=a.conversation_id
+            WHERE a.id=? AND a.conversation_id=? AND a.upload_status='uploaded'
+              AND (a.uploader_id IN (r.participant_1,r.participant_2) OR EXISTS
+                   (SELECT 1 FROM conversation_participants p WHERE p.conversation_id=a.conversation_id AND p.user_id=a.uploader_id))
+              AND (a.message_id IS NULL OR EXISTS
+                   (SELECT 1 FROM chat_messages m WHERE m.id=a.message_id AND m.room_id=a.conversation_id))''',
+                (attachment_id, conversation_id)).fetchone()
+    attachment = find_attachment()
+    if not attachment or not storage_service.ref_has_purpose(attachment['url'], {'chat_attachments'}):
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    try:
+        content = storage_service.read_private_bytes(attachment['url'], _MAX_ATTACH_BYTES)
+    except storage_service.PrivateFileTooLargeError as exc:
+        raise HTTPException(status_code=413, detail='Файл слишком большой') from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Вложение не найдено') from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail='Хранилище недоступно') from exc
+    if not dr.is_participant(conversation_id, user['id']):
+        raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+    _assert_deal_room_open(conversation_id, user['id'])
+    current = find_attachment()
+    if not current or current['url'] != attachment['url'] or current['mime_type'] != attachment['mime_type']:
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    mime = attachment['mime_type'] if attachment['mime_type'] in _ALLOWED else 'application/octet-stream'
+    return Response(content=content, media_type=mime, headers={
+        'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
+    })
