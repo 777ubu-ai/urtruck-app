@@ -196,8 +196,11 @@ test('QA2 deploy keeps NLLB local and configures only the approved OpenAI STT ro
 });
 
 test('QA2 web and recovery route private signed audio to FastAPI, never index.html', () => {
-  assert.match(webWorkflow, /Range request returns HTML/);
-  for (const source of [webWorkflow, recoveryWorkflow]) {
+  assert.match(webWorkflow, /QA2_PRIVATE_STORAGE_ROUTING_INVALID/);
+  for (const path of ['/qa2/storage/', '/storage/', '/security/storage/']) {
+    assert.ok(webWorkflow.includes(`'${path}'`));
+  }
+  for (const source of [recoveryWorkflow]) {
     assert.match(source, /location \^~ \/qa2\/storage\//);
     assert.match(source, /location \^~ \/storage\//);
     assert.match(source, /location \^~ \/security\/storage\//);
