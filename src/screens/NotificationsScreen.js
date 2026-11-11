@@ -94,7 +94,7 @@ export default function NotificationsScreen({ navigation }) {
   const { t, lang } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
-    titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+    titleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
     titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
     markAll: { fontSize: 12, fontWeight: '800' },
     card: {
@@ -249,9 +249,9 @@ export default function NotificationsScreen({ navigation }) {
         rightSlot={<HeaderMenuButton navigation={navigation} role={role} testID="notifications-menu-btn" />}
       />
       <View style={s.titleRow}>
-        <Text style={s.titleHero}>{t('menu_notifications')}</Text>
+        <Text testID="notifications-title" style={s.titleHero}>{t('menu_notifications')}</Text>
         {items.some(i => !i.is_read) ? (
-          <TouchableOpacity onPress={markAllRead}>
+          <TouchableOpacity testID="notifications-mark-all" onPress={markAllRead}>
             <Text style={[s.markAll, { color: accent.main }]}>
               {t("notifications_mark_all_read")}
             </Text>

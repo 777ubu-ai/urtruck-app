@@ -8,6 +8,7 @@ const titles = {
   KY:'Жарыялоонун мөөнөтү аяктады', TG:'Муҳлати нашри эълон ба охир расид', BE:'Тэрмін публікацыі аб’явы скончыўся',
 };
 const sessions = {};
+test.use({viewport:{width:360,height:800}});
 test.beforeAll(async () => {
   const api = await request.newContext();
   for (const role of ['client', 'driver']) {
@@ -37,5 +38,9 @@ for (const [language, title] of Object.entries(titles)) for (const role of ['cli
     await page.getByTestId('mywork-menu-btn').click();
     await page.getByTestId('profile-notifications').click();
     await expect(page.getByText(title,{exact:true})).toBeVisible();
+    const heading = await page.getByTestId('notifications-title').boundingBox();
+    const action = await page.getByTestId('notifications-mark-all').boundingBox();
+    expect(heading && action).toBeTruthy();
+    expect(action.x >= heading.x + heading.width + 8 || action.y >= heading.y + heading.height).toBeTruthy();
   });
 }
