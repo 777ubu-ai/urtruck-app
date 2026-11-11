@@ -167,8 +167,8 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     data = {**(data or {}), "kind": kind, "url": url}
     if event_id:
         data["event_id"] = event_id
-    from services.notification_policy import delivery_block_reason
-    blocked = delivery_block_reason(user_id, data)
+    from services.notification_policy import transport_block_reason
+    blocked = transport_block_reason(user_id, {"event": event_type, **data})
     if blocked:
         return {"sent": 0, "total": 0, "suppressed_policy": blocked}
     event_id = event_id or data.get("event_id") or data.get("event_key")
