@@ -4,7 +4,7 @@ const fs = require('fs');
 const H = require('./helpers/webflow');
 if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(H.BASE)) throw Error('Требуется изолированный локальный backend');
 
-test('оба участника читают защищённый PDF, посторонний и гость получают отказ', async ({ page, request, browser }) => {
+test('обе роли открывают защищённые PDF, CSV, фото и аудио; чужие получают отказ', async ({ page, request, browser }) => {
   const suffix = Date.now().toString(36);
   async function actor(role) {
     const token = await H.apiEmailToken(request, `private-pdf-${role}-${suffix}@urtruck.qa`, role);
@@ -54,6 +54,29 @@ test('оба участника читают защищённый PDF, пост�
   const mediaPath = `${H.API}/chat/messages/${room}/media/${photoId}`;
   expect((await request.get(mediaPath, { headers: { Authorization: `Bearer ${outsiderToken}` } })).status()).toBe(403);
   expect([401, 403]).toContain((await request.get(mediaPath)).status());
+  const samples = 8000 * 3;
+  const wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(9000 * Math.sin(i * 2 * Math.PI * 440 / 8000)), 44 + i * 2);
+  const voiceUpload = await request.post(`${H.API}/chat/voice`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+    multipart: { file: { name: 'voice.wav', mimeType: 'audio/wav', buffer: wav } },
+  });
+  expect(voiceUpload.status()).toBe(200);
+  const voiceSent = await request.post(`${H.API}/chat/send`, {
+    headers: { Authorization: `Bearer ${owner.token}` },
+    data: { room_id: room, photo_url: (await voiceUpload.json()).voice_key, is_voice: true, client_msg_id: `voice-${suffix}` },
+  });
+  expect(voiceSent.status()).toBe(200);
+  const voiceId = (await voiceSent.json()).message_id;
+  const voicePath = `${H.API}/chat/messages/${room}/media/${voiceId}`;
+  const voiceResponse = await request.get(voicePath, { headers: { Authorization: `Bearer ${driver.token}` } });
+  expect(voiceResponse.status()).toBe(200);
+  expect(await voiceResponse.body()).toEqual(wav);
+  expect((await request.get(voicePath, { headers: { Authorization: `Bearer ${outsiderToken}` } })).status()).toBe(403);
   const path = `${H.API}/chat/conversations/${room}/attachments/${id}/content`;
   for (const token of [owner.token, driver.token]) {
     const response = await request.get(path, { headers: { Authorization: `Bearer ${token}` } });
@@ -66,6 +89,10 @@ test('оба участника читают защищённый PDF, пост�
   async function open(actor, target, exerciseRetry = false) {
     const mediaResponses = [];
     target.on('response', r => { if (r.url().endsWith(`/messages/${room}/media/${photoId}`)) mediaResponses.push(r); });
+    const voiceResponses = [];
+    target.on('response', r => { if (r.url().endsWith(`/messages/${room}/media/${voiceId}`)) voiceResponses.push(r); });
+    const legacyFileRequests = [];
+    target.on('request', r => { if (/\/security\/storage\/(chat_photos|chat_voice|chat_attachments)\//.test(r.url())) legacyFileRequests.push(r.url()); });
     if (exerciseRetry) {
       let firstMedia = true;
       await target.route(`**/messages/${room}/media/${photoId}`, route => {
@@ -93,6 +120,11 @@ test('оба участника читают защищённый PDF, пост�
     await bubble.click();
     await expect(target.getByTestId('deal-chat-photo-fullscreen').locator('img')).toBeVisible();
     await target.getByTestId('deal-chat-photo-close').click();
+    const play = target.getByTestId('voice-play-btn');
+    await expect(play).toBeEnabled();
+    await expect.poll(() => voiceResponses.some(r => r.status() === 200)).toBe(true);
+    await play.click();
+    await expect(target.getByTestId('voice-pause-btn')).toBeVisible();
     if (exerciseRetry) {
       let first = true;
       await target.route(`**/attachments/${id}/content`, route => {
@@ -124,6 +156,7 @@ test('оба участника читают защищённый PDF, пост�
     const downloaded = await fileDownload;
     expect(downloaded.suggestedFilename()).toBe('private-fixture.csv');
     expect(fs.readFileSync(await downloaded.path())).toEqual(csv);
+    expect(legacyFileRequests).toEqual([]);
   }
   await open(driver, page, true);
   const context = await browser.newContext({ locale: 'ru-RU' });
