@@ -131,14 +131,19 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
     """Распознать URL объекта своего хранилища и его категорию без подписи."""
     try:
         source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
-        if source.scheme in ('http', 'https') and ('\\' in value or '%' in source.netloc or any(ord(c) < 32 for c in value)):
+        if value.startswith('//'):
+            return True, None
+        if source.scheme in ('http', 'https') and (not source.netloc or not source.netloc.isascii()
+                or '\\' in value or '%' in source.netloc or any(ord(c) < 32 for c in value)):
+            return True, None
+        path = unquote(source.path)
+        if '%' in path:
+            path = unquote(path)
+        if source.scheme in ('http', 'https') and ('%' in path or any(part in ('.', '..') for part in path.split('/'))):
             return True, None
         if (not configured.hostname or not source.hostname or source.scheme not in ('http', 'https')
                 or source.hostname.rstrip('.') != configured.hostname.rstrip('.')):
             return False, None
-        path = unquote(source.path)
-        if '%' in path:
-            path = unquote(path)
         prefix = configured.path.rstrip('/') + '/storage/v1/object/'
         if not path.startswith(prefix):
             return False, None
@@ -149,7 +154,7 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
             return True, None
         return True, parts[2]
     except (TypeError, ValueError):
-        return False, None
+        return (True, None) if isinstance(value, str) and value.lower().startswith(('http:', 'https:', '//')) else (False, None)
 
 
 def ref_has_purpose(value: Optional[str], categories: set[str]) -> bool:
