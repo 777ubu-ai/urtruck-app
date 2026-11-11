@@ -14,6 +14,7 @@ import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { localizeSystemMessage } from '../utils/places';
+import { localizeExpiryNotification } from '../utils/expiryNotificationLocale';
 import Feather from '@expo/vector-icons/Feather';
 
 const NOTIF_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
@@ -215,8 +216,11 @@ export default function NotificationsScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     const isUnread = !item.is_read;
+    const localized = localizeExpiryNotification(item, lang);
     const cleanTitle = localizeSystemMessage(cleanNotifText(item.title), lang);
     const cleanBody = localizeSystemMessage(cleanNotifText(item.body), lang);
+    const displayTitle = localized === item ? cleanTitle : localized.title;
+    const displayBody = localized === item ? cleanBody : localized.body;
     return (
       <TouchableOpacity
         style={[s.card, isUnread && { borderColor: accent.main }]}
@@ -225,9 +229,9 @@ export default function NotificationsScreen({ navigation }) {
         <Text style={s.icon}>{item.icon || "🔔"}</Text>
         <View style={{ flex: 1 }}>
           <Text style={[s.title, { fontWeight: isUnread ? "700" : "500" }]}>
-            {cleanTitle}
+            {displayTitle}
           </Text>
-          {cleanBody ? <Text style={s.body}>{cleanBody}</Text> : null}
+          {displayBody ? <Text style={s.body}>{displayBody}</Text> : null}
           <Text style={s.time}>{formatNotifTime(item.created_at)}</Text>
         </View>
         {isUnread && <View style={[s.dot, { backgroundColor: accent.main }]} />}
