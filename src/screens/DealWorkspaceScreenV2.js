@@ -47,6 +47,7 @@ import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
 import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
+import { sendPhotoWithRecovery } from '../utils/chatMediaRecovery';
 import { displayAttachmentFilename } from '../utils/attachmentFilename';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
@@ -360,6 +361,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     ? { backgroundColor: bubbleMineColors.backgroundColor, borderColor: bubbleMineColors.borderColor }
     : { backgroundColor: colors.surface, borderColor: colors.border }), [bubbleMineColors, colors]);
   const { session } = useAuth();
+  const photoSessionRef = React.useRef(null);
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -382,6 +384,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
   const [roomId, setRoomId] = React.useState(params.roomId || null);
+  photoSessionRef.current = session?.user?.id ? JSON.stringify([session.user.id, roomId]) : null;
   // Deep-link audit P1 (2026-09-14): a `/deals/{id}` or `/chats/{id}` link
   // whose id doesn't resolve to one of the current user's own rooms (foreign
   // id, typo, since-deleted deal) used to fall through silently — dealId/
@@ -1199,21 +1202,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const uploadPhoto = React.useCallback(async (item) => {
     if (photoSendingRef.current.has(item.id)) return;
     photoSendingRef.current.add(item.id);
+    const photoSession = photoSessionRef.current;
+    const guard = { isCurrent: () => !!photoSession && photoSessionRef.current === photoSession };
     setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'uploading', sendError: null } : m)));
     try {
-      const photoKey = item.photoKey || (await chatAPI.uploadChatPhoto(item.mediaUrl))?.photo_key;
-      if (!photoKey) throw new Error('photo_upload');
-      // После успешной загрузки Retry повторяет только доставку сообщения.
-      setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, photoKey, sendStatus: 'sending' } : m)));
-      await chatAPI.send({
-        roomId, toUserId: recipientId, photoUrl: photoKey,
-        cargoId: deal?.cargo_id || params.cargoId || null,
-        tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: item.id,
+      await sendPhotoWithRecovery({
+        previousKey: item.photoKey, localUri: item.mediaUrl, isCurrent: guard.isCurrent,
+        upload: async (uri) => (await chatAPI.uploadChatPhoto(uri, guard))?.photo_key,
+        onKey: (photoKey) => setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, photoKey, sendStatus: 'sending' } : m))),
+        send: (photoKey) => chatAPI.send({
+          roomId, toUserId: recipientId, photoUrl: photoKey,
+          cargoId: deal?.cargo_id || params.cargoId || null,
+          tripId: deal?.trip_id || params.tripId || null,
+          clientMsgId: item.id,
+        }, guard),
       });
+      if (!guard.isCurrent()) return;
       setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'sent' } : m)));
       setTimeout(loadMessages, 120);
     } catch (error) {
+      if (!guard.isCurrent()) return;
       const sendError = error?.isNetwork ? t('no_connection') : t('chat_send_failed');
       setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'failed', sendError } : m)));
     } finally {

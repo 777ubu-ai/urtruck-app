@@ -270,7 +270,7 @@ export const chatAPI = {
     return r.json();
   },
 
-  async uploadChatPhoto(uri) {
+  async uploadChatPhoto(uri, { isCurrent = () => true } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
     if (Platform.OS === 'web') {
@@ -279,6 +279,7 @@ export const chatAPI = {
     } else {
       appendNativeFile(form, uri, 'chat.jpg');
     }
+    if (!isCurrent()) throw new Error('CHAT_SESSION_CHANGED');
     let r;
     try {
       r = await authedFetch(`${BASE}/photo`, {

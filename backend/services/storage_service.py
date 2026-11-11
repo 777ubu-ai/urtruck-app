@@ -122,6 +122,30 @@ def is_private_remote_ref(value: Optional[str]) -> bool:
     return _split_supabase_ref(value) is not None
 
 
+def ref_has_purpose(value: Optional[str], categories: set[str]) -> bool:
+    """Проверить назначение собственного storage-ref без изменения самого объекта."""
+    if not value or not isinstance(value, str) or '%' in value or '\\' in value:
+        return False
+    parsed = _split_supabase_ref(value)
+    if parsed:
+        key = parsed[1]
+    else:
+        path = value.split('?', 1)[0]
+        key = None
+        for prefix in (LOCAL_PUBLIC_BASE.rstrip('/'), '/security/storage', '/storage'):
+            if prefix and path.startswith(prefix + '/'):
+                key = path[len(prefix) + 1:]
+                break
+        if key is None and S3_BUCKET:
+            prefix = f'https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/'
+            if path.startswith(prefix):
+                key = path[len(prefix):]
+        if key is None:
+            return False
+    parts = key.split('/')
+    return len(parts) >= 2 and parts[0] in categories and all(part not in ('', '.', '..') for part in parts)
+
+
 def create_signed_url(value: Optional[str], ttl: int = 3600) -> Optional[str]:
     parsed = _split_supabase_ref(value)
     if not parsed:

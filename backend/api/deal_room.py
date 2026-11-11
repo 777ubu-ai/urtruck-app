@@ -242,7 +242,9 @@ def conversation_messages(conversation_id: str, limit: int = 100, offset: int = 
     msgs = dr.get_messages(conversation_id, limit, offset)
     for m in msgs:
         if m.get("photo_url"):
-            m["photo_url"] = file_signing.sign(m["photo_url"])
+            ref = m["photo_url"]
+            m["photo_url"] = file_signing.sign(ref) if storage_service.ref_has_purpose(ref, {'chat_photos', 'chat_voice'}) else None
+            m["attachment_unavailable"] = not bool(m["photo_url"])
     return {"messages": msgs}
 
 
@@ -306,6 +308,15 @@ async def upload_attachment(
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
     _assert_deal_room_open(conversation_id, user["id"])
+
+    if isinstance(message_id, str) and message_id:
+        with get_conn() as c:
+            message = c.execute(
+                "SELECT id FROM chat_messages WHERE id = ? AND room_id = ?",
+                (message_id, conversation_id),
+            ).fetchone()
+        if not message:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено в этой беседе")
 
     _ensure_attachment_columns()
     normalized_client_id = (client_upload_id or "").strip()[:120] or None

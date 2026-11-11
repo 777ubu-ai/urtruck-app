@@ -130,6 +130,15 @@ def _volodya_reply(room_id: str, user_text: str, user: dict):
 
 
 def _ensure_columns(c):
+    # Новые загрузки привязываются к серверной сессии; старые сообщения не переписываются.
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_upload_receipts (
+        storage_ref TEXT PRIMARY KEY,
+        uploader_id TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        room_id TEXT,
+        message_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )''')
     # Системные сообщения о статусе/цене ссылаются на сохранённое событие
     # сделки/ставки. Миграция аддитивна: новая схема объявляет колонку в
     # chat_schema.sql, существующая chat_messages получает её без пересоздания
@@ -542,7 +551,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # http(s) URL (rendered client-side as a tracking pixel on the OTHER
     # participant's device). It must be exactly what /chat/photo or
     # /chat/voice actually returned — never an arbitrary client string.
-    if body.photo_url and not storage.is_owned_storage_ref(body.photo_url):
+    if body.photo_url and (not storage.is_owned_storage_ref(body.photo_url)
+                           or not storage.ref_has_purpose(body.photo_url, {'chat_photos', 'chat_voice'})):
         raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
@@ -574,6 +584,36 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
+
+    receipt_required = False
+    if body.photo_url:
+        with get_conn() as c:
+            if body.client_msg_id:
+                existing = c.execute(
+                    'SELECT id FROM chat_messages WHERE sender_id=? AND client_msg_id=? AND room_id=?',
+                    (user['id'], body.client_msg_id, room_id),
+                ).fetchone()
+                if existing:
+                    return {'ok': True, 'room_id': room_id, 'deduped': True}
+            receipt = c.execute(
+                'SELECT uploader_id, purpose, room_id, message_id FROM chat_upload_receipts WHERE storage_ref=?',
+                (body.photo_url,),
+            ).fetchone()
+            if receipt:
+                if (receipt['uploader_id'] != user['id']
+                        or receipt['purpose'] not in {'chat_photos', 'chat_voice'}
+                        or (receipt['room_id'] is not None and receipt['room_id'] != room_id)):
+                    raise HTTPException(status_code=403, detail='Файл недоступен для отправки')
+                receipt_required = receipt['message_id'] is None
+            else:
+                # Только прежняя комната, где файл уже был показан этому участнику;
+                # это не устанавливает автора старой загрузки.
+                historic = c.execute(
+                    'SELECT id FROM chat_messages WHERE room_id=? AND photo_url=? LIMIT 1',
+                    (room_id, body.photo_url),
+                ).fetchone()
+                if not historic:
+                    raise HTTPException(status_code=403, detail='FILE_UPLOAD_REQUIRED')
 
     # UI recorder timers are advisory only. The persisted duration must come
     # from the stored audio container, otherwise a Xiaomi/iOS timer bug turns
@@ -615,6 +655,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
             return {"ok": True, "room_id": room_id, "deduped": True}
         message_id = cursor.lastrowid
+        if receipt_required:
+            claimed = c.execute(
+                'UPDATE chat_upload_receipts SET room_id=?, message_id=? WHERE storage_ref=? AND uploader_id=? AND message_id IS NULL',
+                (room_id, message_id, body.photo_url, user['id']),
+            )
+            if claimed.rowcount != 1:
+                raise HTTPException(status_code=403, detail='Файл недоступен для отправки')
         preview = (("🎤 Голосовое сообщение" if body.is_voice else (body.text or "📷 Фото")))[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
         # The new voice and its hidden STT job commit atomically.  If SQLite
@@ -1073,7 +1120,7 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
             # вложения в одном ответе; следующий poll попробует снова.
             private_ref = m["photo_url"]
             m["photo_url"] = None
-            if not signing_failed:
+            if not signing_failed and storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice'}):
                 try:
                     m["photo_url"] = file_signing.sign(private_ref)
                 except Exception:
@@ -1276,6 +1323,8 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
     ext = "jpg" if mime == upload_validation.JPEG_MIME else "png"
     key = await run_in_threadpool(storage.save_file, data, "chat_photos", ext=ext, content_type=mime)
+    with get_conn() as c:
+        c.execute('INSERT INTO chat_upload_receipts(storage_ref, uploader_id, purpose) VALUES (?,?,?)', (key, user['id'], 'chat_photos'))
     return {"photo_key": key}
 
 
@@ -1322,6 +1371,8 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
         if storage_status is None:
             raise HTTPException(status_code=503, detail="Хранилище недоступно (сеть)") from exc
         raise HTTPException(status_code=502, detail="Хранилище отклонило голосовое") from exc
+    with get_conn() as c:
+        c.execute('INSERT INTO chat_upload_receipts(storage_ref, uploader_id, purpose) VALUES (?,?,?)', (key, user['id'], 'chat_voice'))
     return {"voice_key": key}
 
 

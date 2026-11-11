@@ -101,7 +101,9 @@ def test_media_push_localizes_only_system_text(monkeypatch, text, is_voice, even
     _mk_accepted_deal(cargo, o, d, room)
     sent = []
     monkeypatch.setattr(chat, "send_to_user", lambda *a, **kw: sent.append((a, kw)))
-    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/qa.jpg"
+    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/qa-" + uuid.uuid4().hex + ".jpg"
+    with get_conn() as c:
+        c.execute("INSERT INTO chat_upload_receipts(storage_ref,uploader_id,purpose) VALUES (?,?,?)", (ref, o, 'chat_photos'))
     send_message(SendMessageIn(room_id=room, photo_url=ref, text=text, is_voice=is_voice), user=_u(o))
     assert len(sent) == 1
     assert sent[0][1]["data"].get("i18n_event") == event
@@ -120,6 +122,8 @@ def test_voice_commit_rolls_back_when_durable_stt_enqueue_cannot_be_written(monk
     _mk_accepted_deal(cargo, owner, driver, room)
     client_msg_id = f"voice-atomic-{uuid.uuid4().hex}"
     ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/voice-atomic.m4a"
+    with get_conn() as c:
+        c.execute("INSERT INTO chat_upload_receipts(storage_ref,uploader_id,purpose) VALUES (?,?,?)", (ref, owner, 'chat_photos'))
 
     def enqueue_failed(*_args, **_kwargs):
         raise RuntimeError("queue write interrupted")

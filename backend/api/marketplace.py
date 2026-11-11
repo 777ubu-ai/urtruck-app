@@ -45,6 +45,8 @@ def _sign_cargo_photos(photos):
     for p in (photos or []):
         if not isinstance(p, str) or not p:
             continue
+        if (p.startswith('supabase://') or _cargo_file_signing.is_local_storage_path(p)) and not _cargo_storage.ref_has_purpose(p, {'cargo_photos'}):
+            continue
         if p.startswith(('http://', 'https://', 'data:', 'blob:', 'file:', '/security/storage/', '/storage/')):
             out.append(p)
         else:
@@ -333,6 +335,13 @@ def _public_trip_ok(row: dict, today=None) -> bool:
 
 def _init():
     base = Path(__file__).resolve().parent.parent / "database"
+    with get_conn() as c:
+        c.execute('''CREATE TABLE IF NOT EXISTS cargo_photo_upload_receipts (
+            storage_ref TEXT PRIMARY KEY,
+            uploader_id TEXT NOT NULL,
+            cargo_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )''')
     for name in ["marketplace_schema.sql", "deals_schema.sql"]:
         schema = base / name
         if schema.exists():
@@ -750,6 +759,18 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
         previous = publication_operations.replay(c, user['id'], 'cargo', body)
         if previous is not None:
             return previous
+        own_refs = set()
+        for ref in body.photos or []:
+            if not isinstance(ref, str):
+                raise HTTPException(status_code=400, detail='Некорректная ссылка на фото')
+            if (ref.startswith('supabase://') or _cargo_file_signing.is_local_storage_path(ref)
+                    or _cargo_storage.ref_has_purpose(ref, {'cargo_photos'})):
+                if not _cargo_storage.ref_has_purpose(ref, {'cargo_photos'}):
+                    raise HTTPException(status_code=400, detail='Некорректная ссылка на фото')
+                receipt = c.execute('SELECT uploader_id,cargo_id FROM cargo_photo_upload_receipts WHERE storage_ref=?', (ref,)).fetchone()
+                if not receipt or receipt['uploader_id'] != user['id'] or receipt['cargo_id'] is not None:
+                    raise HTTPException(status_code=403, detail='Фото требуется загрузить повторно')
+                own_refs.add(ref)
         _validate_future_date(body.pickup_date, "pickup_date")
         pay = body.payment_type if body.payment_type in ("cash", "cashless", "any") else None
         c.execute("""
@@ -765,6 +786,10 @@ def create_cargo(body: CargoIn, user=Depends(require_active_level(1))):
               body.pickup_date,
               json.dumps(body.photos or [], ensure_ascii=False),
               fc, fpt, fpn, tc, tpt, tpn))
+        for ref in own_refs:
+            claimed = c.execute('UPDATE cargo_photo_upload_receipts SET cargo_id=? WHERE storage_ref=? AND uploader_id=? AND cargo_id IS NULL', (cid, ref, user['id']))
+            if claimed.rowcount != 1:
+                raise HTTPException(status_code=403, detail='Фото требуется загрузить повторно')
         publication_operations.record(c, user['id'], 'cargo', body, {'id': cid, 'ok': True})
 
     # Push подписчикам маршрута
@@ -911,6 +936,8 @@ async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_
     if len(data) > 8 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Файл слишком большой")
     key = _cargo_storage.save_image(data, "cargo_photos")
+    with get_conn() as c:
+        c.execute('INSERT INTO cargo_photo_upload_receipts(storage_ref,uploader_id) VALUES (?,?)', (key, user['id']))
     return {"photo_key": key}
 
 

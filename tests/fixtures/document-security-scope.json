@@ -1,9 +1,11 @@
 {
   "base_sha": "1147dc6fe3560c753c16126cec7d25ab35465d4f",
-  "reason": "Узкие изменения безопасности документов: экранирование накладной, запрет подмены ссылок на документы профиля и сохранение заголовка Referrer-Policy; требуются отдельные тесты и независимая проверка.",
+  "reason": "Адресная защита файлов и сохранность повторной отправки: проверка назначения и принадлежности загрузок, проверка сообщения и сессии; manifest не заменяет review и поведенческие проверки.",
   "sha256": {
-    "backend/api/marketplace.py": "a4c53b1a7a41b5e16ad91ef97d7c133dafcbcffc656d2a6e74370d28160322be",
+    "backend/api/marketplace.py": "e9abb46b15840dd0d8465bf41aaece1d0e8a5b15a28bfa70206d901888be4d48",
     "backend/api/profile.py": "6a58b4b37e11f90c48e63df562257dc6d1f87f545955790ad0599c5a6d89b2c8",
-    "backend/main.py": "8ef0ac1e016b6a6b810a92df441209e3281be787e189f1d3e044f4b818767dfa"
+    "backend/main.py": "8ef0ac1e016b6a6b810a92df441209e3281be787e189f1d3e044f4b818767dfa",
+    "backend/api/chat.py": "b05aec215974038b08ff37f3f2013d6e12d410ac2ca11c6d95edeca9df171895",
+    "src/screens/DealWorkspaceScreenV2.js": "f2dfbeefdc3434e2719e6926c21f2da0bf9a16b37edd69a344068c33e010173c"
   }
 }
