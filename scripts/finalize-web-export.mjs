@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 // Вызывается только после успешного Expo export. Все перечисленные файлы —
@@ -97,6 +97,19 @@ try {
   // verifiable source identity; the asset-only fixture remains supported.
   if (existsSync(packagePath)) {
     const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+    // Просмотр PDF выполняется только локальными ресурсами фиксированной версии.
+    const pdfRoot = resolve(process.env.URTRUCK_PDFJS_DIST_DIR || 'node_modules/pdfjs-dist');
+    const pdfPackage = JSON.parse(readFileSync(resolve(pdfRoot, 'package.json'), 'utf8'));
+    if (pdfPackage.version !== packageJson.dependencies?.['pdfjs-dist']) throw new Error('Несовпадение версии PDF.js');
+    const pdfOut = resolve(dist, 'pdf-viewer');
+    mkdirSync(pdfOut, { recursive: true });
+    for (const file of ['index.html', 'viewer.js', 'viewer.css']) {
+      const source = resolve('web/pdf-viewer', file); requireFile(source); copyFileSync(source, resolve(pdfOut, file));
+    }
+    for (const [source, target] of [['legacy/build/pdf.min.mjs','pdfjs.js'], ['legacy/build/pdf.worker.min.mjs','pdf.worker.js']]) {
+      const file = resolve(pdfRoot, source); requireFile(file); copyFileSync(file, resolve(pdfOut, target));
+    }
+    for (const folder of ['cmaps','standard_fonts','wasm','iccs']) cpSync(resolve(pdfRoot, folder), resolve(pdfOut, folder), { recursive: true });
     const commit = (process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })).trim();
     if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('Некорректный commit SHA для build-info.json');
     writeFileSync(resolve(dist, 'build-info.json'), `${JSON.stringify({

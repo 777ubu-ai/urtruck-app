@@ -462,12 +462,9 @@ def update_profile(body: UpdateProfileIn, user=Depends(require_level(1))):
         updates["favorite_borders"] = json.dumps(clean, ensure_ascii=False)
     if body.emergency_contact is not None:
         updates["emergency_contact"] = body.emergency_contact.strip()
-    if body.passport_intl_url is not None:
-        updates["passport_intl_url"] = body.passport_intl_url.strip()
-    if body.tir_book_url is not None:
-        updates["tir_book_url"] = body.tir_book_url.strip()
-    if body.cmr_insurance_url is not None:
-        updates["cmr_insurance_url"] = body.cmr_insurance_url.strip()
+    # Документы сохраняются только серверным upload_pro_document. Старые
+    # клиенты повторно присылают URL при сохранении профиля: игнорируем их,
+    # чтобы чужой storage ref нельзя было привязать к своему аккаунту.
     if body.company_name is not None:
         updates["company_name"] = body.company_name.strip()
     if body.bin_inn is not None:

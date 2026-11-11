@@ -34,9 +34,10 @@ const sessionRecovery = JSON.parse(readFileSync('tests/fixtures/session-recovery
 const feedFreshness = JSON.parse(readFileSync('tests/fixtures/feed-freshness-approved-scope.json', 'utf8'));
 const publicationExpiry = JSON.parse(readFileSync('tests/fixtures/owned-publication-expiry-approved-scope.json', 'utf8'));
 const routeClarification = JSON.parse(readFileSync('tests/fixtures/route-country-clarification-approved-scope.json', 'utf8'));
+const documentSecurity = JSON.parse(readFileSync('tests/fixtures/document-security-scope.json', 'utf8'));
 for (const [path, expected] of Object.entries(baseline.sha256)) {
   test('сохранена согласованная реализация: ' + path, () => {
     const source = withoutFeedHooks(path, readFileSync(path, 'utf8'));
-    assert.equal(createHash('sha256').update(source).digest('hex'), publicationExpiry.sha256[path] || routeClarification.sha256[path] || feedFreshness.sha256[path] || sessionRecovery.sha256[path] || ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, publicationExpiry.sha256[path] ? publicationExpiry.reason : routeClarification.sha256[path] ? routeClarification.reason : feedFreshness.sha256[path] ? feedFreshness.reason : sessionRecovery.sha256[path] ? sessionRecovery.reason : ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
+    assert.equal(createHash('sha256').update(source).digest('hex'), documentSecurity.sha256[path] || publicationExpiry.sha256[path] || routeClarification.sha256[path] || feedFreshness.sha256[path] || sessionRecovery.sha256[path] || ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, documentSecurity.sha256[path] ? documentSecurity.reason : publicationExpiry.sha256[path] ? publicationExpiry.reason : routeClarification.sha256[path] ? routeClarification.reason : feedFreshness.sha256[path] ? feedFreshness.reason : sessionRecovery.sha256[path] ? sessionRecovery.reason : ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
   });
 }

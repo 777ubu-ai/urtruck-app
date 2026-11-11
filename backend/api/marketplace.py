@@ -1287,6 +1287,7 @@ def update_cargo(cargo_id: str, body: CargoPatchIn, user=Depends(require_active_
 import hmac as _wb_hmac
 import hashlib as _wb_hashlib
 import time as _wb_time
+from html import escape as _wb_escape
 from fastapi.responses import HTMLResponse
 from services import file_signing as _wb_file_signing
 
@@ -1406,10 +1407,15 @@ def waybill_html(deal_id: str, exp: int = 0, sig: str = ""):
     cur = (d.get("currency") or cargo.get("currency") or "USD")
     status_ru = {"accepted": "Принят", "in_progress": "В пути", "at_border": "На границе",
                  "delivered": "Доставлен", "cancelled": "Отменён"}.get(d.get("status"), d.get("status") or "—")
-    row = lambda k, v: f"<tr><td>{k}</td><td><b>{v or '—'}</b></td></tr>"
+    def safe(value):
+        return _wb_escape(str(value or '—'), quote=True)
+    def row(label, value):
+        return f"<tr><td>{safe(label)}</td><td><b>{safe(value)}</b></td></tr>"
+    document_number = safe(deal_id[:8].upper())
+    document_date = _wb_escape(str(d.get('created_at') or '')[:10], quote=True)
     html = f"""<!doctype html><html lang=ru><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>Накладная UrTruck № {deal_id[:8].upper()}</title>
+<title>Накладная UrTruck № {document_number}</title>
 <style>body{{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#111}}
 h1{{font-size:20px}}h2{{font-size:14px;color:#666;font-weight:600;margin:18px 0 6px;text-transform:uppercase;letter-spacing:.5px}}
 table{{width:100%;border-collapse:collapse}}td{{padding:7px 10px;border-bottom:1px solid #eee;font-size:14px}}
@@ -1417,7 +1423,7 @@ td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-
 .logo{{font-weight:900;font-size:22px}}.logo span{{color:#FF8400}}.muted{{color:#888;font-size:12px}}
 @media print{{.noprint{{display:none}}}}
 .printbtn{{background:#FF8400;color:#111;border:none;border-radius:10px;padding:10px 18px;font-weight:800;font-size:14px;margin:16px 0;cursor:pointer}}</style></head><body>
-<div class=head><div class=logo>Ur<span>Truck</span></div><div class=muted>Транспортная накладная<br>№ {deal_id[:8].upper()} · {str(d.get('created_at') or '')[:10]}</div></div>
+<div class=head><div class=logo>Ur<span>Truck</span></div><div class=muted>Транспортная накладная<br>№ {document_number} · {document_date}</div></div>
 <h2>Маршрут</h2><table>{row('Откуда', d.get('from_city'))}{row('Куда', d.get('to_city'))}{row('Статус', status_ru)}</table>
 <h2>Груз</h2><table>{row('Описание', cargo.get('cargo_desc'))}{row('Тип кузова', cargo.get('cargo_type'))}{row('Вес, т', cargo.get('weight_tons'))}{row('Объём, м³', cargo.get('volume_m3'))}{row('Дата загрузки', cargo.get('pickup_date'))}</table>
 <h2>Стороны</h2><table>{row('Грузоотправитель', sh_name)}{row('Телефон', sh_phone)}{row('Перевозчик (водитель)', dr_name)}{row('Телефон', dr_phone)}{row('Госномер тягача', plate)}</table>
@@ -1425,7 +1431,7 @@ td:first-child{{color:#666;width:42%}}.head{{display:flex;justify-content:space-
 <button class="printbtn noprint" onclick="window.print()">🖨 Печать / Сохранить PDF</button>
 <p class=muted>Сформировано автоматически платформой UrTruck (urtruck.kz) по данным сделки. Подписи сторон ставятся при загрузке/выгрузке.</p>
 </body></html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(html, headers={'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer'})
 
 
 class PublicationRenewIn(BaseModel):
