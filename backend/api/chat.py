@@ -615,8 +615,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         _assert_chat_is_accepted(user["id"], recipient_id,
                                  cargo_id=body.cargo_id, trip_id=body.trip_id)
         room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+        with get_conn() as c:
+            selected_room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (room_id,)).fetchone()
+        if not selected_room or set((selected_room['participant_1'], selected_room['participant_2'])) != {user['id'], recipient_id}:
+            raise HTTPException(status_code=403, detail='Вы не участник этого чата')
+        room_cargo = selected_room['cargo_id']
         _assert_chat_is_accepted(user["id"], recipient_id, room_id=room_id,
-                                 cargo_id=body.cargo_id, trip_id=body.trip_id)
+                                 cargo_id=selected_room['cargo_id'], trip_id=selected_room['trip_id'])
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 

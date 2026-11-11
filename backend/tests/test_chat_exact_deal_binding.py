@@ -51,3 +51,31 @@ def test_legacy_send_does_not_write_into_selected_cancelled_room(monkeypatch):
     assert error.value.status_code == 403
     with get_conn() as c:
         assert c.execute('SELECT count(*) FROM chat_messages WHERE room_id=?', (room,)).fetchone()[0] == 0
+
+
+def test_legacy_send_uses_selected_room_data_not_client_identifiers(monkeypatch):
+    a, b, room, actual_cargo, supplied_cargo = (uuid.uuid4().hex for _ in range(5))
+    with get_conn() as c:
+        c.execute('INSERT INTO deals (id,bid_id,cargo_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,NULL)',
+                  (uuid.uuid4().hex, uuid.uuid4().hex, supplied_cargo, a, b, 'A', 'B', 1, 'accepted'))
+        c.execute('INSERT INTO chat_rooms (id,participant_1,participant_2,cargo_id) VALUES (?,?,?,?)', (room, a, b, actual_cargo))
+    monkeypatch.setattr(chat, '_get_or_create_room', lambda *args: room)
+    with pytest.raises(HTTPException) as error:
+        chat.send_message(chat.SendMessageIn(to_user_id=b, cargo_id=supplied_cargo, text='fixture'), {'id': a})
+    assert error.value.status_code == 403
+    with get_conn() as c:
+        assert c.execute('SELECT count(*) FROM chat_messages WHERE room_id=?', (room,)).fetchone()[0] == 0
+
+
+def test_legacy_send_preserves_unique_unbound_deal(monkeypatch):
+    a, b, room, cargo = (uuid.uuid4().hex for _ in range(4))
+    with get_conn() as c:
+        c.execute('INSERT INTO deals (id,bid_id,cargo_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,NULL)',
+                  (uuid.uuid4().hex, uuid.uuid4().hex, cargo, a, b, 'A', 'B', 1, 'accepted'))
+        c.execute('INSERT INTO chat_rooms (id,participant_1,participant_2,cargo_id) VALUES (?,?,?,?)', (room, a, b, cargo))
+    monkeypatch.setattr(chat, '_get_or_create_room', lambda *args: room)
+    monkeypatch.setattr(chat, 'create_notification', lambda *args, **kwargs: None)
+    monkeypatch.setattr(chat, 'send_to_user', lambda *args, **kwargs: None)
+    chat.send_message(chat.SendMessageIn(to_user_id=b, cargo_id=cargo, text='fixture'), {'id': a})
+    with get_conn() as c:
+        assert c.execute('SELECT count(*) FROM chat_messages WHERE room_id=?', (room,)).fetchone()[0] == 1
