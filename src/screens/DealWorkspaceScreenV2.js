@@ -71,7 +71,7 @@ import {
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
-import VoiceMessageBubble from '../components/VoiceMessageBubble';
+import VoiceMessageBubble from '../components/deal/ProtectedVoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
 import { createManualTextTranslationState } from '../utils/manualTextTranslationState';
 import { routeMetricValues } from '../utils/routeMetricValues';
@@ -461,6 +461,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [textTranslationRevision, setTextTranslationRevision] = React.useState(0);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  React.useEffect(() => () => { try { voice.stop?.(); } catch {} }, [voiceScope]);
   const historyPages = React.useMemo(() => createChatHistoryPages(), [voiceScope]);
   const [hasOlderMessages, setHasOlderMessages] = React.useState(false);
   const [olderMessagesLoading, setOlderMessagesLoading] = React.useState(false);
@@ -1599,7 +1600,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {datePill}
         <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
-            {item.attachmentUnavailable && !(Platform.OS === 'web' && item.photo && !item.optimistic) ? (
+            {item.attachmentUnavailable && !((item.photo || item.voice) && !item.optimistic) ? (
               <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
                 {t('chat_attachment_unavailable')}
               </Text>
@@ -1612,6 +1613,12 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             {item.voice ? (
               <VoiceMessageBubble
                 uri={item.mediaUrl}
+                roomId={roomId}
+                messageId={item.id}
+                optimistic={item.optimistic}
+                unavailableText={t('chat_attachment_unavailable')}
+                retryText={t('chat_attach_retry')}
+                textColor={item.mine ? bubbleMineColors.textColor : colors.text}
                 fallbackDurationSec={item.voiceDuration}
                 mine={item.mine}
                 transcript={item.mine ? undefined : voiceTranscripts[item.id]}

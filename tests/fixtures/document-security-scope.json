@@ -6,6 +6,6 @@
     "backend/api/profile.py": "6a58b4b37e11f90c48e63df562257dc6d1f87f545955790ad0599c5a6d89b2c8",
     "backend/main.py": "8ef0ac1e016b6a6b810a92df441209e3281be787e189f1d3e044f4b818767dfa",
     "backend/api/chat.py": "a1ad3c3c790bacb635c701ef043520be60f77442a0e52e3c171bf46bbb8046ef",
-    "src/screens/DealWorkspaceScreenV2.js": "bb31f6ae0dab33f46bf1cb5fd24f1a4f4101bf5675e0c4a4d6cf0879307b7ae9"
+    "src/screens/DealWorkspaceScreenV2.js": "561d448482dec7098c37caf9201f2f4db73faeac960765fcbe7b6c1f5d457f9e"
   }
 }

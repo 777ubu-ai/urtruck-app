@@ -27,7 +27,7 @@ export default function ProtectedChatPhoto({ roomId, messageId, uri, optimistic,
   }, [scope, owner, roomId, messageId, optimistic, attempt]);
   const resolved = optimistic ? uri : (resource?.scope === scope ? resource.uri : '');
   if (!resolved) {
-    return <View style={style}>{failed ? <TouchableOpacity onPress={() => setAttempt(value => value + 1)} accessibilityRole="button"><Text style={{ color: textColor || '#fff' }}>{unavailableText} · {retryText}</Text></TouchableOpacity> : <ActivityIndicator />}</View>;
+    return <View style={style} testID={testID ? `${testID}-state` : undefined}>{failed ? <TouchableOpacity onPress={() => setAttempt(value => value + 1)} accessibilityRole="button"><Text style={{ color: textColor || '#fff' }}>{unavailableText} · {retryText}</Text></TouchableOpacity> : <ActivityIndicator />}</View>;
   }
   const image = <Image source={{ uri: resolved }} style={style} resizeMode={fullscreen ? 'contain' : 'cover'} />;
   if (fullscreen) return image;

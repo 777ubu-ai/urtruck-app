@@ -41,6 +41,7 @@ export default function VoiceMessageBubble({
   mutedColor,
   accentColor,
   onError,
+  onPlaybackPendingChange,
   transcript,
   transcribing = false,
   onToggleTranscript,
@@ -84,13 +85,15 @@ export default function VoiceMessageBubble({
   const onToggle = React.useCallback(async () => {
     if (!uri || busy) return;
     setBusy(true);
+    onPlaybackPendingChange?.(true);
     try {
       const ok = await voice.toggle(uri);
       if (!ok && !isActive) onError?.();
     } finally {
+      onPlaybackPendingChange?.(false);
       setBusy(false);
     }
-  }, [uri, busy, isActive, onError]);
+  }, [uri, busy, isActive, onError, onPlaybackPendingChange]);
 
   // Перемотка: тап по полосе. locationX — позиция внутри самой полосы,
   // работает одинаково в native и react-native-web.
