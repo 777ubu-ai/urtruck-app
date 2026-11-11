@@ -102,6 +102,10 @@ def test_storage_url_variants_do_not_bypass_photo_guard(monkeypatch, prefix):
     '//fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://ｆixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://fixture。supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    ' //fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    '\t//fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    r'/\fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    '/./security/storage/id_documents/private.pdf?exp=fixture&sig=fixture',
 ])
 def test_browser_url_normalization_cannot_bypass_photo_guard(monkeypatch, ref):
     monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')

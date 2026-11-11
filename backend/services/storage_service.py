@@ -130,9 +130,17 @@ def is_private_remote_ref(value: Optional[str]) -> bool:
 def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
     """Распознать URL объекта своего хранилища и его категорию без подписи."""
     try:
-        source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
-        if value.startswith('//'):
+        if not isinstance(value, str) or value != value.strip() or '\\' in value or any(ord(c) < 32 for c in value):
             return True, None
+        source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
+        if not source.scheme:
+            local_prefixes = (LOCAL_PUBLIC_BASE.rstrip('/') + '/', '/security/storage/', '/storage/')
+            if not any(value.startswith(prefix) for prefix in local_prefixes):
+                return True, None
+            path = unquote(source.path)
+            if '%' in path or any(part in ('.', '..') for part in path.split('/')):
+                return True, None
+            return False, None
         if source.scheme in ('http', 'https') and (not source.netloc or not source.netloc.isascii()
                 or '\\' in value or '%' in source.netloc or any(ord(c) < 32 for c in value)):
             return True, None
