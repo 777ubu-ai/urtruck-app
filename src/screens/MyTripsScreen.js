@@ -560,7 +560,7 @@ export default function MyTripsScreen({ navigation, route }) {
             testID={`publication-${action}`} disabled={!!publicationBusy[String(item.id)]}
             style={[s.miniBtn, { flex: 1 }]}
             onPress={event => { event.stopPropagation?.(); performPublicationAction(item, action); }}>
-            <Text style={[s.miniBtnText, { color: action === 'hide' ? v1.error : v1.text }]}>{(EXPIRY_COPY[lang] || EXPIRY_COPY.EN)[action]}</Text>
+            <Text style={[s.miniBtnText, { color: v1.text }]}>{(EXPIRY_COPY[lang] || EXPIRY_COPY.EN)[action]}</Text>
           </TouchableOpacity>)}
         </View> : null}
       </MarketplaceCard>

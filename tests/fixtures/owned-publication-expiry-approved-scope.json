@@ -4,7 +4,7 @@
   "sha256": {
     "backend/api/marketplace.py": "4dd71c31f11b6908c3653286b0dd8146ce1bd75733dbf8c730bb913de5474e5d",
     "backend/database/db.py": "647c5644fa4c30927dbb07b0a78e6ee292e5ddfc9d608b755cbaa75b1ca57bbd",
-    "src/screens/MyTripsScreen.js": "7d4eb085f3dd51c83d561fb21be5d211ec16ae03ba6cecdcb0cc2c2cc7d2ad78",
+    "src/screens/MyTripsScreen.js": "3787013f7927b5b5760d99c77cdac0dba502ba7979dc9063d3ef551a4b8a3d06",
     "src/utils/marketAPI.js": "1d6b9163ded3e7f0431924c90df9c2e424b0f035df77c6ec7514c9c31479c646"
   }
 }
