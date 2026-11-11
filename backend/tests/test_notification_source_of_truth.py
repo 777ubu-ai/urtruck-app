@@ -75,7 +75,7 @@ def test_different_event_key_not_deduped():
 
 
 def test_scheduler_reminders_job_creates_notification_even_when_push_fails():
-    """Явный opt-in: provider outage не удаляет inbox и задание retry."""
+    """Напоминание остаётся в inbox, а системная доставка подавлена до провайдера."""
     from scheduler import jobs as jobs_mod
     from services import push_gateway
 
@@ -100,8 +100,8 @@ def test_scheduler_reminders_job_creates_notification_even_when_push_fails():
         pending = c.execute("SELECT * FROM push_outbox WHERE recipient_user_id=?", (uid,)).fetchall()
     assert row is not None, 'Отказ транспорта не должен удалять inbox'
     assert row['event_key'].startswith('reminder-inactive:')
-    assert stats['retry'] == 1 and len(pending) == 1
-    assert pending[0]['status'] == 'retry' and pending[0]['attempt_count'] == 1
+    assert stats['skipped'] >= 1 and len(pending) == 1
+    assert pending[0]['status'] == 'skipped_policy' and pending[0]['last_error'] == 'in_app_only'
 
 
 def test_admin_approve_creates_notification_with_dedup():
