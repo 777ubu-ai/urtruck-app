@@ -93,6 +93,16 @@ def test_existing_cargo_photo_and_external_url_remain_visible(monkeypatch):
     assert marketplace._sign_cargo_photos([photo, external, local_photo, qa2_photo]) == [photo, external, local_photo, qa2_photo]
 
 
+def test_legacy_raw_cargo_photo_is_preserved_but_not_accepted_as_new_upload(monkeypatch):
+    monkeypatch.setattr(marketplace._cargo_file_signing, 'sign', lambda ref: '/signed/' + ref)
+    ref = 'cargo_photos/fixture.jpg'
+    assert marketplace._sign_cargo_photos([ref]) == ['/signed/' + ref]
+    assert marketplace._sign_cargo_photos(['cargo_photos/../id_documents/private.jpg']) == []
+    body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
+    with pytest.raises(HTTPException):
+        marketplace.create_cargo(body, {'id': 'fixture-owner', 'role': 'client'})
+
+
 @pytest.mark.parametrize('prefix', [
     'https://fixture.supabase.co:443/storage/v1/object/sign/',
     'https://fixture.supabase.co./storage/v1/object/sign/',
