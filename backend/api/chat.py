@@ -615,6 +615,8 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         _assert_chat_is_accepted(user["id"], recipient_id,
                                  cargo_id=body.cargo_id, trip_id=body.trip_id)
         room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+        _assert_chat_is_accepted(user["id"], recipient_id, room_id=room_id,
+                                 cargo_id=body.cargo_id, trip_id=body.trip_id)
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
 
