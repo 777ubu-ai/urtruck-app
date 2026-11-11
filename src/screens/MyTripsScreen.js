@@ -538,7 +538,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'default'}
         testID="my-history-card"
-        dimmed
+        dimmed={!(item.status === 'expired' && item.publication_period_id)}
         style={s.cardSpacing}
         onPress={() => {
           if (isCargo) navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: item.cargo_desc, isMine: true, _server: true }, cargoId: item.id, role, readOnly: true });
@@ -560,7 +560,7 @@ export default function MyTripsScreen({ navigation, route }) {
             testID={`publication-${action}`} disabled={!!publicationBusy[String(item.id)]}
             style={[s.miniBtn, { flex: 1 }]}
             onPress={event => { event.stopPropagation?.(); performPublicationAction(item, action); }}>
-            <Text style={[s.miniBtnText, { color: action === 'hide' ? v1.error : v1Accent.main }]}>{(EXPIRY_COPY[lang] || EXPIRY_COPY.EN)[action]}</Text>
+            <Text style={[s.miniBtnText, { color: action === 'hide' ? v1.error : v1.text }]}>{(EXPIRY_COPY[lang] || EXPIRY_COPY.EN)[action]}</Text>
           </TouchableOpacity>)}
         </View> : null}
       </MarketplaceCard>
