@@ -131,6 +131,8 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
     """Распознать URL объекта своего хранилища и его категорию без подписи."""
     try:
         source, configured = urlsplit(value), urlsplit(SUPABASE_URL)
+        if source.scheme in ('http', 'https') and ('\\' in value or '%' in source.netloc or any(ord(c) < 32 for c in value)):
+            return True, None
         if (not configured.hostname or not source.hostname or source.scheme not in ('http', 'https')
                 or source.hostname.rstrip('.') != configured.hostname.rstrip('.')):
             return False, None

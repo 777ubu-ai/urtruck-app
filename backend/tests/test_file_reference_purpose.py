@@ -91,3 +91,16 @@ def test_storage_url_variants_do_not_bypass_photo_guard(monkeypatch, prefix):
     body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
     with pytest.raises(HTTPException):
         marketplace.create_cargo(body, {'id': 'fixture-owner', 'role': 'client'})
+
+
+@pytest.mark.parametrize('ref', [
+    'https://%66ixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    r'https://fixture.supabase.co\storage\v1\object\sign\fixture-private\id_documents\private.pdf?token=fixture',
+])
+def test_browser_url_normalization_cannot_bypass_photo_guard(monkeypatch, ref):
+    monkeypatch.setattr(storage_service, 'SUPABASE_URL', 'https://fixture.supabase.co')
+    monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
+    assert marketplace._sign_cargo_photos([ref]) == []
+    body = marketplace.CargoIn(from_city='A', to_city='B', cargo_desc='fixture', photos=[ref])
+    with pytest.raises(HTTPException):
+        marketplace.create_cargo(body, {'id': 'fixture-owner', 'role': 'client'})
