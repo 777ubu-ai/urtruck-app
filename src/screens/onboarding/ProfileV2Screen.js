@@ -26,7 +26,8 @@ import KeyboardSafeLayout, { KeyboardSafeScrollView } from '../../components/ui/
 import { RegistrationHeader, RegistrationCompletion, registrationColors } from './RegistrationPresentation';
 import { registrationCountry, registrationNational, registrationNumber, validRegistrationPhone } from '../../utils/registrationPhone';
 import { usePublicationDraft } from '../../hooks/usePublicationDraft';
-import { optionalProfileFields, changedOptionalProfileFields } from '../../utils/registrationOptionalProfile';
+import { optionalProfileFields, changedOptionalProfileFields, loadRegistrationProfile } from '../../utils/registrationOptionalProfile';
+import { API_BASE } from '../../config/env';
 import { COUNTRIES } from '../../utils/countries';
 
 const COPY = {
@@ -285,24 +286,26 @@ export default function ProfileV2Screen(props) {
     setLoaded(null);
     if (!owner) return () => { alive = false; };
     let timer;
+    const controller = new AbortController();
     (async () => {
       const token = await regAPI.getToken();
       if (!alive) return;
-      const profile = token ? await Promise.race([
-        regAPI.profile(),
-        new Promise(resolve => { timer = setTimeout(() => resolve(null), 15000); }),
-      ]) : null;
+      const result = token ? await Promise.race([
+        loadRegistrationProfile({ base: API_BASE, token, getToken: () => regAPI.getToken(), fetcher: fetch, signal: controller.signal }),
+        new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve({ error: 'no_connection' }); }, 15000); }),
+      ]) : { error: 'session_expired' };
+      const profile = result.profile;
       clearTimeout(timer);
       const currentToken = await regAPI.getToken();
       if (!alive) return;
       if (!token || currentToken !== token) { setLoaded({ owner, error: 'session_expired' }); return; }
       if (!profile || String(profile.id) !== String(owner)) {
-        setLoaded({ owner, error: 'no_connection' });
+        setLoaded({ owner, error: result.error || 'profile_v2_save_failed' });
         return;
       }
       setLoaded({ owner, profile });
     })().catch(() => { if (alive) setLoaded({ owner, error: 'no_connection' }); });
-    return () => { alive = false; clearTimeout(timer); };
+    return () => { alive = false; clearTimeout(timer); controller.abort(); };
   }, [owner, attempt]);
   if (!loaded || loaded.owner !== owner) return <SafeAreaView><ActivityIndicator /></SafeAreaView>;
   if (loaded.error) return <SafeAreaView><Text>{t(loaded.error)}</Text><Pressable onPress={() => setAttempt(value => value + 1)} accessibilityRole="button"><Text>{t('repeat_action')}</Text></Pressable></SafeAreaView>;
