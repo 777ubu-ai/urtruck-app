@@ -73,7 +73,8 @@ def test_existing_cargo_photo_and_external_url_remain_visible(monkeypatch):
     monkeypatch.setattr(storage_service, 'SUPABASE_BUCKET', 'fixture-private')
     photo = 'https://fixture.supabase.co/storage/v1/object/sign/fixture-private/cargo_photos/photo.jpg?token=fixture'
     external = 'https://example.org/vehicle.jpg'
-    assert marketplace._sign_cargo_photos([photo, external]) == [photo, external]
+    local_photo = 'https://app.example/security/storage/cargo_photos/photo.jpg?exp=fixture&sig=fixture'
+    assert marketplace._sign_cargo_photos([photo, external, local_photo]) == [photo, external, local_photo]
 
 
 @pytest.mark.parametrize('prefix', [
@@ -102,6 +103,7 @@ def test_storage_url_variants_do_not_bypass_photo_guard(monkeypatch, prefix):
     '//fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://ｆixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     'https://fixture。supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
+    'https://app.example/security/storage/id_documents/private.pdf?exp=fixture&sig=fixture',
     ' //fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     '\t//fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',
     r'/\fixture.supabase.co/storage/v1/object/sign/fixture-private/id_documents/private.pdf?token=fixture',

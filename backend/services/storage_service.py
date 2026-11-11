@@ -149,6 +149,11 @@ def own_supabase_object_url(value: str) -> tuple[bool, str | None]:
             path = unquote(path)
         if source.scheme in ('http', 'https') and ('%' in path or any(part in ('.', '..') for part in path.split('/'))):
             return True, None
+        if source.scheme in ('http', 'https'):
+            for prefix in ('/security/storage/', '/storage/'):
+                if path.startswith(prefix) and not path.startswith('/storage/v1/object/'):
+                    parts = path[len(prefix):].split('/')
+                    return True, parts[0] if len(parts) >= 2 and all(parts) else None
         if (not configured.hostname or not source.hostname or source.scheme not in ('http', 'https')
                 or source.hostname.rstrip('.') != configured.hostname.rstrip('.')):
             return False, None
