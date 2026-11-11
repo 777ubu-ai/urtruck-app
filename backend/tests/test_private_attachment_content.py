@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from api import deal_room
+from api import verification_gate
 from database.db import get_conn
 
 
@@ -55,6 +56,22 @@ def test_guest_cannot_download_attachment(attachment_case):
     response = TestClient(app).get(f"/api/v1/chat/conversations/{a['room']}/attachments/{a['attachment']}/content")
     assert response.status_code in (401, 403)
     assert not a['calls']
+
+
+def test_expired_session_and_valid_participant_use_authentication(attachment_case, monkeypatch):
+    a = attachment_case
+    app = FastAPI()
+    app.include_router(deal_room.deal_room_router, prefix='/api/v1')
+    monkeypatch.setattr(verification_gate.reg_dal, 'get_driver_by_token', lambda token: a['owner'] if token == 'valid' else None)
+    monkeypatch.setattr(verification_gate.reg_dal, 'get_driver', lambda driver_id: {'id': driver_id, 'verification_level': 1})
+    monkeypatch.setattr(verification_gate.presence_service, 'touch_authenticated', lambda driver: None)
+    client = TestClient(app)
+    url = f"/api/v1/chat/conversations/{a['room']}/attachments/{a['attachment']}/content"
+    assert client.get(url, headers={'Authorization': 'Bearer expired'}).status_code == 401
+    assert not a['calls']
+    response = client.get(url, headers={'Authorization': 'Bearer valid'})
+    assert response.status_code == 200
+    assert response.content == b'%PDF-fixture'
 
 
 def test_revocation_during_file_read_does_not_return_content(attachment_case, monkeypatch, tmp_path):
