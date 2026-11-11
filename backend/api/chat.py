@@ -551,9 +551,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # http(s) URL (rendered client-side as a tracking pixel on the OTHER
     # participant's device). It must be exactly what /chat/photo or
     # /chat/voice actually returned — never an arbitrary client string.
-    if body.photo_url and (not storage.is_owned_storage_ref(body.photo_url)
-                           or not storage.ref_has_purpose(body.photo_url, {'chat_photos', 'chat_voice'})):
-        raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
+    if body.photo_url:
+        if not storage.is_owned_storage_ref(body.photo_url):
+            raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
+        if storage.ref_has_purpose(body.photo_url, {'chat'}):
+            raise HTTPException(status_code=403, detail='FILE_UPLOAD_REQUIRED')
+        if not storage.ref_has_purpose(body.photo_url, {'chat_photos', 'chat_voice'}):
+            raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая

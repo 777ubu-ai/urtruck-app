@@ -32,6 +32,14 @@ def test_private_chat_keys_accept_only_photo_or_voice_categories(monkeypatch):
     assert not storage_service.ref_has_purpose('supabase://fixture-private/chat_photos/../chat_attachments/private.pdf', {'chat_voice', 'chat_photos'})
 
 
+def test_unsent_legacy_chat_key_requests_reupload_without_accepting_it():
+    ref = storage_service.LOCAL_PUBLIC_BASE + '/chat/old-photo.jpg'
+    with pytest.raises(HTTPException) as error:
+        chat.send_message(chat.SendMessageIn(photo_url=ref, room_id='synthetic-room'), {'id': 'owner'})
+    assert error.value.status_code == 403
+    assert error.value.detail == 'FILE_UPLOAD_REQUIRED'
+
+
 def test_cargo_cannot_claim_another_users_uploaded_photo(monkeypatch):
     import asyncio
     import io
