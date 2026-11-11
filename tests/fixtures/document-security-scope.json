@@ -5,7 +5,7 @@
     "backend/api/marketplace.py": "8eadf3b8ecc2bd4d27b5cb63dfb2b1c6578f0fdd8138c67a877728c349a9ed57",
     "backend/api/profile.py": "6a58b4b37e11f90c48e63df562257dc6d1f87f545955790ad0599c5a6d89b2c8",
     "backend/main.py": "8ef0ac1e016b6a6b810a92df441209e3281be787e189f1d3e044f4b818767dfa",
-    "backend/api/chat.py": "991590b69c6438219ea8052c851fb93801c5db92d3e2ca8ede4b41b6d860995c",
+    "backend/api/chat.py": "a157e27f08c75d47124a8598cea7ef23c2b5bdc1bd26f5fe515ceec3e3bf438c",
     "src/screens/DealWorkspaceScreenV2.js": "f2dfbeefdc3434e2719e6926c21f2da0bf9a16b37edd69a344068c33e010173c"
   }
 }

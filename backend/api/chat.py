@@ -522,6 +522,34 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
         return
     if not any((room_id, cargo_id, trip_id)):
         raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+    if room_id:
+        # Явная связь с комнатой имеет приоритет перед совпадением рейса или
+        # груза. Для старых несвязанных сделок допускаем только однозначную
+        # запись без другой привязанной комнаты и не меняем данные на чтении.
+        with get_conn() as c:
+            pair = (sender_id, recipient_id, recipient_id, sender_id)
+            exact = c.execute(
+                'SELECT status FROM deals WHERE ((shipper_id=? AND driver_id=?) OR (shipper_id=? AND driver_id=?)) AND chat_room_id=?',
+                (*pair, room_id),
+            ).fetchall()
+            if exact:
+                if any(row['status'] in _DEAL_CHAT_STATUSES for row in exact):
+                    return
+                raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+            legacy_filters, legacy_params = [], []
+            if cargo_id:
+                legacy_filters.append('cargo_id=?'); legacy_params.append(cargo_id)
+            if trip_id:
+                legacy_filters.append('trip_id=?'); legacy_params.append(trip_id)
+            if legacy_filters:
+                legacy = c.execute(
+                    'SELECT status FROM deals WHERE ((shipper_id=? AND driver_id=?) OR (shipper_id=? AND driver_id=?)) '
+                    'AND chat_room_id IS NULL AND (' + ' OR '.join(legacy_filters) + ')',
+                    (*pair, *legacy_params),
+                ).fetchall()
+                if len(legacy) == 1 and legacy[0]['status'] in _DEAL_CHAT_STATUSES:
+                    return
+        raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
     filters, params = [], []
     if room_id:
         filters.append("d.chat_room_id = ?"); params.append(room_id)
