@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -1051,6 +1052,42 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
             except Exception:
                 # таблицы может не быть на старых БД — не критично
                 pass
+
+
+@chat_router.get('/messages/{room_id}/media/{message_id}')
+def get_message_media(room_id: str, message_id: int, user=Depends(require_level(1))):
+    """Читать медиа только по фактической связи сообщения и доступной комнаты."""
+    def permitted_ref():
+        with get_conn() as c:
+            room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (room_id,)).fetchone()
+            if not room:
+                raise HTTPException(status_code=404, detail='Беседа не найдена')
+            if user['id'] not in (room['participant_1'], room['participant_2']):
+                raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+            message = c.execute('SELECT photo_url,is_voice FROM chat_messages WHERE id=? AND room_id=?', (message_id, room_id)).fetchone()
+        partner = room['participant_2'] if user['id'] == room['participant_1'] else room['participant_1']
+        _assert_chat_is_accepted(user['id'], partner, room_id=room_id, cargo_id=room['cargo_id'], trip_id=room['trip_id'])
+        if not message or not storage.ref_has_purpose(message['photo_url'], {'chat_photos', 'chat_voice', 'chat'}):
+            raise HTTPException(status_code=404, detail='Вложение не найдено')
+        return message['photo_url'], bool(message['is_voice'])
+
+    ref, is_voice = permitted_ref()
+    try:
+        limit = upload_validation.MAX_CHAT_VOICE_BYTES if is_voice else upload_validation.MAX_CHAT_PHOTO_BYTES
+        content = storage.read_private_bytes(ref, limit)
+    except storage.PrivateFileTooLargeError as exc:
+        raise HTTPException(status_code=413, detail='Файл слишком большой') from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Вложение не найдено') from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail='Хранилище недоступно') from exc
+    if permitted_ref() != (ref, is_voice):
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    audio = upload_validation.sniff_audio_mime(content) if is_voice else None
+    mime = (audio[1] if audio else None) if is_voice else upload_validation.sniff_image_mime(content)
+    return Response(content=content, media_type=mime or 'application/octet-stream', headers={
+        'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
+    })
 
 
 @chat_router.get("/messages/{room_id}")
