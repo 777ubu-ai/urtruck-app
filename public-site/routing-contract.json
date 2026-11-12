@@ -1,0 +1,17 @@
+{
+  "site_root": "/",
+  "legacy_web_routes_to_information_site": [
+    "/register", "/login", "/signup", "/profile", "/dashboard", "/my-work", "/my-trips", "/deals", "/chat"
+  ],
+  "preserve_server_routes": [
+    "/api/", "/security/api/", "/storage/", "/security/storage/",
+    "/.well-known/assetlinks.json", "/.well-known/apple-app-site-association", "/apple-app-site-association",
+    "/terms", "/privacy", "/support", "/legal/",
+    "/api/v1/register/social/verify", "/api/v1/register/account", "/api/v1/register/account/delete"
+  ],
+  "preserve_app_universal_link_paths": ["/notifications", "/notifications/*", "/cargos/*", "/trips/*", "/driver/*"],
+  "public_oauth_callback": "https://urtruck.kz/?social_auth=1",
+  "native_oauth_callback": "urtruck://auth-social",
+  "public_callback_behavior": "Scrub callback parameters from browser history and show an informational notice. Never exchange a web token, initialize the web app, or expose registration.",
+  "email_callbacks": "Keep existing email verify/recovery API endpoints and provider redirect configuration unchanged; these are external-provider or /api routes, not static-site pages. This static site does not intercept them."
+}
