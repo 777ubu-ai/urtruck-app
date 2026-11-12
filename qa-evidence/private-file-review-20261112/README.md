@@ -81,12 +81,35 @@ HEAD 200 и ненулевой размер подтверждают налич�
 5. Достаточно ли проверок отменённых сделок и сохранения завершённой истории; нет ли гонки отзыва/смены комнаты между ACL-проверкой и возвратом байтов?
 6. Какой измеренный maximum legacy TTL и какие QA2 доказательства нужны до отключения старой выдачи?
 
+## Интеграционная цепочка
+
+Фактическая stacked-цепочка PR: #698 (`qa2/integration-candidate` → `fix/production-session-empty-lists`) → #702 → #703 → #705. #705 сейчас направлен в `fix/vehicle-catalog-count-20261111`, не в integration branch. Все четыре PR открыты, review requests отсутствуют. Основа QA2 — `ec27f12539f9306b270be348193cc45fa380829e`; от неё до HEAD кандидата 62 commits и 227 файлов (+10,261/-1,183), поэтому продвижение всей ветки одним PR не является узкой интеграцией.
+
+PR #704 — боковая ветка от #702. Её notification commit `1bcb9c02711d905edfb7a4409828a5299f6e225d` и включённый в базу #703 commit `7960b9d09d05d6ecb5ff0efd32fb468d56f8d248` имеют одинаковый stable patch-id `0328668fbd74919be0c2102c0ca33fef56377260`; дублировать этот патч при продвижении нельзя. Следующий безопасный путь — reviewer оценивает точный PR diff и stack, затем существующие зависимости проходят штатные checks/merge по очереди. PR base, protection rules и workflow gates не менялись.
+
 Нужен reviewer, не являющийся автором этих изменений. PR остаётся draft; review request не отправлялся. Доступный collaborator с правом `write`: `arbeiterschaft02-prog`; наличие права не означает согласие или независимое одобрение. Владелец должен решить, можно ли запросить у него review.
 
 ## Ссылки на код для reviewer
 
+Полный diff PR относительно фактической базы #703:
+
 ```sh
-git diff 6b0f49c1da70c2697b9c889b2bd9bf8412608572...720b34efc311025428fa0326c7d7bdc74b79775b
+git diff a4cd9fbc4587ad7e13e9d975eefc2d93403fa2a0...HEAD
+```
+
+Фокусированный diff файлового security относительно той же базы:
+
+```sh
+git diff a4cd9fbc4587ad7e13e9d975eefc2d93403fa2a0...HEAD -- \
+  backend/api/chat.py backend/api/deal_room.py backend/api/profile.py \
+  backend/services/storage_service.py backend/services/file_signing.py \
+  src/utils/privateFileTransport.js src/utils/privateAttachmentOpen.js \
+  src/screens/DealWorkspaceScreenV2.js src/components/deal/DealAttachments.js \
+  backend/tests/test_attachment_binding_security.py \
+  backend/tests/test_private_attachment_content.py \
+  backend/tests/test_private_chat_media.py \
+  backend/tests/test_deal_room_status_gate.py \
+  backend/tests/test_private_storage_read.py
 ```
 
 Ключевые файлы:
