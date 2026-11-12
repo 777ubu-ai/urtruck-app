@@ -1,5 +1,7 @@
 """Доступ к байтам вложения проверяется для каждой сессии и конкретной комнаты."""
+import hashlib
 import uuid
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -8,6 +10,9 @@ from fastapi.testclient import TestClient
 from api import deal_room
 from api import verification_gate
 from database.db import get_conn
+from services import storage_service as _storage_service
+
+_READ_PRIVATE_BYTES = _storage_service.read_private_bytes
 
 
 @pytest.fixture
@@ -109,3 +114,68 @@ def test_other_accepted_deal_cannot_reopen_cancelled_room(attachment_case):
         deal_room.get_attachment_content(a['room'], a['attachment'], {'id':a['owner']})
     assert error.value.status_code == 403
     assert not a['calls']
+
+
+def test_isolated_storage_migration_preserves_file_and_exposes_legacy_link_window(
+        attachment_case, tmp_path, monkeypatch):
+    """Protected reads honor current ACL; legacy signed URL is bearer access until exp.
+
+    This uses a temporary local storage directory and test DB only. It records
+    why legacy issuance cannot be called revoked just because the protected
+    endpoint now enforces room membership.
+    """
+    from fastapi.testclient import TestClient
+    from main import app
+    from services import file_signing, storage_service
+
+    a = attachment_case
+    monkeypatch.setattr(storage_service, 'LOCAL_ROOT', tmp_path)
+    monkeypatch.setattr(deal_room.storage_service, 'LOCAL_ROOT', tmp_path)
+    monkeypatch.setattr(deal_room.storage_service, 'read_private_bytes', _READ_PRIVATE_BYTES)
+
+    # The attachment fixture uses an opaque UUID path; materialize the exact
+    # reference currently stored in the isolated DB.
+    with get_conn() as c:
+        stored_ref = c.execute('SELECT url FROM message_attachments WHERE id=?',
+                               (a['attachment'],)).fetchone()['url']
+    key = file_signing.extract_key(stored_ref)
+    assert key and key != stored_ref
+    actual_file = tmp_path / key
+    actual_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = b'%PDF-1.7\nprivate historical fixture\n%%EOF\n'
+    actual_file.write_bytes(payload)
+    expected_hash = hashlib.sha256(payload).hexdigest()
+
+    signed = file_signing.sign(stored_ref, ttl=60)
+    parsed = urlsplit(signed)
+    params = parse_qs(parsed.query)
+    assert params.get('exp') and params.get('sig')
+    exp = int(params['exp'][0])
+    client = TestClient(app)
+    legacy_path = parsed.path + '?' + parsed.query
+
+    # Both participants keep access through the new ACL endpoint and receive
+    # the exact bytes from the isolated filesystem, not a mocked storage read.
+    for actor in (a['owner'], a['partner']):
+        response = deal_room.get_attachment_content(a['room'], a['attachment'], {'id': actor})
+        assert hashlib.sha256(response.body).hexdigest() == expected_hash
+
+    # After cancellation, protected access is denied while the original file
+    # and its historical bytes remain intact.
+    with get_conn() as c:
+        c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (a['deal'],))
+    with pytest.raises(HTTPException) as error:
+        deal_room.get_attachment_content(a['room'], a['attachment'], {'id': a['owner']})
+    assert error.value.status_code == 403
+    assert hashlib.sha256(actual_file.read_bytes()).hexdigest() == expected_hash
+
+    # Existing HMAC URLs have no actor/room lookup: cancellation does not
+    # revoke them. This is the residual P1 window until their TTL elapses.
+    legacy = client.get(legacy_path)
+    assert legacy.status_code == 200, legacy.text
+    assert hashlib.sha256(legacy.content).hexdigest() == expected_hash
+
+    monkeypatch.setattr(file_signing.time, 'time', lambda: exp + 1)
+    expired = client.get(legacy_path)
+    assert expired.status_code == 403
+    assert hashlib.sha256(actual_file.read_bytes()).hexdigest() == expected_hash
