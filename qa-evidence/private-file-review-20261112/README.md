@@ -1,14 +1,15 @@
 # PR #705 — пакет независимого review файлового P1
 
-**Проверяемый PR-кандидат:** `720b34efc311025428fa0326c7d7bdc74b79775b`
+**Кодовый кандидат файловой защиты:** `720b34efc311025428fa0326c7d7bdc74b79775b`
+**Последний PR HEAD для review:** см. точный `headRefOid` и последний review-комментарий PR #705; workflow-guard changes включены в текущий diff.
 **Ветка:** `fix/owned-publication-expiry-20261111`
 **PR:** https://github.com/777ubu-ai/urtruck-app/pull/705
 **Проверка фактической копии:** 2026-11-12, read-only с production и QA2 VPS.
-**Код после указанного SHA не менялся при подготовке этого пакета.**
+Файловая реализация после `720b34ef` не менялась. Позже обновлены только release-workflow guards: Play Internal versionName `1.0.15` и TestFlight build-number guard для следующего свободного номера после последнего известного build `130`.
 
 ## Краткий вывод
 
-Защищённая выдача байтов реализована в локальном кандидате и покрыта backend-регрессиями. Но защита **не готова к эксплуатации**: новые endpoint’ы отсутствуют в текущих production и QA2 backend (оба возвращают 404), web продолжает использовать прежние URL, а авторизованная проверка содержимого реальных объектов и независимое review не выполнены. Старые signed bearer URL не отозваны; срок ссылок уже выданных сервером фактически не установлен.
+Защищённая выдача байтов реализована в локальном кандидате и покрыта backend-регрессиями. Но защита **не готова к эксплуатации**: новые endpoint’ы отсутствуют в текущих production и QA2 backend (оба возвращают 404), авторизованная проверка содержимого реальных объектов не выполнена. Кандидатные deal/chat web и native экраны обращаются к protected transport; старые API всё ещё возвращают signed bearer URL для совместимости старых клиентов и других потребителей. Старые ссылки не отозваны; runtime TTL ранее выданных сервером ссылок фактически не установлен.
 
 Не переводить PR в Ready, не собирать/загружать мобильные кандидаты и не объявлять P1 закрытым до независимого review, штатной интеграции и QA2-проверки защищённых endpoint’ов на реальных тестовых сессиях.
 
@@ -68,7 +69,7 @@ HEAD 200 и ненулевой размер подтверждают налич�
 
 ## Автоматические доказательства кандидата
 
-Последний CI точного SHA `720b34efc311025428fa0326c7d7bdc74b79775b`: PR Quality Gate `43248366726` — SUCCESS (backend, frontend/lint/build, mandatory web E2E). В backend наборе присутствуют `test_private_attachment_content.py`, `test_private_chat_media.py`, `test_deal_room_status_gate.py`, `test_attachment_binding_security.py`, `test_private_storage_read.py`; они проверяют авторизацию, подмену room/file/message ID, назначение файла, MIME/размер, отменённые статусы и чтение завершённой истории на тестовой БД/хранилище.
+CI `43248366726` для файлового кода SHA `720b34ef` прошёл; docs-only CI `43264564604` для `d6697ec3` также SUCCESS. Release guard tests после workflow fixes прошли 58/58; полный CI workflow-updated candidate указан в текущем PR. В backend наборе присутствуют `test_private_attachment_content.py`, `test_private_chat_media.py`, `test_deal_room_status_gate.py`, `test_attachment_binding_security.py`, `test_private_storage_read.py`; они проверяют авторизацию, подмену room/file/message ID, назначение файла, MIME/размер, отменённые статусы и чтение завершённой истории на тестовой БД/хранилище.
 
 Это CI кандидата и локальные mock/fixture проверки, не независимое review и не реальная проверка QA2/production storage. Последние серверные endpoint-пробы и storage metadata probes описаны выше.
 
@@ -83,11 +84,11 @@ HEAD 200 и ненулевой размер подтверждают налич�
 
 ## Интеграционная цепочка
 
-Фактическая stacked-цепочка PR: #698 (`qa2/integration-candidate` → `fix/production-session-empty-lists`) → #702 → #703 → #705. #705 сейчас направлен в `fix/vehicle-catalog-count-20261111`, не в integration branch. Все четыре PR открыты, review requests отсутствуют. Основа QA2 — `ec27f12539f9306b270be348193cc45fa380829e`; от неё до HEAD кандидата 62 commits и 227 файлов (+10,261/-1,183), поэтому продвижение всей ветки одним PR не является узкой интеграцией.
+Фактическая stacked-цепочка PR: #698 (`qa2/integration-candidate` → `fix/production-session-empty-lists`) → #702 → #703 → #705. #705 сейчас направлен в `fix/vehicle-catalog-count-20261111`, не в integration branch. Все четыре PR открыты; `arbeiterschaft02-prog` назначен reviewer для #705, остальные review requests отсутствуют. Основа QA2 — `ec27f12539f9306b270be348193cc45fa380829e`; от неё до PR-кандидата 62 commits и 227 файлов (+10,261/-1,183), поэтому продвижение всей ветки одним PR не является узкой интеграцией.
 
 PR #704 — боковая ветка от #702. Её notification commit `1bcb9c02711d905edfb7a4409828a5299f6e225d` и включённый в базу #703 commit `7960b9d09d05d6ecb5ff0efd32fb468d56f8d248` имеют одинаковый stable patch-id `0328668fbd74919be0c2102c0ca33fef56377260`; дублировать этот патч при продвижении нельзя. Следующий безопасный путь — reviewer оценивает точный PR diff и stack, затем существующие зависимости проходят штатные checks/merge по очереди. PR base, protection rules и workflow gates не менялись.
 
-Нужен reviewer, не являющийся автором этих изменений. PR остаётся draft; review request не отправлялся. Доступный collaborator с правом `write`: `arbeiterschaft02-prog`; наличие права не означает согласие или независимое одобрение. Владелец должен решить, можно ли запросить у него review.
+Предварительный review request отправлен `arbeiterschaft02-prog` владельцем разрешённым способом и обновлён после изменения release guards. PR остаётся draft, ответа/одобрения нет. Запрос охватывает точный актуальный PR HEAD, указанный в последнем комментарии; пакет не заявляет независимое одобрение.
 
 ## Ссылки на код для reviewer
 
