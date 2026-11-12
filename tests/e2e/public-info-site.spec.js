@@ -116,6 +116,23 @@ test('mobile text-scale 130 percent keeps all information and actions within the
     expect(result.pageWidth, `${language}: document width`).toBeLessThanOrEqual(result.viewportWidth);
     expect(result.outside, `${language}: text outside viewport`).toEqual([]);
     expect(result.horizontalScrollers, `${language}: clipped or horizontally scrolling content`).toEqual([]);
+    for (const action of await page.locator('.role-card .role-link').all()) {
+      await action.scrollIntoViewIfNeeded();
+      const hitTest = await action.evaluate((link) => {
+        const rect = link.getBoundingClientRect();
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+          visible: rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= window.innerHeight,
+          receivesPointer: Boolean(hit && link.contains(hit)),
+        };
+      });
+      expect(hitTest, `${language}: role action must be visible and receive taps`).toEqual({
+        visible: true,
+        receivesPointer: true,
+      });
+    }
     await expect(page.locator('[data-store-link="android"]')).toBeVisible();
     await expect(page.locator('[data-store-link="ios"]')).toBeVisible();
     await page.evaluate(() => {
