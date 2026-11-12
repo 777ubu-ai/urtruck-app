@@ -28,11 +28,12 @@ for (const [label, workflow, step] of guards) {
     ['без внешнего approval', {}, true],
     ...(label === 'TestFlight' ? [
       ['новая серия начинается с 1', { URTRUCK_MIN_IOS_BUILD: '0', URTRUCK_IOS_BUILD_NUMBER: '1' }, true],
-      ['номер 100 после 99', { URTRUCK_MIN_IOS_BUILD: '99', URTRUCK_IOS_BUILD_NUMBER: '100' }, true],
+      ['номер 131 после подтверждённого 130', { URTRUCK_MIN_IOS_BUILD: '130', URTRUCK_IOS_BUILD_NUMBER: '131' }, true],
+      ['максимальный четырёхзначный номер', { URTRUCK_MIN_IOS_BUILD: '9998', URTRUCK_IOS_BUILD_NUMBER: '9999' }, true],
       ['повтор номера запрещён', { URTRUCK_MIN_IOS_BUILD: '1', URTRUCK_IOS_BUILD_NUMBER: '1' }, false],
       ['откат номера запрещён', { URTRUCK_MIN_IOS_BUILD: '2', URTRUCK_IOS_BUILD_NUMBER: '1' }, false],
       ['нулевой номер запрещён', { URTRUCK_IOS_BUILD_NUMBER: '0' }, false],
-      ['выход за согласованную серию', { URTRUCK_IOS_BUILD_NUMBER: '101' }, false],
+      ['выход за четырёхзначную серию', { URTRUCK_IOS_BUILD_NUMBER: '10000' }, false],
       ['команда вместо номера запрещена', { URTRUCK_IOS_BUILD_NUMBER: '1;exit 0' }, false],
     ] : []),
     ...(label === 'Play' ? [

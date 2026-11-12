@@ -263,8 +263,8 @@ jobs:
               test "$CONCLUSION" = success || { echo "::error::Required check '$CHECK' is $CONCLUSION"; exit 1; }
             done
             python3 scripts/prepare_store_candidate_version.py --platform android \
-              --version 1.0.14 --source-sha "$URTRUCK_SOURCE_SHA"
-            echo "URTRUCK_VERSION_NAME=1.0.14" >> "$GITHUB_ENV"
+              --version 1.0.15 --source-sha "$URTRUCK_SOURCE_SHA"
+            echo "URTRUCK_VERSION_NAME=1.0.15" >> "$GITHUB_ENV"
           elif [ "$GITHUB_REF_NAME" = fix/play-production-1.0.12-20261026 ]; then
             test "$GITHUB_EVENT_NAME" = workflow_dispatch
             test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
