@@ -84,7 +84,15 @@ test('failed initiated OAuth callback returns to the store landing after process
   await expectStoreLandingOnly(page);
 });
 
-test('supported OAuth callback completes verification and reaches the authenticated app', async ({ page }) => {
+async function completePublicOAuthCallback(page, { role, isNew }) {
+  let completeSocialVerify;
+  const socialVerifyResponse = new Promise((resolve) => { completeSocialVerify = resolve; });
+  const apiRequests = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/v1/')) {
+      apiRequests.push({ url: new URL(request.url()).pathname, method: request.method() });
+    }
+  });
   await page.addInitScript(() => {
     localStorage.setItem('ur_social_pending_provider', JSON.stringify({ provider: 'google', startedAt: Date.now() }));
     // Supabase PKCE requires the verifier saved by the legitimate OAuth start
@@ -100,32 +108,41 @@ test('supported OAuth callback completes verification and reaches the authentica
       user: { id: 'supabase-user', email: 'callback@example.test', user_metadata: { full_name: 'Callback Tester' } },
     }),
   }));
-  await page.route('**/api/v1/register/social/verify', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ token: 'urtruck-callback-session', email: 'callback@example.test', user_id: 'callback-user', role: 'client', verification_level: 1 }),
-  }));
-  await page.route('**/api/v1/register/me', (route) => {
-    const authorized = route.request().headers()['authorization'] === 'Bearer urtruck-callback-session';
-    return route.fulfill({
-      status: authorized ? 200 : 401,
+  await page.route('**/api/v1/register/social/verify', async (route) => {
+    await socialVerifyResponse;
+    await route.fulfill({
+      status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(authorized
-        ? { id: 'callback-user', role: 'client', verification_level: 1, full_name: 'Callback Tester' }
-        : { detail: 'AUTH_REQUIRED' }),
+      body: JSON.stringify({
+        token: 'urtruck-callback-session', email: 'callback@example.test', user_id: 'callback-user',
+        role, is_new: isNew, verification_level: 1,
+      }),
     });
   });
-  await page.route('**/api/v1/users/me', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ id: 'callback-user', role: 'client', name: 'Callback Tester', verification_level: 1 }),
-  }));
-  await page.goto(`${BASE}/?social_auth=1&code=valid-pkce-code`, { waitUntil: 'networkidle' });
-  // A first-login client is routed to the existing machine feed before the
-  // regular tab bar is shown; this still proves the callback reached Main.
-  await expect(page.getByText('Лента машин', { exact: true })).toBeVisible({ timeout: 30000 });
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('ur_reg_token')))).toBe(true);
+  await page.goto(`${BASE}/?social_auth=1&code=valid-pkce-code`, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#urtruck-oauth-pending')).toBeVisible();
+  await expect(page.locator('#root')).toHaveCSS('visibility', 'hidden');
+  completeSocialVerify();
+  await expectStoreLandingOnly(page);
   await expect(page.locator('[data-testid="role-v2-screen"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="email-v2-input"]')).toHaveCount(0);
-  await expect(page.locator('[data-store-link="android"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="profile-v2-screen"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="bottom-nav"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('ur_reg_token')))).toBe(true);
+  expect(apiRequests.filter(({ method }) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method))
+    .map(({ url }) => url)).toEqual(['/api/v1/register/social/verify']);
+}
+
+test('successful OAuth for a new account without role ends at stores, not web role registration', async ({ page }) => {
+  await completePublicOAuthCallback(page, { role: null, isNew: true });
+});
+
+test('successful OAuth for existing driver and shipper accounts ends at stores without changing roles', async ({ browser }) => {
+  for (const role of ['driver', 'client']) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await completePublicOAuthCallback(page, { role, isNew: false });
+    await context.close();
+  }
 });
 
 async function assertLegacyStoreFallback(page, path) {

@@ -101,7 +101,7 @@ try {
     requireFile(resolve('web/store/app-store-qr.png'));
     const landingTemplate = readFileSync(landingPath, 'utf8');
     const callbackShell = html
-      .replace('</head>', '<style>html.urtruck-oauth-pending #root{visibility:hidden!important}#urtruck-oauth-pending{font:16px system-ui,sans-serif;max-width:32rem;margin:20vh auto;padding:1rem 1.5rem;color:#17352b;text-align:center}</style>\n<script>window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__=true;document.documentElement.classList.add("urtruck-oauth-pending");window.__URTRUCK_PUBLIC_STORE_LANDING_REVEAL__=function(){document.documentElement.classList.remove("urtruck-oauth-pending");document.getElementById("urtruck-oauth-pending")?.remove()};</script>\n</head>')
+      .replace('</head>', '<style>html.urtruck-oauth-pending #root{visibility:hidden!important}#urtruck-oauth-pending{font:16px system-ui,sans-serif;max-width:32rem;margin:20vh auto;padding:1rem 1.5rem;color:#17352b;text-align:center}</style>\n<script>window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__=true;document.documentElement.classList.add("urtruck-oauth-pending");</script>\n</head>')
       .replace('<div id="root"></div>', '<div id="urtruck-oauth-pending" role="status">Проверяем завершение входа…</div>\n    <div id="root"></div>');
     const appShellBase64 = Buffer.from(callbackShell, 'utf8').toString('base64');
     const runtimeHash = createHash('sha256').update(readFileSync(runtimePath)).digest('hex').slice(0, 12);
