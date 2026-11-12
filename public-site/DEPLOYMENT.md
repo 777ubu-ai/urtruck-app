@@ -3,6 +3,25 @@
 **Статус:** подготовлено локально; production не переключался. Текущий
 production root/nginx-конфигурация в этой задаче не менялись.
 
+## Read-only снимок production (2026-11-12)
+
+- `/build-info.json` сообщает старый сайт: commit
+  `d6759c76ca74abc00a09cb210f235f33b55f64c9`, сборка
+  `2026-10-18T11:23:08Z`, version 127.
+- `/register` и `/?code=fake&state=fake` пока отвечают старым HTML без
+  перехода; production landing ещё не опубликован.
+- `/privacy`, `/terms` и `/support` отдают `application/octet-stream`, хотя
+  отдельная `/legal/terms.html` уже отвечает `text/html`. При переходе сайта
+  адресные `/privacy`, `/terms` и `/support` следует отдавать с типом HTML,
+  не меняя сами юридические документы.
+- `/.well-known/apple-app-site-association` и
+  `/.well-known/assetlinks.json` отвечают `application/json`.
+- Анонимный GET `/api/v1/driver/expenses/options` проходит к backend и отвечает
+  `401 application/json`; маршрут существует, но это не проверка доступа или
+  данных вошедшего водителя.
+- Production root API-запросов не переведён на HTML preview. Для точного
+  соответствия nginx всё равно требуется актуальный `nginx -T` из VNC/KVM.
+
 ## Состав артефакта
 
 Сборка `node scripts/build-public-site.mjs <временный-каталог>` формирует
@@ -10,8 +29,8 @@ production root/nginx-конфигурация в этой задаче не м�
 
 - `/index.html`, `/site/styles.css`, `/site/site.js`, `/sw.js`,
   `/build-info.json`;
-- `/site/assets/{cargo-feed,trips-screen,deal-screen}.png` — скриншоты
-  приложения; `/site/assets/transport-hero.jpg` — существующая иллюстрация;
+- `/site/assets/{cargo-feed,trips-screen,deal-screen}.png` — подлинные скриншоты
+  приложения;
 - `/site/assets/{google-play-qr,app-store-qr}.png`;
 - `/terms`, `/terms.html`, `/legal/terms.html`, аналогично `privacy` и `support`;
 - `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`,

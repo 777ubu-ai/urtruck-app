@@ -28,7 +28,6 @@ const copies = [
   ['docs/appstore/screenshots/iphone-6.7/01-cargo-feed.png', 'site/assets/cargo-feed.png'],
   ['docs/appstore/screenshots/iphone-6.7/02-my-trips-dark.png', 'site/assets/trips-screen.png'],
   ['docs/appstore/screenshots/iphone-6.7/03-deals-feed.png', 'site/assets/deal-screen.png'],
-  ['assets/onboarding/slide-1-hero.jpg', 'site/assets/transport-hero.jpg'],
   ['web/store/google-play-qr.png', 'site/assets/google-play-qr.png'],
   ['web/store/app-store-qr.png', 'site/assets/app-store-qr.png'],
   ['web/legal/terms.html', 'terms'], ['web/legal/terms.html', 'terms.html'], ['web/legal/terms.html', 'legal/terms.html'],
@@ -49,7 +48,7 @@ for (const [source, target] of copies) {
 const publicPaths = ['index.html', 'site/styles.css', 'site/site.js', 'sw.js'];
 const files = publicPaths.map((path) => ({ path, sha256: createHash('sha256').update(readFileSync(join(output, path))).digest('hex') }));
 const assetsDir = resolve(output, 'site/assets');
-for (const name of ['cargo-feed.png', 'trips-screen.png', 'deal-screen.png', 'transport-hero.jpg', 'google-play-qr.png', 'app-store-qr.png']) {
+for (const name of ['cargo-feed.png', 'trips-screen.png', 'deal-screen.png', 'google-play-qr.png', 'app-store-qr.png']) {
   const path = join('site/assets', name);
   files.push({ path, sha256: createHash('sha256').update(readFileSync(join(assetsDir, name))).digest('hex') });
 }

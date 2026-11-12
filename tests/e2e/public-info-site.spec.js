@@ -73,6 +73,60 @@ test('language selector changes all key site sections for RU, KK, EN and ZH', as
   }
 });
 
+test('mobile text-scale 130 percent keeps all information and actions within the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 }); // Xiaomi 720 px / density 2
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+
+  for (const language of ['ru', 'kk', 'en', 'zh']) {
+    await page.locator('#language-select').selectOption(language);
+    await page.evaluate(() => {
+      // Stress the layout like Android's enlarged text setting while keeping
+      // the 360 CSS-pixel viewport fixed (rather than zooming the page).
+      for (const element of document.querySelectorAll('h1,h2,h3,p,a,button,select,span,label')) {
+        if (element.closest('.visually-hidden')) continue;
+        const style = getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') continue;
+        element.dataset.qaBaseFontSize = style.fontSize;
+        element.style.setProperty('font-size', `${parseFloat(style.fontSize) * 1.3}px`, 'important');
+      }
+    });
+
+    const result = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const pageWidth = document.documentElement.scrollWidth;
+      const outside = [...document.querySelectorAll('h1,h2,h3,p,a,button,select,span,label')]
+        .filter((element) => !element.closest('.visually-hidden') && element.tagName !== 'SELECT' && !element.querySelector('select'))
+        .flatMap((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return [...range.getClientRects()].map((rect) => ({
+            text: (element.innerText || '').trim().slice(0, 48),
+            left: rect.left,
+            right: rect.right,
+            viewportWidth,
+          })).filter((rect) => rect.right > viewportWidth + 1 || rect.left < -1);
+        });
+      const horizontalScrollers = [...document.querySelectorAll('body *')]
+        .filter((element) => !element.closest('.visually-hidden'))
+        .filter((element) => element.scrollWidth > element.clientWidth + 1)
+        .map((element) => element.className?.toString() || element.tagName);
+      return { viewportWidth, pageWidth, outside, horizontalScrollers };
+    });
+
+    expect(result.pageWidth, `${language}: document width`).toBeLessThanOrEqual(result.viewportWidth);
+    expect(result.outside, `${language}: text outside viewport`).toEqual([]);
+    expect(result.horizontalScrollers, `${language}: clipped or horizontally scrolling content`).toEqual([]);
+    await expect(page.locator('[data-store-link="android"]')).toBeVisible();
+    await expect(page.locator('[data-store-link="ios"]')).toBeVisible();
+    await page.evaluate(() => {
+      for (const element of document.querySelectorAll('[data-qa-base-font-size]')) {
+        element.style.removeProperty('font-size');
+        delete element.dataset.qaBaseFontSize;
+      }
+    });
+  }
+});
+
 test('fake, cancelled and successful public OAuth callbacks stay informational and scrub secrets', async ({ page }) => {
   for (const callback of [
     '/?code=fake&state=fake',

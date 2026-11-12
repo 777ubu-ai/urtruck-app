@@ -20,8 +20,8 @@ node public-site/preview-server.mjs /tmp/urtruck-public-site-preview
 node scripts/build-public-site.mjs /tmp/urtruck-public-site-release
 ```
 
-Команда копирует только `public-site/`, три официальных скриншота, выбранные
-onboarding-иллюстрации, проверенные QR, неизменённые legal-страницы и файлы
+Команда копирует только `public-site/`, три официальных скриншота,
+проверенные QR, неизменённые legal-страницы и файлы
 Android App Links / iOS Universal Links. Она пишет `build-info.json` с SHA
 исходника. Артефакт не содержит Expo bundle, API credentials или пользовательских
 данных.
@@ -30,9 +30,9 @@ Android App Links / iOS Universal Links. Она пишет `build-info.json` с 
 
 - `assets/cargo-feed.png`, `assets/trips-screen.png`, `assets/deal-screen.png` —
   реальные экраны из `docs/appstore/screenshots/iphone-6.7/`.
-- `assets/transport-hero.jpg` — существующая onboarding-иллюстрация
-  `assets/onboarding/slide-1-hero.jpg`; используется как транспортная иллюстрация,
-  а не как подтверждение показателей или партнёрств.
+- Основная визуальная область оформлена стилями сайта; не используется
+  сгенерированный экран приложения. В карусели показаны реальные скриншоты
+  из материалов приложения, а не как подтверждение показателей или партнёрств.
 - QR-коды ведут на официальные страницы магазинов и сохранены из
   `web/store/`.
 
