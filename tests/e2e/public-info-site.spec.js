@@ -24,6 +24,8 @@ test('desktop has information, real app screens, QR codes and both stores with n
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await expectInformationSiteOnly(page);
+  await expect(page.locator('[data-store-card="ios"] .store-platform')).toHaveText('IPHONE');
+  expect(await page.locator('body').innerText()).not.toMatch(/\biPad(?:OS)?\b/i);
   await expect(page.getByRole('img', { name: 'QR-код официальной страницы UrTruck в Google Play' })).toBeVisible();
   await expect(page.getByRole('img', { name: 'QR-код официальной страницы UrTruck в App Store' })).toBeVisible();
   await expect(page.locator('#app-screenshot')).toHaveAttribute('src', '/site/assets/cargo-feed.png');
@@ -68,6 +70,7 @@ test('language selector changes all key site sections for RU, KK, EN and ZH', as
     await expect(page.locator('h1')).toHaveText(title);
     await expect(page.locator('#download h2')).toHaveText(download);
     await expect(page.locator('#support h2')).not.toBeEmpty();
+    expect(await page.locator('body').innerText()).not.toMatch(/\biPad(?:OS)?\b/i);
     const dimensions = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth }));
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.viewportWidth);
   }
