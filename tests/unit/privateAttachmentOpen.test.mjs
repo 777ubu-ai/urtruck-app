@@ -44,3 +44,16 @@ test('authorization, MIME, and size failures never open or stage a file', async 
   assert.equal(staged, false);
   assert.equal(opened, false);
 });
+
+test('zero-length private document is rejected before staging or opening', async () => {
+  let staged = false;
+  let opened = false;
+  await assert.rejects(openPrivateAttachment({
+    roomId: 'room-7', fileId: 'attachment-empty', name: 'empty.pdf', platform: 'ios',
+    getPrivateFile: async () => ({ bytes: new ArrayBuffer(0), mime: 'application/pdf' }),
+    createTempFile: async () => { staged = true; return { path: '/cache/empty.pdf' }; },
+    openWithViewer: async () => { opened = true; },
+  }), /private_file_empty/);
+  assert.equal(staged, false);
+  assert.equal(opened, false);
+});

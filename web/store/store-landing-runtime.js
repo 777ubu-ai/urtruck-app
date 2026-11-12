@@ -3,21 +3,30 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root && root.document && root.location) api.mount(root);
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  const PENDING_PROVIDER_KEY = 'ur_social_pending_provider';
+  const PENDING_PROVIDER_MAX_AGE_MS = 10 * 60 * 1000;
   const STORE_URLS = Object.freeze({
     android: 'https://play.google.com/store/apps/details?id=com.urtruck.app',
     ios: 'https://apps.apple.com/kz/app/urtruck/id6764504167',
   });
 
-  function hasAuthCallback(locationLike) {
+  function hasAuthCallback(locationLike, storageLike, now = Date.now()) {
     const query = new URLSearchParams(String(locationLike?.search || '').replace(/^\?/, ''));
     const hash = new URLSearchParams(String(locationLike?.hash || '').replace(/^#/, ''));
-    const params = [query, hash];
-    return params.some((p) => (
-      (p.has('code') && p.has('state'))
-      || (p.get('social_auth') === '1' && (p.has('code') || p.has('error') || p.has('error_description')))
-      || (p.has('access_token') && (p.has('refresh_token') || p.has('provider_token')))
-      || (p.has('token_hash') && ['signup', 'recovery', 'email_change', 'email'].includes(p.get('type')))
-    ));
+    // Public landing must not restore the web app from URL parameters alone.
+    // The web OAuth flow writes this same-origin marker before leaving for the
+    // provider; mobile OAuth returns through urtruck://auth-social instead.
+    let pending;
+    try { pending = JSON.parse(storageLike?.getItem(PENDING_PROVIDER_KEY) || 'null'); } catch { return false; }
+    const age = Number(now) - Number(pending?.startedAt);
+    if (!['google', 'apple'].includes(pending?.provider)
+      || !Number.isFinite(age) || age < 0 || age > PENDING_PROVIDER_MAX_AGE_MS) return false;
+
+    // A cancelled/failed provider response must stay on the store landing.
+    if (query.has('error') || query.has('error_description') || hash.has('error') || hash.has('error_description')) return false;
+    const hasSocialRedirectMarker = query.get('social_auth') === '1';
+    if (!hasSocialRedirectMarker) return false;
+    return Boolean(query.get('code') || (hash.get('access_token') && hash.get('refresh_token')));
   }
 
   function targetStore(userAgent = '', platform = '', maxTouchPoints = 0) {
@@ -34,7 +43,7 @@
   }
 
   function mount(win) {
-    if (hasAuthCallback(win.location)) {
+    if (hasAuthCallback(win.location, win.localStorage)) {
       try {
         const appShell = decodeAppShell(win.__URTRUCK_APP_SHELL_BASE64__ || '');
         if (appShell.includes('<html') && appShell.includes('</html>')) {

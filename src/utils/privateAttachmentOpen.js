@@ -42,12 +42,18 @@ export async function openPrivateAttachment({
   }
 
   const { bytes, mime } = await getPrivateFile(roomId, fileId);
-  if (!bytes || bytes.byteLength > MAX_PRIVATE_ATTACHMENT_BYTES) {
-    throw new Error('private_file_too_large_or_empty');
+  if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) {
+    throw new Error('private_file_invalid');
   }
+  const byteLength = bytes.byteLength;
+  if (byteLength === 0) throw new Error('private_file_empty');
+  if (byteLength > MAX_PRIVATE_ATTACHMENT_BYTES) throw new Error('private_file_too_large');
   const resolvedMime = documentMime(name, mime);
   const filename = safeName(name);
-  const staged = await createTempFile(filename, new Uint8Array(bytes));
+  const view = bytes instanceof ArrayBuffer
+    ? new Uint8Array(bytes)
+    : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const staged = await createTempFile(filename, view);
   if (!staged?.path) throw new Error('private_document_stage_failed');
   await openWithViewer(String(platform).toLowerCase(), staged.path, resolvedMime);
   return { path: staged.path, mime: resolvedMime, filename };

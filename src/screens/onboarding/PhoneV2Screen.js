@@ -255,10 +255,23 @@ export default function PhoneV2Screen({ navigation, route }) {
       if (!result?.token || !result?.email) {
         throw new SocialAuthError(AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED, 'social_auth_failed', { provider });
       }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // The public store landing keeps the embedded app shell hidden until
+        // the provider and UrTruck backend both confirm this login.
+        window.__URTRUCK_PUBLIC_STORE_LANDING_REVEAL__?.();
+      }
       logAuthStage('role_resolved', { provider });
       await goAfterLogin(result, result.email, 'social');
       logAuthStage('navigation_complete', { provider });
     } catch (e) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined'
+        && window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__) {
+        // A failed/expired web callback on the public store landing must not
+        // expose the retired web registration flow. Native callbacks use the
+        // urtruck:// scheme and keep the normal in-app error UX below.
+        window.location.replace('/');
+        return;
+      }
       const key = socialErrorKey(e, provider);
       setSocialError(t(key));
       try { toast(t(key), 'error', 2500); } catch {}

@@ -35,12 +35,20 @@ assert.equal(landing.targetStore('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)', 'iP
 assert.equal(landing.targetStore('Mozilla/5.0 (Macintosh)', 'MacIntel', 5), 'ios', 'touch iPadOS UA opens App Store');
 assert.equal(landing.targetStore('Mozilla/5.0 (Windows NT 10.0)', 'Win32'), null, 'desktop gets both stores and QR codes');
 
-assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&code=oauth-code', hash: '' }), true);
-assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&error=access_denied', hash: '' }), true);
-assert.equal(landing.hasAuthCallback({ search: '?code=oauth-code&state=csrf-state', hash: '' }), true);
-assert.equal(landing.hasAuthCallback({ search: '', hash: '#access_token=token&refresh_token=refresh' }), true);
-assert.equal(landing.hasAuthCallback({ search: '?social_auth=1', hash: '' }), false, 'bare query cannot expose web screens');
-assert.equal(landing.hasAuthCallback({ search: '?utm_source=share', hash: '' }), false);
+const now = Date.now();
+const pendingProvider = { getItem: (key) => key === 'ur_social_pending_provider'
+  ? JSON.stringify({ provider: 'google', startedAt: now }) : null };
+const noPending = { getItem: () => null };
+assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&code=oauth-code&state=csrf-state', hash: '' }, pendingProvider, now), true);
+assert.equal(landing.hasAuthCallback({ search: '', hash: '#social_auth=1&access_token=token&refresh_token=refresh' }, pendingProvider, now), false, 'marker must be in the registered redirect query');
+assert.equal(landing.hasAuthCallback({ search: '?social_auth=1', hash: '' }, pendingProvider, now), false, 'bare marker cannot expose web screens');
+assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&code=fake&state=fake', hash: '' }, noPending, now), false, 'URL-only fake callback cannot expose web screens');
+assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&code=expired', hash: '' }, {
+  getItem: () => JSON.stringify({ provider: 'google', startedAt: now - 11 * 60 * 1000 }),
+}, now), false, 'expired flow state cannot expose web screens');
+assert.equal(landing.hasAuthCallback({ search: '?social_auth=1&error=access_denied', hash: '' }, pendingProvider, now), false, 'cancelled OAuth returns to store landing');
+assert.equal(landing.hasAuthCallback({ search: '?code=oauth-code&state=csrf-state', hash: '' }, pendingProvider, now), false, 'unregistered callback URL is not supported');
+assert.equal(landing.hasAuthCallback({ search: '?utm_source=share', hash: '' }, pendingProvider, now), false);
 
 const redirects = [];
 const scheduled = [];
@@ -48,6 +56,7 @@ const session = new Map();
 const fakeWindow = {
   location: { search: '', hash: '', assign: (url) => redirects.push(url) },
   navigator: { userAgent: 'Android', platform: 'Linux armv8l', maxTouchPoints: 0 },
+  localStorage: { getItem: () => null },
   document: {
     documentElement: { dataset: {} }, visibilityState: 'visible',
     querySelector: () => ({ setAttribute: () => {} }),
@@ -65,8 +74,10 @@ assert.equal(scheduled.length, 1, 'one redirect attempt per browser session prev
 
 const restored = [];
 const callbackWindow = {
-  location: { search: '?social_auth=1&code=secret&state=csrf', hash: '' },
+  location: { search: '?social_auth=1&code=secret', hash: '' },
   navigator: { userAgent: 'Android', platform: 'Linux', maxTouchPoints: 0 },
+  localStorage: { getItem: (key) => key === 'ur_social_pending_provider'
+    ? JSON.stringify({ provider: 'google', startedAt: Date.now() }) : null },
   __URTRUCK_APP_SHELL_BASE64__: Buffer.from('<html><head></head><body>OAuth callback</body></html>').toString('base64'),
   document: { open() {}, write: (value) => restored.push(value), close() {} },
   setTimeout: () => { throw new Error('auth callback must not redirect to a store'); },
