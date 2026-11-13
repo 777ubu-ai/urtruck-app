@@ -128,11 +128,13 @@ export function documentKindFromFile(mimeType, name) {
 }
 
 export const chatAPI = {
-  async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }) {
+  async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }, { isCurrent = () => true } = {}) {
     let r;
     try {
+      const requestHeaders = await headers();
+      if (!isCurrent()) throw new Error('CHAT_SESSION_CHANGED');
       r = await authedFetch(`${BASE}/send`, {
-        method: 'POST', headers: await headers(),
+        method: 'POST', headers: requestHeaders,
         body: JSON.stringify({
           room_id: roomId || null,
           to_user_id: toUserId, text, photo_url: photoUrl,

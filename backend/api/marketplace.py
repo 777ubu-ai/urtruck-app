@@ -24,6 +24,7 @@ from services import file_signing as _cargo_file_signing
 from services import storage_service as _cargo_storage
 from services.geo_normalize import normalize_country, is_international_route
 from services import push_gateway
+from services import route_country_clarification
 from services import push_i18n
 from config import IS_PRODUCTION
 
@@ -588,6 +589,8 @@ def _init():
         c.execute("CREATE INDEX IF NOT EXISTS idx_deal_tracking_status ON deal_tracking(status, updated_at)")
         publication_operations.init_schema(c)
         c.commit()
+    with get_conn() as c:
+        route_country_clarification.init_schema(c)
     # One-time migration: picked_up → in_progress (status removed from code).
     with get_conn() as c:
         c.execute("UPDATE deals SET status = 'in_progress' WHERE status = 'picked_up'")
@@ -2453,8 +2456,10 @@ def my_dashboard(user=Depends(require_level(1))):
             "c.currency AS currency, "
             "c.weight_tons AS weight_tons, c.volume_m3 AS volume_m3, "
             "c.pickup_date AS departure, "
-            "COALESCE(c.from_country, t.from_country) AS from_country, "
-            "COALESCE(c.to_country, t.to_country) AS to_country, "
+            "CASE WHEN d.from_country_snapshot IS NOT NULL OR d.to_country_snapshot IS NOT NULL "
+            "THEN d.from_country_snapshot ELSE COALESCE(c.from_country,t.from_country) END AS from_country, "
+            "CASE WHEN d.from_country_snapshot IS NOT NULL OR d.to_country_snapshot IS NOT NULL "
+            "THEN d.to_country_snapshot ELSE COALESCE(c.to_country,t.to_country) END AS to_country, "
             "t.truck_type AS truck_type, "
             "dr.full_name AS driver_name, sh.full_name AS shipper_name, "
             "dt.status AS tracking_status, "
@@ -2832,6 +2837,9 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     Returns: dict(deal_id, chat_room_id, from_city, to_city, shipper_id, driver_id)
     """
+    if not c.in_transaction:
+        c.execute("BEGIN IMMEDIATE")
+    route_countries = None
     bid_id = bid["id"]
     if bid["bidder_id"] == user["id"]:
         raise HTTPException(status_code=403, detail="Нельзя принять собственное предложение")
@@ -2841,11 +2849,12 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["cargo_id"]:
         cargo = c.execute(
-            "SELECT id, status, owner_id, taken_by, from_city, to_city, pickup_date, published_at, created_at FROM cargos WHERE id = ?", (bid["cargo_id"],)
+            "SELECT id, status, owner_id, taken_by, from_city, to_city, pickup_date, published_at, created_at, from_country, to_country FROM cargos WHERE id = ?", (bid["cargo_id"],)
         ).fetchone()
         if not cargo or cargo["owner_id"] != user["id"]:
             raise HTTPException(status_code=403)
         _require_current_bid_listing(cargo, c)
+        route_countries = route_country_clarification.valid_route(cargo['from_country'], cargo['to_country'])
         # P0 (аудит 2026-09-10): раньше это был безусловный UPDATE — полагались
         # ИСКЛЮЧИТЕЛЬНО на то, что guarded UPDATE ниже по bids.status (и полный
         # rollback транзакции при его провале) в итоге откатит и эту запись
@@ -2869,7 +2878,7 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
 
     if bid["trip_id"]:
         trip = c.execute(
-            "SELECT id, status, driver_id, booked_by, from_city, to_city, vehicle_id, departure, published_at, created_at FROM trips WHERE id = ?", (bid["trip_id"],)
+            "SELECT id, status, driver_id, booked_by, from_city, to_city, vehicle_id, departure, published_at, created_at, from_country, to_country FROM trips WHERE id = ?", (bid["trip_id"],)
         ).fetchone()
         # P0 (аудит 2026-08-21): раньше здесь был `if trip:` без else —
         # ставка на несуществующий/удалённый рейс проваливалась мимо ВСЕЙ
@@ -2883,6 +2892,9 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
         if trip["driver_id"] != user["id"]:
             raise HTTPException(status_code=403)
         _require_current_bid_listing(trip, c)
+        trip_countries = route_country_clarification.valid_route(trip['from_country'], trip['to_country'])
+        if route_countries is None:
+            route_countries = trip_countries
         # P0 (аудит 2026-09-10): тот же guard, что и для cargo выше.
         cur = c.execute(
             "UPDATE trips SET status = 'booked', booked_by = ? WHERE id = ? AND status = 'active'",
@@ -3014,6 +3026,9 @@ def _finalize_accept_inline(c, user, bid: dict, final_amount, expected_status: s
     # не должны менять цену в истории уже заключённой сделки.
     c.execute("UPDATE deals SET currency_snapshot = ? WHERE id = ?",
               (_bid_currency(c, bid), deal_id))
+    if route_countries is not None:
+        c.execute("UPDATE deals SET from_country_snapshot=?, to_country_snapshot=? WHERE id=?",
+                  (*route_countries, deal_id))
 
     # PR4 — immutable юридическое событие сделки. actor = текущий пользователь
     # (из auth), created_at ставит сервер. Роль actor'а: тот, кто принял ставку,
@@ -3657,6 +3672,46 @@ def list_deals(user=Depends(require_level(1))):
     return {"deals": [dict(r) for r in rows]}
 
 
+class RouteCountryIn(BaseModel):
+    model_config = {'extra': 'forbid'}
+    from_country: str = Field(min_length=1, max_length=80)
+    to_country: str = Field(min_length=1, max_length=80)
+    request_id: str = Field(min_length=8, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+@mp_router.get("/route-country/validate")
+def validate_route_country(from_country: str = Query(default="", max_length=80),
+                           to_country: str = Query(default="", max_length=80)):
+    international, code = is_international_route(from_country, to_country)
+    return {'from_country_code': normalize_country(from_country),
+            'to_country_code': normalize_country(to_country),
+            'route_country_valid': code == 'ok', 'is_international': international, 'code': code}
+
+
+@mp_router.post("/cargos/{cargo_id}/route-country")
+def clarify_cargo_route(cargo_id: str, body: RouteCountryIn, user=Depends(require_active_level(1))):
+    with get_conn() as c:
+        return route_country_clarification.clarify_listing(c, 'cargo', cargo_id, user['id'], body.request_id, body.from_country, body.to_country)
+
+
+@mp_router.post("/trips/{trip_id}/route-country")
+def clarify_trip_route(trip_id: str, body: RouteCountryIn, user=Depends(require_active_level(1))):
+    with get_conn() as c:
+        return route_country_clarification.clarify_listing(c, 'trip', trip_id, user['id'], body.request_id, body.from_country, body.to_country)
+
+
+@mp_router.post("/deals/{deal_id}/route-country")
+def propose_deal_route_country(deal_id: str, body: RouteCountryIn, user=Depends(require_active_level(1))):
+    with get_conn() as c:
+        return route_country_clarification.propose_deal(c, deal_id, user['id'], body.request_id, body.from_country, body.to_country)
+
+
+@mp_router.post("/deals/{deal_id}/route-country/{clarification_id}/confirm")
+def confirm_deal_route_country(deal_id: str, clarification_id: str, user=Depends(require_active_level(1))):
+    with get_conn() as c:
+        return route_country_clarification.confirm_deal(c, deal_id, clarification_id, user['id'])
+
+
 @mp_router.get("/deals/{deal_id}")
 def get_deal(deal_id: str, user=Depends(require_level(1))):
     """Return a deal + the cargo/trip context the chat-room UI needs.
@@ -3725,6 +3780,8 @@ def get_deal(deal_id: str, user=Depends(require_level(1))):
         # вычисляли "международный/внутренний" по-своему (и TripDetail.js
         # вообще не проверял) — теперь оба обязаны читать готовое поле
         # отсюда, а не пересчитывать сами.
+        d.update(route_country_clarification.effective_route(c, d))
+        d['route_country_clarification'] = route_country_clarification.deal_state(c, d, uid)
         _intl, _code = is_international_route(d.get("from_country"), d.get("to_country"))
         d["from_country_code"] = normalize_country(d.get("from_country"))
         d["to_country_code"] = normalize_country(d.get("to_country"))
@@ -3912,13 +3969,7 @@ def _transition_deal(c, deal: dict, new_status: str, actor_uid: str, request_id:
                 "error": "ACTION_NOT_ALLOWED_FOR_ROLE",
                 "message": "Подтвердить получение может только грузоотправитель по сделке",
             })
-    route = c.execute(
-        "SELECT COALESCE(c.from_country, t.from_country) AS from_country, "
-        "COALESCE(c.to_country, t.to_country) AS to_country "
-        "FROM deals d LEFT JOIN cargos c ON d.cargo_id = c.id "
-        "LEFT JOIN trips t ON d.trip_id = t.id WHERE d.id = ?",
-        (deal_id,),
-    ).fetchone()
+    route = route_country_clarification.effective_route(c, deal)
     # _deal_country_guard кидает HTTPException напрямую (историческая
     # сигнатура) — оборачиваем в DealTransitionError, чтобы ОБА вызывающих
     # (update_deal_status и update_trip_status) ловили ЕДИНЫЙ тип исключения

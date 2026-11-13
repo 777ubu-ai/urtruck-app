@@ -146,7 +146,7 @@ export default function PhoneV2Screen({ navigation, route }) {
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const { signIn, setRole, refreshLevel } = useAuth();
+  const { signIn, setRole, refreshLevel, recoveryRequired } = useAuth();
 
   const [email, setEmail] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
@@ -422,6 +422,7 @@ export default function PhoneV2Screen({ navigation, route }) {
 
             <Text style={s.title}>{t('phone_v2_title')}</Text>
             <Text style={s.subtitle}>{t('phone_v2_subtitle')}</Text>
+            {recoveryRequired ? <Text style={s.socialErrorText} accessibilityRole="alert" testID="session-recovery-message">{t('session_expired')}</Text> : null}
 
             <View style={s.socialStack} testID="auth-social-providers">
               <SocialButton provider="google" icon="google" testID="auth-google" />

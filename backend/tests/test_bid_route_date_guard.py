@@ -19,14 +19,14 @@ def listing(monkeypatch, request):
     with db.get_conn() as conn:
         if kind == "cargo":
             conn.execute(
-                "INSERT INTO cargos(id,owner_id,from_city,to_city,cargo_desc,pickup_date,status,published_at) "
-                "VALUES(?,?, 'Almaty','Moscow','Cargo',?,'active',CURRENT_TIMESTAMP)",
+                "INSERT INTO cargos(id,owner_id,from_city,to_city,cargo_desc,pickup_date,status,published_at,from_country,to_country) "
+                "VALUES(?,?, 'Almaty','Moscow','Cargo',?,'active',CURRENT_TIMESTAMP,'KZ','RU')",
                 (listing_id, owner_id, route_date),
             )
         else:
             conn.execute(
-                "INSERT INTO trips(id,driver_id,from_city,to_city,departure,status,published_at) "
-                "VALUES(?,?, 'Almaty','Moscow',?,'active',CURRENT_TIMESTAMP)",
+                "INSERT INTO trips(id,driver_id,from_city,to_city,departure,status,published_at,from_country,to_country) "
+                "VALUES(?,?, 'Almaty','Moscow',?,'active',CURRENT_TIMESTAMP,'KZ','RU')",
                 (listing_id, owner_id, route_date),
             )
     return kind, listing_id, owner_id, bidder_id

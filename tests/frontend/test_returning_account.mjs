@@ -86,7 +86,7 @@ const meBody = registration.split('async me() {')[1].split('\n  },\n\n  // Raw s
 
 test('HTTP 5xx с JSON не используется как данные нового аккаунта', async () => {
   for (const status of [429, 500, 503]) {
-    const me = new Function('BASE', 'fetch', 'storage', 'LEVEL_KEY', `return async function() { ${meBody} };`)(
+    const me = new Function('BASE', 'fetchAccount', 'storage', 'LEVEL_KEY', `return async function() { ${meBody} };`)(
       '/api/register', async () => ({ ok: false, status, json: async () => ({ id: 'new', role: 'guest', verification_level: 1 }) }),
       { set: async () => {} }, 'level',
     );
@@ -140,7 +140,10 @@ function contextHarness() {
   const env = {
     runAuthMutation, authGenerationRef: { current: 0 }, sessionRef: { current: state.session },
     regAPI: { getToken: async () => state.token },
-    storage: { set: async (key, value) => { if (key === 'ur_reg_token') state.token = value; } },
+    storage: { set: async (key, value) => { if (key === 'ur_reg_token') state.token = value; }, remove: async()=>{} },
+    pendingRecoveryRef: {current:null}, legacyBootstrapRef:{current:null}, readSessionRecovery:async()=>null, completeSessionRecovery:async()=>{},
+    clearSessionRecovery:async()=>{},pauseOutbox:()=>{},
+    API_BASE:'https://urtruck.kz/api/v1',setRecoveryRequired:()=>{},
     KEY: 'session', setSession: (x) => { state.session = x; },
     setVerificationLevel: () => {}, setHasToken: () => {}, refreshLevel: async () => {},
   };

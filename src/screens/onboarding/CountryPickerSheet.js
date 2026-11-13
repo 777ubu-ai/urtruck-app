@@ -25,10 +25,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { brandLight as brand, radius, space, typography } from '../../theme/brandV2';
-import { COUNTRIES, POPULAR_ISO } from '../../utils/countries';
+import { COUNTRIES, ALL_COUNTRIES, POPULAR_ISO, getCountryName } from '../../utils/countries';
 import CountryFlag from '../../components/ui/v1/CountryFlag';
 
-const Row = ({ s, country, label, onPress }) => (
+const Row = ({ s, country, label, onPress, showDialCode = true }) => (
   <Pressable
     onPress={onPress}
     style={({ pressed }) => [
@@ -40,7 +40,7 @@ const Row = ({ s, country, label, onPress }) => (
     <CountryFlag code={country.iso} width={22} />
     <Text style={s.countryName}>{label}</Text>
     <Text style={s.iso}>{country.iso}</Text>
-    <Text style={s.dial}>+{country.dial}</Text>
+    {showDialCode ? <Text style={s.dial}>+{country.dial}</Text> : null}
     <Feather name="chevron-right" size={18} color={brand.textTertiary} />
   </Pressable>
 );
@@ -51,38 +51,41 @@ export default function CountryPickerSheet({ navigation, route }) {
   const { t, lang } = useI18n();
   const [query, setQuery] = useState('');
   const onSelect = route?.params?.onSelect;
+  const showDialCode = route?.params?.showDialCode !== false;
+  const fullCountryList = Boolean(route?.params?.fullCountryList);
+  const countries = fullCountryList ? ALL_COUNTRIES : COUNTRIES;
 
   const countryLabel = React.useCallback((country) => {
     const translated = t(`country_${country.iso}`);
-    return translated && translated !== `country_${country.iso}` ? translated : country.name;
-  }, [t, lang]);
+    return translated && translated !== `country_${country.iso}` ? translated : fullCountryList ? getCountryName(country, lang) : country.name;
+  }, [t, lang, fullCountryList]);
 
   // Search against both the visible translation and the canonical name, so a
   // Chinese driver can find 中国 while an operator can still enter "China".
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return COUNTRIES;
+    if (!q) return countries;
     const qDigits = q.replace(/[^\d]/g, '');
-    return COUNTRIES.filter((country) =>
+    return countries.filter((country) =>
       countryLabel(country).toLowerCase().includes(q)
       || country.name.toLowerCase().includes(q)
       || country.iso.toLowerCase().includes(q)
-      || (!!qDigits && country.dial.startsWith(qDigits))
+      || (!!qDigits && country.dial?.startsWith(qDigits))
     );
-  }, [query, countryLabel]);
+  }, [query, countryLabel, countries]);
 
   // Когда юзер ищет — показываем плоский список без секций.
   const isSearching = query.trim().length > 0;
 
   const popular = useMemo(
-    () => POPULAR_ISO.map((iso) => COUNTRIES.find((c) => c.iso === iso)).filter(Boolean),
-    [],
+    () => POPULAR_ISO.map((iso) => countries.find((c) => c.iso === iso)).filter(Boolean),
+    [countries],
   );
   const others = useMemo(
-    () => [...COUNTRIES.filter((c) => !POPULAR_ISO.includes(c.iso))].sort((a, b) =>
+    () => [...countries.filter((c) => !POPULAR_ISO.includes(c.iso))].sort((a, b) =>
       countryLabel(a).localeCompare(countryLabel(b), lang === 'ZH' ? localizeUiText('zh-CN', lang) : lang === 'KK' ? localizeUiText('kk-KZ', lang) : lang === 'EN' ? localizeUiText('en-US', lang) : localizeUiText('ru-RU', lang)),
     ),
-    [countryLabel, lang],
+    [countryLabel, lang, countries],
   );
 
   const handlePick = (country) => {
@@ -149,7 +152,7 @@ export default function CountryPickerSheet({ navigation, route }) {
           item.type === 'header' ? (
             <Text style={s.sectionTitle}>{item.title}</Text>
           ) : (
-            <Row s={s} country={item.country} label={countryLabel(item.country)} onPress={() => handlePick(item.country)} />
+            <Row s={s} showDialCode={showDialCode} country={item.country} label={countryLabel(item.country)} onPress={() => handlePick(item.country)} />
           )
         }
         ItemSeparatorComponent={null}
@@ -157,10 +160,10 @@ export default function CountryPickerSheet({ navigation, route }) {
         keyboardShouldPersistTaps="handled"
       />
 
-      <View style={s.footer}>
+      {showDialCode ? <View style={s.footer}>
         <Feather name="globe" size={16} color={brand.textSecondary} />
         <Text style={s.footerText}>{t('country_picker_footer_hint')}</Text>
-      </View>
+      </View> : null}
     </SafeAreaView>
   );
 }

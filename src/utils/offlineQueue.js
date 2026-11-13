@@ -55,6 +55,11 @@ export async function sync() {
         },
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
+      if (r.status === 401) {
+        // Недействительная сессия не должна уничтожать неотправленное действие.
+        failed.push(item);
+        continue;
+      }
       if (!r.ok && r.status >= 500) {
         // Серверная ошибка — ретрай
         item.retries = (item.retries || 0) + 1;

@@ -63,7 +63,7 @@ def seed_cargo(owner_id: str, price: int = 1000) -> str:
     with get_conn() as c:
         c.execute(
             "INSERT INTO cargos (id, owner_id, owner_phone, owner_name, from_city, to_city, "
-            "cargo_desc, cargo_type, price, bids_count, status) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "cargo_desc, cargo_type, price, bids_count, status, from_country, to_country) VALUES (?,?,?,?,?,?,?,?,?,?,?,'KZ','RU')",
             (cargo_id, owner_id, "+700", "Owner", "Almaty", "Moscow", "Test cargo", "tent", price, 0, "active"),
         )
     return cargo_id

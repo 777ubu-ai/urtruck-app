@@ -13,7 +13,7 @@ export default function ExternalFreightEntry(props) {
   const { navigation, role, ceramic, showBack, children } = props;
   const colors = useV1Colors();
   const ceramicColors = useDriverCeramicColors();
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const { session } = useAuth();
   const enabled = EXTERNAL_FREIGHT_ENABLED && !showBack && ['driver', 'client'].includes(role);
   const currentRole = sessionRole(session);
@@ -42,11 +42,13 @@ export default function ExternalFreightEntry(props) {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
         if (!current() || request.signal.aborted) return;
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
-        if (data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0) {
-          setResult({ ownerKey, count: data.count });
-        }
+        // Контакты каталога не являются предложениями машин.
+        const count = data.offer_count ?? (data.carrier_count == null ? data.count : null);
+        if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0) {
+          setResult({ ownerKey, count });
+        } else setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
       } catch {
-        // Сохраняем последний успешный счётчик и повторяем запрос на следующем цикле.
+        if (current()) setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
       } finally {
         if (controller === request) {
           clearTimeout(requestTimeout);
@@ -71,7 +73,7 @@ export default function ExternalFreightEntry(props) {
   };
 Object.assign(labels, withAdditionalLanguageTree(labels));
   const palette = ceramic ? ceramicColors : colors;
-  const count = result?.ownerKey === ownerKey ? result.count : null;
+  const count = result?.ownerKey === ownerKey ? result.count ?? null : null;
   const countText = count === null ? null : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const label = labels[lang] || labels.EN;
   return <View>
@@ -82,6 +84,7 @@ Object.assign(labels, withAdditionalLanguageTree(labels));
         style={[styles.entry, { backgroundColor: colors.driverSoft, borderColor: palette.border }]}>
         <Feather name="list" size={15} color={palette.text} />
         <Text numberOfLines={1} style={[styles.label, { color: palette.text }]}>{label}</Text>
+        {result?.ownerKey === ownerKey && result.error ? <Feather name="alert-circle" size={15} color={palette.text} accessibilityLabel={t('load_error')} /> : null}
         {countText !== null && <Text testID="external-freight-count" numberOfLines={1}
           style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText}</Text>}
       </TouchableOpacity>

@@ -1,7 +1,8 @@
 import { durableStorage as storage } from './storage';
+import { API_BASE } from '../config/env';
 const published = new Map();
 const operations = new Map();
-export const publicationDraftKey = (kind, ownerId) => ownerId ? `ur_publication_draft_v1:${encodeURIComponent(kind)}:${encodeURIComponent(ownerId)}` : null;
+export const publicationDraftKey = (kind, ownerId) => ownerId ? `ur_publication_draft_v1:${encodeURIComponent(API_BASE)}:${encodeURIComponent(kind)}:${encodeURIComponent(ownerId)}` : null;
 const fields = value => { const { _publication, _generation, published: _published, ...values } = value || {}; return values; };
 const revision = (values, clientId = null) => JSON.stringify({ values: fields(values), clientId });
 const packed = (values, operation) => operation ? { ...fields(values), _publication: operation } : fields(values);

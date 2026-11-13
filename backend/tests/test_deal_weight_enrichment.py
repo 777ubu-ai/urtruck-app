@@ -85,8 +85,8 @@ def test_cargo_backed_deal_exposes_cargo_weight_tons():
     with get_conn() as c:
         c.execute(
             "INSERT INTO cargos (id, owner_id, owner_phone, owner_name, from_city, to_city, "
-            "cargo_desc, cargo_type, weight_tons, price, bids_count, status) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "cargo_desc, cargo_type, weight_tons, price, bids_count, status,from_country,to_country) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'KZ','RU')",
             (cargo_id, owner_id, "+700", "Owner", "Almaty", "Moscow",
              "Real weight-tagged cargo", "tent", 18.5, 3000, 0, "active"),
         )

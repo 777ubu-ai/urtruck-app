@@ -36,6 +36,7 @@ import * as DocumentPicker from 'expo-document-picker';
 
 import LiveTruckMap from '../components/TruckMap';
 import PlannedRouteSummary from '../components/PlannedRouteSummary';
+import RouteCountryClarification from '../components/RouteCountryClarification';
 const TruckMap = GPS_TRACKING_PAUSED ? PlannedRouteSummary : LiveTruckMap;
 import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
@@ -844,7 +845,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     if (!roomId) return undefined;
     const doFlush = async () => {
       try {
-        const sent = await flushOutbox((p) => chatAPI.send(p), session?.user?.id, {
+        const sent = await flushOutbox((p, guard) => chatAPI.send(p, guard), session?.user?.id, {
           onDrop: (item) => {
             if (!mounted.current) return;
             setMessages((items) => items.map((m) => (m.id === item.clientId
@@ -1867,6 +1868,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             {/* Navigation chrome is fixed OUTSIDE the scrolling message list.
                 A long chat must never scroll the only Back control off-screen. */}
             {compactHeader}
+            <RouteCountryClarification kind="deal" entity={{ ...deal, id: dealId }} onChanged={refreshDeal} />
             {dealLoading && !dealId ? (
               <View style={[s.center, { backgroundColor: colors.bg }]}>
                 <ActivityIndicator color="#168759" />

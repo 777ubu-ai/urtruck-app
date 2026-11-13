@@ -79,7 +79,7 @@ def _seed_deal_with_message(text: str | None):
     сообщения (пустой-чат кейс). Возвращает (cargo_id, room_id)."""
     as_user(CLIENT_ID)
     r = client.post("/api/v1/market/cargos", json={
-        "from_city": "Almaty", "to_city": "Astana", "cargo_type": "tent",
+        "from_city": "Almaty", "to_city": "Astana", "from_country": "KZ", "to_country": "KZ", "cargo_type": "tent",
         "cargo_desc": "dash test", "price": 4000, "currency": "USD"})
     assert r.status_code in (200, 201), r.text
     cargo_id = r.json()["id"]

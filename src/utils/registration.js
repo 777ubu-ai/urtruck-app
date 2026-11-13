@@ -16,6 +16,19 @@ const LEVEL_KEY = 'ur_verification_level';
 const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
 let pendingLogoutMutation = Promise.resolve();
 
+async function fetchAccount(token) {
+  const controller = new AbortController();
+  let timer;
+  try {
+    return await Promise.race([
+      fetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => { controller.abort(); reject(new Error('ACCOUNT_FETCH_TIMEOUT')); }, 15000);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
 function parsePendingLogoutTokens(raw) {
   if (!raw) return [];
   try {
@@ -115,19 +128,20 @@ export const regAPI = {
   },
 
   async me() {
-    const token = await this.getToken();
+    const token = arguments[0]?.token || await this.getToken();
     if (!token) return null;
-    const r = await fetch(`${BASE}/me`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
+    const r = await fetchAccount(token);
     if (r.status === 401) {
-      // Не удаляем token — возможно сеть/сервер временно недоступен.
-      // Юзер сам выйдет через signOut если нужно.
-      return null;
+      // Только явный отказ канонического endpoint подтверждает потерю сессии.
+      // Сам API не удаляет локальную работу: этим занимается AuthContext.
+      const error = new Error('AUTH_REQUIRED');
+      error.code = 'AUTH_REQUIRED';
+      error.status = 401;
+      throw error;
     }
     if (!r.ok) throw new Error('ACCOUNT_FETCH_FAILED');
     const data = await r.json();
-    if (typeof data.verification_level === 'number') {
+    if (typeof data.verification_level === 'number' && await this.getToken() === token) {
       await storage.set(LEVEL_KEY, String(data.verification_level));
     }
     return data;

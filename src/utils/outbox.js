@@ -15,13 +15,20 @@
 // для дедупа в рамках сессии.
 
 import { storage } from './storage';
+import { API_BASE } from '../config/env';
 
 const KEY = 'ur_chat_outbox';
 const MAX = 50;
 const listeners = new Set();
+const sameQueuedItem = (a, b) => a.clientId === b.clientId && a.userId === b.userId && a.apiBase === b.apiBase;
 let mutationTail = Promise.resolve();
 let flushTail = Promise.resolve();
 let queueGeneration = 0;
+let paused = false;
+export function pauseOutbox(value) {
+  paused = !!value;
+  queueGeneration += 1;
+}
 
 // Сериализуем только storage-операции: сеть не блокирует enqueue.
 function withQueueLock(operation) {
@@ -61,9 +68,9 @@ export async function enqueueOutbox(item, userId) {
   // владельца).
   return withQueueLock(async () => {
     const arr = await _load();
-    if (arr.some((x) => x.clientId === item.clientId)) return;
-    if (arr.length >= MAX) throw new Error('outbox_full');
-    arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, ts: Date.now() });
+    if (arr.some((x) => x.clientId === item.clientId && x.userId === userId && x.apiBase === API_BASE)) return;
+    if (arr.filter(x => x.userId === userId && x.apiBase === API_BASE).length >= MAX) throw new Error('outbox_full');
+    arr.push({ clientId: item.clientId, payload: item.payload, userId: userId || null, apiBase: API_BASE, ts: Date.now() });
     await _save(arr);
   });
 }
@@ -110,35 +117,39 @@ function isPermanentError(error) {
 // («карантин»): она уедет либо когда её реальный владелец снова
 // залогинится, либо будет явно вычищена в signOut (см. clearOutbox).
 export function flushOutbox(sendFn, activeUserId, opts = {}) {
-  const result = flushTail.then(() => flushQueue(sendFn, activeUserId, opts));
+  const generation = queueGeneration;
+  const result = flushTail.then(() => flushQueue(sendFn, activeUserId, opts, generation));
   flushTail = result.catch(() => {});
   return result;
 }
 
-async function flushQueue(sendFn, activeUserId, { onDrop } = {}) {
-  if (!activeUserId) return 0;
-  const generation = queueGeneration;
+async function flushQueue(sendFn, activeUserId, { onDrop } = {}, generation) {
+  if (!activeUserId || paused || generation !== queueGeneration) return 0;
   const snapshot = await withQueueLock(_load);
   let sent = 0;
   for (const queued of snapshot) {
-    if (generation !== queueGeneration) break;
-    const item = await withQueueLock(async () => (await _load()).find((x) => x.clientId === queued.clientId));
-    if (!item || (item.userId && item.userId !== activeUserId)) continue;
+    if (generation !== queueGeneration || paused) break;
+    const item = await withQueueLock(async () => (await _load()).find((x) => sameQueuedItem(x, queued)));
+    if (generation !== queueGeneration || paused) break;
+    // Без доказанного владельца/окружения старые записи остаются в карантине.
+    if (!item || item.userId !== activeUserId || item.apiBase !== API_BASE) continue;
     let error = null;
-    try { await sendFn(item.payload); } catch (caught) { error = caught; }
+    try { await sendFn(item.payload, { isCurrent: () => generation === queueGeneration && !paused }); } catch (caught) { error = caught; }
+    // Отказ сессии не является отказом сообщения. Сохраняем без расхода retry.
+    if (Number(error?.status) === 401 || paused || generation !== queueGeneration) break;
     if (error?.isNetwork) break;
     const permanent = error && isPermanentError(error);
     let dropped = false;
     await withQueueLock(async () => {
       if (generation !== queueGeneration) return;
       const current = await _load();
-      const existing = current.find((x) => x.clientId === item.clientId);
+      const existing = current.find((x) => sameQueuedItem(x, item));
       if (!existing) return;
       const attempts = Number(existing.attempts || 0) + 1;
       dropped = !!error && (permanent || attempts >= MAX_ATTEMPTS);
       const next = !error || dropped
-        ? current.filter((x) => x.clientId !== item.clientId)
-        : current.map((x) => x.clientId === item.clientId ? { ...x, attempts } : x);
+        ? current.filter((x) => !sameQueuedItem(x, item))
+        : current.map((x) => sameQueuedItem(x, item) ? { ...x, attempts } : x);
       await _save(next);
     });
     if (dropped && onDrop) { try { onDrop(item, error); } catch {} }
@@ -159,7 +170,7 @@ export function clearOutbox() {
 export function clearOutboxForUser(userId) {
   return withQueueLock(async () => {
     const arr = await _load();
-    await _save(arr.filter((x) => x.userId !== userId));
+    await _save(arr.filter((x) => x.userId !== userId || x.apiBase !== API_BASE));
     queueGeneration += 1;
   });
 }

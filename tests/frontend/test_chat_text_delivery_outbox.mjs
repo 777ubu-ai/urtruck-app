@@ -95,7 +95,7 @@ const appSrc = readFileSync('App.js', 'utf8');
 test('комната сделки: сама разгружает очередь (вход + возврат в active)', () => {
   assert.match(dealSrc, /import \{ enqueueOutbox, flushOutbox \} from '\.\.\/utils\/outbox'/,
     'без импорта flushOutbox комната только копит очередь и никогда её не отправляет');
-  assert.match(dealSrc, /flushOutbox\(\(p\) => chatAPI\.send\(p\), session\?\.user\?\.id/,
+  assert.match(dealSrc, /flushOutbox\(\(p, guard\) => chatAPI\.send\(p, guard\), session\?\.user\?\.id/,
     'flush обязан идти с activeUserId — иначе уедет чужая очередь');
   const idx = dealSrc.indexOf('const doFlush = async () =>');
   assert.ok(idx > 0, 'doFlush должен существовать в комнате сделки');
@@ -107,7 +107,7 @@ test('комната сделки: сама разгружает очередь 
 });
 
 test('App.js: глобальный flush передаёт activeUserId', () => {
-  assert.match(appSrc, /flushOutbox\(\(p\) => chatAPI\.send\(p\), session\?\.user\?\.id\)/,
+  assert.match(appSrc, /flushOutbox\(\(p, guard\) => chatAPI\.send\(p, guard\), session\?\.user\?\.id\)/,
     'без activeUserId защита владельца из flushOutbox молча обходится');
   assert.doesNotMatch(appSrc, /flushOutbox\(\(p\) => chatAPI\.send\(p\)\)/,
     'старый вызов без владельца не должен вернуться');

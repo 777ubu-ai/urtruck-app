@@ -2,6 +2,7 @@ import { withAdditionalLanguageTree, } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -217,63 +218,72 @@ export default function FeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async ({ append = false, retry = false } = {}) => {
+  const load = useCallback(async ({ append = false, retry = false, preservePosition = false } = {}) => {
     const previous = pageRef.current;
+    if (preservePosition && (previous.preserving || (previous.busy && previous.nextOffset == null))) return;
     if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
     const requestId = ++loadSeqRef.current;
-    const offset = append ? previous.nextOffset : 0;
-    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null, failed: false };
+    let offset = append ? previous.nextOffset : 0;
+    pageRef.current = { ...previous, busy: true, nextOffset: append || preservePosition ? previous.nextOffset : null, failed: false, preserving: preservePosition };
     if (append) setLoadingMore(true);
-    else {
+    else if (!preservePosition) {
       scrollOffsetRef.current = 0;
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
     setError(false);
     setErrorAppend(false);
     try {
-      const result = await marketAPI.listTrips({
-        fromCity: dirFrom.trim() || '',
-        toCity: dirTo.trim() || '',
-        fromCountry: dirFromCountry,
-        toCountry: dirToCountry,
-        truckType: filterType || '',
-        dateFrom: toIso(dateFrom),
-        dateTo: toIso(dateTo),
-        minPrice: minPrice.trim() ? Number(minPrice) : null,
-        maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
-        currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
-        sortBy,
-        savedOnly,
-        limit: 50,
-        offset,
-      });
-      if (requestId !== loadSeqRef.current) return;
-      if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
-      if (result?.serverError) throw new Error('trip_feed_failed');
+      let refreshed = [];
+      let next = null;
+      // При возврате обновляем весь загруженный префикс атомарно.
+      while (true) {
+        const result = await marketAPI.listTrips({
+          fromCity: dirFrom.trim() || '',
+          toCity: dirTo.trim() || '',
+          fromCountry: dirFromCountry,
+          toCountry: dirToCountry,
+          truckType: filterType || '',
+          dateFrom: toIso(dateFrom),
+          dateTo: toIso(dateTo),
+          minPrice: minPrice.trim() ? Number(minPrice) : null,
+          maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
+          currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
+          sortBy,
+          savedOnly,
+          limit: 50,
+          offset,
+        });
+        if (requestId !== loadSeqRef.current) return;
+        if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
+        if (result?.serverError) throw new Error('trip_feed_failed');
 
-      const mapped = (result?.trips || [])
-        .filter((trip) => !myUserId || trip.driver_id !== myUserId)
-        .map((raw) => {
-          const trip = normalizeTrip({ ...raw, _server: true });
-          if (!trip) return null;
-          return {
-            ...trip,
-            fromCountry: String(raw.from_country || '').trim().toUpperCase(),
-            toCountry: String(raw.to_country || '').trim().toUpperCase(),
-          };
-        })
-        .filter((trip) => trip?.id && trip.from && trip.to);
-      if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
-      const next = result.has_more ? result.next_offset : null;
-      if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
+        const mapped = (result?.trips || [])
+          .filter((trip) => !myUserId || trip.driver_id !== myUserId)
+          .map((raw) => {
+            const trip = normalizeTrip({ ...raw, _server: true });
+            if (!trip) return null;
+            return {
+              ...trip,
+              fromCountry: String(raw.from_country || '').trim().toUpperCase(),
+              toCountry: String(raw.to_country || '').trim().toUpperCase(),
+            };
+          })
+          .filter((trip) => trip?.id && trip.from && trip.to);
+        if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
+        next = result.has_more ? result.next_offset : null;
+        if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
+        refreshed = [...new Map([...refreshed, ...mapped].map(item => [item.id, item])).values()];
+        if (!preservePosition || next == null || offset >= (previous.loadedOffset ?? 0)) break;
+        offset = next;
+      }
       setItems(current => append
-        ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
-        : mapped);
-      pageRef.current = { busy: false, nextOffset: next, failed: false };
+        ? [...new Map([...current, ...refreshed].map(item => [item.id, item])).values()]
+        : refreshed);
+      pageRef.current = { busy: false, nextOffset: next, failed: false, loadedOffset: offset };
     } catch (err) {
       if (requestId !== loadSeqRef.current) return;
       console.warn('[FeedScreen] load trips failed:', err);
-      pageRef.current.failed = true;
+      pageRef.current = { ...(preservePosition ? previous : pageRef.current), busy: false, preserving: false, failed: true };
       setErrorAppend(append);
       setError(true);
     } finally {
@@ -292,12 +302,27 @@ export default function FeedScreen({ navigation }) {
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
-  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
+  // Повторный выбор вкладки начинает новый поиск с первой страницы.
   useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
+  useEffect(() => {
+    const removeFocus = navigation.addListener('focus', () => { load({ preservePosition: true }); });
+    const invalidate = () => {
+      loadSeqRef.current += 1;
+      pageRef.current = { ...pageRef.current, busy: false, preserving: false };
+    };
+    const removeBlur = navigation.addListener('blur', invalidate);
+    let state = AppState.currentState;
+    const app = AppState.addEventListener('change', nextState => {
+      const resumed = state !== 'active' && nextState === 'active';
+      state = nextState;
+      if (nextState !== 'active') invalidate();
+      if (resumed && navigation.isFocused()) load({ preservePosition: true });
+    });
+    return () => { removeFocus(); removeBlur(); app.remove(); invalidate(); };
+  }, [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
-    // Keep the loaded server pages and FlatList anchor when returning from a
-    // detail screen. Pull-to-refresh remains the explicit fresh-query action.
+    // Возврат сохраняет страницы и позицию; focus отдельно обновляет их данные.
     loadSaved();
     const frame = requestAnimationFrame(() => {
       if (scrollOffsetRef.current > 0) listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current, animated: false });

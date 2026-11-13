@@ -97,7 +97,7 @@ test('AuthContext does not clear the bearer when durable revoke staging is unver
   const source = readFileSync('src/utils/AuthContext.js', 'utf8');
   const stage = source.indexOf('await regAPI.stageLogoutRevoke(authToken)');
   const abort = source.indexOf("reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE'");
-  const clear = source.indexOf('await regAPI.clearToken()');
+  const clear = source.indexOf('await regAPI.clearToken()', stage);
   assert.ok(stage >= 0 && abort > stage && clear > abort,
     'logout must return before clearToken when durable staging is unavailable');
 });

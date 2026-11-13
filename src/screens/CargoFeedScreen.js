@@ -2,6 +2,7 @@ import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalL
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -277,66 +278,75 @@ export default function CargoFeedScreen({ navigation }) {
     }
   }, [myUserId]);
 
-  const load = useCallback(async ({ append = false, retry = false } = {}) => {
+  const load = useCallback(async ({ append = false, retry = false, preservePosition = false } = {}) => {
     const previous = pageRef.current;
+    if (preservePosition && (previous.preserving || (previous.busy && previous.nextOffset == null))) return;
     if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
     const requestId = ++loadSeqRef.current;
-    const offset = append ? previous.nextOffset : 0;
-    pageRef.current = { busy: true, nextOffset: append ? previous.nextOffset : null, failed: false };
+    let offset = append ? previous.nextOffset : 0;
+    pageRef.current = { ...previous, busy: true, nextOffset: append || preservePosition ? previous.nextOffset : null, failed: false, preserving: preservePosition };
     if (append) setLoadingMore(true);
-    else {
+    else if (!preservePosition) {
       scrollOffsetRef.current = 0;
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
     setError(false);
     setErrorAppend(false);
     try {
-      const result = await marketAPI.listCargos({
-        fromCity: dirFrom.trim() || '',
-        toCity: dirTo.trim() || '',
-        fromCountry: dirFromCountry,
-        toCountry: dirToCountry,
-        cargoType: filterType || '',
-        dateFrom: toIso(dateFrom),
-        dateTo: toIso(dateTo),
-        minPrice: minPrice.trim() ? Number(minPrice) : null,
-        maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
-        currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
-        sortBy,
-        savedOnly,
-        limit: 50,
-        offset,
-      });
-      // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
-      // бросает при сетевой ошибке / 5xx — он возвращает
-      // `{ cargos: [], serverError: true }` (src/utils/marketAPI.js), чтобы
-      // экран мог отличить «грузов нет» от «сервер недоступен». Этот флаг тут
-      // не проверялся: catch не срабатывал, `error` оставался false, и при
-      // HTTP 500 / 502 / offline / timeout водитель на своей ГЛАВНОЙ вкладке
-      // видел «Подходящих грузов пока нет» — ложное «грузов нет» вместо
-      // ошибки и без кнопки «Повторить». Ветка error в ListEmptyComponent
-      // (alert-circle + copy.loadError + retry, testID cargo-retry) была
-      // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
-      // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
-      // ленту грузов к той же симметрии.
-      if (requestId !== loadSeqRef.current) return;
-      if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
-      if (result?.serverError) throw new Error('cargo_feed_failed');
-      const mapped = (result?.cargos || [])
-        .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
-        .map((cargo) => normalizeCargo(cargo, myUserId))
-        .filter((cargo) => cargo.from && cargo.to);
-      if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
-      const next = result.has_more ? result.next_offset : null;
-      if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
+      let refreshed = [];
+      let next = null;
+      // При возврате обновляем весь загруженный префикс атомарно.
+      while (true) {
+        const result = await marketAPI.listCargos({
+          fromCity: dirFrom.trim() || '',
+          toCity: dirTo.trim() || '',
+          fromCountry: dirFromCountry,
+          toCountry: dirToCountry,
+          cargoType: filterType || '',
+          dateFrom: toIso(dateFrom),
+          dateTo: toIso(dateTo),
+          minPrice: minPrice.trim() ? Number(minPrice) : null,
+          maxPrice: maxPrice.trim() ? Number(maxPrice) : null,
+          currency: (sortBy !== 'newest' || minPrice.trim() || maxPrice.trim()) ? priceCurrency : '',
+          sortBy,
+          savedOnly,
+          limit: 50,
+          offset,
+        });
+        // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
+        // бросает при сетевой ошибке / 5xx — он возвращает
+        // `{ cargos: [], serverError: true }` (src/utils/marketAPI.js), чтобы
+        // экран мог отличить «грузов нет» от «сервер недоступен». Этот флаг тут
+        // не проверялся: catch не срабатывал, `error` оставался false, и при
+        // HTTP 500 / 502 / offline / timeout водитель на своей ГЛАВНОЙ вкладке
+        // видел «Подходящих грузов пока нет» — ложное «грузов нет» вместо
+        // ошибки и без кнопки «Повторить». Ветка error в ListEmptyComponent
+        // (alert-circle + copy.loadError + retry, testID cargo-retry) была
+        // полностью мёртвой. Подтверждено рантаймом (Playwright: route abort и
+        // fulfill 500). FeedScreen.js делает ровно эту проверку — приводим
+        // ленту грузов к той же симметрии.
+        if (requestId !== loadSeqRef.current) return;
+        if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
+        if (result?.serverError) throw new Error('cargo_feed_failed');
+        const mapped = (result?.cargos || [])
+          .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
+          .map((cargo) => normalizeCargo(cargo, myUserId))
+          .filter((cargo) => cargo.from && cargo.to);
+        if (typeof result?.has_more !== 'boolean') throw new Error('invalid_page');
+        next = result.has_more ? result.next_offset : null;
+        if (result.has_more && !(Number.isInteger(next) && next > offset)) throw new Error('invalid_page');
+        refreshed = [...new Map([...refreshed, ...mapped].map(item => [item.id, item])).values()];
+        if (!preservePosition || next == null || offset >= (previous.loadedOffset ?? 0)) break;
+        offset = next;
+      }
       setItems(current => append
-        ? [...new Map([...current, ...mapped].map(item => [item.id, item])).values()]
-        : mapped);
-      pageRef.current = { busy: false, nextOffset: next, failed: false };
+        ? [...new Map([...current, ...refreshed].map(item => [item.id, item])).values()]
+        : refreshed);
+      pageRef.current = { busy: false, nextOffset: next, failed: false, loadedOffset: offset };
     } catch (e) {
       if (requestId !== loadSeqRef.current) return;
       console.warn('[CargoFeed] load failed:', e);
-      pageRef.current.failed = true;
+      pageRef.current = { ...(preservePosition ? previous : pageRef.current), busy: false, preserving: false, failed: true };
       setErrorAppend(append);
       setError(true);
     } finally {
@@ -354,12 +364,27 @@ export default function CargoFeedScreen({ navigation }) {
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
-  // При возврате на вкладку запрашиваем свежие объявления, не меняя возврат из карточки.
+  // Повторный выбор вкладки начинает новый поиск с первой страницы.
   useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
+  useEffect(() => {
+    const removeFocus = navigation.addListener('focus', () => { load({ preservePosition: true }); });
+    const invalidate = () => {
+      loadSeqRef.current += 1;
+      pageRef.current = { ...pageRef.current, busy: false, preserving: false };
+    };
+    const removeBlur = navigation.addListener('blur', invalidate);
+    let state = AppState.currentState;
+    const app = AppState.addEventListener('change', nextState => {
+      const resumed = state !== 'active' && nextState === 'active';
+      state = nextState;
+      if (nextState !== 'active') invalidate();
+      if (resumed && navigation.isFocused()) load({ preservePosition: true });
+    });
+    return () => { removeFocus(); removeBlur(); app.remove(); invalidate(); };
+  }, [navigation, load]);
   useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
-    // Preserve the current server pages and list position when returning from
-    // a cargo detail. Pull-to-refresh explicitly starts a fresh search.
+    // Возврат сохраняет страницы и позицию; focus отдельно обновляет их данные.
     loadSaved();
     const frame = requestAnimationFrame(() => {
       if (scrollOffsetRef.current > 0) listRef.current?.scrollToOffset({ offset: scrollOffsetRef.current, animated: false });

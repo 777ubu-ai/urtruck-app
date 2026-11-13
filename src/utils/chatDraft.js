@@ -1,7 +1,8 @@
 // Per-account/per-room draft. Immediate serialized writes prevent a slower old
 // edit from overwriting a newer value. Restoring never replaces current typing.
+import { API_BASE } from '../config/env';
 export function createChatDraft(storage, userId, roomId) {
-  const key = userId && roomId ? `ur_draft_chat_${JSON.stringify([String(userId), String(roomId)])}` : null;
+  const key = userId && roomId ? `ur_draft_chat_${JSON.stringify([API_BASE, String(userId), String(roomId)])}` : null;
   let revision = 0, generation = 0, connected = false, tail = Promise.resolve();
   return {
     async connect(restore) {
