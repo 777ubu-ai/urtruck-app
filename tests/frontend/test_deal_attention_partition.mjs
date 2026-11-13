@@ -44,3 +44,10 @@ test('event_key resolves the exact rejected bid when listing has several bids', 
   snapshot.notifications[0].event_key = 'bid:missing:rejected';
   assert.equal(partitionDealAttention(snapshot,groups).fallback.length,1);
 });
+
+test('accepted bid event moves to its active deal instead of phantom archive entry', () => {
+  const g={...groups,active:[{kind:'deal',data:{id:'live',cargo_id:'cargo',chat_room_id:'room'}}]};
+  const result=partitionDealAttention({badge:1,notifications:[{id:1,type:'bid',event_key:'bid:accepted-bid:accepted',url:'/cargos/cargo'}],rooms:[]},g);
+  assert.deepEqual(result.tabs,{offers:0,active:1,archive:0});
+  assert.equal(result.counts['deal:live'],1);
+});

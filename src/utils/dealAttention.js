@@ -27,15 +27,16 @@ export function partitionDealAttention(snapshot, groups) {
   for (const n of snapshot.notifications) {
     const target = attentionTarget(n.url);
     const bidId = target.bid || /^bid:([^:]+):/.exec(String(n.event_key || ''))?.[1];
-    const closed = ['bid_rejected', 'bid_cancelled', 'bid_expired'].includes(n.type);
+    const closed = ['bid_rejected', 'bid_cancelled', 'bid_expired'].includes(n.type) || /:(rejected|cancelled|expired|withdrawn)$/.test(String(n.event_key || ''));
+    const accepted = n.type === 'bid_accepted' || /:accepted$/.test(String(n.event_key || ''));
     let entry;
     if (bidId) entry = entries.find(e => e.kind === 'bid' && String(e.data.id) === bidId);
     if (!entry && !bidId && target.kind === 'bids') entry = entries.find(e => e.kind === 'bid' && String(e.data.id) === target.id);
-    if (!entry && !bidId && target.kind === 'deals') entry = entries.find(e => e.kind === 'deal' && String(e.data.id) === target.id);
-    if (!entry && !bidId && target.id && ['cargos', 'trips'].includes(target.kind)) {
+    if (!entry && target.kind === 'deals') entry = entries.find(e => e.kind === 'deal' && String(e.data.id) === target.id);
+    if (!entry && (!bidId || accepted) && target.id && ['cargos', 'trips'].includes(target.kind)) {
       const field = target.kind === 'cargos' ? 'cargo_id' : 'trip_id';
       const candidates = entries.filter(e => String(e.data[field]) === target.id);
-      entry = candidates.find(e => e.kind === 'bid' && (closed ? e.tab === 'archive' : e.tab === 'offers')) || candidates.find(e => e.tab === 'active') || candidates[0];
+      entry = (accepted ? candidates.find(e => e.tab === 'active') : null) || candidates.find(e => e.kind === 'bid' && (closed ? e.tab === 'archive' : e.tab === 'offers')) || candidates.find(e => e.tab === 'active') || candidates[0];
     }
     assign(entry, 1, { ...n, id: `notification:${n.id}`, notificationId: n.id });
   }
