@@ -29,6 +29,7 @@ import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { partitionDealAttention } from '../utils/dealAttention';
 import { isBidActionable } from '../utils/dealsUnread';
+import { countActiveDealBusinessActions, countOfferBusinessActions } from '../utils/dealsBusinessActions';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
 import DriverRouteBackdrop from '../components/ui/v1/DriverRouteBackdrop';
@@ -204,7 +205,7 @@ const dealStatus = (status, t, activeColor = ACCENT) => {
   return { label: formatStatus(status), color: ARCHIVE };
 };
 
-function TabChip({ label, count, attentionCount = 0, active, onPress, testID, icon = null, colors, sp = (n) => n }) {
+function TabChip({ label, count, attentionCount = 0, actionRequiredCount = 0, actionLabel, active, onPress, testID, icon = null, colors, sp = (n) => n }) {
   return (
     <TouchableOpacity
       testID={testID}
@@ -249,6 +250,12 @@ function TabChip({ label, count, attentionCount = 0, active, onPress, testID, ic
           </Text>
         </View>
       ) : null}
+      {actionRequiredCount > 0 ? (
+        <View style={styles.tabActionRequiredBadge} testID={`${testID}-action-required`} accessible accessibilityRole="image" accessibilityLabel={`${actionLabel || label}: ${actionRequiredCount}`}>
+          <Feather name="alert-circle" size={9} color="#315F9D" />
+          <Text style={styles.tabActionRequiredText}>{actionRequiredCount > 99 ? '99+' : actionRequiredCount}</Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -267,6 +274,8 @@ function CompactDealCard({
   time,
   meta,
   unread = 0,
+  actionRequired = false,
+  actionRequiredLabel,
   dimmed = false,
   onPress,
   testID,
@@ -284,6 +293,8 @@ function CompactDealCard({
       counterparty={meta}
       rightMeta={time}
       unread={unread}
+      actionRequired={actionRequired}
+      actionRequiredLabel={actionRequiredLabel}
       chevron
       dimmed={dimmed}
       variant={variant}
@@ -494,33 +505,8 @@ export default function DealsScreen({ navigation, route }) {
 
   const offerCount = offersData.length;
 
-  const offerAttentionCount = useMemo(() => (
-    offersData.reduce((sum, item) => sum + (
-      isBidActionable(item, { asOwner: !!item._incoming }) ? 1 : 0
-    ), 0)
-  ), [offersData]);
-
-  const activeAttentionCount = useMemo(
-    () =>
-      activeDeals.reduce(
-        (sum, item) =>
-          sum +
-          (item.unread_count || 0) +
-          (unreadNotifPaths.includes(`/deals/${item.id}`) ||
-          (item.cargo_id && unreadNotifPaths.includes(`/cargos/${item.cargo_id}`)) ||
-          (item.trip_id && unreadNotifPaths.includes(`/trips/${item.trip_id}`))
-            ? 1
-            : 0) +
-          (item.tracking_action_required ||
-          (role === "client" &&
-            (item.status === "delivered" ||
-              item.status === "awaiting_confirmation"))
-            ? 1
-            : 0),
-        0,
-      ),
-    [activeDeals, role, unreadNotifPaths],
-  );
+  const offerActionRequiredCount = useMemo(() => countOfferBusinessActions(offersData), [offersData]);
+  const activeActionRequiredCount = useMemo(() => countActiveDealBusinessActions(activeDeals, role), [activeDeals, role]);
 
   const attention = useMemo(() => partitionDealAttention(attentionSnapshot, {
     offers: offersData.map(data => ({ kind: 'bid', data })),
@@ -672,7 +658,9 @@ export default function DealsScreen({ navigation, route }) {
           time={isIncomingCargoOffer ? relTime(data.updated_at || data.created_at) : cardTime}
           meta={isIncomingCargoOffer ? offerMeta : undefined}
           dimmed={isClosed}
-          unread={attention ? (attention.counts[`bid:${data.id}`] || 0) : (!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0)}
+          unread={attention ? (attention.counts[`bid:${data.id}`] || 0) : 0}
+          actionRequired={!isClosed && isBidActionable(data, { asOwner: !!data._incoming })}
+          actionRequiredLabel={statusLabel}
           onPress={() => openBid(data)}
           variant={isDriver ? 'driver' : 'default'}
         />
@@ -691,11 +679,12 @@ export default function DealsScreen({ navigation, route }) {
           : status.label;
       const statusColor = (needsReceiptConfirmation || trackingActionRequired) ? INFO : status.color;
       const meta = [partnerName, dealMessagePreview(data, lang)].filter(Boolean).join(' · ');
-      const attentionRequired = needsReceiptConfirmation || trackingActionRequired ||
+      const fallbackNotificationUnread = (
         unreadNotifPaths.includes(`/deals/${data.id}`) ||
         (data.cargo_id && unreadNotifPaths.includes(`/cargos/${data.cargo_id}`)) ||
-        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`));
-      const unread = (data.unread_count || 0) + (attentionRequired ? 1 : 0);
+        (data.trip_id && unreadNotifPaths.includes(`/trips/${data.trip_id}`))
+      ) ? 1 : 0;
+      const unread = (data.unread_count || 0) + fallbackNotificationUnread;
 
       return (
         <CompactDealCard
@@ -708,6 +697,8 @@ export default function DealsScreen({ navigation, route }) {
           time={relTime(data.last_message_at || data.updated_at || data.created_at)}
           meta={meta}
           unread={attention ? (attention.counts[`deal:${data.id}`] || 0) : unread}
+          actionRequired={needsReceiptConfirmation || trackingActionRequired}
+          actionRequiredLabel={needsReceiptConfirmation ? t('confirm_delivery') : t('tracking_action_required')}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
           variant={isDriver ? 'driver' : 'default'}
@@ -754,7 +745,9 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-offers"
           label={copy.tabOffersLabel}
           count={offerCount}
-          attentionCount={attention ? attention.tabs.offers : offerAttentionCount}
+          attentionCount={attention?.tabs.offers || 0}
+          actionRequiredCount={offerActionRequiredCount}
+          actionLabel={t('deals_offer_new')}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
@@ -764,7 +757,9 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-active"
           label={copy.tabActiveLabel}
           count={activeDeals.length}
-          attentionCount={attention ? attention.tabs.active : activeAttentionCount}
+          attentionCount={attention?.tabs.active || 0}
+          actionRequiredCount={activeActionRequiredCount}
+          actionLabel={t('tracking_action_required')}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
@@ -783,10 +778,10 @@ export default function DealsScreen({ navigation, route }) {
         />
       </View>
 
-      {(attention ? (attention.tabs.offers + attention.tabs.active + attention.tabs.archive > 0) : (offerAttentionCount > 0 || activeAttentionCount > 0)) ? (
+      {(attention ? (attention.tabs.offers + attention.tabs.active + attention.tabs.archive > 0) : false) ? (
         <View style={styles.attentionA11y} testID="deals-attention-summary">
           <Text style={styles.attentionA11yText}>
-            {attention ? attention.tabs.offers + attention.tabs.active + attention.tabs.archive : offerAttentionCount + activeAttentionCount}
+            {attention.tabs.offers + attention.tabs.active + attention.tabs.archive}
           </Text>
         </View>
       ) : null}
@@ -963,6 +958,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  tabActionRequiredBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 6,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: '#E8F1FF',
+    borderWidth: 1,
+    borderColor: '#8AB2F2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  tabActionRequiredText: { color: '#315F9D', fontSize: 8, lineHeight: 10, fontWeight: '900' },
   tabAttentionText: {
     color: '#FFFFFF',
     fontSize: 9,

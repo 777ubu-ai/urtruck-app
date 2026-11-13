@@ -9,7 +9,7 @@ import unicodedata
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
@@ -21,6 +21,7 @@ from services import storage_service as storage
 from services import upload_validation
 from api.push import send_to_user
 from api.notifications import create_notification, mark_notifications_read_by_urls
+from services import private_file_transport as private_transport
 
 chat_router = APIRouter()
 
@@ -1126,7 +1127,11 @@ def get_message_media(room_id: str, message_id: int, user=Depends(require_level(
 
 
 @chat_router.get("/messages/{room_id}")
-def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1))):
+def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1)),
+                 capability: Optional[str] = Header(None, alias="X-UrTruck-Private-File-Transport"),
+                 client_version: Optional[str] = Header(None, alias="X-UrTruck-Client-Version")):
+    request_headers = {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}
+    capable = private_transport.supports_private_file_transport(request_headers)
     uid = user["id"]
     # Проверка участия + PR#187-гейт приватности — в отдельном соединении,
     # закрытом до основного (без вложенных get_conn под UPDATE ниже).
@@ -1185,23 +1190,32 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     # и наоборот (баг «отправляю — копируется себе»). Источник истины — uid.
     messages = []
     signing_failed = False
+    legacy_link_count = 0
     for r in reversed(rows):
         m = dict(r)
         m["mine"] = (m.get("sender_id") == uid)
-        # Вложение чата отдаём участнику подписанной ссылкой (?exp&sig) —
-        # storage больше не публичный. Проверка участия — выше (403 не-участнику).
+        # Новый клиент получает метаданные, а байты читает по авторизованному
+        # endpoint с проверкой комнаты и сообщения. Старый клиент сохраняет
+        # временную ссылку до отдельного совместимого cutoff.
         if m.get("photo_url"):
             # Сбой storage не должен скрывать всю переписку. Не возвращаем
             # сырой приватный ref и не повторяем медленный вызов для каждого
             # вложения в одном ответе; следующий poll попробует снова.
             private_ref = m["photo_url"]
             m["photo_url"] = None
-            if not signing_failed and storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice', 'chat'}):
+            valid_private_ref = storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice', 'chat'})
+            if capable or not private_transport.legacy_links_enabled():
+                m["private_media_available"] = bool(valid_private_ref)
+                m["private_file_transport"] = private_transport.CAPABILITY_V1
+                if not capable:
+                    m["private_file_transport_required"] = True
+            elif not signing_failed and valid_private_ref:
                 try:
                     m["photo_url"] = file_signing.sign(private_ref)
+                    legacy_link_count += int(bool(m["photo_url"]))
                 except Exception:
                     signing_failed = True
-            m["attachment_unavailable"] = not bool(m["photo_url"])
+            m["attachment_unavailable"] = not (m.get("private_media_available") or m["photo_url"])
         if m.get("is_voice"):
             # Background inference is private derived data. History polling
             # contains readiness metadata only; transcript/translation require
@@ -1226,6 +1240,8 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
         # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
         # «ок»/«ок» схлопывались в одно на время между поллами).
         messages.append(m)
+    if not capable:
+        private_transport.record_legacy_issuance("chat_media", legacy_link_count, request_headers)
     # «Печатает…»: жив ли typing-пинг партнёра (см. /typing).
     partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
     ts = _TYPING.get((room_id, partner_id))

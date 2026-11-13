@@ -9,22 +9,20 @@ const card = fs.readFileSync('src/components/ui/v1/MarketplaceCard.js', 'utf8');
 const cargoDetail = fs.readFileSync('src/screens/CargoDetail.js', 'utf8');
 const tripDetail = fs.readFileSync('src/screens/TripDetail.js', 'utf8');
 
-test("deal inbox preserves actionable counters for offers and active deals", () => {
-  assert.match(deals, /const offerAttentionCount = useMemo/);
-  assert.match(deals, /offersData\.reduce/);
-  assert.match(deals, /const activeAttentionCount = useMemo/);
-  assert.match(deals, /activeDeals\.reduce/);
-  assert.match(deals, /attentionCount=\{attention \? attention\.tabs\.offers : offerAttentionCount\}/);
-  assert.match(deals, /attentionCount=\{attention \? attention\.tabs\.active : activeAttentionCount\}/);
+test("canonical unread counts and business actions are displayed separately", () => {
+  assert.match(deals, /attentionCount=\{attention\?\.tabs\.offers \|\| 0\}/);
+  assert.match(deals, /attentionCount=\{attention\?\.tabs\.active \|\| 0\}/);
+  assert.match(deals, /actionRequiredCount=\{offerActionRequiredCount\}/);
+  assert.match(deals, /actionRequiredCount=\{activeActionRequiredCount\}/);
+  assert.match(deals, /actionRequired=\{!isClosed && isBidActionable/);
+  assert.match(deals, /actionRequired=\{needsReceiptConfirmation \|\| trackingActionRequired\}/);
   assert.match(deals, /testID=\{`\$\{testID\}-attention`\}/);
-  assert.match(
-    deals,
-    /item\.tracking_action_required[\s\S]*role === ["']client["'][\s\S]*item\.status === ["']delivered["'][\s\S]*item\.status === ["']awaiting_confirmation["']/,
-  );
+  assert.match(deals, /testID=\{`\$\{testID\}-action-required`\}/);
 });
 
 test("attention inside cards uses the distinct red unread badge", () => {
   assert.match(card, /testID="deals-card-unread"/);
+  assert.match(card, /testID="deals-card-action-required"/);
   assert.match(card, /backgroundColor: colors\.error/);
   assert.match(
     deals,
@@ -32,7 +30,7 @@ test("attention inside cards uses the distinct red unread badge", () => {
   );
   assert.match(
     deals,
-    /const attentionRequired[\s\S]*needsReceiptConfirmation[\s\S]*trackingActionRequired/,
+    /actionRequired=\{needsReceiptConfirmation \|\| trackingActionRequired\}/,
   );
 });
 

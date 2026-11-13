@@ -41,6 +41,25 @@ def test_both_participants_receive_historical_media_not_outsider(legacy_media):
     assert len(calls) == 2
 
 
+def test_capable_message_history_omits_legacy_url_and_marks_protected_media(legacy_media):
+    owner, _, _, room, _, message, _ = legacy_media
+    result = chat.get_messages(room, user={'id': owner}, capability='v1')
+    item = next(row for row in result['messages'] if row['id'] == message)
+    assert item['photo_url'] is None
+    assert item['private_file_transport'] == 'v1'
+    assert item['private_media_available'] is True
+    assert item['attachment_unavailable'] is False
+
+
+def test_old_client_keeps_signed_media_url_until_compatibility_cutoff(legacy_media, monkeypatch):
+    owner, _, _, room, _, message, _ = legacy_media
+    monkeypatch.setattr(chat.file_signing, 'sign', lambda ref: '/security/storage/voice.m4a?exp=2000000000&sig=fixture')
+    result = chat.get_messages(room, user={'id': owner})
+    item = next(row for row in result['messages'] if row['id'] == message)
+    assert item['photo_url'].startswith('/security/storage/voice.m4a?')
+    assert 'private_file_transport' not in item
+
+
 def test_removed_deal_access_prevents_read(legacy_media):
     owner, _, _, room, deal, message, calls = legacy_media
     with get_conn() as c:

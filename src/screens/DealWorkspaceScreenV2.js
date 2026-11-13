@@ -738,7 +738,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           clientMsgId: message.client_msg_id || null,
           mine, system,
           text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
-          photo: (!!message.photo_url || !!message.attachment_unavailable) && !isVoice,
+          photo: (!!message.photo_url || !!message.private_media_available || !!message.attachment_unavailable) && !isVoice,
           attachmentUnavailable: !!message.attachment_unavailable,
           voice: isVoice,
           voiceScope: isVoice ? voiceScope : null,

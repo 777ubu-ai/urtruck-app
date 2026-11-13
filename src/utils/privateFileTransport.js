@@ -15,7 +15,7 @@ export function privateFilePath(kind, roomId, fileId) {
   throw new Error('invalid_file_kind');
 }
 
-export async function fetchPrivateFile({ base, kind, roomId, fileId, getToken, fetcher, signal, timeoutMs = 20000 }) {
+export async function fetchPrivateFile({ base, kind, roomId, fileId, getToken, fetcher, signal, timeoutMs = 20000, extraHeaders = {} }) {
   const path = privateFilePath(kind, roomId, fileId);
   const token = await getToken();
   if (!token) throw new Error('auth_required');
@@ -29,7 +29,7 @@ export async function fetchPrivateFile({ base, kind, roomId, fileId, getToken, f
   try {
     const work = (async () => {
       const response = await fetcher(`${base}${path}`, {
-        headers: { Authorization: `Bearer ${token}` }, signal: controller.signal, cache: 'no-store',
+        headers: { ...extraHeaders, Authorization: `Bearer ${token}` }, signal: controller.signal, cache: 'no-store',
       });
       if (!response.ok) {
         const error = new Error('private_file_request_failed');

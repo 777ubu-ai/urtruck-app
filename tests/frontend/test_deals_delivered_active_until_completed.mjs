@@ -14,7 +14,7 @@ test('delivered and received remain active until final completed', () => {
 test('shipper gets receipt attention only while delivered or legacy awaiting confirmation', () => {
   assert.match(deals, /needsReceiptConfirmation = role === 'client' && \(data\.status === 'delivered' \|\| data\.status === 'awaiting_confirmation'\)/);
   assert.match(deals, /needsReceiptConfirmation\s*\? t\('confirm_delivery'\)/);
-  assert.match(deals, /attentionRequired = needsReceiptConfirmation \|\| trackingActionRequired/);
+  assert.match(deals, /actionRequired=\{needsReceiptConfirmation \|\| trackingActionRequired\}/);
 });
 
 test('received and completed have distinct visual labels', () => {

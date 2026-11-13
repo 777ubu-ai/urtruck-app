@@ -44,6 +44,7 @@ function harness(role) {
     '../hooks/useSafeRefresh':{useSafeRefresh:fn=>{refresh=fn;return {refreshing:false,onRefresh:fn};}},
     '../utils/dealAttention':attentionModel,
     '../utils/dealsUnread':{isBidActionable:()=>false},
+    '../utils/dealsBusinessActions':{countOfferBusinessActions:()=>0,countActiveDealBusinessActions:()=>0},
     '../utils/bidExpiry':{formatBidRemaining:()=>'',isBidFresh:()=>true},
     '../components/ui/v1/MarketplaceCard':'MarketplaceCard',
     '../components/ui/v1/DriverRouteBackdrop':'DriverRouteBackdrop',
