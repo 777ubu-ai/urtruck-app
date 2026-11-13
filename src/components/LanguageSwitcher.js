@@ -9,9 +9,11 @@ import { LANGUAGES } from '../utils/languages';
 import { useTheme } from '../utils/ThemeContext';
 import CountryFlag from './ui/v1/CountryFlag';
 
-export default function LanguageSwitcher({ style, testID = 'language-switcher', compact = false, optionTestIDPrefix = 'lang' }) {
+export default function LanguageSwitcher({ style, testID = 'language-switcher', compact = false, optionTestIDPrefix = 'lang', forceLight = false }) {
   const { t, lang } = useI18n();
-  const { theme, isDark } = useTheme();
+  const currentTheme = useTheme();
+  const isDark = !forceLight && currentTheme.isDark;
+  const theme = forceLight ? { border: '#D8D2C9', card: '#FFFFFF', text: '#111C2C', textMuted: '#657489' } : currentTheme.theme;
   const [open, setOpen] = useState(false);
   // Неполный словарь никогда не должен появляться в пользовательском списке.
   const options = LANGUAGES.filter(item => translations[item.code]);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync('src/screens/onboarding/ProfileV2Screen.js', 'utf8');
-const body = source.split('const onContinue = async () => {')[1].split('\n  };\n\n  const showMessengerContact')[0];
+const body = source.split('const onContinue = async () => {')[1].split('\n  };\n\n  return (')[0];
 const copy = new Function(`return ${source.match(/const COPY = ([\s\S]*?);\n\nconst MESSENGERS/)[1]}`)();
 
 function harness(saved, extra = {}) {
@@ -11,16 +11,20 @@ function harness(saved, extra = {}) {
   const env = {
     busy: false, validate: () => true, name: ' QA User ', phone: '+77000000001', role: 'client',
     formMountedRef: { current: true }, savingRef: { current: false },
+    draft: { ready: true, save: async () => {}, clear: async () => {} },
     company: '', country: '', city: '', messengerType: '', sameAsPhone: true, messengerId: '',
     ui: copy.RU, t: (key) => key,
     setErrors: (fn) => { state.errors = fn(state.errors); },
     setServerError: (value) => { state.serverError = value; },
     setBusy: (value) => { state.busy = value; },
+    setCompletion: (value) => { state.completion = value; },
+    setTimeout: (fn) => fn(),
     setRole: (role) => state.roles.push(role),
     regAPI: {
       getToken: async () => 'mock-token',
       updateProfile: async (payload) => { state.requests.push(payload); return saved; },
       saveDriverDraft: async () => ({ ok: true }),
+      completeBasic: async () => ({ ok: true }),
     },
     navigation: {
       replace: (...args) => state.navigation.push(['replace', ...args]),
@@ -82,23 +86,23 @@ test('429 имеет отдельное объяснение, а неизвес�
   assert.equal(unknown.state.busy, false);
 });
 
-test('успешный client сохраняет пустые optional fields и входит в Main', async () => {
+test('успешный client не перезаписывает optional fields и входит в Main', async () => {
   const h = harness({ ok: true });
   await h.run();
-  assert.equal(h.state.requests[0].company_name, '');
-  assert.equal(h.state.requests[0].country, '');
-  assert.equal(h.state.requests[0].city, '');
+  assert.equal(Object.hasOwn(h.state.requests[0], 'company_name'), false);
+  assert.equal(Object.hasOwn(h.state.requests[0], 'country'), false);
+  assert.equal(Object.hasOwn(h.state.requests[0], 'city'), false);
   assert.deepEqual(h.state.roles, ['client']);
   assert.equal(h.state.navigation[0][0], 'reset');
   assert.equal(h.state.busy, false);
 });
 
-test('driver переходит к машине после сохранения draft, без преждевременной роли', async () => {
+test('driver завершает basic и входит без обязательной машины', async () => {
   const h = harness({ ok: true }, { role: 'driver' });
   await h.run();
-  assert.deepEqual(h.state.roles, []);
-  assert.equal(h.state.navigation[0][0], 'replace');
-  assert.equal(h.state.navigation[0][1], 'VehicleSetupCountry');
+  assert.deepEqual(h.state.roles, ['driver']);
+  assert.equal(h.state.navigation[0][0], 'reset');
+  assert.equal(h.state.navigation[0][1].routes[0].name, 'Main');
 });
 
 test('busy и невалидная форма не отправляют PATCH', async () => {
@@ -209,4 +213,81 @@ test('ожидаемый token не позволяет отправить PATCH 
   );
   const result = await run.call({ getToken: async () => 'B' }, { name: 'Имя A' }, { expectedToken: 'A' });
   assert.equal(result.sessionChanged, true);
+});
+
+test('ошибка complete-basic сохраняет форму и не открывает Main', async () => {
+  const h = harness({ ok: true }, { role: 'driver', regAPI: {
+    getToken: async () => 'A', updateProfile: async () => ({ ok: true }),
+    saveDriverDraft: async () => ({ ok: true }), completeBasic: async () => ({ ok: false }),
+  } });
+  await h.run(); assert.deepEqual(h.state.roles, []); assert.deepEqual(h.state.navigation, []);
+  assert.ok(h.state.serverError); assert.equal(h.state.busy, false);
+});
+
+test('ответ complete-basic прежнего аккаунта не меняет роль следующего', async () => {
+  let token = 'A', finish;
+  const h = harness({ ok: true }, { role: 'driver', regAPI: {
+    getToken: async () => token, updateProfile: async () => ({ ok: true }),
+    saveDriverDraft: async () => ({ ok: true }), completeBasic: () => new Promise(resolve => { finish = resolve; }),
+  } });
+  const pending = h.run(); await new Promise(resolve => setImmediate(resolve));
+  token = 'B'; finish({ ok: true }); await pending;
+  assert.deepEqual(h.state.roles, []); assert.deepEqual(h.state.navigation, []);
+});
+
+test('смена аккаунта во время показа успеха не назначает роль новой сессии', async () => {
+  let token = 'mock-token';
+  const h = harness({ ok: true }, {
+    setTimeout: (fn) => { token = 'new-account-token'; fn(); },
+    regAPI: { getToken: async () => token, updateProfile: async () => ({ ok: true }) },
+  });
+  await h.run();
+  assert.deepEqual(h.state.roles, []);
+  assert.deepEqual(h.state.navigation, []);
+});
+test('отказ локального назначения роли даёт повтор без потери сохранённого профиля', async () => {
+  const h = harness({ ok: true }, { setRole: async () => ({ ok: false }) });
+  await h.run();
+  assert.equal(h.state.completion, 'error');
+  assert.deepEqual(h.state.navigation, []);
+  assert.equal(h.state.busy, false);
+});
+
+
+test('ошибка локального завершения сохраняет поколение черновика для штатного retry', async () => {
+  let cleared = 0, attempts = 0;
+  const draft = { ready: true, save: async () => { if (cleared) throw new Error('stale_generation'); }, clear: async () => { cleared++; } };
+  const h = harness({ ok: true }, { draft, setRole: () => ({ ok: ++attempts > 1 }) });
+  await h.run();
+  assert.equal(h.state.completion, 'error');
+  assert.equal(cleared, 0);
+  await h.run();
+  assert.equal(attempts, 2);
+  assert.equal(cleared, 1);
+  assert.equal(h.state.navigation[0][0], 'reset');
+});
+
+test('успешный role commit очищает свой черновик после размонтирования формы', async () => {
+  const mounted = { current: true };
+  let cleared = 0;
+  const h = harness({ ok: true }, {
+    formMountedRef: mounted,
+    draft: { ready: true, save: async () => {}, clear: async () => { cleared++; } },
+    setRole: () => { mounted.current = false; return { ok: true }; },
+  });
+  await h.run();
+  assert.equal(cleared, 1);
+  assert.deepEqual(h.state.navigation, []);
+});
+
+test('поздний role commit не очищает черновик после смены bearer', async () => {
+  let token = 'mock-token', cleared = 0;
+  const h = harness({ ok: true }, {
+    draft: { ready: true, save: async () => {}, clear: async () => { cleared++; } },
+    setRole: () => { token = 'other-token'; return { ok: true }; },
+    regAPI: { getToken: async () => token, updateProfile: async () => ({ ok: true }) },
+  });
+  await h.run();
+  assert.equal(cleared, 0);
+  assert.deepEqual(h.state.navigation, []);
 });

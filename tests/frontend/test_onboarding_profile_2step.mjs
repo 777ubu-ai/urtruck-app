@@ -11,10 +11,7 @@ const profile = read('src/screens/onboarding/ProfileV2Screen.js');
 const backend = read('backend/api/profile.py');
 
 
-test('role selection is explicit step 1 of 2 and preserves Role -> Profile navigation', () => {
-  assert.match(role, /testID="role-v2-step"/);
-  assert.match(role, />1\s*<\/Text>/);
-  assert.match(role, />2\s*<\/Text>/);
+test('role selection is explicit and preserves Role -> Profile navigation', () => {
   assert.match(role, /testID="role-v2-client"/);
   assert.match(role, /testID="role-v2-driver"/);
   assert.match(role, /navigation\.navigate\('ProfileV2'/);
@@ -31,55 +28,24 @@ test('role is not committed to AuthContext before required profile saves success
 });
 
 
-test('profile step keeps company, country and city optional', () => {
-  assert.match(profile, /testID="profile-v2-step"/);
-  assert.match(profile, /<Text style=\{s\.stepCaption\}>2 \/ 2<\/Text>/);
+test('minimal registration asks only name and phone after confirmed email identity', () => {
   assert.match(profile, /id="name"/);
-  assert.match(profile, /id="phone"/);
-  assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
-  assert.match(profile, /id="city"/);
-  assert.match(profile, /const basicFormValid = validName && validPhone/);
-  assert.match(profile, /if \(!validName\) next\.name/);
-  assert.match(profile, /if \(!validPhone\) next\.phone/);
-  assert.doesNotMatch(profile, /validCompany/);
-  assert.doesNotMatch(profile, /validCountry/);
-  assert.doesNotMatch(profile, /validCity/);
-  assert.doesNotMatch(profile, /COUNTRY_REQUIRED/);
-});
-
-
-test('short onboarding keeps company and location editable but optional', () => {
-  assert.match(profile, /id="company"/);
-  assert.match(profile, /id="country"/);
-  assert.match(profile, /id="city"/);
-  assert.match(profile, /company_name:\s*company\.trim\(\)/);
-  assert.match(profile, /country:\s*country\.trim\(\)/);
-  assert.match(profile, /city:\s*city\.trim\(\)/);
-  assert.doesNotMatch(profile, /validCompany/);
-  assert.doesNotMatch(profile, /id="email"/);
-  assert.doesNotMatch(profile, /keyboardType="email-address"/);
-  assert.doesNotMatch(profile, /textContentType="emailAddress"/);
-});
-
-
-test('preferred messenger supports WhatsApp, WeChat, Telegram and Other', () => {
-  for (const key of ['whatsapp', 'wechat', 'telegram', 'other']) {
-    assert.match(profile, new RegExp(`key: '${key}'`));
+  assert.match(profile, /testID="profile-v2-phone"/);
+  for (const field of ['company','country','city','messenger','iin','birthDate']) {
+    assert.doesNotMatch(profile, new RegExp(`id="${field}"`));
   }
-  assert.match(profile, /testID=\{`profile-v2-messenger-\$\{item\.key\}`\}/);
-  assert.match(profile, /messenger_type:\s*messengerType/);
-  assert.match(profile, /messenger_id:\s*messengerType \? effectiveMessengerId : ''/);
-  assert.match(profile, /messengerType === 'whatsapp' && sameAsPhone/);
-  assert.doesNotMatch(profile, /validMessenger/);
-  assert.match(profile, /Мессенджер \(необязательно\)/);
+  assert.match(profile, /const basicFormValid = validName && validPhone/);
+  assert.match(profile, /AuthAccountHint identifier=\{signupIdentity\}/);
+  assert.doesNotMatch(profile, /validCompany|validMessenger/);
+  assert.doesNotMatch(profile, /company_name:\s*company\.trim/);
+  assert.match(profile, /await regAPI\.completeBasic\(/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
 });
-
 
 test('profile keeps the unauthenticated onboarding palette consistently light', () => {
   assert.match(profile, /const baseColors = brandLight/);
   assert.doesNotMatch(profile, /useBrand\(\)/);
-  assert.match(profile, /const colors = role === 'driver' \? driverColors : shipperColors/);
+  assert.match(profile, /const colors = registrationColors/);
   assert.match(profile, /makeStyles\(colors\)/);
   assert.match(profile, /backgroundColor:\s*colors\.bg/);
   assert.match(profile, /backgroundColor:\s*colors\.surface/);

@@ -57,7 +57,8 @@ test('VehicleSetupSuccess completes basic onboarding before opening trip creatio
 test('driver profile continues to the required single-page vehicle setup', () => {
   assert.doesNotMatch(profile, /const completed = await regAPI\.completeBasic\(\)/);
   assert.doesNotMatch(profile, /setRole\('driver'\)/);
-  assert.match(profile, /navigation\.replace\('VehicleSetupCountry', \{[\s\S]*role: 'driver',[\s\S]*origin: 'basic_onboarding'/);
+  assert.doesNotMatch(profile, /navigation\.replace\('VehicleSetupCountry'/);
+  assert.match(profile, /await regAPI\.completeBasic\(/);
 });
 
 test('single-page vehicle save continues through compact completion and errors have retry', () => {

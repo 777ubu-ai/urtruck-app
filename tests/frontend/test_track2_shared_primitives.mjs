@@ -43,7 +43,7 @@ test('Track 2 uses the existing designV1 source for shared palette tokens', () =
 test('auth/onboarding screens use brand light palette boundary, not authenticated theme hook', () => {
   for (const file of ['src/screens/onboarding/PhoneV2Screen.js', 'src/screens/onboarding/OnboardingV2Screen.js', 'src/screens/onboarding/RoleScreenV2.js']) {
     const source = readFileSync(file, 'utf8');
-    assert.match(source, /brandV2/);
+    assert.match(source, /brandV2|RegistrationPresentation/);
     assert.doesNotMatch(source, /useTheme\(/);
   }
 });

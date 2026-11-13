@@ -42,7 +42,7 @@ test('the complete unauthenticated onboarding flow stays light regardless of app
   ];
   for (const file of files) {
     const source = fs.readFileSync(`src/screens/onboarding/${file}`, 'utf8');
-    assert.match(source, /brandLight/, `${file} must use the fixed light auth palette`);
+    assert.match(source, /brandLight|registrationColors/, `${file} must use the fixed light auth palette`);
     assert.doesNotMatch(source, /useBrand\(\)/, `${file} must not follow the signed-in dark theme`);
   }
 });
