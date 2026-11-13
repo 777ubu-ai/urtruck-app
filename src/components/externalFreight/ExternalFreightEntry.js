@@ -86,8 +86,9 @@ export default function ExternalFreightEntry(props) {
           clearTimeout(requestTimeout);
           timeout = null;
           controller = null;
-          if (retryable && current() && navigation.isFocused() && AppState.currentState === 'active' && attempt < 2) {
-            retryTimer = setTimeout(() => { retryTimer = null; refresh(attempt + 1); }, attempt === 0 ? 2000 : 5000);
+          if (retryable && current() && navigation.isFocused() && AppState.currentState === 'active') {
+            const delay = attempt === 0 ? 2000 : attempt === 1 ? 5000 : 60000;
+            retryTimer = setTimeout(() => { retryTimer = null; refresh(Math.min(attempt + 1, 2)); }, delay);
           }
         }
       }

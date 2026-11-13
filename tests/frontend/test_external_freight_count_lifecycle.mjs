@@ -65,9 +65,11 @@ test('remount and network failure preserve last successful count; new response r
   resolve({ ok: false, error: 'network_error' }); await h.flush(); assert.equal(h.count(), '42'); assert.ok(h.failed());
   h.setReply({ ok: true, kind: 'cargo', count: 43 }); await h.advance(2000); assert.equal(h.count(), '43'); assert.equal(h.failed(), false); h.unmount();
 });
-test('unsuccessful requests stop after two retries and restart on foreground', async () => {
-  const h = harness(); h.setReply({ ok: false, status: 503 }); await h.flush(); await h.advance(600000); assert.equal(h.calls(), 3);
-  h.app('background'); await h.advance(600000); assert.equal(h.calls(), 3);
+test('prolonged failures retry at most once per minute and stop in background', async () => {
+  const h = harness(); h.setReply({ ok: false, status: 503 }); await h.flush();
+  await h.advance(7000); assert.equal(h.calls(), 3);
+  await h.advance(120000); assert.equal(h.calls(), 5);
+  h.app('background'); await h.advance(600000); assert.equal(h.calls(), 5);
   h.setReply({ ok: true, kind: 'cargo', count: 0 }); h.app('active'); await h.flush(); assert.equal(h.count(), '0'); h.unmount();
 });
 test('blur and unmount cancel pending retries', async () => {
@@ -94,4 +96,17 @@ for (const status of [401, 403]) test(`${status}: clears cached count without re
 });
 test('expired memory snapshot is not presented as a current count', async () => {
   const h = harness(); await h.flush(); await h.advance(300001); h.setReply(() => new Promise(() => {})); h.remount(); assert.equal(h.count(), '…'); h.unmount();
+});
+
+for (const role of ['driver', 'client']) test(`${role}: recovers from a prolonged outage without opening the feed`, async () => {
+  const h = harness(role);
+  h.setReply({ ok: false, status: 503 });
+  await h.flush();
+  await h.advance(7000);
+  assert.equal(h.calls(), 3);
+  h.setReply({ ok: true, kind: role === 'driver' ? 'cargo' : 'vehicle', count: 42 });
+  await h.advance(60000);
+  assert.equal(h.calls(), 4);
+  assert.equal(h.count(), '42');
+  h.unmount();
 });
