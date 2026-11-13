@@ -186,7 +186,11 @@ def count_active_items(kind: str) -> int:
         raise ValueError("invalid_feed_kind")
     with get_conn() as c:
         return c.execute(
-            "SELECT COUNT(*) FROM external_freight_items WHERE kind=? AND status='active' AND expires_at>?",
+            # The expiry index requires table reads to filter kind; on the live feed this
+            # exceeds the mobile timeout. The existing publication index covers
+            # every predicate and counts without reading large message payloads.
+            "SELECT COUNT(*) FROM external_freight_items INDEXED BY ix_external_freight_publication "
+            "WHERE kind=? AND status='active' AND expires_at>?",
             (kind, _utc().isoformat()),
         ).fetchone()[0]
 
