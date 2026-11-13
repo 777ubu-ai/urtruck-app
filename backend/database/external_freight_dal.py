@@ -436,7 +436,7 @@ def _serialize(row):
 
 def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
-               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
+               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False, include_total=False):
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
@@ -510,6 +510,7 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         params.append(max_price)
     sort_error = None
     price_currencies = []
+    count_clauses, count_params = list(clauses), list(params)
     with get_conn() as c:
         currency_rows = c.execute(
             f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
@@ -548,6 +549,10 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
                  f"CASE WHEN {known} THEN amount END {direction}, "
                  f"CASE WHEN {known} THEN id END {direction}, source_published_at DESC,id DESC")
     with get_conn() as c:
+        if include_total:
+            # Один read snapshot для счётчика и карточек, даже при параллельной записи.
+            c.execute("BEGIN")
+            total = c.execute(f"SELECT COUNT(*) FROM external_freight_items WHERE {' AND '.join(count_clauses)}", tuple(count_params)).fetchone()[0]
         rows = c.execute(f"SELECT * FROM external_freight_items WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?", (*params, min(max(int(limit), 1), 100) + 1)).fetchall()
     has_more = len(rows) > min(max(int(limit), 1), 100)
     rows = rows[:min(max(int(limit), 1), 100)]
@@ -577,9 +582,12 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
             if item["status"] == "active" and item["expires_at"] and item["expires_at"] <= now:
                 item["status"] = "expired"
         items.append(item)
-    return {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
-            "sort_applied": effective_sort, "price_sort_available": len(price_currencies) == 1,
-            "price_currencies": price_currencies, "sort_error": sort_error}
+    result = {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
+              "sort_applied": effective_sort, "price_sort_available": len(price_currencies) == 1,
+              "price_currencies": price_currencies, "sort_error": sort_error}
+    if include_total:
+        result["total"] = total
+    return result
 
 
 def set_bookmark(owner_id, item_id, kind, saved):

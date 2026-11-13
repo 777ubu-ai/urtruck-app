@@ -51,6 +51,14 @@ const SAVED_COPY = {
   EN: { saved: 'Saved', save: 'Save', unsave: 'Remove from saved', expired: 'Expired', closed: 'Closed', unavailable: 'Listing unavailable' },
 };
 Object.assign(SAVED_COPY, withAdditionalLanguageTree(SAVED_COPY));
+const COUNT_COPY = {
+  RU: { total: 'Всего', offers: 'Предложения машин', carriers: 'Перевозчики и компании' },
+  KK: { total: 'Барлығы', offers: 'Көлік ұсыныстары', carriers: 'Тасымалдаушылар мен компаниялар' },
+  ZH: { total: '总计', offers: '车辆信息', carriers: '承运商和公司' },
+  EN: { total: 'Total', offers: 'Truck offers', carriers: 'Carriers and companies' },
+};
+Object.assign(COUNT_COPY, withAdditionalLanguageTree(COUNT_COPY));
+
 export default function ExternalFreightFeedScreen({ navigation }) {
   const { session } = useAuth();
   const role = sessionRole(session) || 'guest';
@@ -98,6 +106,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [errorPage, setErrorPage] = useState(false);
+  const [feedCounts, setFeedCounts] = useState(null);
   const requestRef = useRef(null);
   const busyRef = useRef(false);
   const paginationPendingRef = useRef(false);
@@ -129,7 +139,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     busyRef.current = true;
     if (!background) setBusy(true);
     const owner = ownerKey;
-    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly };
+    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly, include_counts: reset };
     let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
     // Для цены нельзя склеивать старый порядок с новой головой: обновляем
     // весь загруженный префикс атомарно, как и сохранённые, вместе с cursor.
@@ -148,11 +158,31 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     }
     if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
     if (!result.ok) {
+      paginationPendingRef.current = false;
       setError(result.error || 'server_error');
+      setErrorPage(!reset && !background);
       busyRef.current = false; setBusy(false); setRefreshing(false);
       return;
     }
     setError(null);
+    setErrorPage(false);
+    if (reset) {
+      const valid = counts => counts && ['total', 'offers', 'carriers'].every(key => Number.isSafeInteger(counts[key]) && counts[key] >= 0)
+        && counts.total === counts.offers + counts.carriers;
+      const counts = result.counts;
+      setFeedCounts(valid(counts) ? counts : null);
+      const unfiltered = !savedOnly && filters.sort === 'newest' && !Object.entries(filters)
+        .some(([key, value]) => key !== 'sort' && value !== '' && value != null);
+      // Дополнительный запрос к старому серверу не задерживает уже полученные карточки.
+      if (!counts && !isDriver && unfiltered && typeof externalFreightAPI.count === 'function') {
+        countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted).then(fallback => {
+          if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+          const next = fallback?.ok && fallback.kind === 'vehicle'
+            ? { total: fallback.count, offers: fallback.offer_count, carriers: fallback.carrier_count } : null;
+          if (valid(next)) setFeedCounts(next);
+        });
+      }
+    }
     const incoming = Array.isArray(result.items) ? result.items : [];
     if (result.sort_error && filters.sort !== 'newest') {
       setFilters(current => ({ ...current, sort: 'newest' }));
@@ -190,10 +220,10 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
     if (!background || savedOnly || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
     busyRef.current = false; setBusy(false); setRefreshing(false);
-  }, [filters, cursor, savedOnly, ownerKey, rows, timeline]);
+  }, [filters, cursor, savedOnly, ownerKey, rows, timeline, isDriver]);
   loadRef.current = load;
 
-  useEffect(() => { paginationPendingRef.current = false; setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => { paginationPendingRef.current = false; setFeedCounts(null); setErrorPage(false); setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
   useEffect(() => {
     if (!busy && !busyRef.current && paginationPendingRef.current) {
       paginationPendingRef.current = false;
@@ -418,7 +448,10 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     <ScrollView ref={filterScrollRef} horizontal showsHorizontalScrollIndicator={false} style={styles.filters} contentContainerStyle={styles.filterContent} keyboardShouldPersistTaps="always" onLayout={event => setFilterBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
       {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_query || (filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : ''))}{filterButton('date', l.date, filters.published_from ? `${formatFilterDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatFilterDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
-    {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
+    {!isDriver && feedCounts ? <Text testID="external-feed-count-breakdown" style={styles.countBreakdown}>
+      {`${(COUNT_COPY[lang] || COUNT_COPY.EN).total}: ${feedCounts.total} · ${(COUNT_COPY[lang] || COUNT_COPY.EN).offers}: ${feedCounts.offers} · ${(COUNT_COPY[lang] || COUNT_COPY.EN).carriers}: ${feedCounts.carriers}`}
+    </Text> : null}
+    {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: !errorPage })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
     {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
     {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline && Platform.OS !== 'web'} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
       onScrollBeginDrag={() => { scrollToLatestRef.current = false; clearTimeout(latestScrollTimerRef.current); }} onScroll={event => {
@@ -449,7 +482,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + delta), animated: false });
         });
       }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => {
-        if (webTimeline || !cursor) return;
+        if (webTimeline || !cursor || error) return;
         if (busyRef.current) { paginationPendingRef.current = true; return; }
         load();
       }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
@@ -522,6 +555,22 @@ function vehicleCountLabel(value, lang, needed) {
   return `${value} ${needed ? (withAdditionalLanguages({ KK: 'көлік қажет', ZH: '需要车辆', EN: 'trucks needed' })[lang] || 'trucks needed') : (withAdditionalLanguages({ KK: 'бос көлік', ZH: '有空车', EN: 'trucks available' })[lang] || 'trucks available')}`;
 }
 
+async function countWithTimeout(parentSignal, isCurrent, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  let timeout;
+  try {
+    return await Promise.race([
+      externalFreightAPI.count(controller.signal, isCurrent).catch(() => null),
+      new Promise(resolve => { timeout = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener('abort', abortFromParent);
+  }
+}
+
 async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
   const controller = new AbortController();
   const abortFromParent = () => controller.abort();
@@ -559,6 +608,7 @@ function formatFilterDate(value, lang) {
 
 function makeStyles(theme, sp) {
   return StyleSheet.create({
+    countBreakdown: { color: theme.textMuted, fontSize: sp(12), lineHeight: sp(18), paddingHorizontal: 16, paddingVertical: 5 },
     safe: { flex: 1, backgroundColor: theme.bg },
     header: { flexShrink: 0, minHeight: 52, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
     back: { width: 36, minHeight: 44, alignItems: 'flex-start', justifyContent: 'center', flexShrink: 0 },

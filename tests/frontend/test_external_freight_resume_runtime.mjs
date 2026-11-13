@@ -23,7 +23,7 @@ const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedSc
 const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {}) {
+function harness({ role = 'driver', fixtures = cards, platform = 'android', lang = 'RU', countReply = null, listCounts = null } = {}) {
   const opened = [], copied = [], scrollOffsets = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
@@ -58,7 +58,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
     '../components/ui/v1/PrimaryButton': 'PrimaryButton', '../components/ui/actions/SecondaryButton': 'SecondaryButton',
     '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
     '../config/env': env, '../utils/externalFreightShare': share, '../utils/externalFreightContact': contact, '../utils/externalFreightCardActions': cardActions,
-    '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
+    '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang, sp: n => n, t: x => x }) },
     '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-' + role, role } } }) },
     '../utils/externalFreightSession': { sessionRole: () => role }, '../utils/truckConstants': { BODY_TYPES: [] },
     '../utils/countries': { ALL_COUNTRIES: [], getCountryName: x => x }, '../utils/externalFreightModel': model,
@@ -67,8 +67,8 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android' } = {
       queries.push(query);
       if (suspended) await new Promise(resolve => { resolvePending = resolve; });
       if (fail) return { ok: false, error: 'network_error' };
-      return { ok: true, items: query.cursor ? fixtures.slice(30) : fixtures.slice(0, 30), next_cursor: query.cursor ? 'older-page' : 'page2' };
-    } } },
+      return { ok: true, items: query.cursor ? fixtures.slice(30) : fixtures.slice(0, 30), next_cursor: query.cursor ? 'older-page' : 'page2', ...(listCounts && !query.cursor ? { counts: listCounts } : {}) };
+    }, count: async () => countReply } },
   };
   const module = { exports: {} };
   vm.runInNewContext(code, { exports: module.exports, module, require: name => { assert.ok(name in mocks, name); return mocks[name]; }, AbortController, Map, Set, Date, console, setTimeout, clearTimeout,
@@ -371,3 +371,50 @@ for (const role of ['driver', 'client']) test(`${role}: компактные п�
   assert.deepEqual(h.copied, ['+998901234567']);
 });
 
+
+test('ошибка следующей страницы сохраняет карточки и повторяет тот же cursor', async () => {
+  const h = harness(); await h.flush();
+  const original = h.list().props.data.map(item => item.id);
+  h.fail(true); h.list().props.onEndReached(); await h.flush();
+  assert.deepEqual(h.list().props.data.map(item => item.id), original);
+  assert.ok(h.warning());
+  h.fail(false); h.warning().props.onPress(); await h.flush();
+  assert.equal(h.queries.at(-1).cursor, 'page2');
+  assert.equal(h.list().props.data.length, 60);
+  assert.equal(new Set(h.list().props.data.map(item => item.id)).size, 60);
+});
+
+for (const [lang, total, offers, carriers] of [
+  ['RU', 'Всего', 'Предложения машин', 'Перевозчики и компании'],
+  ['KK', 'Барлығы', 'Көлік ұсыныстары', 'Тасымалдаушылар мен компаниялар'],
+  ['ZH', '总计', '车辆信息', '承运商和公司'],
+  ['EN', 'Total', 'Truck offers', 'Carriers and companies'],
+]) test(`${lang}: раздельный счётчик полной выдачи`, async () => {
+  const h = harness({ role: 'client', lang, listCounts: { total: 1353, offers: 56, carriers: 1297 } });
+  await h.flush();
+  const text = h.node('external-feed-count-breakdown').props.children.join('');
+  for (const value of [total, offers, carriers, '1353', '56', '1297']) assert.ok(text.includes(value));
+  assert.equal(h.queries[0].include_counts, true);
+});
+test('старый сервер: общий счётчик берётся из совместимого endpoint', async () => {
+  const h = harness({ role: 'client', countReply: { ok: true, kind: 'vehicle', count: 1353, offer_count: 56, carrier_count: 1297 } });
+  await h.flush();
+  assert.ok(h.node('external-feed-count-breakdown').props.children.join('').includes('1353'));
+});
+test('некорректное расхождение категорий не отображается как достоверный счётчик', async () => {
+  const h = harness({ role: 'client', listCounts: { total: 99, offers: 56, carriers: 1297 } });
+  await h.flush();
+  assert.equal(h.node('external-feed-count-breakdown'), undefined);
+});
+
+test('медленный счётчик старого API не задерживает полученные карточки', async () => {
+  let finish;
+  const reply = new Promise(resolve => { finish = resolve; });
+  const h = harness({ role: 'client', countReply: reply });
+  await h.flush();
+  assert.equal(h.list().props.data.length, 30);
+  assert.equal(h.node('external-feed-count-breakdown'), undefined);
+  finish({ ok: true, kind: 'vehicle', count: 1353, offer_count: 56, carrier_count: 1297 });
+  await h.flush();
+  assert.ok(h.node('external-feed-count-breakdown').props.children.join('').includes('1353'));
+});

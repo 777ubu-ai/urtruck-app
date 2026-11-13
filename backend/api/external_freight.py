@@ -106,7 +106,7 @@ def list_external_feed(
     sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
     limit: int = Query(30, ge=1, le=100), cursor: str | None = Query(None, max_length=1000),
     saved_only: bool = Query(False),
-    include_carriers: bool = Query(False),
+    include_carriers: bool = Query(False), include_counts: bool = Query(False),
     user: dict = Depends(require_level(1)),
 ):
     _ensure_enabled()
@@ -139,7 +139,15 @@ def list_external_feed(
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
-                              owner_id=user["id"], saved_only=saved_only)
+                              owner_id=user["id"], saved_only=saved_only, include_total=include_counts and not cursor)
+        if include_counts and not cursor:
+            offers = result.pop("total")
+            if use_carriers:
+                from services.carrier_directory import list_contacts
+                carriers = list_contacts(limit=1)["total"]
+            else:
+                carriers = 0
+            result["counts"] = {"total": offers + carriers, "offers": offers, "carriers": carriers}
         if use_carriers:
             from services.carrier_directory import append_contacts
             return append_contacts(result, limit=limit)
