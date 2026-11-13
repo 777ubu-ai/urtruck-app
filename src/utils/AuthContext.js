@@ -81,6 +81,7 @@ export const AuthProvider = ({ children }) => {
   const sessionRef = useRef(session);
   const pendingRecoveryRef = useRef(null);
   const legacyBootstrapRef = useRef(null);
+  const authRetryRef = useRef({ epoch: 0, timer: null, pending: false });
 
   const recoverRejectedSession = useCallback((rejectedToken, generation) => runAuthMutation(async () => {
     if (!await authOwnerIsCurrent(rejectedToken, generation,
@@ -179,6 +180,34 @@ export const AuthProvider = ({ children }) => {
     return me;
   }, [recoverRejectedSession]);
 
+  const startVerifiedRefresh = useCallback((token, generation) => {
+    const state = authRetryRef.current;
+    const epoch = ++state.epoch;
+    clearTimeout(state.timer);
+    state.timer = null;
+    state.pending = true;
+    const attempt = async (index = 0) => {
+      if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
+      try {
+        await refreshLevel({ expectedToken: token, expectedGeneration: generation });
+        if (state.epoch === epoch) state.pending = false;
+      } catch {
+        if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
+        const delay = index === 0 ? 5000 : index === 1 ? 15000 : 60000;
+        state.timer = setTimeout(() => { state.timer = null; attempt(Math.min(index + 1, 2)); }, delay);
+      }
+    };
+    attempt();
+  }, [refreshLevel]);
+
+  useEffect(() => () => {
+    const state = authRetryRef.current;
+    state.epoch += 1;
+    state.pending = false;
+    clearTimeout(state.timer);
+    state.timer = null;
+  }, []);
+
   useEffect(() => {
     (async () => {
       let recovery;
@@ -235,9 +264,9 @@ export const AuthProvider = ({ children }) => {
           level: savedLevel,
         });
       }
-      refreshLevel().catch(() => {});
+      startVerifiedRefresh(token, authGenerationRef.current);
     })();
-  }, [refreshLevel]);
+  }, [startVerifiedRefresh]);
 
   const ensureGuest = useCallback(async () => {
     const generation = authGenerationRef.current;
@@ -286,7 +315,7 @@ export const AuthProvider = ({ children }) => {
       // eslint-disable-next-line no-console
       console.warn('[Auth] login success', { level });
     }
-    refreshLevel({ expectedToken: existing, expectedGeneration: generation }).catch(() => {});
+    startVerifiedRefresh(existing, generation);
     return true;
   });
 
@@ -294,12 +323,16 @@ export const AuthProvider = ({ children }) => {
     if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) {
       return { ok: false, reason: 'SESSION_CHANGED' };
     }
-    authGenerationRef.current += 1;
+    const generation = ++authGenerationRef.current;
     const prev = sessionRef.current;
     const s = prev ? { ...prev, user: { ...prev.user, role } } : { user: { role, id: 'u_' + Date.now() } };
     sessionRef.current = s;
     setSession(s);
     await storage.set(KEY, JSON.stringify(s));
+    if (authRetryRef.current.pending) {
+      const currentToken = await regAPI.getToken();
+      if (currentToken && generation === authGenerationRef.current) startVerifiedRefresh(currentToken, generation);
+    }
     return { ok: true };
   });
 

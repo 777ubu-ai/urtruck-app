@@ -179,3 +179,42 @@ def test_isolated_storage_migration_preserves_file_and_exposes_legacy_link_windo
     expired = client.get(legacy_path)
     assert expired.status_code == 403
     assert hashlib.sha256(actual_file.read_bytes()).hexdigest() == expected_hash
+
+
+@pytest.mark.parametrize('link', ['cargo', 'trip'])
+def test_legacy_unlinked_deal_attachment_requires_participant_and_rechecks_revocation(attachment_case, monkeypatch, link):
+    a = attachment_case
+    with get_conn() as c:
+        c.execute('UPDATE deals SET chat_room_id=NULL WHERE id=?', (a['deal'],))
+        if link == 'trip':
+            trip = uuid.uuid4().hex
+            c.execute('UPDATE chat_rooms SET cargo_id=NULL,trip_id=? WHERE id=?', (trip, a['room']))
+            c.execute('UPDATE deals SET cargo_id=NULL,trip_id=? WHERE id=?', (trip, a['deal']))
+    for actor in (a['owner'], a['partner']):
+        assert deal_room.get_attachment_content(a['room'], a['attachment'], {'id': actor}).body == b'%PDF-fixture'
+    with pytest.raises(HTTPException) as outsider:
+        deal_room.get_attachment_content(a['room'], a['attachment'], {'id': a['stranger']})
+    assert outsider.value.status_code == 403
+    def revoke(*args):
+        with get_conn() as c:
+            c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (a['deal'],))
+        return b'private'
+    monkeypatch.setattr(deal_room.storage_service, 'read_private_bytes', revoke)
+    with pytest.raises(HTTPException) as revoked:
+        deal_room.get_attachment_content(a['room'], a['attachment'], {'id': a['owner']})
+    assert revoked.value.status_code == 403
+
+
+def test_ambiguous_legacy_deals_deny_attachment_before_storage_read(attachment_case):
+    a = attachment_case
+    with get_conn() as c:
+        cargo = c.execute('SELECT cargo_id FROM chat_rooms WHERE id=?', (a['room'],)).fetchone()['cargo_id']
+        c.execute('UPDATE deals SET chat_room_id=NULL WHERE id=?', (a['deal'],))
+        trip = uuid.uuid4().hex
+        c.execute('UPDATE chat_rooms SET trip_id=? WHERE id=?', (trip, a['room']))
+        c.execute('INSERT INTO deals(id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,NULL)',
+                  (uuid.uuid4().hex, trip, uuid.uuid4().hex, a['owner'], a['partner'], 'A', 'B', 1, 'accepted'))
+    with pytest.raises(HTTPException) as denied:
+        deal_room.get_attachment_content(a['room'], a['attachment'], {'id': a['owner']})
+    assert denied.value.status_code == 403
+    assert not a['calls']

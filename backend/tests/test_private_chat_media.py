@@ -124,3 +124,42 @@ def test_different_accepted_deal_cannot_reopen_cancelled_room(legacy_media):
         chat.get_message_media(room, message, user={'id': owner})
     assert error.value.status_code == 403
     assert not calls
+
+
+@pytest.mark.parametrize('link', ['cargo', 'trip'])
+def test_legacy_unlinked_deal_allows_only_participants_and_rechecks_revocation(legacy_media, monkeypatch, link):
+    owner, driver, stranger, room, deal, message, calls = legacy_media
+    with get_conn() as c:
+        c.execute('UPDATE deals SET chat_room_id=NULL WHERE id=?', (deal,))
+        if link == 'trip':
+            trip = uuid.uuid4().hex
+            c.execute('UPDATE chat_rooms SET cargo_id=NULL,trip_id=? WHERE id=?', (trip, room))
+            c.execute('UPDATE deals SET cargo_id=NULL,trip_id=? WHERE id=?', (trip, deal))
+    for actor in (owner, driver):
+        assert chat.get_message_media(room, message, user={'id': actor}).body.startswith(b'\x00\x00\x00\x18ftyp')
+    with pytest.raises(HTTPException) as outsider:
+        chat.get_message_media(room, message, user={'id': stranger})
+    assert outsider.value.status_code == 403
+    def revoke(*args):
+        with get_conn() as c:
+            c.execute("UPDATE deals SET status='cancelled' WHERE id=?", (deal,))
+        return b'private'
+    monkeypatch.setattr(chat.storage, 'read_private_bytes', revoke)
+    with pytest.raises(HTTPException) as revoked:
+        chat.get_message_media(room, message, user={'id': owner})
+    assert revoked.value.status_code == 403
+
+
+def test_ambiguous_legacy_deals_deny_media_before_storage_read(legacy_media):
+    owner, driver, _, room, deal, message, calls = legacy_media
+    with get_conn() as c:
+        cargo = c.execute('SELECT cargo_id FROM chat_rooms WHERE id=?', (room,)).fetchone()['cargo_id']
+        c.execute('UPDATE deals SET chat_room_id=NULL WHERE id=?', (deal,))
+        trip = uuid.uuid4().hex
+        c.execute('UPDATE chat_rooms SET trip_id=? WHERE id=?', (trip, room))
+        c.execute('INSERT INTO deals(id,trip_id,bid_id,shipper_id,driver_id,from_city,to_city,amount,status,chat_room_id) VALUES (?,?,?,?,?,?,?,?,?,NULL)',
+                  (uuid.uuid4().hex, trip, uuid.uuid4().hex, owner, driver, 'A', 'B', 1, 'accepted'))
+    with pytest.raises(HTTPException) as denied:
+        chat.get_message_media(room, message, user={'id': owner})
+    assert denied.value.status_code == 403
+    assert not calls

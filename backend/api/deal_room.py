@@ -525,11 +525,12 @@ def get_attachment_content(conversation_id: str, attachment_id: str, user=Depend
     def assert_exact_room_open():
         from api.chat import _assert_chat_is_accepted
         with get_conn() as c:
-            room = c.execute('SELECT participant_1,participant_2 FROM chat_rooms WHERE id=?', (conversation_id,)).fetchone()
+            room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (conversation_id,)).fetchone()
         if not room or user['id'] not in (room['participant_1'], room['participant_2']):
             raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
         partner = room['participant_2'] if room['participant_1'] == user['id'] else room['participant_1']
-        _assert_chat_is_accepted(user['id'], partner, room_id=conversation_id)
+        _assert_chat_is_accepted(user['id'], partner, room_id=conversation_id,
+                                 cargo_id=room['cargo_id'], trip_id=room['trip_id'])
 
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail='Беседа не найдена')

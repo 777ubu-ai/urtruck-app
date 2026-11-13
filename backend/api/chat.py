@@ -1102,7 +1102,8 @@ def get_message_media(room_id: str, message_id: int, user=Depends(require_level(
                 raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
             message = c.execute('SELECT photo_url,is_voice FROM chat_messages WHERE id=? AND room_id=?', (message_id, room_id)).fetchone()
         partner = room['participant_2'] if user['id'] == room['participant_1'] else room['participant_1']
-        _assert_chat_is_accepted(user['id'], partner, room_id=room_id)
+        _assert_chat_is_accepted(user['id'], partner, room_id=room_id,
+                                 cargo_id=room['cargo_id'], trip_id=room['trip_id'])
         if not message or not storage.ref_has_purpose(message['photo_url'], {'chat_photos', 'chat_voice', 'chat'}):
             raise HTTPException(status_code=404, detail='Вложение не найдено')
         return message['photo_url'], bool(message['is_voice'])
