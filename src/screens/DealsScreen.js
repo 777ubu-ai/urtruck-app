@@ -27,6 +27,7 @@ import { countryCode } from '../utils/countryFlags';
 import { dealMessagePreview } from '../utils/dealMessagePreview';
 import { accentFor } from '../components/deal/DealRoom';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
+import { partitionDealAttention } from '../utils/dealAttention';
 import { isBidActionable } from '../utils/dealsUnread';
 import { formatBidRemaining, isBidFresh } from '../utils/bidExpiry';
 import MarketplaceCard from '../components/ui/v1/MarketplaceCard';
@@ -149,7 +150,8 @@ const normalizeNotifPath = (value) => {
   let path = raw;
   try {
     const parsed = new URL(raw);
-    path = `${parsed.pathname || ""}${parsed.search || ""}`;
+    const host = ["urtruck:", "com.urtruck.app:"].includes(parsed.protocol) ? `/${parsed.hostname}` : "";
+    path = `${host}${parsed.pathname || ""}${parsed.search || ""}`;
   } catch {
     // relative notification path
   }
@@ -308,6 +310,7 @@ export default function DealsScreen({ navigation, route }) {
   const [incomingBids, setIncomingBids] = useState([]);
   const [myBids, setMyBids] = useState([]);
   const [unreadNotifPaths, setUnreadNotifPaths] = useState([]);
+  const [attentionSnapshot, setAttentionSnapshot] = useState(null);
   const loadRequestRef = useRef(0);
 
   const load = useCallback(async ({ force = false } = {}) => {
@@ -323,13 +326,16 @@ export default function DealsScreen({ navigation, route }) {
       setIncomingBids(dashboard.incoming_bids || []);
       setMyBids(dashboard.my_bids || []);
       try {
-        const notificationData = await notificationsAPI.list(50);
+        // Новый endpoint даёт тот же полный набор, что и нижний badge.
+        const snapshot = await notificationsAPI.attention().catch(error => { if (error.status === 404) return null; throw error; });
+        const notificationData = snapshot || await notificationsAPI.list(50);
         if (request !== loadRequestRef.current) return;
+        setAttentionSnapshot(snapshot);
         setUnreadNotifPaths(unreadNotificationPaths(notificationData));
       } catch {
         // Notification badges are auxiliary; a notification API outage must
         // not turn an otherwise valid Deals dashboard into an error screen.
-        if (request === loadRequestRef.current) setUnreadNotifPaths([]);
+        if (request === loadRequestRef.current) setLoadError(true);
       }
     } catch (error) {
       if (request !== loadRequestRef.current) return;
@@ -516,6 +522,12 @@ export default function DealsScreen({ navigation, route }) {
     [activeDeals, role, unreadNotifPaths],
   );
 
+  const attention = useMemo(() => partitionDealAttention(attentionSnapshot, {
+    offers: offersData.map(data => ({ kind: 'bid', data })),
+    active: activeDeals.map(data => ({ kind: 'deal', data })),
+    archive: [...archivedDeals.map(data => ({ kind: 'deal', data })), ...closedBidsData.map(data => ({ kind: 'bid', data }))],
+  }), [attentionSnapshot, offersData, activeDeals, archivedDeals, closedBidsData]);
+
   const baseItems = useMemo(() => {
     if (dealTab === "offers") {
       return offersData.map((item) => ({
@@ -533,6 +545,7 @@ export default function DealsScreen({ navigation, route }) {
       }));
     }
     return [
+      ...(attention?.fallback || []),
       ...archivedDeals.map((item) => ({
         kind: "deal",
         data: item,
@@ -548,7 +561,7 @@ export default function DealsScreen({ navigation, route }) {
       const tb = parseServerDate(b.sortAt)?.getTime() || 0;
       return tb - ta;
     });
-  }, [dealTab, role, offersData, activeDeals, archivedDeals, closedBidsData]);
+  }, [dealTab, role, offersData, activeDeals, archivedDeals, closedBidsData, attention]);
 
   const visibleItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -618,6 +631,13 @@ export default function DealsScreen({ navigation, route }) {
     ({ item }) => {
       const { kind, data } = item;
 
+      if (kind === 'attention') {
+        return <MarketplaceCard testID="deals-unmapped-attention" unread={item.count}
+          counterparty={data.title || t('menu_notifications')} chevron
+          onPress={() => data.roomId
+            ? navigation.navigate('Chat', { roomId: data.roomId, role })
+            : navigation.navigate('Notifications', { notificationId: data.notificationId })} />;
+      }
       if (kind === 'bid') {
       const isCountered = data.status === 'countered';
       const isClosed = CLOSED_BID_STATUSES.has(data.status);
@@ -652,7 +672,7 @@ export default function DealsScreen({ navigation, route }) {
           time={isIncomingCargoOffer ? relTime(data.updated_at || data.created_at) : cardTime}
           meta={isIncomingCargoOffer ? offerMeta : undefined}
           dimmed={isClosed}
-          unread={!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0}
+          unread={attention ? (attention.counts[`bid:${data.id}`] || 0) : (!isClosed && isBidActionable(data, { asOwner: !!data._incoming }) ? 1 : 0)}
           onPress={() => openBid(data)}
           variant={isDriver ? 'driver' : 'default'}
         />
@@ -687,7 +707,7 @@ export default function DealsScreen({ navigation, route }) {
           statusColor={statusColor}
           time={relTime(data.last_message_at || data.updated_at || data.created_at)}
           meta={meta}
-          unread={unread}
+          unread={attention ? (attention.counts[`deal:${data.id}`] || 0) : unread}
           dimmed={ARCHIVE_DEAL_STATUSES.has(data.status)}
           onPress={() => openDeal(data)}
           variant={isDriver ? 'driver' : 'default'}
@@ -704,6 +724,8 @@ export default function DealsScreen({ navigation, route }) {
     t,
     palette,
     unreadNotifPaths,
+    attention,
+    navigation,
   ]);
 
   const emptyText = dealTab === 'active'
@@ -732,7 +754,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-offers"
           label={copy.tabOffersLabel}
           count={offerCount}
-          attentionCount={offerAttentionCount}
+          attentionCount={attention ? attention.tabs.offers : offerAttentionCount}
           active={dealTab === 'offers'}
           onPress={() => setDealTab('offers')}
           colors={palette}
@@ -742,7 +764,7 @@ export default function DealsScreen({ navigation, route }) {
           testID="deals-tab-active"
           label={copy.tabActiveLabel}
           count={activeDeals.length}
-          attentionCount={activeAttentionCount}
+          attentionCount={attention ? attention.tabs.active : activeAttentionCount}
           active={dealTab === 'active'}
           onPress={() => setDealTab('active')}
           colors={palette}
@@ -751,7 +773,8 @@ export default function DealsScreen({ navigation, route }) {
         <TabChip
           testID="deals-tab-archive"
           label={copy.tabArchiveLabel}
-          count={archivedDeals.length + closedBidsData.length}
+          count={archivedDeals.length + closedBidsData.length + (attention?.fallback.length || 0)}
+          attentionCount={attention?.tabs.archive || 0}
           active={dealTab === 'archive'}
           onPress={() => setDealTab('archive')}
           icon="archive"
@@ -760,10 +783,10 @@ export default function DealsScreen({ navigation, route }) {
         />
       </View>
 
-      {(offerAttentionCount > 0 || activeAttentionCount > 0) ? (
+      {(attention ? (attention.tabs.offers + attention.tabs.active + attention.tabs.archive > 0) : (offerAttentionCount > 0 || activeAttentionCount > 0)) ? (
         <View style={styles.attentionA11y} testID="deals-attention-summary">
           <Text style={styles.attentionA11yText}>
-            {offerAttentionCount + activeAttentionCount}
+            {attention ? attention.tabs.offers + attention.tabs.active + attention.tabs.archive : offerAttentionCount + activeAttentionCount}
           </Text>
         </View>
       ) : null}

@@ -44,7 +44,9 @@ test('NotificationsScreen still clears unread state correctly when reached by su
 });
 
 test('NotificationsScreen retains durable lifecycle entries for supported deep links', () => {
-  assert.match(notifScreen, /setItems\(all\)/);
+  assert.match(notifScreen, /new Map\(all\.map/);
+  assert.match(notifScreen, /attention\?\.notifications/);
+  assert.match(notifScreen, /setItems\(\[\.\.\.byId\.values\(\)\]/);
   assert.doesNotMatch(notifScreen, /isDealLifecycleNotification/);
 });
 

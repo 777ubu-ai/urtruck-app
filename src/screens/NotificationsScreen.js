@@ -120,14 +120,21 @@ export default function NotificationsScreen({ navigation }) {
     if (!loadOwner) return;
     if (showLoading) setLoading(true);
     try {
-      const d = await notificationsAPI.list(50);
+      const [d, attention] = await Promise.all([
+        notificationsAPI.list(50),
+        notificationsAPI.attention().catch(() => null),
+      ]);
       if (!mountedRef.current || ownerRef.current !== loadOwner) return;
       const all = Array.isArray(d?.notifications) ? d.notifications : [];
       // Bell is the canonical cross-product inbox. Bid, deal, tracking and
       // chat records are durable server notifications with their own deep
       // links, so hiding lifecycle records here made a delivered push
       // impossible to find or mark read in-app.
-      setItems(all);
+      const byId = new Map(all.map(item => [item.id, item]));
+      for (const item of attention?.notifications || []) {
+        if (!byId.has(item.id)) byId.set(item.id, { ...item, is_read: 0 });
+      }
+      setItems([...byId.values()].sort((a, b) => Number(!!a.is_read) - Number(!!b.is_read) || String(b.created_at || '').localeCompare(String(a.created_at || ''))));
     } catch {}
     if (showLoading && mountedRef.current && ownerRef.current === loadOwner) setLoading(false);
   }, []);

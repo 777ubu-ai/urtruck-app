@@ -36,7 +36,7 @@ _ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
 )
 
 
-def unread_badge_count(user_id: str) -> int:
+def unread_badge_snapshot(user_id: str) -> dict:
     """Return the one authoritative native-app badge total for ``user_id``.
 
     Bottom navigation, launcher and push payloads share a Deals attention
@@ -46,10 +46,10 @@ def unread_badge_count(user_id: str) -> int:
     Chat notification mirrors are excluded to avoid counting a message twice.
     """
     if not user_id:
-        return 0
+        return {"badge": 0, "notifications": [], "rooms": []}
     placeholders = ",".join("?" for _ in _ACTIVE_CHAT_BADGE_DEAL_STATUSES)
     chat_query = f"""
-        SELECT COUNT(*) AS cnt FROM chat_messages m
+        SELECT r.id AS room_id, r.cargo_id, r.trip_id, COUNT(*) AS unread_count FROM chat_messages m
         JOIN chat_rooms r ON m.room_id = r.id
         WHERE (r.participant_1 = ? OR r.participant_2 = ?)
           AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
@@ -69,18 +69,28 @@ def unread_badge_count(user_id: str) -> int:
             )
           )
     """
+    chat_query += " GROUP BY r.id, r.cargo_id, r.trip_id"
     with get_conn() as c:
+        # One read transaction: list and total describe the same snapshot.
+        if not c.in_transaction:
+            c.execute("BEGIN")
         event_placeholders = ",".join("?" for _ in _DEAL_BADGE_NOTIFICATION_TYPES)
-        notification_row = c.execute(
-            "SELECT COUNT(*) AS cnt FROM notifications "
+        notification_rows = c.execute(
+            "SELECT id,type,url,title,created_at,event_key FROM notifications "
             f"WHERE user_id = ? AND is_read = 0 AND type IN ({event_placeholders})",
             (user_id, *_DEAL_BADGE_NOTIFICATION_TYPES),
-        ).fetchone()
-        chat_row = c.execute(
+        ).fetchall()
+        chat_rows = c.execute(
             chat_query,
             (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
-        ).fetchone()
-    return int(notification_row["cnt"] if notification_row else 0) + int(chat_row["cnt"] if chat_row else 0)
+        ).fetchall()
+    return {"badge": len(notification_rows) + sum(int(row["unread_count"]) for row in chat_rows),
+            "notifications": [dict(row) for row in notification_rows],
+            "rooms": [dict(row) for row in chat_rows]}
+
+
+def unread_badge_count(user_id: str) -> int:
+    return unread_badge_snapshot(user_id)["badge"]
 
 
 def _init():
@@ -137,6 +147,8 @@ def _notification_path(value: str) -> str:
     try:
         parsed = urlsplit(value)
         path = parsed.path or ""
+        if parsed.scheme in {"urtruck", "com.urtruck.app"}:
+            path = "/" + parsed.netloc + path
     except Exception:
         path = value.split("?", 1)[0].split("#", 1)[0]
     if path and not path.startswith("/"):
@@ -216,6 +228,12 @@ def unread_count(user=Depends(require_level(1))):
             (user["id"],),
         ).fetchone()
     return {"unread": row["cnt"] if row else 0}
+
+
+@notif_router.get("/attention")
+def attention_snapshot(user=Depends(require_level(1))):
+    """Same inclusion set as /badge, with owner-scoped entity references."""
+    return unread_badge_snapshot(user["id"])
 
 
 @notif_router.get("/badge")

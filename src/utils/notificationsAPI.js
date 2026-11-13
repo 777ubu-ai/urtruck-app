@@ -30,6 +30,16 @@ export const notificationsAPI = {
     return r.json();
   },
 
+  async attention() {
+    const r = await fetch(`${BASE}/attention`, { headers: await headers() });
+    if (!r.ok) {
+      const error = new Error(`attention request failed ${r.status}`);
+      error.status = r.status;
+      throw error;
+    }
+    return r.json();
+  },
+
   async badge() {
     const h = await headers();
     if (!h.Authorization) return { badge: 0 };

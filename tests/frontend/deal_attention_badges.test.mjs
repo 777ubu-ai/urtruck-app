@@ -14,8 +14,8 @@ test("deal inbox preserves actionable counters for offers and active deals", () 
   assert.match(deals, /offersData\.reduce/);
   assert.match(deals, /const activeAttentionCount = useMemo/);
   assert.match(deals, /activeDeals\.reduce/);
-  assert.match(deals, /attentionCount=\{offerAttentionCount\}/);
-  assert.match(deals, /attentionCount=\{activeAttentionCount\}/);
+  assert.match(deals, /attentionCount=\{attention \? attention\.tabs\.offers : offerAttentionCount\}/);
+  assert.match(deals, /attentionCount=\{attention \? attention\.tabs\.active : activeAttentionCount\}/);
   assert.match(deals, /testID=\{`\$\{testID\}-attention`\}/);
   assert.match(
     deals,
