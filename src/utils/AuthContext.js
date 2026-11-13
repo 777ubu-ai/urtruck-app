@@ -345,12 +345,18 @@ export const AuthProvider = ({ children }) => {
     if (expectedToken && !await authOwnerIsCurrent(
       expectedToken, expectedGeneration, () => authGenerationRef.current, () => regAPI.getToken(),
     )) return { ok: false, reason: 'SESSION_CHANGED' };
-    authGenerationRef.current += 1;
+    const logoutGeneration = ++authGenerationRef.current;
     setAuthExpirySuppressed(true);
 
     // Do not clear auth state until native tracking is stopped and the durable
     // server-revoke intent has been verified.
     const authToken = await regAPI.getToken();
+    const resumePendingVerification = async () => {
+      if (authRetryRef.current.pending && authToken &&
+          await authOwnerIsCurrent(authToken, logoutGeneration, () => authGenerationRef.current, () => regAPI.getToken())) {
+        startVerifiedRefresh(authToken, logoutGeneration);
+      }
+    };
     // A local logout is not successful while native tracking may still be
     // running. Keep the session/token so the user can retry when Expo/OS fails
     // to confirm stop; do not hide a rejected or timed-out native operation.
@@ -362,6 +368,7 @@ export const AuthProvider = ({ children }) => {
     );
     if (!trackingResult?.ok) {
       setAuthExpirySuppressed(false);
+      await resumePendingVerification();
       return {
         ok: false,
         reason: trackingResult?.reason || 'BACKGROUND_TRACKING_STOP_FAILED',
@@ -382,6 +389,7 @@ export const AuthProvider = ({ children }) => {
       // creating an unrecoverable server/push ownership window. If GPS was
       // stopped first, restore it for the still-active session before retry.
       setAuthExpirySuppressed(false);
+      await resumePendingVerification();
       return {
         ok: false,
         reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE',

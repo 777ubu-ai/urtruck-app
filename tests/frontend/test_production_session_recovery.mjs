@@ -31,6 +31,7 @@ function harness(existingData = null, { fakeTimers = false } = {}) {
     ['ur_chat_outbox', '[{"clientId":"unsent","userId":"A","payload":{"text":"Не отправлено"}}]'],
   ]);
   const effects = [], slots = [], cache = new Map(), timers = new Map(), pauses = [], flushes = []; let cursor = 0, timerId = 0;
+  const tracking = { stop: async () => ({ok:true}) };
   const storage = { get: async k => data.get(k) ?? null, set: async (k,v) => data.set(k,v), remove: async k => data.delete(k),
     keys: async () => [...data.keys()], removeByPrefix: async p => [...data.keys()].filter(k => k.startsWith(p)).forEach(k => data.delete(k)) };
   const react = { createContext: () => ({ Provider: 'Provider' }), createElement: (type,props,...children) => ({ type,props:{...props,children} }),
@@ -47,7 +48,7 @@ function harness(existingData = null, { fakeTimers = false } = {}) {
     if (name==='./registration') return {regAPI};
     if (name==='./publicationSession') return {sessionRole:s=>s.user.role};
     if (['./authMutation','./authEvents','./sessionRecovery'].includes(name)) return load('src/utils/'+name.slice(2)+'.js');
-    if (name==='./backgroundLocation') return {stopBackgroundTrackingForLogout:async()=>({ok:true}),clearBackgroundLocationSampleForLogout:async()=>({ok:true})};
+    if (name==='./backgroundLocation') return {stopBackgroundTrackingForLogout:(...args)=>tracking.stop(...args),restoreBackgroundTrackingForLogoutFailure:async()=>({ok:true}),clearBackgroundLocationSampleForLogout:async()=>({ok:true})};
     if (name==='./outbox') return {clearOutboxForUser:async()=>{throw Error('Нельзя удалять очередь при401');},pauseOutbox:value=>pauses.push(value),flushOutbox:async(_,id)=>{flushes.push(id);return 0;}};
     if (name==='./offlineQueue') return {clearQueue:async()=>{throw Error('Нельзя удалять очередь при401');},pauseQueue:()=>{}};
     return new Proxy({}, {get:()=>()=>{}});
@@ -61,7 +62,7 @@ function harness(existingData = null, { fakeTimers = false } = {}) {
   }
   const authModule=load('src/utils/AuthContext.js');
   const render=()=>{cursor=0;return authModule.AuthProvider({children:null}).props.value;};
-  return {data,storage,regAPI,render,pauses,flushes,timers,async fireTimer(){const first=timers.entries().next().value;assert.ok(first,'expected retry timer');timers.delete(first[0]);first[1].fn();for(let i=0;i<20;i++)await tick();},async boot(){render();for(const effect of effects.splice(0))effect();for(let i=0;i<15;i++)await tick();return render();}};
+  return {data,storage,regAPI,render,pauses,flushes,timers,tracking,async fireTimer(){const first=timers.entries().next().value;assert.ok(first,'expected retry timer');timers.delete(first[0]);first[1].fn();for(let i=0;i<20;i++)await tick();},async boot(){render();for(const effect of effects.splice(0))effect();for(let i=0;i<15;i++)await tick();return render();}};
 }
 
 test('register/me:401 явно отклоняет сессию, а503 остаётся временной ошибкой',async()=>{
@@ -296,4 +297,45 @@ test('temporary failure followed by 401 keeps outbox paused and stops retrying',
   h.timers.delete(retry[0]);retry[1].fn();for(let i=0;i<30;i++)await tick();
   assert.equal(attempts,2);assert.equal(h.render().recoveryRequired,true);assert.equal(h.pauses.at(-1),true);assert.deepEqual(h.flushes,[]);
   assert.equal([...h.timers.values()].some(timer=>timer.ms===15000 || timer.ms===60000),false);
+});
+
+
+test('register/me times out if response body hangs after headers', async () => {
+  await realStorage.set('ur_reg_token','synthetic-body-timeout');
+  const fetch = globalThis.fetch, timer = globalThis.setTimeout;
+  globalThis.fetch=async()=>({status:200,ok:true,json:()=>new Promise(()=>{})});
+  globalThis.setTimeout=(fn,ms,...args)=>timer(fn,ms===15000?5:ms,...args);
+  try { await assert.rejects(Promise.race([realRegAPI.me(),new Promise((_,reject)=>timer(()=>reject(Error('BODY_HUNG')),100))]),/ACCOUNT_FETCH_TIMEOUT/); assert.equal(await realStorage.get('ur_reg_token'),'synthetic-body-timeout'); }
+  finally { globalThis.fetch=fetch; globalThis.setTimeout=timer; }
+});
+
+test('failed logout restores pending auth verification for the same owner', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let calls=0;
+  h.regAPI.me=async()=>{calls++;if(calls===1)throw Object.assign(Error('temporary'),{status:503});return {id:'A',role:'client',verification_level:1};};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  assert.equal(calls,1); assert.ok([...h.timers.values()].some(t=>t.ms===5000));
+  h.tracking.stop=async()=>({ok:false,reason:'STOP_FAILED'});
+  const result=await h.render().signOut();for(let i=0;i<30;i++)await tick();
+  assert.equal(result.ok,false);assert.equal(h.data.get('ur_reg_token'),'token-A');
+  assert.equal(calls,2);assert.deepEqual(h.flushes,['A']);assert.equal(h.pauses.at(-1),false);
+});
+
+
+test('logout durable revoke failure resumes pending verification without clearing token', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let calls=0;
+  h.regAPI.me=async()=>{calls++;if(calls===1)throw Error('temporary');return {id:'A',role:'client',verification_level:1};};
+  h.regAPI.stageLogoutRevoke=async()=>{throw Error('storage failed');};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  const result=await h.render().signOut();for(let i=0;i<30;i++)await tick();
+  assert.equal(result.reason,'PENDING_LOGOUT_REVOKE_NOT_DURABLE');assert.equal(h.data.get('ur_reg_token'),'token-A');
+  assert.equal(calls,2);assert.deepEqual(h.flushes,['A']);
+});
+
+test('failed logout never retries verification after token changes', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0;let calls=0;
+  h.regAPI.me=async()=>{calls++;throw Error('temporary');};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  h.tracking.stop=async()=>{await h.storage.set('ur_reg_token','token-B');return {ok:false};};
+  await h.render().signOut();for(let i=0;i<20;i++)await tick();
+  assert.equal(calls,1);assert.deepEqual(h.flushes,[]);assert.equal(h.data.get('ur_reg_token'),'token-B');
 });
