@@ -209,8 +209,8 @@ def _expire_with_conn(conn, now: datetime) -> dict:
     # Новая политика включается только отдельной миграцией после backup и dry-run.
     from services import owned_publication_periods
     if owned_publication_periods.is_enabled(conn):
-        for kind, listing_id in owned_publication_periods.expire_due(conn, now=now):
-            (expired_cargos if kind == 'cargo' else expired_trips).append(listing_id)
+        for kind, listing_id in owned_publication_periods.auto_renew_due(conn, now=now):
+            (renewed_cargos if kind == 'cargo' else renewed_trips).append(listing_id)
     else:
         # Груз и рейс продлеваются циклами 30 суток с сохранением ID.
         # Даты маршрута не определяют срок, ставки сохраняют свой TTL 48ч.

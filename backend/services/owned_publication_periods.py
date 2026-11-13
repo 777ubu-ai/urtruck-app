@@ -142,8 +142,8 @@ def _ensure_new_periods(conn, now):
                 (kind,row['id'],row['owner_id'],str(uuid.uuid4()),_stamp(start),_stamp(start + PERIOD)))
 
 
-def expire_due(conn, *, now):
-    """Истечение и inbox атомарны даже при перехвате ошибки вызывающим кодом."""
+def _expire_due_legacy(conn, *, now):
+    """Только для проверки исторических истёкших записей; не вызывать в runtime."""
     started_transaction = not conn.in_transaction
     if started_transaction:
         conn.execute('BEGIN')
@@ -198,6 +198,65 @@ def _expire_due(conn, *, now):
     return expired
 
 
+def auto_renew_due(conn, *, now):
+    """Продлить только свободные активные объявления без изменения ID/истории."""
+    if not is_enabled(conn):
+        return []
+    started_transaction = not conn.in_transaction
+    if started_transaction:
+        conn.execute('BEGIN')
+    conn.execute('SAVEPOINT owned_publication_auto_renew')
+    try:
+        now = _utc(now)
+        _ensure_new_periods(conn, now)
+        renewed = []
+        for kind, table, owner, occupied in (('cargo', 'cargos', 'owner_id', 'taken_by'), ('trip', 'trips', 'driver_id', 'booked_by')):
+            rows = conn.execute(f"""SELECT l.id,l.{owner} AS owner_id,l.{occupied} AS occupied,
+                p.period_id,p.expires_at,p.owner_id AS period_owner,p.owner_hidden
+                FROM {table} l JOIN owned_publication_periods p ON p.kind=? AND p.listing_id=l.id
+                WHERE l.status='active' AND p.expires_at<=?""", (kind, _stamp(now))).fetchall()
+            deal_column = 'cargo_id' if kind == 'cargo' else 'trip_id'
+            marks = ','.join('?' for _ in BLOCKING_DEALS)
+            for row in rows:
+                due = _parse(row['expires_at'])
+                if (not due or row['occupied'] or row['owner_hidden'] or
+                        row['period_owner'] != row['owner_id'] or
+                        not _owner_available(conn, row['owner_id']) or
+                        _deal_exists(conn, kind, row['id'])):
+                    continue
+                cycle_start = due + ((now - due) // PERIOD) * PERIOD
+                updated = conn.execute(f"""UPDATE {table} SET published_at=?
+                    WHERE id=? AND {owner}=? AND status='active' AND COALESCE({occupied},'')=''
+                    AND NOT EXISTS (SELECT 1 FROM deals WHERE {deal_column}=? AND status IN ({marks}))
+                    AND EXISTS (SELECT 1 FROM owned_publication_periods p WHERE p.kind=? AND p.listing_id=?
+                        AND p.owner_id=? AND p.period_id=? AND p.owner_hidden=0 AND p.expires_at<=?)""",
+                    (_stamp(cycle_start), row['id'], row['owner_id'], row['id'], *BLOCKING_DEALS,
+                     kind, row['id'], row['owner_id'], row['period_id'], _stamp(now)))
+                if not updated.rowcount:
+                    continue
+                changed = conn.execute("""UPDATE owned_publication_periods
+                    SET previous_period_id=period_id,period_id=?,started_at=?,expires_at=?
+                    WHERE kind=? AND listing_id=? AND owner_id=? AND period_id=?""",
+                    (str(uuid.uuid4()), _stamp(cycle_start), _stamp(cycle_start + PERIOD),
+                     kind, row['id'], row['owner_id'], row['period_id']))
+                if changed.rowcount != 1:
+                    raise ValueError('auto_renewal_conflict')
+                renewed.append((kind, row['id']))
+        conn.execute('RELEASE SAVEPOINT owned_publication_auto_renew')
+        return renewed
+    except Exception:
+        conn.execute('ROLLBACK TO SAVEPOINT owned_publication_auto_renew')
+        conn.execute('RELEASE SAVEPOINT owned_publication_auto_renew')
+        if started_transaction:
+            conn.rollback()
+        raise
+
+
+def expire_due(conn, *, now):
+    """Совместимый вызов сроков: активные публикации продлеваются, не истекают."""
+    return auto_renew_due(conn, now=now)
+
+
 def renew(conn, *, kind, listing_id, owner_id, expected_period_id, now):
     """Одна операция на прежний period_id; caller сериализует BEGIN IMMEDIATE."""
     if not is_enabled(conn) or kind not in ('cargo','trip') or not expected_period_id:
@@ -247,9 +306,47 @@ def disposition(conn, *, kind, listing_id, owner_id, action):
     return {'ok': True, 'status': 'expired', 'hidden': action == 'hide'}
 
 
+def auto_renew_eligible_sql(kind, alias):
+    """Общий SQL-контракт для выдачи и request-time проверки срока."""
+    if (kind, alias) not in (('cargo','cargos'), ('cargo','c'), ('trip','trips'), ('trip','t')):
+        raise ValueError('unsupported_listing_kind')
+    owner, occupied, deal_column = ('owner_id','taken_by','cargo_id') if kind == 'cargo' else ('driver_id','booked_by','trip_id')
+    return f"""({alias}.status='active' AND COALESCE({alias}.{occupied},'')=''
+        AND COALESCE(p.owner_hidden,0)=0 AND p.owner_id IS {alias}.{owner}
+        AND COALESCE({alias}.{owner},'')!=''
+        AND EXISTS (SELECT 1 FROM drivers_registration u WHERE u.id={alias}.{owner}
+            AND lower(COALESCE(u.role,'')) NOT IN ('deleted','blocked','suspended','disabled','deactivated')
+            AND lower(COALESCE(u.status,'')) NOT IN ('deleted','blocked','suspended','disabled','deactivated'))
+        AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.{deal_column}={alias}.id
+            AND d.status IN ('accepted','in_progress','at_border','awaiting_confirmation','delivered','received','completed')))"""
+
+
+def public_listing_deadline_clause(kind):
+    """Не скрывать активную публикацию, ожидающую автоматического продления."""
+    if kind not in ('cargo', 'trip'):
+        raise ValueError('unsupported_listing_kind')
+    table = 'cargos' if kind == 'cargo' else 'trips'
+    eligible = auto_renew_eligible_sql(kind, table)
+    return f""" AND NOT EXISTS (
+        SELECT 1 FROM owned_publication_periods p
+        WHERE p.kind='{kind}' AND p.listing_id={table}.id
+          AND p.expires_at<=strftime('%Y-%m-%dT%H:%M:%f','now') || '000Z'
+          AND NOT {eligible}
+    )"""
+
+
 def is_due(conn, *, kind, listing_id, now):
     if not is_enabled(conn):
         return False
-    row = conn.execute('SELECT expires_at FROM owned_publication_periods WHERE kind=? AND listing_id=?', (kind,listing_id)).fetchone()
-    deadline = _parse(row[0]) if row else None
-    return bool(deadline and deadline <= _utc(now))
+    row = conn.execute('SELECT expires_at,owner_id,owner_hidden FROM owned_publication_periods WHERE kind=? AND listing_id=?', (kind,listing_id)).fetchone()
+    deadline = _parse(row['expires_at']) if row else None
+    if not deadline or deadline > _utc(now):
+        return False
+    if kind in ('cargo', 'trip'):
+        table, owner, occupied = ('cargos','owner_id','taken_by') if kind == 'cargo' else ('trips','driver_id','booked_by')
+        listing = conn.execute(f"SELECT status,{owner} AS owner_id,{occupied} AS occupied FROM {table} WHERE id=?", (listing_id,)).fetchone()
+        if (listing and listing['status'] == 'active' and not listing['occupied'] and
+                not row['owner_hidden'] and row['owner_id'] == listing['owner_id'] and
+                _owner_available(conn, listing['owner_id']) and not _deal_exists(conn, kind, listing_id)):
+            return False
+    return True

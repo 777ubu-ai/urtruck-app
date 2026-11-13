@@ -93,15 +93,15 @@ def _market_expiry_due(conn: sqlite3.Connection) -> bool:
     # На включённой политике срок хранится отдельно от даты публикации.
     from services import owned_publication_periods
     if owned_publication_periods.is_enabled(conn):
+        cargo_eligible = owned_publication_periods.auto_renew_eligible_sql('cargo', 'c')
+        trip_eligible = owned_publication_periods.auto_renew_eligible_sql('trip', 't')
         due = conn.execute(f"""
             SELECT 1 FROM owned_publication_periods p
             LEFT JOIN cargos c ON p.kind='cargo' AND c.id=p.listing_id
             LEFT JOIN trips t ON p.kind='trip' AND t.id=p.listing_id
             WHERE p.expires_at<=strftime('%Y-%m-%dT%H:%M:%f','now') || '000Z'
-              AND ((p.kind='cargo' AND c.status='active' AND COALESCE(c.taken_by,'')=''
-                    AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.cargo_id=c.id AND d.status IN ({active_deals})))
-                OR (p.kind='trip' AND t.status='active' AND COALESCE(t.booked_by,'')=''
-                    AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.trip_id=t.id AND d.status IN ({active_deals}))))
+              AND ((p.kind='cargo' AND {cargo_eligible})
+                OR (p.kind='trip' AND {trip_eligible}))
             LIMIT 1
         """).fetchone()
         return bool(due)

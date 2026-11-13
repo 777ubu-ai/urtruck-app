@@ -66,17 +66,17 @@ def test_expiry_notification_renewal_and_idempotency(kind, listing_id, owner):
     c = lifecycle_database()
     at = NOW + timedelta(days=30)
     old = c.execute('SELECT period_id FROM owned_publication_periods WHERE kind=? AND listing_id=?',(kind,listing_id)).fetchone()[0]
-    assert periods.expire_due(c, now=at-timedelta(microseconds=1)) == []
-    result = periods.expire_due(c, now=at)
+    assert periods._expire_due_legacy(c, now=at-timedelta(microseconds=1)) == []
+    result = periods._expire_due_legacy(c, now=at)
     assert (kind,listing_id) in result
-    assert periods.expire_due(c, now=at+timedelta(seconds=1)) == []
+    assert periods._expire_due_legacy(c, now=at+timedelta(seconds=1)) == []
     assert c.execute('SELECT COUNT(*) FROM notifications WHERE user_id=?',(owner,)).fetchone()[0] == 1
     renewed = periods.renew(c, kind=kind, listing_id=listing_id, owner_id=owner, expected_period_id=old, now=at)
     again = periods.renew(c, kind=kind, listing_id=listing_id, owner_id=owner, expected_period_id=old, now=at+timedelta(seconds=5))
     assert again == renewed
     assert periods._parse(renewed['expires_at']) == at + timedelta(days=30)
     assert c.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == 'expired'
-    periods.expire_due(c, now=at+timedelta(days=30))
+    periods._expire_due_legacy(c, now=at+timedelta(days=30))
     assert c.execute('SELECT COUNT(*) FROM notifications WHERE user_id=?',(owner,)).fetchone()[0] == 2
 
 
@@ -84,8 +84,8 @@ def test_boundary_does_not_depend_on_sqlite_julianday_rounding():
     c = lifecycle_database()
     c.create_function('julianday', 1, lambda _: 1.0)
     at = NOW + timedelta(days=30)
-    assert periods.expire_due(c, now=at-timedelta(microseconds=1)) == []
-    assert set(periods.expire_due(c, now=at)) == {('cargo','c1'), ('trip','t1')}
+    assert periods._expire_due_legacy(c, now=at-timedelta(microseconds=1)) == []
+    assert set(periods._expire_due_legacy(c, now=at)) == {('cargo','c1'), ('trip','t1')}
 
 
 @pytest.mark.parametrize('locale', ['RU','KK','EN','ZH','TR','UZ','KY','TG','BE'])
@@ -94,7 +94,7 @@ def test_expiry_inbox_has_each_supported_locale_for_both_roles(kind, owner, loca
     c = lifecycle_database()
     c.execute('CREATE TABLE push_devices(id INTEGER PRIMARY KEY,user_id TEXT,locale TEXT,enabled INTEGER,last_seen_at TEXT)')
     c.execute('INSERT INTO push_devices VALUES(1,?,?,1,?)', (owner, locale, '2026-11-11'))
-    periods.expire_due(c, now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c, now=NOW+timedelta(days=30))
     row = c.execute('SELECT title,body FROM notifications WHERE user_id=?', (owner,)).fetchone()
     assert tuple(row) == periods.EXPIRY_TEXT[locale]
     assert all(row) and (locale == 'RU' or tuple(row) != periods.EXPIRY_TEXT['RU'])
@@ -105,7 +105,7 @@ def test_blocked_owner_deals_and_wrong_owner_cannot_renew():
     at = NOW + timedelta(days=30)
     original = c.execute("SELECT period_id FROM owned_publication_periods WHERE kind='cargo' AND listing_id='c1'").fetchone()[0]
     c.execute("INSERT INTO deals VALUES('d1','c1',NULL,'in_progress')")
-    periods.expire_due(c, now=at)
+    periods._expire_due_legacy(c, now=at)
     assert c.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == 'active'
     assert c.execute("SELECT status FROM deals WHERE id='d1'").fetchone()[0] == 'in_progress'
     with pytest.raises(PermissionError):
@@ -120,7 +120,7 @@ def test_empty_legacy_occupancy_is_not_treated_as_a_blocking_deal():
     c = lifecycle_database()
     c.execute("UPDATE cargos SET taken_by='' WHERE id='c1'")
     c.execute("UPDATE trips SET booked_by='' WHERE id='t1'")
-    assert set(periods.expire_due(c, now=NOW+timedelta(days=30))) == {('cargo','c1'),('trip','t1')}
+    assert set(periods._expire_due_legacy(c, now=NOW+timedelta(days=30))) == {('cargo','c1'),('trip','t1')}
     assert c.execute('SELECT COUNT(*) FROM notifications').fetchone()[0] == 2
 
 
@@ -129,7 +129,7 @@ def test_failed_notification_rolls_back_expiry_even_if_caller_catches_error():
     c.executescript('''CREATE TRIGGER fail_notification BEFORE INSERT ON notifications
                        BEGIN SELECT RAISE(ABORT, 'notification failed'); END;''')
     with pytest.raises(sqlite3.IntegrityError):
-        periods.expire_due(c, now=NOW+timedelta(days=30))
+        periods._expire_due_legacy(c, now=NOW+timedelta(days=30))
     c.commit()
     assert c.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == 'active'
     assert c.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == 'active'
@@ -144,7 +144,7 @@ def test_legacy_republish_never_reports_success_for_an_expired_period(monkeypatc
     c = lifecycle_database()
     c.execute('ALTER TABLE cargos ADD COLUMN pickup_date TEXT')
     c.execute('ALTER TABLE trips ADD COLUMN departure TEXT')
-    periods.expire_due(c, now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c, now=NOW+timedelta(days=30))
     @contextmanager
     def connection():
         yield c
@@ -160,7 +160,7 @@ def test_legacy_republish_never_reports_success_for_an_expired_period(monkeypatc
 @pytest.mark.parametrize('kind,listing_id,owner',[('cargo','c1','u1'),('trip','t1','u2')])
 def test_owner_archive_and_hide_never_delete_or_change_related_data(kind, listing_id, owner):
     c = lifecycle_database()
-    periods.expire_due(c,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c,now=NOW+timedelta(days=30))
     assert periods.disposition(c,kind=kind,listing_id=listing_id,owner_id=owner,action='archive')['hidden'] is False
     with pytest.raises(PermissionError):
         periods.disposition(c,kind=kind,listing_id=listing_id,owner_id='stranger',action='hide')
@@ -184,7 +184,7 @@ def test_unavailable_owner_never_gets_renewed_or_notified():
     c = lifecycle_database()
     period_id = c.execute("SELECT period_id FROM owned_publication_periods WHERE kind='cargo' AND listing_id='c1'").fetchone()[0]
     c.execute("UPDATE drivers_registration SET status='deleted' WHERE id='u1'")
-    periods.expire_due(c,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c,now=NOW+timedelta(days=30))
     assert c.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == 'expired'
     assert c.execute("SELECT count(*) FROM notifications WHERE user_id='u1'").fetchone()[0] == 0
     with pytest.raises(ValueError):
@@ -194,7 +194,7 @@ def test_unavailable_owner_never_gets_renewed_or_notified():
 def test_expiry_is_in_app_only_and_does_not_create_push_outbox():
     c = lifecycle_database()
     c.execute('CREATE TABLE push_outbox(event_id TEXT)')
-    periods.expire_due(c,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c,now=NOW+timedelta(days=30))
     assert c.execute('SELECT count(*) FROM notifications').fetchone()[0] == 2
     assert c.execute('SELECT count(*) FROM push_outbox').fetchone()[0] == 0
     keys = [r[0] for r in c.execute('SELECT event_key FROM notifications')]
@@ -205,7 +205,7 @@ def test_owner_api_hides_only_own_expired_item_and_keeps_rows(monkeypatch):
     from contextlib import contextmanager
     from api import marketplace
     c = lifecycle_database()
-    periods.expire_due(c,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(c,now=NOW+timedelta(days=30))
     c.commit()
 
     @contextmanager
@@ -240,7 +240,7 @@ def test_concurrent_renewal_is_idempotent_on_disk(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
     source = lifecycle_database()
-    periods.expire_due(source,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(source,now=NOW+timedelta(days=30))
     source.commit()
     path = tmp_path / 'synthetic.sqlite3'
     target = sqlite3.connect(path)
@@ -274,7 +274,7 @@ def test_http_owner_renewal_is_idempotent_and_rejects_strangers(tmp_path, monkey
     from fastapi.testclient import TestClient
     from api import marketplace
     source = lifecycle_database()
-    periods.expire_due(source,now=NOW+timedelta(days=30))
+    periods._expire_due_legacy(source,now=NOW+timedelta(days=30))
     source.commit()
     path = tmp_path / 'synthetic-api.sqlite3'
     dest = sqlite3.connect(path)
@@ -312,7 +312,7 @@ def test_http_owner_renewal_is_idempotent_and_rejects_strangers(tmp_path, monkey
     assert first.json()['ok'] is True
 
 
-def test_real_cleanup_path_expires_both_roles_without_opening_app():
+def test_real_scheduler_renews_both_roles_without_opening_app():
     from services import bid_expiry
     c = lifecycle_database()
     c.executescript('''
@@ -326,10 +326,13 @@ def test_real_cleanup_path_expires_both_roles_without_opening_app():
     at = NOW + timedelta(days=30)
     first = bid_expiry.expire_stale_marketplace(now=at,conn=c)
     second = bid_expiry.expire_stale_marketplace(now=at,conn=c)
-    assert first['expired_cargos'] == ['c1']
-    assert first['expired_trips'] == ['t1']
-    assert not second['expired_cargos'] and not second['expired_trips']
-    assert c.execute('SELECT count(*) FROM notifications').fetchone()[0] == 2
+    assert first['renewed_cargos'] == ['c1']
+    assert first['renewed_trips'] == ['t1']
+    assert not first['expired_cargos'] and not first['expired_trips']
+    assert not second['renewed_cargos'] and not second['renewed_trips']
+    assert c.execute('SELECT count(*) FROM notifications').fetchone()[0] == 0
+    assert c.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == 'active'
+    assert c.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == 'active'
 
 
 def test_background_job_calls_expiry_only_after_activation(tmp_path, monkeypatch):
@@ -350,3 +353,152 @@ def test_background_job_calls_expiry_only_after_activation(tmp_path, monkeypatch
     conn.commit(); conn.close()
     jobs.owned_publication_expiry_job()
     assert calls == ['run']
+
+
+@pytest.mark.parametrize('kind,listing_id,table,owner_col,owner', [('cargo','c1','cargos','owner_id','u1'),('trip','t1','trips','driver_id','u2')])
+def test_active_owned_listing_auto_renews_without_reactivation_or_data_loss(kind, listing_id, table, owner_col, owner):
+    c = lifecycle_database()
+    before = dict(c.execute(f'SELECT * FROM {table} WHERE id=?', (listing_id,)).fetchone())
+    deadline = NOW + timedelta(days=30)
+    assert periods.is_due(c, kind=kind, listing_id=listing_id, now=deadline) is False
+    periods.auto_renew_due(c, now=deadline)
+    after = dict(c.execute(f'SELECT * FROM {table} WHERE id=?', (listing_id,)).fetchone())
+    assert after['status'] == 'active'
+    assert after['id'] == before['id'] and after[owner_col] == owner
+    assert all(after[k] == before[k] for k in before if k not in ('published_at','updated_at'))
+    period = c.execute('SELECT expires_at FROM owned_publication_periods WHERE kind=? AND listing_id=?',(kind,listing_id)).fetchone()
+    assert periods._parse(period['expires_at']) == deadline + timedelta(days=30)
+    assert c.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == 'expired'
+    assert c.execute("SELECT count(*) FROM notifications WHERE user_id=? AND type='listing_lifecycle'",(owner,)).fetchone()[0] == 0
+    assert periods.auto_renew_due(c, now=deadline+timedelta(seconds=1)) == []
+
+
+@pytest.mark.parametrize('kind,table,listing_id,owner', [('cargo','cargos','c1','u1'),('trip','trips','t1','u2')])
+def test_due_active_visible_before_scheduler_and_closed_or_blocked_never_revived(kind, table, listing_id, owner):
+    c = lifecycle_database()
+    c.execute("UPDATE owned_publication_periods SET expires_at='2000-01-01T00:00:00.000000Z' WHERE kind=? AND listing_id=?", (kind, listing_id))
+    query = f"SELECT id FROM {table} WHERE status='active'" + periods.public_listing_deadline_clause(kind)
+    assert listing_id in [row[0] for row in c.execute(query)]
+    c.execute("UPDATE drivers_registration SET status='blocked' WHERE id=?", (owner,))
+    assert listing_id not in [row[0] for row in c.execute(query)]
+    assert periods.is_due(c, kind=kind, listing_id=listing_id, now=NOW)
+    periods.auto_renew_due(c, now=NOW)
+    assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing_id,)).fetchone()[0] == 'active'
+    c.execute(f"UPDATE {table} SET status='cancelled' WHERE id=?", (listing_id,))
+    periods.auto_renew_due(c, now=NOW+timedelta(days=31))
+    assert c.execute(f"SELECT status FROM {table} WHERE id=?", (listing_id,)).fetchone()[0] == 'cancelled'
+
+
+@pytest.mark.parametrize('kind,table,listing_id', [('cargo','cargos','c1'),('trip','trips','t1')])
+def test_occupied_and_completed_deal_never_automatically_renew(kind, table, listing_id):
+    c = lifecycle_database()
+    col = 'cargo_id' if kind == 'cargo' else 'trip_id'
+    c.execute(f"INSERT INTO deals(id,{col},status) VALUES('done',?,'completed')", (listing_id,))
+    period = c.execute('SELECT * FROM owned_publication_periods WHERE kind=? AND listing_id=?', (kind, listing_id)).fetchone()
+    periods.auto_renew_due(c, now=NOW+timedelta(days=30))
+    after = c.execute('SELECT * FROM owned_publication_periods WHERE kind=? AND listing_id=?', (kind, listing_id)).fetchone()
+    assert dict(after) == dict(period)
+    assert c.execute(f'SELECT status FROM {table} WHERE id=?',(listing_id,)).fetchone()[0] == 'active'
+
+
+def test_late_scheduler_advances_exactly_to_current_30_day_cycle():
+    c = lifecycle_database()
+    now = NOW + timedelta(days=95)
+    assert set(periods.auto_renew_due(c, now=now)) == {('cargo','c1'),('trip','t1')}
+    for row in c.execute('SELECT * FROM owned_publication_periods'):
+        assert periods._parse(row['started_at']) == NOW + timedelta(days=90)
+        assert periods._parse(row['expires_at']) == NOW + timedelta(days=120)
+    assert periods.auto_renew_due(c, now=now+timedelta(seconds=1)) == []
+
+
+def test_auto_renew_rolls_back_on_period_write_failure():
+    c = lifecycle_database()
+    c.executescript("""CREATE TRIGGER reject_period_update BEFORE UPDATE ON owned_publication_periods
+                     BEGIN SELECT RAISE(ABORT, 'period failed'); END;""")
+    before = tuple(c.execute("SELECT * FROM cargos WHERE id='c1'").fetchone())
+    with pytest.raises(sqlite3.IntegrityError):
+        periods.auto_renew_due(c, now=NOW+timedelta(days=30))
+    assert tuple(c.execute("SELECT * FROM cargos WHERE id='c1'").fetchone()) == before
+
+
+@pytest.mark.parametrize('kind,table,listing_id,occupied', [('cargo','cargos','c1','taken_by'),('trip','trips','t1','booked_by')])
+def test_occupied_listing_stays_unmodified(kind, table, listing_id, occupied):
+    c = lifecycle_database()
+    c.execute(f'UPDATE {table} SET {occupied}=? WHERE id=?', ('someone', listing_id))
+    before = dict(c.execute(f'SELECT * FROM {table} WHERE id=?', (listing_id,)).fetchone())
+    period = dict(c.execute('SELECT * FROM owned_publication_periods WHERE kind=? AND listing_id=?',(kind,listing_id)).fetchone())
+    periods.auto_renew_due(c, now=NOW+timedelta(days=30))
+    assert dict(c.execute(f'SELECT * FROM {table} WHERE id=?',(listing_id,)).fetchone()) == before
+    assert dict(c.execute('SELECT * FROM owned_publication_periods WHERE kind=? AND listing_id=?',(kind,listing_id)).fetchone()) == period
+
+
+def test_concurrent_auto_renew_produces_one_cycle_and_preserves_rows(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    source = lifecycle_database()
+    source.commit()
+    path = tmp_path / 'auto-renew.db'
+    dest = sqlite3.connect(path)
+    source.backup(dest)
+    dest.close()
+    barrier = Barrier(2)
+    def worker():
+        c = sqlite3.connect(path, timeout=5)
+        c.row_factory = sqlite3.Row
+        barrier.wait()
+        c.execute('BEGIN IMMEDIATE')
+        try:
+            result = periods.auto_renew_due(c, now=NOW+timedelta(days=30))
+            c.commit()
+            return result
+        finally:
+            c.close()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: worker(), range(2)))
+    assert sorted(len(result) for result in results) == [0, 2]
+    c = sqlite3.connect(path)
+    assert c.execute("SELECT count(*) FROM cargos WHERE id='c1' AND status='active'").fetchone()[0] == 1
+    assert c.execute("SELECT count(*) FROM trips WHERE id='t1' AND status='active'").fetchone()[0] == 1
+    assert c.execute("SELECT status FROM bids WHERE id='b1'").fetchone()[0] == 'expired'
+
+
+def test_request_time_probe_ignores_unrenewable_due_rows_and_detects_eligible():
+    from database.db import _market_expiry_due
+    c = lifecycle_database()
+    c.executescript("""
+        ALTER TABLE bids ADD COLUMN updated_at TEXT;
+        ALTER TABLE bids ADD COLUMN created_at TEXT;
+        UPDATE owned_publication_periods SET expires_at='2000-01-01T00:00:00.000000Z';
+        INSERT INTO deals VALUES('finished','c1',NULL,'completed');
+        UPDATE drivers_registration SET status='blocked' WHERE id='u2';
+    """)
+    assert not _market_expiry_due(c), 'unrenewable rows must not trigger repeated request-time cleanup'
+    c.execute("UPDATE drivers_registration SET status='approved' WHERE id='u2'")
+    assert _market_expiry_due(c), 'eligible due trip must still trigger renewal'
+
+
+@pytest.mark.parametrize('kind,table,listing_id', [('cargo','cargos','c1'),('trip','trips','t1')])
+def test_due_listing_accepts_bid_before_scheduler_but_completed_deal_blocks(kind, table, listing_id, monkeypatch):
+    from api import marketplace
+    class DueClock(datetime):
+        @classmethod
+        def utcnow(cls):
+            return NOW + timedelta(days=30)
+    monkeypatch.setattr(marketplace, 'datetime', DueClock)
+    c = lifecycle_database()
+    row = dict(c.execute(f'SELECT * FROM {table} WHERE id=?',(listing_id,)).fetchone())
+    marketplace._require_current_bid_listing(row, conn=c)
+    col = 'cargo_id' if kind == 'cargo' else 'trip_id'
+    c.execute(f"INSERT INTO deals(id,{col},status) VALUES('past',?,'completed')", (listing_id,))
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as denied:
+        marketplace._require_current_bid_listing(row, conn=c)
+    assert denied.value.status_code == 409
+
+
+def test_compatibility_expire_due_entrypoint_renews_active_without_expiry():
+    c = lifecycle_database()
+    assert set(periods.expire_due(c, now=NOW+timedelta(days=30))) == {('cargo','c1'),('trip','t1')}
+    assert c.execute("SELECT status FROM cargos WHERE id='c1'").fetchone()[0] == 'active'
+    assert c.execute("SELECT status FROM trips WHERE id='t1'").fetchone()[0] == 'active'
+    assert c.execute('SELECT count(*) FROM notifications').fetchone()[0] == 0
