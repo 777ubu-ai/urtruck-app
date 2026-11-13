@@ -239,6 +239,46 @@ test('role change while verification is pending restarts retry for the same owne
   assert.equal(attempts,3); assert.deepEqual(h.flushes,['A']);
 });
 
+test('устаревший /me не теряет повторную проверку роли, пока запись сессии ожидает storage', async () => {
+  const h=harness(null,{fakeTimers:true}); h.flushes.length=0;
+  let attempts=0, resolveFirst;
+  h.regAPI.me=()=>{
+    attempts++;
+    if(attempts===1)return new Promise(resolve=>{resolveFirst=resolve;});
+    return Promise.resolve({id:'A',role:'driver',verification_level:1});
+  };
+  await h.boot();
+  for(let i=0;i<20&&!resolveFirst;i++)await tick();
+  assert.equal(attempts,1,'boot starts the original in-flight /me request');
+
+  const originalSet=h.storage.set; let releaseRoleWrite;
+  h.storage.set=async(k,v)=>{
+    if(k==='ur_session')await new Promise(resolve=>{releaseRoleWrite=()=>originalSet(k,v).then(resolve);});
+    else await originalSet(k,v);
+  };
+  const roleChange=h.render().setRole('driver');
+  for(let i=0;i<10&&!releaseRoleWrite;i++)await tick();
+  assert.equal(typeof releaseRoleWrite,'function','role session write is deliberately held');
+
+  resolveFirst({id:'A',role:'client',verification_level:1});
+  for(let i=0;i<20;i++)await tick();
+  assert.deepEqual(h.flushes,[],'stale verification must not resume the outbox');
+
+  const release=releaseRoleWrite;
+  releaseRoleWrite=null;
+  // Release only the held setRole write; the subsequent session write, if any,
+  // uses the original storage implementation.
+  h.storage.set=originalSet;
+  release();
+  await roleChange;
+  for(let i=0;i<30;i++)await tick();
+
+  assert.equal(attempts,2,'setRole restarts verification for the current generation');
+  assert.equal(h.render().session.user.role,'driver');
+  assert.equal(h.pauses.at(-1),false);
+  assert.deepEqual(h.flushes,['A']);
+});
+
 test('confirmed 401 does not retry or resume queued messages', async () => {
   const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let attempts=0;
   h.regAPI.me=async()=>{attempts++;throw Object.assign(Error('AUTH_REQUIRED'),{status:401,code:'AUTH_REQUIRED'});};

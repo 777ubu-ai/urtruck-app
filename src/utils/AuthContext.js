@@ -190,7 +190,11 @@ export const AuthProvider = ({ children }) => {
       if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
       try {
         await refreshLevel({ expectedToken: token, expectedGeneration: generation });
-        if (state.epoch === epoch) state.pending = false;
+        // Смена роли увеличивает authGenerationRef до завершения записи сессии.
+        // Старый ответ /me может стать устаревшим, пока setRole ещё не успел
+        // запустить проверку заново. Сохраняем pending, пока новую проверку
+        // не возьмёт на себя актуальное поколение сессии.
+        if (state.epoch === epoch && authGenerationRef.current === generation) state.pending = false;
       } catch {
         if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
         const delay = index === 0 ? 5000 : index === 1 ? 15000 : 60000;
