@@ -7,7 +7,7 @@ import { useAuth } from '../utils/AuthContext';
 import { useI18n } from '../utils/useI18n';
 import { useV1Colors } from '../theme/designV1';
 import { expenseAPI } from '../utils/expenseAPI';
-import { getExpenseCopy } from '../utils/expenseCopy';
+import { getExpenseCopy, getExpenseFailureMessage } from '../utils/expenseCopy';
 import { EXPENSE_CATEGORIES, EXPENSE_CURRENCIES, localExpenseDate, newExpenseClientId, makeExpenseBody, formatExpenseMoney } from '../utils/expenseModel';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 
@@ -39,8 +39,7 @@ export default function DriverExpensesScreen({ route, navigation }) {
   const page = data.owner === owner && data.filterKey === filterKey ? data : { expenses: [], vehicles: [], deals: [], totals: [], total: 0 };
   const activeForm = form?.owner === owner ? form : null;
   const money = (item) => formatExpenseMoney(item.amount, item.currency, lang);
-  const failure = (result, saving = false) => result?.status === 409 ? c.conflict
-    : [404, 503].includes(result?.status) ? c.unavailable : saving ? c.saveError : c.error;
+  const failure = (result, saving = false) => getExpenseFailureMessage(result, lang, saving);
 
   const load = useCallback(async (append = false) => {
     if (!owner || !driver) return;

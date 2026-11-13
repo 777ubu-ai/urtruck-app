@@ -8,12 +8,12 @@ const driverRegistration = fs.readFileSync('backend/api/driver_registration.py',
 const attachments = fs.readFileSync('src/components/deal/DealAttachments.js', 'utf8');
 const profileMenu = fs.readFileSync('src/screens/ProfileScreen.js', 'utf8');
 
-test('active ProfileV2 keeps additional company and location fields outside registration', () => {
+test('active ProfileV2 permits additional company and location fields during registration', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /testID="profile-v2-phone"/);
-  assert.doesNotMatch(profile, /id="company"/);
-  assert.doesNotMatch(profile, /id="country"/);
-  assert.doesNotMatch(profile, /id="city"/);
+  assert.match(profile, /'company'/);
+  assert.match(profile, /'country'/);
+  assert.match(profile, /'city'/);
   assert.match(profile, /const basicFormValid = validName && validPhone/);
   assert.match(profile, /if \(!validName\) next\.name/);
   assert.match(profile, /if \(!validPhone\) next\.phone/);
@@ -59,9 +59,11 @@ test('both roles share green registration without mandatory vehicle setup', () =
   assert.doesNotMatch(profileMenu, /icon: 'heart'/);
 });
 
-test('uploaded deal documents are openable signed attachments inside chat', () => {
-  assert.match(attachments, /Linking\.openURL\(url\)/);
-  assert.match(attachments, /item\?\.url \|\| item\?\.signed_url \|\| item\?\.download_url/);
+test('uploaded deal documents open through the protected room and attachment API', () => {
+  assert.match(attachments, /openPrivateChatAttachment\(conversationId, item\.id/);
+  assert.match(attachments, /downloadPrivateAttachment\(conversationId, item\.id/);
+  assert.match(attachments, /secureFile: \{ roomId: conversationId, fileId: item\.id \}/);
+  assert.doesNotMatch(attachments, /Linking\.openURL\(/);
   assert.match(attachments, /testID=\{onOpen \? 'deal-attachment-open'/);
   assert.match(attachments, /formatBytes\(a\.size_bytes\)/);
 });

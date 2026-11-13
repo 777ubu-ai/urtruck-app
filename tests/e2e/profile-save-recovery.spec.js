@@ -6,7 +6,7 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) {
   throw new Error('Profile recovery mock test requires a local web export');
 }
 
-async function openProfile(page, role, response = { ok: true }) {
+async function openProfile(page, role, response = { ok: true }, existing = {}) {
   const state = { userId: 'mock-profile-user', role: 'guest', level: 1, patches: [], completes: 0, completeResponse: { ok: true }, response, pageErrors: [] };
   page.on('pageerror', (error) => state.pageErrors.push(error.message));
   await page.route('**/*', async (route) => {
@@ -27,7 +27,7 @@ async function openProfile(page, role, response = { ok: true }) {
           if (body.ok) state.role = role;
           return route.fulfill({ status: state.response.status || 200, contentType: 'application/json', body: JSON.stringify(body) });
         }
-        body = { id: state.userId, name: '', phone: null, role: state.role };
+        body = { id: state.userId, name: '', phone: null, role: state.role, ...existing };
       } else if (url.pathname.endsWith('/driver/registration/complete-basic')) {
         state.completes++;
         return route.fulfill({ status: state.completeResponse.ok ? 200 : 503, contentType: 'application/json', body: JSON.stringify(state.completeResponse) });
@@ -58,12 +58,21 @@ async function openProfile(page, role, response = { ok: true }) {
   await page.getByTestId(`role-v2-${role}`).click();
   await page.getByTestId('role-v2-cta').click();
   await expect(page.getByTestId('profile-v2-screen')).toBeVisible();
+  if (existing.name) await expect(page.getByTestId('profile-v2-name')).toHaveValue(existing.name);
   await page.getByTestId('profile-v2-name').fill('QA Profile');
   await page.getByTestId('profile-v2-phone').fill('+77000000001');
   if (process.env.REGISTRATION_SCREENSHOTS && page.viewportSize().width === 393) {
     await page.getByTestId('profile-v2-screen').screenshot({ path: process.env.REGISTRATION_SCREENSHOTS + '/' + role + '-registration.png' });
   }
   return state;
+}
+
+async function returnFromFirstExternalFeed(page) {
+  await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
+  const close = page.getByRole('button', { name: 'Отмена', exact: true });
+  const nav = page.getByTestId('bottom-nav');
+  await expect.poll(async () => await close.isVisible().catch(() => false) || await nav.isVisible().catch(() => false)).toBeTruthy();
+  if (await close.isVisible()) await close.click();
 }
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 393, height: 852 }, { width: 360, height: 800 }]) {
@@ -113,6 +122,7 @@ test('черновики регистрации изолированы по вл
 test('черновик очищается после успешного сохранения', async ({ page }) => {
   const state = await openProfile(page, 'client');
   await page.getByTestId('profile-v2-cta').click();
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
   state.role = 'guest';
   await page.reload();
@@ -135,13 +145,25 @@ test('client сохраняет профиль с пустыми optional fields
   expect(state.patches[0]).toEqual({ role: 'client', name: 'QA Profile', phone: '+77000000001' });
 });
 
-test('обе роли видят только имя и телефон, подтверждённая почта показана отдельно', async ({ page }) => {
+test('необязательные поля видны, подтверждённая почта показана отдельно', async ({ page }) => {
   await openProfile(page, 'client');
-  for (const field of ['company', 'country', 'city', 'messenger', 'iin', 'birthDate']) {
+  for (const field of ['iin', 'birthDate']) {
     await expect(page.getByTestId(`profile-v2-${field}`)).toHaveCount(0);
   }
+  for (const field of ['company', 'country', 'city']) await expect(page.getByTestId(`profile-v2-${field}`)).toBeVisible();
   await expect(page.getByTestId('profile-v2-screen').getByTestId('auth-confirmed-email')).toBeVisible();
   await expect(page.getByTestId('profile-v2-cta')).toBeEnabled();
+});
+
+test('существующие дополнительные поля не затираются; явная очистка отправляется', async ({ page }) => {
+  const existing = { name: 'Existing Name', company_name: 'QA Company', country: 'KZ', city: 'Almaty', messenger_type: 'telegram', messenger_id: '@qa' };
+  const state = await openProfile(page, 'client', { ok: true }, existing);
+  await expect(page.getByTestId('profile-v2-company')).toHaveValue('QA Company');
+  await expect(page.getByTestId('profile-v2-messenger')).toHaveValue('@qa');
+  await page.getByTestId('profile-v2-company').fill('');
+  await page.getByTestId('profile-v2-cta').click();
+  await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
+  expect(state.patches[0]).toEqual({ role: 'client', name: 'QA Profile', phone: '+77000000001', company_name: '' });
 });
 
 test('ошибка смены телефона видна, данные сохранены, повторный Save возможен', async ({ page }) => {
@@ -163,6 +185,7 @@ test('driver после сохранения входит без добавле�
   await page.getByTestId('profile-v2-cta').click();
   await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
   await expect(page.getByTestId('vehicle-setup-single-screen')).toHaveCount(0);
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
   expect(state.completes).toBe(1);
   expect(state.patches).toHaveLength(1);
@@ -185,6 +208,7 @@ test('код Китая и международный номер сохраня�
   await page.getByTestId('country-row-CN').click();
   await page.getByTestId('profile-v2-phone').fill('13800138000');
   await page.getByTestId('profile-v2-cta').click();
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
   expect(state.patches[0].phone).toBe('+8613800138000');
 });
@@ -196,6 +220,7 @@ test('ошибка complete-basic сохраняет форму, повторн�
   await expect(page.getByTestId('profile-v2-name')).toHaveValue('QA Profile');
   state.completeResponse = { ok: true };
   await page.getByTestId('profile-v2-cta').click();
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
   expect(state.completes).toBe(2);
 });
@@ -219,6 +244,7 @@ test('смена языка не очищает форму, регистраци
 test('повторные нажатия создают один запрос сохранения', async ({ page }) => {
   const state = await openProfile(page, 'client');
   await page.getByTestId('profile-v2-cta').evaluate((button) => { button.click(); button.click(); button.click(); });
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
   expect(state.patches).toHaveLength(1);
 });
@@ -230,6 +256,7 @@ test('ошибка сервера сохраняет данные и позво�
   await expect(page.getByTestId('profile-v2-phone')).toHaveValue('7000000001');
   state.response = { ok: true };
   await page.getByTestId('profile-v2-cta').click();
+  await returnFromFirstExternalFeed(page);
   await expect(page.getByTestId('bottom-nav')).toBeVisible();
 });
 

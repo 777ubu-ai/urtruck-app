@@ -57,9 +57,10 @@ def test_repeat_and_after_21_hours_are_one_event_and_delivery(env):
     assert jobs.no_bids_job(now=datetime.utcnow()+timedelta(hours=21))==0
     assert count('notifications',"type='no_bids'")==1
     assert count('push_outbox')==1
-    assert gateway.process_pending_once()['sent']==1
+    assert gateway.process_pending_once()['skipped']==1
     assert gateway.process_pending_once()['picked']==0
-    assert len(env)==1 and env[0]['event_id']=='no_bids:cargo:cargo' and env[0]['url']=='/cargos/cargo'
+    assert env==[]
+    assert count('notifications', "event_key='no_bids:cargo:cargo'")==1
 
 
 def test_parallel_scheduler_claims_one_logical_event(env):
@@ -69,7 +70,7 @@ def test_parallel_scheduler_claims_one_logical_event(env):
     assert sum(result)==1
     assert count('notifications',"type='no_bids'")==count('push_outbox')==1
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:list(pool.map(lambda _:gateway.process_pending_once(),range(2)))
-    assert len(env)==1
+    assert env==[]
 
 
 @pytest.mark.parametrize('shape',['iso','sqlite'])
@@ -133,8 +134,8 @@ def test_two_entities_and_two_devices_keep_independent_ids(env):
     cargo();cargo('cargo-2')
     with db.get_conn() as c:c.execute("INSERT INTO push_devices(user_id,device_id,platform,push_provider,push_token,locale,enabled) VALUES ('owner','ios-owner','ios','apns',?,'ZH',1)",('a'*64,))
     assert jobs.no_bids_job()==2
-    assert gateway.process_pending_once()['sent']==2
-    assert len(env)==4 and len({x['event_id'] for x in env})==2
+    assert gateway.process_pending_once()['skipped']==2
+    assert env==[] and count('notifications')==2
 
 
 def test_sender_and_worker_share_claim_under_concurrent_send(env,monkeypatch):
@@ -265,8 +266,11 @@ def test_trip_owner_and_existing_bid_follow_same_rule(env):
     with db.get_conn() as c:
         c.execute("INSERT INTO trips(id,driver_id,from_city,to_city,status,created_at) VALUES ('trip','driver','Город A','Город B','active',?)",((datetime.utcnow()-timedelta(hours=20)).strftime('%Y-%m-%d %H:%M:%S'),))
     assert jobs.no_bids_job()==1
-    gateway.process_pending_once();assert env[0]['url']=='/trips/trip'
-    assert env[0]['event_id']=='no_bids:trip:trip'
+    assert gateway.process_pending_once()['skipped']==1
+    assert env==[]
+    with db.get_conn() as c:
+        row=c.execute("SELECT url,event_key FROM notifications WHERE type='no_bids'").fetchone()
+        assert row['url']=='/trips/trip' and row['event_key']=='no_bids:trip:trip'
     with db.get_conn() as c:c.execute("INSERT INTO bids(id,trip_id,bidder_id,amount,status) VALUES ('trip-bid','trip','owner',100,'pending')")
     assert jobs.no_bids_job()==0
 
@@ -467,3 +471,33 @@ def test_web_partial_failure_retries_only_unconfirmed_targets(env, monkeypatch):
     assert calls.count('https://example.invalid/sub-010') == 1
     assert calls.count('https://example.invalid/sub-000') == 2
     assert len(calls) == 12
+
+def test_expired_bid_keeps_inbox_without_phone_alert(env):
+    from services.bid_expiry import _queue_expired_bid_notifications
+    cargo()
+    with db.get_conn() as c:
+        _queue_expired_bid_notifications(c, {'id':'expired-test', 'bidder_id':'driver', 'cargo_id':'cargo', 'trip_id':None})
+    assert count('notifications', "type='bid_expired'")==2
+    assert gateway.process_pending_once()['skipped']==2
+    assert env==[]
+    with db.get_conn() as c:
+        assert all('bid=expired-test' in row[0] for row in c.execute("SELECT url FROM notifications WHERE type='bid_expired'"))
+
+@pytest.mark.parametrize('data', [
+    {'kind':'no_bids'}, {'kind':'reminder'}, {'event':'bid.expired'},
+    {'kind':'expired'}, {'notification_category':'inactivity'},
+])
+def test_immediate_reminder_never_calls_phone_provider(env,data):
+    assert sender.send('owner','Подсказка','Тест',data=data,kind=data.get('kind','info'))['suppressed_policy']=='in_app_only'
+    assert env==[]
+
+def test_old_outbox_expiry_without_data_event_is_suppressed(env):
+    gateway.enqueue_event('old-expired','bid.expired','owner',{'data':{}})
+    assert gateway.process_pending_once()['skipped']==1
+    assert count('push_outbox', "status='skipped_policy' AND last_error='in_app_only'")==1
+    assert gateway.process_pending_once()['picked']==0
+    assert env==[]
+
+def test_explicit_expiry_event_type_is_also_in_app_only(env):
+    result=sender.send('owner','Истёк срок','Тест',kind='info',event_type='bid.expired')
+    assert result['suppressed_policy']=='in_app_only' and env==[]

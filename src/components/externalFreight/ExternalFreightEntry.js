@@ -8,6 +8,19 @@ import { useAuth } from '../../utils/AuthContext';
 import { sessionRole } from '../../utils/externalFreightSession';
 import { EXTERNAL_FREIGHT_ENABLED, externalFreightAPI } from '../../utils/externalFreightFeed';
 
+// Short-lived, memory-only snapshots survive screen remounts. Never share across owners/roles.
+const countSnapshots = new Map();
+const snapshotLifetime = 5 * 60 * 1000;
+function cachedCount(ownerKey) {
+  const snapshot = countSnapshots.get(ownerKey);
+  return snapshot && Date.now() - snapshot.updatedAt < snapshotLifetime ? snapshot : null;
+}
+function rememberCount(snapshot) {
+  countSnapshots.delete(snapshot.ownerKey);
+  countSnapshots.set(snapshot.ownerKey, snapshot);
+  if (countSnapshots.size > 8) countSnapshots.delete(countSnapshots.keys().next().value);
+}
+
 // Основная шапка не изменяется: у ленты только отдельная кнопка входа.
 export default function ExternalFreightEntry(props) {
   const { navigation, role, ceramic, showBack, children } = props;
@@ -20,27 +33,32 @@ export default function ExternalFreightEntry(props) {
   const ownerKey = `${session?.user?.id || ''}:${role}:${currentRole || ''}`;
   const ownerRef = useRef(ownerKey);
   ownerRef.current = ownerKey;
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(() => cachedCount(ownerKey));
   useEffect(() => {
     if (!enabled || !session?.user?.id || currentRole !== role) return undefined;
-    let alive = true, controller = null, timeout = null;
+    let alive = true, controller = null, timeout = null, retryTimer = null;
+    setResult(cachedCount(ownerKey));
     const current = () => alive && ownerRef.current === ownerKey;
     const cancel = () => {
       const request = controller;
       controller = null;
+      clearTimeout(retryTimer);
+      retryTimer = null;
       clearTimeout(timeout);
       timeout = null;
       request?.abort();
     };
-    const refresh = async () => {
+    const refresh = async (attempt = 0) => {
       if (!current() || controller || !navigation.isFocused() || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
       const request = new AbortController();
       controller = request;
+      let retryable = false;
       const requestTimeout = setTimeout(() => request.abort(), 8000);
       timeout = requestTimeout;
       try {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
-        if (!current() || request.signal.aborted) return;
+        if (!current() || controller !== request) return;
+        if (request.signal.aborted) throw new Error('count_timeout');
         const kind = role === 'driver' ? 'cargo' : 'vehicle';
         // Счётчик объединённой выдачи включает и предложения, и контакты.
         const count = data.count;
@@ -49,22 +67,37 @@ export default function ExternalFreightEntry(props) {
         const hasParts = data.offer_count != null || data.carrier_count != null;
         const partsMatch = !hasParts || (offerCount !== null && carrierCount !== null && count === offerCount + carrierCount);
         if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0 && partsMatch) {
-          setResult({ ownerKey, count, offerCount, carrierCount });
-        } else setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
+          const snapshot = { ownerKey, count, offerCount, carrierCount, updatedAt: Date.now() };
+          rememberCount(snapshot);
+          setResult(snapshot);
+        } else {
+          const unauthorized = data.status === 401 || data.status === 403;
+          if (unauthorized) countSnapshots.delete(ownerKey);
+          retryable = !unauthorized;
+          setResult(previous => ({ ...(!unauthorized && previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
+        }
       } catch {
-        if (current()) setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
+        if (current() && controller === request) {
+          retryable = true;
+          setResult(previous => ({ ...(previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
+        }
       } finally {
         if (controller === request) {
           clearTimeout(requestTimeout);
           timeout = null;
           controller = null;
+          if (retryable && current() && navigation.isFocused() && AppState.currentState === 'active') {
+            const delay = attempt === 0 ? 2000 : attempt === 1 ? 5000 : 60000;
+            retryTimer = setTimeout(() => { retryTimer = null; refresh(Math.min(attempt + 1, 2)); }, delay);
+          }
         }
       }
     };
     const onBlur = () => { cancel(); };
-    const removeFocus = navigation.addListener('focus', refresh);
+    const onFocus = () => { cancel(); refresh(); };
+    const removeFocus = navigation.addListener('focus', onFocus);
     const removeBlur = navigation.addListener('blur', onBlur);
-    const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
+    const appListener = AppState.addEventListener('change', state => state === 'active' ? onFocus() : onBlur());
     refresh();
     return () => { alive = false; cancel(); removeFocus(); removeBlur(); appListener.remove(); };
   }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);
@@ -78,19 +111,21 @@ export default function ExternalFreightEntry(props) {
 Object.assign(labels, withAdditionalLanguageTree(labels));
   const palette = ceramic ? ceramicColors : colors;
   const count = result?.ownerKey === ownerKey ? result.count ?? null : null;
-  const countText = count === null ? null : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const failed = result?.ownerKey === ownerKey && result.error;
+  const countText = count === null ? (failed ? '—' : '…') : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const label = labels[lang] || labels.EN;
   return <View>
     {children}
     <View style={styles.entrySlot} pointerEvents="box-none">
-      <TouchableOpacity testID="external-freight-entry" accessibilityRole="button" accessibilityLabel={countText === null ? label : `${label}, ${countText}`}
+      <TouchableOpacity testID="external-freight-entry" accessibilityRole="button" accessibilityLabel={count === null ? label : `${label}, ${countText}`}
+        accessibilityState={{ busy: count === null && !failed }}
         onPress={() => navigation.navigate('ExternalFreightFeed')}
         style={[styles.entry, { backgroundColor: colors.driverSoft, borderColor: palette.border }]}>
         <Feather name="list" size={15} color={palette.text} />
         <Text numberOfLines={1} style={[styles.label, { color: palette.text }]}>{label}</Text>
-        {result?.ownerKey === ownerKey && result.error ? <Feather name="alert-circle" size={15} color={palette.text} accessibilityLabel={t('load_error')} /> : null}
-        {countText !== null && <Text testID="external-freight-count" numberOfLines={1}
-          style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText}</Text>}
+        {failed ? <Feather name="alert-circle" size={15} color={palette.text} accessibilityLabel={t('load_error')} /> : null}
+        <Text testID="external-freight-count" numberOfLines={1}
+          style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText}</Text>
       </TouchableOpacity>
     </View>
   </View>;

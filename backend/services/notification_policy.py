@@ -119,3 +119,16 @@ def delivery_block_reason(user_id, data, *, conn=None, now=None):
             return None if row.get("status") == "expired" and deadline <= now < deadline+timedelta(days=1) else "listing_not_expired"
         return None if active_listing(row, now) else "listing_inactive"
     return "unknown_optional_category"
+
+def transport_block_reason(user_id, data, *, conn=None, now=None):
+    """Советы и истечение предложения доступны в inbox, без системного push."""
+    kind = str(data.get("kind") or "")
+    category = str(data.get("notification_category") or "")
+    event = str(data.get("event") or data.get("i18n_event") or "")
+    if (kind in {"no_bids", "expired", "bid_expired", "inactivity", "listing_lifecycle"}
+            or category in CATEGORIES
+            or event in {"bid.expired", "bid_expired", "no_bids_cargo", "no_bids_trip",
+                         "inactive_reminder", "listing_expiring", "listing_expired"}
+            or (kind == "reminder" and not (data.get("from") and data.get("to")))):
+        return "in_app_only"
+    return delivery_block_reason(user_id, data, conn=conn, now=now)

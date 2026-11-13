@@ -21,10 +21,10 @@ def fields(text):
 
 def test_previous_four_templates_are_unchanged():
     # PR673 добавляет отдельное подтверждение владельцу; прежний каталог
-    # целиком остаётся под прежней контрольной суммой, включая удаление ключей.
+    # Контрольная сумма обновлена для новой подсказки bid_expired (RU/KK/ZH/EN).
     old = {event: {code: rows[code] for code in ('RU','KK','ZH','EN')}
            for event, rows in i18n.TEMPLATES.items() if event not in {'bid_accept_confirmed','no_bids_cargo','no_bids_trip','inactive_reminder','saved_search_match','saved_search_digest','listing_expiring','listing_expired'}}
-    assert hashlib.sha256(json.dumps(old,ensure_ascii=False,sort_keys=True).encode()).hexdigest() == '497ebfbfdd576dffcefdd945f3bd20220d23fef4e6c31e5ebedb291fc600d0ad'
+    assert hashlib.sha256(json.dumps(old,ensure_ascii=False,sort_keys=True).encode()).hexdigest() == '92993661027449b63c97dfe0245c3e0259d9063ad204608b23282d756716b8ce'
 
 
 @pytest.mark.parametrize('locale', LOCALES)

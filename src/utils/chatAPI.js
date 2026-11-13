@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { Directory, File as ExpoFile, Paths } from 'expo-file-system';
 import { fetch as expoFetch } from 'expo/fetch';
 import { storage } from './storage';
@@ -6,14 +7,25 @@ import { API_BASE } from '../config/env';
 import { authedFetch } from './authEvents';
 import translations, { getLanguage } from './i18n';
 import { withNativeUploadFile } from './nativeAttachmentStaging';
+import { fetchPrivateFile } from './privateFileTransport';
 
 const BASE = `${API_BASE}/chat`;
 const TOKEN_KEY = 'ur_reg_token';
+
+function privateTransportHeaders() {
+  const rawVersion = Constants.expoConfig?.version || Constants.nativeAppVersion || '';
+  const version = /^[0-9A-Za-z.+_-]{1,32}$/.test(String(rawVersion)) ? String(rawVersion) : 'unknown';
+  return {
+    'X-UrTruck-Private-File-Transport': 'v1',
+    'X-UrTruck-Client-Version': version,
+  };
+}
 
 async function headers() {
   const token = await storage.get(TOKEN_KEY);
   return {
     'Content-Type': 'application/json',
+    ...privateTransportHeaders(),
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
   };
 }
@@ -128,6 +140,11 @@ export function documentKindFromFile(mimeType, name) {
 }
 
 export const chatAPI = {
+  async getPrivateFile(kind, roomId, fileId, { signal } = {}) {
+    return fetchPrivateFile({ base: API_BASE, kind, roomId, fileId, signal,
+      getToken: () => storage.get(TOKEN_KEY), fetcher: authedFetch,
+      extraHeaders: privateTransportHeaders() });
+  },
   async send({ roomId, toUserId, text, photoUrl, isVoice, voiceDuration, cargoId, tripId, clientMsgId }, { isCurrent = () => true } = {}) {
     let r;
     try {
@@ -270,7 +287,7 @@ export const chatAPI = {
     return r.json();
   },
 
-  async uploadChatPhoto(uri) {
+  async uploadChatPhoto(uri, { isCurrent = () => true } = {}) {
     const token = await storage.get(TOKEN_KEY);
     const form = new FormData();
     if (Platform.OS === 'web') {
@@ -279,11 +296,12 @@ export const chatAPI = {
     } else {
       appendNativeFile(form, uri, 'chat.jpg');
     }
+    if (!isCurrent()) throw new Error('CHAT_SESSION_CHANGED');
     let r;
     try {
       r = await authedFetch(`${BASE}/photo`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { ...privateTransportHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
       }, expoFetch);
     } catch (e) {
@@ -320,7 +338,7 @@ export const chatAPI = {
     try {
       r = await authedFetch(`${BASE}/voice`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { ...privateTransportHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
       }, expoFetch);
     } catch (e) {
@@ -394,7 +412,7 @@ export const chatAPI = {
 
     const send = () => authedFetch(`${API_BASE}/chat/conversations/${conversationId}/attachments`, {
       method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: { ...privateTransportHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: form,
     }, expoFetch);
 

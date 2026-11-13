@@ -1606,3 +1606,42 @@ def test_count_and_first_page_share_read_snapshot_during_concurrent_update(monke
     assert changed
     assert page['total'] == 1
     assert [item['id'] for item in page['items']] == [item_id]
+
+
+def test_count_uses_covering_index_and_preserves_kind_status_and_expiry(monkeypatch):
+    """Avoid the live expiry-index/table-read plan without timing-dependent tests."""
+    from contextlib import contextmanager
+    now = datetime.now(timezone.utc)
+    future, past = (now + timedelta(days=1)).isoformat(), (now - timedelta(days=1)).isoformat()
+    with get_conn() as c:
+        for i, (kind, status, expires) in enumerate([
+            ("cargo", "active", future), ("cargo", "active", future),
+            ("vehicle", "active", future), ("cargo", "closed", future),
+            ("cargo", "active", past), ("cargo", "active", None),
+        ]):
+            c.execute("""INSERT INTO external_freight_items
+                (id,kind,source_id,source_message_id,ingested_at,updated_at,
+                 expires_at,original_text,source_revision,status)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (str(i), kind, "count-plan", str(i), now.isoformat(), now.isoformat(),
+                 expires, "synthetic payload " * 1000, "1", status))
+    statements = []
+
+    @contextmanager
+    def traced_connection():
+        with get_conn() as c:
+            c.set_trace_callback(statements.append)
+            yield c
+
+    monkeypatch.setattr(dal, "get_conn", traced_connection)
+    assert dal.count_active_items("cargo") == 2
+    assert dal.count_active_items("vehicle") == 1
+    queries = [sql for sql in statements if sql.startswith("SELECT COUNT(*)")]
+    assert len(queries) == 2
+    with get_conn() as c:
+        for sql in queries:
+            plan = " ".join(str(row[3]) for row in c.execute("EXPLAIN QUERY PLAN " + sql))
+            assert "COVERING INDEX" in plan, plan
+            assert "kind=? AND status=?" in plan, plan
+    with pytest.raises(ValueError, match="invalid_feed_kind"):
+        dal.count_active_items("other")

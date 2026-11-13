@@ -9,10 +9,11 @@ function harness() {
   const state = {};
   const env = {
     loadRequestRef: { current: 0 },
-    marketAPI: { myDashboard: async () => response }, notificationsAPI: { list: async () => ({ notifications: [] }) },
+    marketAPI: { myDashboard: async () => response }, notificationsAPI: { attention: async () => { throw Object.assign(new Error('legacy server'), { status: 404 }); }, list: async () => ({ notifications: [] }) },
     unreadNotificationPaths: () => [],
     setLoadError: (v) => { state.error = v; }, setAllDeals: (v) => { state.deals = v; },
     setIncomingBids: (v) => { state.bids = v; }, setMyBids: (v) => { state.mine = v; },
+    setAttentionSnapshot() {},
     setUnreadNotifPaths() {}, setLoading() {}, console: { warn() {} },
   };
   return { state, response: (v) => { response = v; }, load: new Function(...Object.keys(env), `return async function({ force = false } = {}) { ${body} };`)(...Object.values(env)) };

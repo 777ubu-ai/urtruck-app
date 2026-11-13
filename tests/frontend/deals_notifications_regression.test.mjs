@@ -5,13 +5,14 @@ import test from 'node:test';
 const source = fs.readFileSync(new URL('../../src/screens/DealsScreen.js', import.meta.url), 'utf8');
 
 test('Deals loader reads notifications independently and no longer references undefined notifData', () => {
-  assert.match(source, /await notificationsAPI\.list\(50\)/);
+  assert.match(source, /notificationsAPI\.attention\(\)/);
   assert.match(source, /setUnreadNotifPaths\(unreadNotificationPaths\(notificationData\)\)/);
   assert.doesNotMatch(source, /notifData\?/);
 });
 
-test('notification failure is auxiliary and cannot fail the Deals dashboard', () => {
-  assert.match(source, /try \{[\s\S]*await notificationsAPI\.list\(50\)[\s\S]*\} catch \{[\s\S]*setUnreadNotifPaths\(\[\]\)/);
+test('notification outage keeps the last attention snapshot and reports refresh failure', () => {
+  assert.match(source, /if \(request === loadRequestRef\.current\) setLoadError\(true\)/);
+  assert.doesNotMatch(source, /setUnreadNotifPaths\(\[\]\)/);
 });
 
 test('unread notification path mapping preserves only unread actionable URLs', () => {

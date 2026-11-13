@@ -31,6 +31,8 @@ export default function MarketplaceCard({
   counterparty,
   rightMeta,
   unread = 0,
+  actionRequired = false,
+  actionRequiredLabel = 'Action required',
   chevron = false,
   dimmed = false,
   bookmark,
@@ -74,7 +76,7 @@ export default function MarketplaceCard({
         {chevron ? <Feather name="chevron-right" size={18} color={colors.textDim} style={s.chevron} /> : null}
       </View>
 
-      {firstMeta || body || status || price || rightMeta || bookmark || unread > 0 ? (
+      {firstMeta || body || status || price || rightMeta || bookmark || unread > 0 || actionRequired ? (
         <View style={s.bottomRow}>
           <View style={s.bottomText}>
             {firstMeta ? <Text style={[s.meta, { color: palette.textMuted }]} numberOfLines={1}>{firstMeta}</Text> : null}
@@ -89,6 +91,7 @@ export default function MarketplaceCard({
           ) : null}
           {rightMeta ? <Text style={[s.rightMeta, { color: palette.textMuted }]} numberOfLines={1}>{rightMeta}</Text> : null}
             {unread > 0 ? <View style={[s.unread, { backgroundColor: colors.error }]} testID="deals-card-unread"><Text style={s.unreadText}>{unread > 9 ? '9+' : unread}</Text></View> : null}
+            {actionRequired ? <Feather name="alert-circle" size={17} color="#315F9D" testID="deals-card-action-required" accessibilityRole="image" accessibilityLabel={actionRequiredLabel} /> : null}
           {bookmark ? <BookmarkButton saved={bookmark.saved} onPress={bookmark.onToggle} testID={bookmark.testID} accessibilityLabel={bookmark.accessibilityLabel} /> : null}
         </View>
       ) : null}

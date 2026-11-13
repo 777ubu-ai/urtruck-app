@@ -37,6 +37,7 @@ for (const role of ['client', 'driver']) {
       localStorage.setItem('ur_session', JSON.stringify({ user }));
       localStorage.setItem('ur_verification_level', '3');
       localStorage.setItem('ur_lang', 'RU');
+      localStorage.setItem(`ur_external_feed_first_visit_v1:${user.id}`, '1');
     }, { user });
     const item = (i, status = 'active') => ({
       id: 'capacity-' + kind + '-' + i, owner_id: user.id, driver_id: user.id,

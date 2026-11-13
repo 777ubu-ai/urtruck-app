@@ -136,6 +136,10 @@ def reminders_job(*, now=None):
 def lifecycle_job(*, now=None):
     now=policy.utc_now(now)
     with get_conn() as c:
+        # Новая политика сама атомарно записывает одно событие на период.
+        from services import owned_publication_periods
+        if owned_publication_periods.is_enabled(c):
+            return 0
         candidates=[("cargo",r[0]) for r in c.execute("SELECT id FROM cargos WHERE status IN ('active','expired')")]
         candidates += [("trip",r[0]) for r in c.execute("SELECT id FROM trips WHERE status IN ('active','expired')")]
     count=0

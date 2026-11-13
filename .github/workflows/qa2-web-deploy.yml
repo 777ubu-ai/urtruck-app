@@ -25,6 +25,7 @@ jobs:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
       SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       QA_WEB_ROOT: /home/ubuntu/urtruck-qa2-web
     steps:
       - name: Require isolated QA confirmation
@@ -53,6 +54,15 @@ jobs:
           grep -q 'lang=ru_RU' dist/index.html
           cp sw-template.js dist/sw.js
 
+      - name: Pin configured SSH host key
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_SSH_KNOWN_HOSTS" || { echo '::error::SERVER_SSH_KNOWN_HOSTS_REQUIRED'; exit 1; }
+          known_hosts_file="$RUNNER_TEMP/urtruck-qa2-known-hosts"
+          printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$known_hosts_file"
+          echo "QA2_SSH_KNOWN_HOSTS_FILE=$known_hosts_file" >> "$GITHUB_ENV"
+
       - name: Upload immutable QA web release
         run: |
           set -euo pipefail
@@ -60,119 +70,58 @@ jobs:
           sudo apt-get install -y -qq sshpass rsync
           export SSHPASS="$SERVER_PASS"
           release="$QA_WEB_ROOT/releases/${GITHUB_SHA}"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "mkdir -p '$release'"
-          sshpass -e rsync -az --delete -e "ssh -o StrictHostKeyChecking=no" \
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
+            "mkdir -p '$QA_WEB_ROOT/releases' && mkdir '$release'"
+          sshpass -e rsync -az -e "ssh -o UserKnownHostsFile=$QA2_SSH_KNOWN_HOSTS_FILE -o StrictHostKeyChecking=yes" \
             dist/ "$SERVER_USER@$SERVER_HOST:$release/"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
-            "test -s '$release/index.html' && grep -q 'api-maps.yandex.ru/2.1/' '$release/index.html'"
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
+            "test -s '$release/index.html' && grep -q 'api-maps.yandex.ru/2.1/' '$release/index.html' && test -s '$release/build-info.json'"
 
       - name: Route only QA2 web root to the static release
         run: |
           set -euo pipefail
           export SSHPASS="$SERVER_PASS"
-          sshpass -e ssh -o StrictHostKeyChecking=no "$SERVER_USER@$SERVER_HOST" \
+          sshpass -e ssh -o UserKnownHostsFile="$QA2_SSH_KNOWN_HOSTS_FILE" -o StrictHostKeyChecking=yes "$SERVER_USER@$SERVER_HOST" \
             "QA_WEB_ROOT='$QA_WEB_ROOT' QA_SHA='${GITHUB_SHA}' bash -s" <<'REMOTE'
           set -euo pipefail
           site=/etc/nginx/sites-available/urtruck-qa2
           backup="$QA_WEB_ROOT/nginx.before-${QA_SHA}"
-          previous="$(readlink "$QA_WEB_ROOT/current" || true)"
+          test -f "$site" && test -L "$QA_WEB_ROOT/current"
+          previous="$(readlink "$QA_WEB_ROOT/current")"
+          test -n "$previous" && test -d "$QA_WEB_ROOT/current"
+          test -f "$QA_WEB_ROOT/releases/$QA_SHA/index.html"
+          grep -Fq 'server_name qa2.urtruck.kz;' "$site"
+          grep -Fq 'root /home/ubuntu/urtruck-qa2-web/current;' "$site"
+          grep -Fq 'proxy_pass http://127.0.0.1:8002;' "$site"
+          python3 - "$site" <<'PY'
+          import re, sys
+          config = open(sys.argv[1], encoding='utf-8').read()
+          for path, upstream in (('/qa2/storage/', '/storage/'), ('/storage/', '/storage/'), ('/security/storage/', '/security/storage/')):
+              pattern = r'location\s+\^~\s+' + re.escape(path) + r'\s*\{([^{}]*)\}'
+              matches = re.findall(pattern, config, flags=re.S)
+              expected = 'proxy_pass http://127.0.0.1:8002' + upstream + ';'
+              if len(matches) != 1 or expected not in matches[0]:
+                  raise SystemExit('QA2_PRIVATE_STORAGE_ROUTING_INVALID')
+          PY
           sudo cp -a "$site" "$backup"
-          ln -sfn "$QA_WEB_ROOT/releases/$QA_SHA" "$QA_WEB_ROOT/current"
-          tmp="$(mktemp)"
-          cat > "$tmp" <<'NGINX'
-          server {
-              server_name qa2.urtruck.kz;
-              client_max_body_size 64m;
-              root /home/ubuntu/urtruck-qa2-web/current;
-              index index.html;
-          
-              location ^~ /api/ {
-                  proxy_pass http://127.0.0.1:8002;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_read_timeout 300s;
-              }
-
-              # Social crawlers do not execute the Expo bundle.  Only public
-              # cargo cards receive server-rendered OG HTML; every other
-              # route remains the static SPA below.
-              location ~ ^/cargos/[^/]+$ {
-                  proxy_pass http://127.0.0.1:8002;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-              }
-
-              # Private signed media must reach FastAPI. Without these
-              # aliases, try_files below falls through to index.html and a
-              # Range request returns HTML with a 206 status.
-              location ^~ /qa2/storage/ {
-                  proxy_pass http://127.0.0.1:8002/storage/;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_read_timeout 300s;
-              }
-              location ^~ /storage/ {
-                  proxy_pass http://127.0.0.1:8002/storage/;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_read_timeout 300s;
-              }
-              location ^~ /security/storage/ {
-                  proxy_pass http://127.0.0.1:8002/security/storage/;
-                  proxy_http_version 1.1;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-                  proxy_read_timeout 300s;
-              }
-
-              location = /health { proxy_pass http://127.0.0.1:8002; }
-              location = /docs { proxy_pass http://127.0.0.1:8002; }
-              location = /openapi.json { proxy_pass http://127.0.0.1:8002; }
-          
-              location / {
-                  try_files $uri $uri/ /index.html;
-              }
-          
-              listen [::]:443 ssl;
-              listen 443 ssl;
-              ssl_certificate /etc/letsencrypt/live/qa2.urtruck.kz/fullchain.pem;
-              ssl_certificate_key /etc/letsencrypt/live/qa2.urtruck.kz/privkey.pem;
-              include /etc/letsencrypt/options-ssl-nginx.conf;
-              ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-          }
-          server {
-              listen 80;
-              listen [::]:80;
-              server_name qa2.urtruck.kz;
-              return 301 https://$host$request_uri;
-          }
-          NGINX
+          printf '%s\n' "$previous" > "$QA_WEB_ROOT/previous.before-${QA_SHA}"
+          sudo nginx -t
           chmod -R a+rX "$QA_WEB_ROOT/releases/$QA_SHA"
-          chmod a+x "$QA_WEB_ROOT" "$QA_WEB_ROOT/releases"
-          sudo install -o root -g root -m 0644 "$tmp" "$site"
-          rm -f "$tmp"
-          if ! sudo nginx -t; then
-            sudo cp -a "$backup" "$site"
-            if test -n "$previous"; then ln -sfn "$previous" "$QA_WEB_ROOT/current"; fi
-            sudo nginx -t
-            exit 1
-          fi
-          sudo systemctl reload nginx
+          rollback() {
+            rc=$?
+            if test "$rc" -ne 0; then
+              ln -sfn "$previous" "$QA_WEB_ROOT/current"
+              echo 'QA2_WEB_ROLLBACK=previous-symlink' >&2
+            fi
+            exit "$rc"
+          }
+          trap rollback EXIT
+          ln -sfn "$QA_WEB_ROOT/releases/$QA_SHA" "$QA_WEB_ROOT/current"
+          sudo nginx -t
+          actual="$(curl -fsS --max-time 20 --resolve qa2.urtruck.kz:443:127.0.0.1 https://qa2.urtruck.kz/build-info.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["commit"])')"
+          test "$actual" = "$QA_SHA"
+          curl -fsS --max-time 20 --resolve qa2.urtruck.kz:443:127.0.0.1 https://qa2.urtruck.kz/api/version >/dev/null
+          trap - EXIT
           REMOTE
 
       - name: Verify QA web and API without touching production

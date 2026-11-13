@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { getExpenseCopy } from '../../src/utils/expenseCopy.js';
+import { getExpenseCopy, getExpenseFailureMessage } from '../../src/utils/expenseCopy.js';
 import * as model from '../../src/utils/expenseModel.js';
 const require = createRequire(import.meta.url);
 const babel = require('@babel/core');
@@ -27,7 +27,7 @@ function harness() {
       if(!old || JSON.stringify(old.deps)!==JSON.stringify(deps)){old?.cleanup?.();effects[i]={deps};pendingEffects.push(()=>{effects[i].cleanup=f();});}
     }},'@expo/vector-icons/Feather':'Feather','../utils/AuthContext':{useAuth:()=>({session:{user}})},
     '../utils/useI18n':{useI18n:()=>({lang:'RU'})},'../theme/designV1':{useV1Colors:()=>({text:'#000',textMuted:'#555',surface:'#fff',border:'#ddd',bg:'#fff'})},
-    '../utils/expenseAPI':{expenseAPI:api},'../utils/expenseCopy':{getExpenseCopy},'../utils/expenseModel':model,'../components/ui/AppConfirmModal':'AppConfirmModal'};
+    '../utils/expenseAPI':{expenseAPI:api},'../utils/expenseCopy':{getExpenseCopy,getExpenseFailureMessage},'../utils/expenseModel':model,'../components/ui/AppConfirmModal':'AppConfirmModal'};
   mocks['react-native'].StyleSheet={create:s=>s};mocks['react-native'].Platform={OS:'android'};
   const module={exports:{}};vm.runInNewContext(code,{exports:module.exports,module,require:n=>{assert.ok(n in mocks,n);return mocks[n];},Map,console});
   function render(){slot=0;refSlot=0;effectSlot=0;dirty=false;tree=module.exports.default({route:{key:'test'},navigation:{goBack:()=>{}}});pendingEffects.splice(0).forEach(f=>f());}

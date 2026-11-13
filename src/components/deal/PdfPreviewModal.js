@@ -9,13 +9,19 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import PdfPreviewContent from './PdfPreviewContent';
+import { useAuth } from '../../utils/AuthContext';
 
 /**
  * Renders a private, already-authorized PDF URL inside UrTruck.
  * The URL is never rebuilt or re-signed on the client: the API remains the
  * authority for participant access and signed-link expiry.
  */
-export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }) {
+export default function PdfPreviewModal({ visible, url, secureFile, title = 'PDF', onClose }) {
+  const { session } = useAuth();
+  const owner = session?.user?.id || null;
+  const openedOwner = React.useRef(owner);
+  if (!visible) openedOwner.current = owner;
+  const changedOwner = visible && openedOwner.current !== owner;
   const [pageState, setPageState] = React.useState({ page: 0, pages: 0, rendered: false });
   const [renderError, setRenderError] = React.useState(false);
 
@@ -24,14 +30,17 @@ export default function PdfPreviewModal({ visible, url, title = 'PDF', onClose }
     setRenderError(false);
   }, [url, visible]);
 
-  if (!url) return null;
+  React.useEffect(() => { if (changedOwner) onClose?.(); }, [changedOwner, onClose]);
+
+  if (changedOwner || (!url && !secureFile?.fileId)) return null;
   const content = visible ? (
     <PdfPreviewContent
       url={url}
+      secureFile={secureFile}
       title={title}
       style={s.pdf}
       onMetadata={({ pages }) => setPageState((state) => ({ ...state, pages }))}
-      onRendered={({ page, pages }) => setPageState({ page, pages, rendered: true })}
+      onRendered={({ page, pages }) => { setRenderError(false); setPageState({ page, pages, rendered: true }); }}
       onError={() => setRenderError(true)}
     />
   ) : null;

@@ -255,10 +255,26 @@ export default function PhoneV2Screen({ navigation, route }) {
       if (!result?.token || !result?.email) {
         throw new SocialAuthError(AUTH_ERROR_CODES.BACKEND_VERIFY_FAILED, 'social_auth_failed', { provider });
       }
+      if (Platform.OS === 'web' && typeof window !== 'undefined'
+        && window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__) {
+        // Public website callbacks may verify an account, but never continue
+        // into web role/profile onboarding or authenticated web screens. The
+        // mobile app has its own urtruck:// callback and keeps goAfterLogin.
+        window.location.replace('/');
+        return;
+      }
       logAuthStage('role_resolved', { provider });
       await goAfterLogin(result, result.email, 'social');
       logAuthStage('navigation_complete', { provider });
     } catch (e) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined'
+        && window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__) {
+        // A failed/expired web callback on the public store landing must not
+        // expose the retired web registration flow. Native callbacks use the
+        // urtruck:// scheme and keep the normal in-app error UX below.
+        window.location.replace('/');
+        return;
+      }
       const key = socialErrorKey(e, provider);
       setSocialError(t(key));
       try { toast(t(key), 'error', 2500); } catch {}

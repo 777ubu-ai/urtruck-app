@@ -14,7 +14,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -42,11 +41,15 @@ import TripMapInfoSheet from '../components/deal/TripMapInfoSheet';
 import DealStatusTimeline from '../components/deal/DealStatusTimeline';
 import DealSystemEventCard from '../components/deal/DealSystemEventCard';
 import PdfPreviewModal from '../components/deal/PdfPreviewModal';
+import ProtectedChatPhoto from '../components/deal/ProtectedChatPhoto';
+import { downloadPrivateAttachment } from '../utils/privateFileDownload';
+import { openPrivateChatAttachment } from '../utils/openPrivateChatAttachment';
 import AppConfirmModal from '../components/ui/AppConfirmModal';
 import RatingModal from '../components/RatingModal';
 import Button from '../components/ui/v1/Button';
 import { useKeyboardDockInset } from '../components/ui/v1/KeyboardSafeLayout';
 import { chatAPI, documentKindFromFile } from '../utils/chatAPI';
+import { sendPhotoWithRecovery } from '../utils/chatMediaRecovery';
 import { displayAttachmentFilename } from '../utils/attachmentFilename';
 import { marketAPI } from '../utils/marketAPI';
 import { parseRouteCities } from '../utils/geo';
@@ -68,7 +71,7 @@ import {
 } from '../utils/backgroundLocation';
 import { compressImage } from '../utils/imageCompress';
 import { voice } from '../utils/voiceRecorder';
-import VoiceMessageBubble from '../components/VoiceMessageBubble';
+import VoiceMessageBubble from '../components/deal/ProtectedVoiceMessageBubble';
 import { createVoiceTranscriptState } from '../utils/voiceTranscriptState';
 import { createManualTextTranslationState } from '../utils/manualTextTranslationState';
 import { routeMetricValues } from '../utils/routeMetricValues';
@@ -360,6 +363,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
     ? { backgroundColor: bubbleMineColors.backgroundColor, borderColor: bubbleMineColors.borderColor }
     : { backgroundColor: colors.surface, borderColor: colors.border }), [bubbleMineColors, colors]);
   const { session } = useAuth();
+  const photoSessionRef = React.useRef(null);
   const { toast } = useToast();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
@@ -382,6 +386,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
 
   const [dealId, setDealId] = React.useState(params.dealId || null);
   const [roomId, setRoomId] = React.useState(params.roomId || null);
+  photoSessionRef.current = session?.user?.id ? JSON.stringify([session.user.id, roomId]) : null;
   // Deep-link audit P1 (2026-09-14): a `/deals/{id}` or `/chats/{id}` link
   // whose id doesn't resolve to one of the current user's own rooms (foreign
   // id, typo, since-deleted deal) used to fall through silently — dealId/
@@ -456,6 +461,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const [textTranslationRevision, setTextTranslationRevision] = React.useState(0);
   const [voiceRevision, setVoiceRevision] = React.useState(0);
   const voiceScope = JSON.stringify([roomId, session?.user?.id || null]);
+  React.useEffect(() => () => { try { voice.stop?.(); } catch {} }, [voiceScope]);
   const historyPages = React.useMemo(() => createChatHistoryPages(), [voiceScope]);
   const [hasOlderMessages, setHasOlderMessages] = React.useState(false);
   const [olderMessagesLoading, setOlderMessagesLoading] = React.useState(false);
@@ -732,7 +738,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           clientMsgId: message.client_msg_id || null,
           mine, system,
           text: system ? localizeSystemMessage(message.text || '', lang) : (message.text || ''),
-          photo: (!!message.photo_url || !!message.attachment_unavailable) && !isVoice,
+          photo: (!!message.photo_url || !!message.private_media_available || !!message.attachment_unavailable) && !isVoice,
           attachmentUnavailable: !!message.attachment_unavailable,
           voice: isVoice,
           voiceScope: isVoice ? voiceScope : null,
@@ -759,6 +765,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           const docName = displayAttachmentFilename(a.original_name) || a.id;
           return {
             id: `doc_${a.id}`,
+            attachmentId: a.id,
             clientUploadId: a.client_upload_id || null,
             mine: isOwnDocument(a, session?.user?.id),
             kind: 'document',
@@ -1199,21 +1206,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
   const uploadPhoto = React.useCallback(async (item) => {
     if (photoSendingRef.current.has(item.id)) return;
     photoSendingRef.current.add(item.id);
+    const photoSession = photoSessionRef.current;
+    const guard = { isCurrent: () => !!photoSession && photoSessionRef.current === photoSession };
     setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'uploading', sendError: null } : m)));
     try {
-      const photoKey = item.photoKey || (await chatAPI.uploadChatPhoto(item.mediaUrl))?.photo_key;
-      if (!photoKey) throw new Error('photo_upload');
-      // После успешной загрузки Retry повторяет только доставку сообщения.
-      setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, photoKey, sendStatus: 'sending' } : m)));
-      await chatAPI.send({
-        roomId, toUserId: recipientId, photoUrl: photoKey,
-        cargoId: deal?.cargo_id || params.cargoId || null,
-        tripId: deal?.trip_id || params.tripId || null,
-        clientMsgId: item.id,
+      await sendPhotoWithRecovery({
+        previousKey: item.photoKey, localUri: item.mediaUrl, isCurrent: guard.isCurrent,
+        upload: async (uri) => (await chatAPI.uploadChatPhoto(uri, guard))?.photo_key,
+        onKey: (photoKey) => setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, photoKey, sendStatus: 'sending' } : m))),
+        send: (photoKey) => chatAPI.send({
+          roomId, toUserId: recipientId, photoUrl: photoKey,
+          cargoId: deal?.cargo_id || params.cargoId || null,
+          tripId: deal?.trip_id || params.tripId || null,
+          clientMsgId: item.id,
+        }, guard),
       });
+      if (!guard.isCurrent()) return;
       setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'sent' } : m)));
       setTimeout(loadMessages, 120);
     } catch (error) {
+      if (!guard.isCurrent()) return;
       const sendError = error?.isNetwork ? t('no_connection') : t('chat_send_failed');
       setMessages((items) => items.map((m) => (m.id === item.id ? { ...m, sendStatus: 'failed', sendError } : m)));
     } finally {
@@ -1541,15 +1553,26 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
           {datePill}
           <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
             <TouchableOpacity
-              activeOpacity={item.docUrl ? 0.72 : 1}
-              disabled={!item.docUrl}
-              onPress={() => {
-                if (!item.docUrl) return;
-                if (meta.ext === 'pdf') {
-                  setPdfPreview({ url: item.docUrl, title: item.docName });
+              activeOpacity={item.attachmentId ? 0.72 : 1}
+              disabled={!item.attachmentId}
+              onPress={async () => {
+                if (!roomId || !item.attachmentId) {
+                  toast(t('chat_attachment_unavailable'), 'error');
                   return;
                 }
-                Linking.openURL(item.docDownloadUrl || item.docUrl).catch(() => {});
+                if (meta.ext === 'pdf') {
+                  setPdfPreview({ url: '', title: item.docName, secureFile: { roomId, fileId: item.attachmentId } });
+                  return;
+                }
+                try {
+                  if (Platform.OS === 'web') {
+                    await downloadPrivateAttachment(roomId, item.attachmentId, item.docName);
+                  } else {
+                    await openPrivateChatAttachment(roomId, item.attachmentId, item.docName);
+                  }
+                } catch {
+                  toast(t('chat_attachment_unavailable'), 'error');
+                }
               }}
               style={[s.docBubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}
               testID="deal-chat-document-bubble"
@@ -1583,19 +1606,25 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         {datePill}
         <View style={[s.messageRow, item.mine ? s.messageMine : s.messageThem]}>
           <View style={[s.bubble, item.mine ? s.bubbleMine : s.bubbleThem, bubbleSurfaceFor(item.mine)]}>
-            {item.attachmentUnavailable ? (
+            {item.attachmentUnavailable && !((item.photo || item.voice) && !item.optimistic) ? (
               <Text style={[s.messageText, { color: item.mine ? bubbleMineColors.textColor : colors.text }]}>
                 {t('chat_attachment_unavailable')}
               </Text>
             ) : null}
-            {item.photo && item.mediaUrl ? (
-              <TouchableOpacity onPress={() => setFullImage(item.mediaUrl)} testID="deal-chat-photo-bubble">
-                <Image source={{ uri: item.mediaUrl }} style={s.photo} />
-              </TouchableOpacity>
+            {item.photo && (item.mediaUrl || (Platform.OS === 'web' && !item.optimistic)) ? (
+              <ProtectedChatPhoto roomId={roomId} messageId={item.id} uri={item.mediaUrl} optimistic={item.optimistic}
+                style={s.photo} textColor={item.mine ? bubbleMineColors.textColor : colors.text} onOpen={setFullImage} unavailableText={t('chat_attachment_unavailable')}
+                retryText={t('chat_attach_retry')} testID="deal-chat-photo-bubble" />
             ) : null}
             {item.voice ? (
               <VoiceMessageBubble
                 uri={item.mediaUrl}
+                roomId={roomId}
+                messageId={item.id}
+                optimistic={item.optimistic}
+                unavailableText={t('chat_attachment_unavailable')}
+                retryText={t('chat_attach_retry')}
+                textColor={item.mine ? bubbleMineColors.textColor : colors.text}
                 fallbackDurationSec={item.voiceDuration}
                 mine={item.mine}
                 transcript={item.mine ? undefined : voiceTranscripts[item.id]}
@@ -1672,7 +1701,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         </View>
       </React.Fragment>
     );
-  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, retryVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor]);
+  }, [colors, textTranslation, textTranslationRevision, voiceTranscripts, t, lang, toast, retryDocument, retryFailedText, retryFailedVoice, uploadPhoto, toggleVoiceTranscript, toggleVoiceOriginal, translateVoiceTranscript, retryVoiceTranscript, messages, bubbleMineColors, bubbleSurfaceFor, roomId]);
 
   const latestMessage = messages.length ? messages[messages.length - 1] : null;
   const latestPreview = latestMessage
@@ -2279,7 +2308,8 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
             the platform's own long-press "save image" menu (section 4). */}
         <Modal visible={!!fullImage} transparent animationType="fade" onRequestClose={() => setFullImage(null)}>
           <Pressable style={s.fullBackdrop} onPress={() => setFullImage(null)} testID="deal-chat-photo-fullscreen">
-            {fullImage ? <Image source={{ uri: fullImage }} style={s.fullImage} resizeMode="contain" /> : null}
+            {fullImage ? <ProtectedChatPhoto {...fullImage} style={s.fullImage} fullscreen
+              unavailableText={t('chat_attachment_unavailable')} retryText={t('chat_attach_retry')} /> : null}
             <TouchableOpacity style={s.fullClose} onPress={() => setFullImage(null)} testID="deal-chat-photo-close" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Feather name="x" size={26} color="#fff" />
             </TouchableOpacity>
@@ -2288,6 +2318,7 @@ export default function DealWorkspaceScreenV2({ navigation, route }) {
         <PdfPreviewModal
           visible={Boolean(pdfPreview)}
           url={pdfPreview?.url}
+          secureFile={pdfPreview?.secureFile}
           title={pdfPreview?.title}
           onClose={() => setPdfPreview(null)}
         />

@@ -451,3 +451,43 @@ def test_global_reminders_and_reviews_do_not_pollute_deals_badge():
     create_notification(d, "bid_accepted", "Accepted", event_key=f"{d}:accepted")
     assert unread_badge_count(d) == 1
     assert unread_badge_count(o) == 0
+
+
+def test_attention_snapshot_exposes_old_events_without_50_row_cutoff():
+    from api.notifications import unread_badge_snapshot, list_notifications
+    owner, other = _ids()
+    create_notification(owner, "bid_rejected", "older unread", url="/cargos/example?bid=closed")
+    with get_conn() as c:
+        c.execute("UPDATE notifications SET created_at='2000-01-01' WHERE user_id=?", (owner,))
+    for i in range(50):
+        create_notification(owner, "deal_status", f"read {i}")
+    with get_conn() as c:
+        c.execute("UPDATE notifications SET is_read=1 WHERE user_id=? AND title LIKE 'read %'", (owner,))
+    create_notification(other, "bid_rejected", "other owner")
+    assert all(n["is_read"] for n in list_notifications(50, user=_u(owner))["notifications"])
+    snapshot = unread_badge_snapshot(owner)
+    assert snapshot["badge"] == unread_badge_count(owner) == 1
+    assert [n["title"] for n in snapshot["notifications"]] == ["older unread"]
+    assert snapshot["rooms"] == []
+
+
+def test_attention_snapshot_matches_chat_badge_without_notification_mirror():
+    from api.notifications import unread_badge_snapshot
+    owner, driver = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    send_message(SendMessageIn(room_id=room, text="unread"), user=_u(driver))
+    snapshot = unread_badge_snapshot(owner)
+    assert snapshot["badge"] == 1
+    assert sum(r["unread_count"] for r in snapshot["rooms"]) == 1
+    assert snapshot["rooms"][0]["room_id"] == room
+    assert snapshot["notifications"] == []
+    get_messages(room, user=_u(owner))
+    assert unread_badge_snapshot(owner)["badge"] == 0
+
+
+def test_custom_scheme_read_path_keeps_entity_kind():
+    from api.notifications import _notification_path
+    assert _notification_path("urtruck://deals/example?x=1") == "/deals/example"
+    assert _notification_path("com.urtruck.app://deals/example") == "/deals/example"

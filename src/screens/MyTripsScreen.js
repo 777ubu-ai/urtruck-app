@@ -58,6 +58,18 @@ const withTimeout = (promise, timeoutMs = 12000) => new Promise((resolve, reject
   );
 });
 
+const EXPIRY_COPY = {
+  RU: { expired: 'Срок публикации истёк', renew: 'Продлить на 30 дней', archive: 'Оставить в архиве', hide: 'Удалить', confirm: 'Скрыть объявление из личных списков?', success: 'Изменение сохранено', error: 'Не удалось сохранить. Повторите попытку.' },
+  KK: { expired: 'Жариялау мерзімі аяқталды', renew: '30 күнге ұзарту', archive: 'Мұрағатта қалдыру', hide: 'Жою', confirm: 'Хабарландыруды жеке тізімдерден жасыру керек пе?', success: 'Өзгеріс сақталды', error: 'Сақтау мүмкін болмады. Қайталаңыз.' },
+  ZH: { expired: '发布期限已过', renew: '延长30天', archive: '保留在归档中', hide: '删除', confirm: '从个人列表中隐藏此信息？', success: '更改已保存', error: '保存失败，请重试。' },
+  EN: { expired: 'Publication period expired', renew: 'Extend for 30 days', archive: 'Keep in archive', hide: 'Delete', confirm: 'Hide this listing from your lists?', success: 'Change saved', error: 'Could not save. Please try again.' },
+  TR: { expired: 'İlanın yayın süresi doldu', renew: '30 gün uzat', archive: 'Arşivde tut', hide: 'Sil', confirm: 'İlan listelerinizden gizlensin mi?', success: 'Değişiklik kaydedildi', error: 'Kaydedilemedi. Tekrar deneyin.' },
+  UZ: { expired: 'Eʼlonning joylashtirish muddati tugadi', renew: '30 kunga uzaytirish', archive: 'Arxivda qoldirish', hide: 'Oʻchirish', confirm: 'Eʼlon shaxsiy roʻyxatlardan yashirilsinmi?', success: 'Oʻzgarish saqlandi', error: 'Saqlab boʻlmadi. Qayta urinib koʻring.' },
+  KY: { expired: 'Жарыялоонун мөөнөтү аяктады', renew: '30 күнгө узартуу', archive: 'Архивде калтыруу', hide: 'Өчүрүү', confirm: 'Жарыя жеке тизмелерден жашырылсынбы?', success: 'Өзгөртүү сакталды', error: 'Сактоо мүмкүн болгон жок. Кайра аракет кылыңыз.' },
+  TG: { expired: 'Муҳлати нашри эълон ба охир расид', renew: '30 рӯз дароз кардан', archive: 'Дар бойгонӣ мондан', hide: 'Нест кардан', confirm: 'Эълон аз рӯйхатҳои шахсӣ пинҳон шавад?', success: 'Тағйирот сабт шуд', error: 'Сабт нашуд. Дубора кӯшиш кунед.' },
+  BE: { expired: 'Тэрмін публікацыі аб’явы скончыўся', renew: 'Падоўжыць на 30 дзён', archive: 'Пакінуць у архіве', hide: 'Выдаліць', confirm: 'Схаваць аб’яву з асабістых спісаў?', success: 'Змена захавана', error: 'Не ўдалося захаваць. Паспрабуйце яшчэ раз.' },
+};
+
 export default function MyTripsScreen({ navigation, route }) {
   const v1Base = useV1Colors();
   const ceramic = useDriverCeramicColors();
@@ -139,6 +151,7 @@ export default function MyTripsScreen({ navigation, route }) {
   const [createdCargoOverlay, setCreatedCargoOverlay] = useState(justCreatedCargo);
   const createdCargoOverlayRef = useRef(justCreatedCargo);
   const [tab, setTab] = useState(normInitialTab);
+  const [targetPublicationId, setTargetPublicationId] = useState(route.params?.targetPublicationId || null);
   const mounted = useMountedRef();  // QA-аудит P1-8
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!justCreatedTrip && !justCreatedCargo);
@@ -149,6 +162,10 @@ export default function MyTripsScreen({ navigation, route }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [archiveTotal, setArchiveTotal] = useState(null);
+  const [publicationBusy, setPublicationBusy] = useState({});
+  const publicationLocks = useRef(new Set());
+  const publicationOwner = useRef(session?.user?.id);
+  publicationOwner.current = session?.user?.id;
 
   const [confirmDialog, setConfirmDialog] = useState(null);
 
@@ -223,7 +240,8 @@ export default function MyTripsScreen({ navigation, route }) {
           next = { my_trips: [], my_cargos: [], authRequired: true };
         }
       } else {
-        page = await withTimeout(marketAPI.myListings({ kind: isDriver ? 'trip' : 'cargo', section, limit: 50, offset }));
+        page = await withTimeout(marketAPI.myListings({ kind: isDriver ? 'trip' : 'cargo', section, limit: 50, offset,
+          listingId: tab === 'archive' ? targetPublicationId : null }));
         if (page.serverError) throw new Error('list_failed');
         if (!mounted.current || requestId !== loadRequestRef.current) return;
         if (page.authRequired || (append && page.scope !== previous.scope)) {
@@ -271,7 +289,7 @@ export default function MyTripsScreen({ navigation, route }) {
         setLoadingMore(false);
       }
     }
-  }, [isDriver, tab, mounted]);
+  }, [isDriver, tab, mounted, targetPublicationId]);
 
   const { refreshing, onRefresh } = useSafeRefresh(
     useCallback(() => load({ showLoading: false }), [load]),
@@ -493,6 +511,25 @@ export default function MyTripsScreen({ navigation, route }) {
     ? { main: ceramic.active, deep: ceramic.driverDeep, soft: ceramic.activeSoft }
     : v1AccentFor('client');
 
+  const performPublicationAction = async (item, action) => {
+    const owner = publicationOwner.current;
+    const key = String(item.id);
+    if (!owner || publicationLocks.current.has(key)) return;
+    if (action === 'hide' && !(await confirmAction((EXPIRY_COPY[lang] || EXPIRY_COPY.EN).confirm, t('confirm'), true))) return;
+    if (publicationOwner.current !== owner || publicationLocks.current.has(key)) return;
+    publicationLocks.current.add(key);
+    setPublicationBusy(current => ({ ...current, [key]: true }));
+    try {
+      const result = await marketAPI.ownedPublicationAction(isDriver ? 'trip' : 'cargo', item.id, action, item.publication_period_id);
+      if (publicationOwner.current !== owner) return;
+      if (result?.ok === true) { toast((EXPIRY_COPY[lang] || EXPIRY_COPY.EN).success, 'success'); load(); }
+      else toast((EXPIRY_COPY[lang] || EXPIRY_COPY.EN).error, 'error');
+    } finally {
+      publicationLocks.current.delete(key);
+      setPublicationBusy(current => { const next = { ...current }; delete next[key]; return next; });
+    }
+  };
+
   const renderHistoryItem = ({ item }) => {
     const isCargo = !isDriver;
     const from = item.from_city || '—';
@@ -501,7 +538,7 @@ export default function MyTripsScreen({ navigation, route }) {
       <MarketplaceCard
         variant={isDriver ? 'driver' : 'default'}
         testID="my-history-card"
-        dimmed
+        dimmed={!(item.status === 'expired' && item.publication_period_id)}
         style={s.cardSpacing}
         onPress={() => {
           if (isCargo) navigation.navigate('CargoDetail', { cargo: { ...item, from, to, cargo: item.cargo_desc, isMine: true, _server: true }, cargoId: item.id, role, readOnly: true });
@@ -516,8 +553,16 @@ export default function MyTripsScreen({ navigation, route }) {
         }}
         price={formatPrice(item.price, item.currency, t)}
         priceMeta={formatDateForDisplay((isCargo ? item.pickup_date : item.departure) || item.created_at)}
-        status={{ key: item.status, label: formatStatus(item.status), color: v1.textDim }}
+        status={{ key: item.status, label: item.status === 'expired' && item.publication_period_id ? (EXPIRY_COPY[lang] || EXPIRY_COPY.EN).expired : formatStatus(item.status), color: v1.textDim }}
       >
+        {item.status === 'expired' && item.publication_period_id ? <View style={[s.cargoActions, { flexWrap: 'wrap' }]}>
+          {['renew', 'archive', 'hide'].map(action => <TouchableOpacity key={action}
+            testID={`publication-${action}`} disabled={!!publicationBusy[String(item.id)]}
+            style={[s.miniBtn, { flex: 1 }]}
+            onPress={event => { event.stopPropagation?.(); performPublicationAction(item, action); }}>
+            <Text style={[s.miniBtnText, { color: v1.text }]}>{(EXPIRY_COPY[lang] || EXPIRY_COPY.EN)[action]}</Text>
+          </TouchableOpacity>)}
+        </View> : null}
       </MarketplaceCard>
     );
   };
@@ -590,7 +635,7 @@ export default function MyTripsScreen({ navigation, route }) {
             <View style={{ paddingHorizontal: 16 }}>
               <TouchableOpacity
                 testID="my-work-archive-toggle"
-                onPress={() => setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive')}
+                onPress={() => { setTargetPublicationId(null); setTab(tab === 'archive' ? (isDriver ? 'routes' : 'searching') : 'archive'); }}
                 style={s.archiveToggle}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >

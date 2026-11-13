@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Header
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -20,6 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from urllib.parse import urlencode
 from api.notifications import create_notification
 from database.db import get_conn, new_id
+from services import private_file_transport as private_transport
 
 # Sniffing/validation lives in services.upload_validation — single source of
 # truth shared with registration/profile/chat upload endpoints. These aliases
@@ -223,6 +225,19 @@ def _sign_attachment(att: dict | None):
     return att
 
 
+def _attachment_for_request(att: dict | None, headers):
+    capable = private_transport.supports_private_file_transport(headers)
+    if capable:
+        return private_transport.attachment_payload(att, private_transport=True)
+    if not private_transport.legacy_links_enabled():
+        return private_transport.legacy_disabled_payload(att)
+    result = _sign_attachment(att)
+    if (isinstance(result, dict) and result.get("url") and isinstance(att, dict)
+            and storage_service.ref_has_purpose(att.get("url"), {"chat_attachments"})):
+        private_transport.record_legacy_issuance("deal_attachment", 1, headers)
+    return result
+
+
 deal_room_router = APIRouter()
 
 
@@ -233,16 +248,34 @@ def list_conversations(user=Depends(require_level(1))):
 
 @deal_room_router.get("/chat/conversations/{conversation_id}/messages")
 def conversation_messages(conversation_id: str, limit: int = 100, offset: int = 0,
-                          user=Depends(require_level(1))):
+                          user=Depends(require_level(1)),
+                          capability: Optional[str] = Header(None, alias="X-UrTruck-Private-File-Transport"),
+                          client_version: Optional[str] = Header(None, alias="X-UrTruck-Client-Version")):
+    request_headers = {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
     _assert_deal_room_open(conversation_id, user["id"])
     msgs = dr.get_messages(conversation_id, limit, offset)
+    legacy_count = 0
+    capable = private_transport.supports_private_file_transport(request_headers)
     for m in msgs:
         if m.get("photo_url"):
-            m["photo_url"] = file_signing.sign(m["photo_url"])
+            ref = m["photo_url"]
+            valid = storage_service.ref_has_purpose(ref, {'chat_photos', 'chat_voice', 'chat'})
+            if capable or not private_transport.legacy_links_enabled():
+                m["photo_url"] = None
+                m["private_media_available"] = bool(valid)
+                m["private_file_transport"] = private_transport.CAPABILITY_V1
+                if not capable:
+                    m["private_file_transport_required"] = True
+            else:
+                m["photo_url"] = file_signing.sign(ref) if valid else None
+                legacy_count += int(bool(m["photo_url"]))
+            m["attachment_unavailable"] = not (m.get("private_media_available") or m["photo_url"])
+    if not capable:
+        private_transport.record_legacy_issuance("deal_chat_media", legacy_count, request_headers)
     return {"messages": msgs}
 
 
@@ -294,6 +327,8 @@ async def upload_attachment(
     message_id: Optional[str] = Form(None),
     client_upload_id: Optional[str] = Form(None),
     user=Depends(require_level(1)),
+    capability: Optional[str] = Header(None, alias="X-UrTruck-Private-File-Transport"),
+    client_version: Optional[str] = Header(None, alias="X-UrTruck-Client-Version"),
 ):
     """Upload a private deal attachment with magic-byte MIME validation.
 
@@ -307,6 +342,15 @@ async def upload_attachment(
         raise HTTPException(status_code=403, detail="Вы не участник этой беседы")
     _assert_deal_room_open(conversation_id, user["id"])
 
+    if isinstance(message_id, str) and message_id:
+        with get_conn() as c:
+            message = c.execute(
+                "SELECT id FROM chat_messages WHERE id = ? AND room_id = ?",
+                (message_id, conversation_id),
+            ).fetchone()
+        if not message:
+            raise HTTPException(status_code=404, detail="Сообщение не найдено в этой беседе")
+
     _ensure_attachment_columns()
     normalized_client_id = (client_upload_id or "").strip()[:120] or None
     existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
@@ -315,7 +359,7 @@ async def upload_attachment(
         existing = _existing_attachment(conversation_id, user["id"], normalized_client_id)
     if existing:
         if existing.get("url") and existing.get("upload_status") == "uploaded":
-            return {"attachment": await run_in_threadpool(_sign_attachment, existing), "deduplicated": True}
+            return {"attachment": await run_in_threadpool(_attachment_for_request, existing, {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}), "deduplicated": True}
         raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     raw = await file.read(_MAX_ATTACH_BYTES + 1)
@@ -354,7 +398,7 @@ async def upload_attachment(
         )
         if not created:
             if reservation.get("url") and reservation.get("upload_status") == "uploaded":
-                return {"attachment": await run_in_threadpool(_sign_attachment, reservation), "deduplicated": True}
+                return {"attachment": await run_in_threadpool(_attachment_for_request, reservation, {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}), "deduplicated": True}
             raise HTTPException(status_code=409, detail="Файл уже загружается")
 
     try:
@@ -402,7 +446,7 @@ async def upload_attachment(
             row = c.execute("SELECT * FROM message_attachments WHERE id = ?", (att["id"],)).fetchone()
             att = dict(row) if row else att
 
-    att = await run_in_threadpool(_sign_attachment, att)
+    att = await run_in_threadpool(_attachment_for_request, att, {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""})
 
     try:
         with get_conn() as c:
@@ -455,7 +499,9 @@ async def upload_attachment(
 
 
 @deal_room_router.get("/chat/conversations/{conversation_id}/attachments")
-def list_conversation_attachments(conversation_id: str, user=Depends(require_level(1))):
+def list_conversation_attachments(conversation_id: str, user=Depends(require_level(1)),
+                                  capability: Optional[str] = Header(None, alias="X-UrTruck-Private-File-Transport"),
+                                  client_version: Optional[str] = Header(None, alias="X-UrTruck-Client-Version")):
     if not dr.room_exists(conversation_id):
         raise HTTPException(status_code=404, detail="Беседа не найдена")
     if not dr.is_participant(conversation_id, user["id"]):
@@ -465,7 +511,63 @@ def list_conversation_attachments(conversation_id: str, user=Depends(require_lev
     atts = dr.list_attachments(conversation_id)
     # Авторство вычисляется по серверной сессии, как у текста и фото.
     # Локальный ID клиента может отличаться до синхронизации с бэкендом.
+    request_headers = {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}
+    result = [_attachment_for_request(a, request_headers) for a in atts]
     return {"attachments": [
-        {**_sign_attachment(a), "mine": a.get("uploader_id") == user["id"]}
-        for a in atts
+        {**item, "mine": a.get("uploader_id") == user["id"]}
+        for a, item in zip(atts, result)
     ]}
+
+
+@deal_room_router.get('/chat/conversations/{conversation_id}/attachments/{attachment_id}/content')
+def get_attachment_content(conversation_id: str, attachment_id: str, user=Depends(require_level(1))):
+    """Выдача байтов с проверкой участника и связи файла."""
+    def assert_exact_room_open():
+        from api.chat import _assert_chat_is_accepted
+        with get_conn() as c:
+            room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (conversation_id,)).fetchone()
+        if not room or user['id'] not in (room['participant_1'], room['participant_2']):
+            raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+        partner = room['participant_2'] if room['participant_1'] == user['id'] else room['participant_1']
+        _assert_chat_is_accepted(user['id'], partner, room_id=conversation_id,
+                                 cargo_id=room['cargo_id'], trip_id=room['trip_id'])
+
+    if not dr.room_exists(conversation_id):
+        raise HTTPException(status_code=404, detail='Беседа не найдена')
+    if not dr.is_participant(conversation_id, user['id']):
+        raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+    _assert_deal_room_open(conversation_id, user['id'])
+    assert_exact_room_open()
+    def find_attachment():
+        with get_conn() as c:
+            return c.execute('''SELECT a.url,a.mime_type FROM message_attachments a
+            JOIN chat_rooms r ON r.id=a.conversation_id
+            WHERE a.id=? AND a.conversation_id=? AND a.upload_status='uploaded'
+              AND (a.uploader_id IN (r.participant_1,r.participant_2) OR EXISTS
+                   (SELECT 1 FROM conversation_participants p WHERE p.conversation_id=a.conversation_id AND p.user_id=a.uploader_id))
+              AND (a.message_id IS NULL OR EXISTS
+                   (SELECT 1 FROM chat_messages m WHERE m.id=a.message_id AND m.room_id=a.conversation_id))''',
+                (attachment_id, conversation_id)).fetchone()
+    attachment = find_attachment()
+    if not attachment or not storage_service.ref_has_purpose(attachment['url'], {'chat_attachments'}):
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    try:
+        content = storage_service.read_private_bytes(attachment['url'], _MAX_ATTACH_BYTES)
+    except storage_service.PrivateFileTooLargeError as exc:
+        raise HTTPException(status_code=413, detail='Файл слишком большой') from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Вложение не найдено') from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail='Хранилище недоступно') from exc
+    if not dr.is_participant(conversation_id, user['id']):
+        raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+    _assert_deal_room_open(conversation_id, user['id'])
+    assert_exact_room_open()
+    current = find_attachment()
+    if not current or current['url'] != attachment['url'] or current['mime_type'] != attachment['mime_type']:
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    mime = attachment['mime_type'] if attachment['mime_type'] in _ALLOWED else 'application/octet-stream'
+    return Response(content=content, media_type=mime, headers={
+        'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
+    })

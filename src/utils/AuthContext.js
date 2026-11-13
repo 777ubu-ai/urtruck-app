@@ -81,6 +81,7 @@ export const AuthProvider = ({ children }) => {
   const sessionRef = useRef(session);
   const pendingRecoveryRef = useRef(null);
   const legacyBootstrapRef = useRef(null);
+  const authRetryRef = useRef({ epoch: 0, timer: null, pending: false });
 
   const recoverRejectedSession = useCallback((rejectedToken, generation) => runAuthMutation(async () => {
     if (!await authOwnerIsCurrent(rejectedToken, generation,
@@ -179,6 +180,38 @@ export const AuthProvider = ({ children }) => {
     return me;
   }, [recoverRejectedSession]);
 
+  const startVerifiedRefresh = useCallback((token, generation) => {
+    const state = authRetryRef.current;
+    const epoch = ++state.epoch;
+    clearTimeout(state.timer);
+    state.timer = null;
+    state.pending = true;
+    const attempt = async (index = 0) => {
+      if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
+      try {
+        await refreshLevel({ expectedToken: token, expectedGeneration: generation });
+        // Смена роли увеличивает authGenerationRef до завершения записи сессии.
+        // Старый ответ /me может стать устаревшим, пока setRole ещё не успел
+        // запустить проверку заново. Сохраняем pending, пока новую проверку
+        // не возьмёт на себя актуальное поколение сессии.
+        if (state.epoch === epoch && authGenerationRef.current === generation) state.pending = false;
+      } catch {
+        if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
+        const delay = index === 0 ? 5000 : index === 1 ? 15000 : 60000;
+        state.timer = setTimeout(() => { state.timer = null; attempt(Math.min(index + 1, 2)); }, delay);
+      }
+    };
+    attempt();
+  }, [refreshLevel]);
+
+  useEffect(() => () => {
+    const state = authRetryRef.current;
+    state.epoch += 1;
+    state.pending = false;
+    clearTimeout(state.timer);
+    state.timer = null;
+  }, []);
+
   useEffect(() => {
     (async () => {
       let recovery;
@@ -235,9 +268,9 @@ export const AuthProvider = ({ children }) => {
           level: savedLevel,
         });
       }
-      refreshLevel().catch(() => {});
+      startVerifiedRefresh(token, authGenerationRef.current);
     })();
-  }, [refreshLevel]);
+  }, [startVerifiedRefresh]);
 
   const ensureGuest = useCallback(async () => {
     const generation = authGenerationRef.current;
@@ -286,7 +319,7 @@ export const AuthProvider = ({ children }) => {
       // eslint-disable-next-line no-console
       console.warn('[Auth] login success', { level });
     }
-    refreshLevel({ expectedToken: existing, expectedGeneration: generation }).catch(() => {});
+    startVerifiedRefresh(existing, generation);
     return true;
   });
 
@@ -294,12 +327,16 @@ export const AuthProvider = ({ children }) => {
     if (!isCurrent() || (expectedToken && await regAPI.getToken() !== expectedToken) || !isCurrent()) {
       return { ok: false, reason: 'SESSION_CHANGED' };
     }
-    authGenerationRef.current += 1;
+    const generation = ++authGenerationRef.current;
     const prev = sessionRef.current;
     const s = prev ? { ...prev, user: { ...prev.user, role } } : { user: { role, id: 'u_' + Date.now() } };
     sessionRef.current = s;
     setSession(s);
     await storage.set(KEY, JSON.stringify(s));
+    if (authRetryRef.current.pending) {
+      const currentToken = await regAPI.getToken();
+      if (currentToken && generation === authGenerationRef.current) startVerifiedRefresh(currentToken, generation);
+    }
     return { ok: true };
   });
 
@@ -308,12 +345,18 @@ export const AuthProvider = ({ children }) => {
     if (expectedToken && !await authOwnerIsCurrent(
       expectedToken, expectedGeneration, () => authGenerationRef.current, () => regAPI.getToken(),
     )) return { ok: false, reason: 'SESSION_CHANGED' };
-    authGenerationRef.current += 1;
+    const logoutGeneration = ++authGenerationRef.current;
     setAuthExpirySuppressed(true);
 
     // Do not clear auth state until native tracking is stopped and the durable
     // server-revoke intent has been verified.
     const authToken = await regAPI.getToken();
+    const resumePendingVerification = async () => {
+      if (authRetryRef.current.pending && authToken &&
+          await authOwnerIsCurrent(authToken, logoutGeneration, () => authGenerationRef.current, () => regAPI.getToken())) {
+        startVerifiedRefresh(authToken, logoutGeneration);
+      }
+    };
     // A local logout is not successful while native tracking may still be
     // running. Keep the session/token so the user can retry when Expo/OS fails
     // to confirm stop; do not hide a rejected or timed-out native operation.
@@ -325,6 +368,7 @@ export const AuthProvider = ({ children }) => {
     );
     if (!trackingResult?.ok) {
       setAuthExpirySuppressed(false);
+      await resumePendingVerification();
       return {
         ok: false,
         reason: trackingResult?.reason || 'BACKGROUND_TRACKING_STOP_FAILED',
@@ -345,6 +389,7 @@ export const AuthProvider = ({ children }) => {
       // creating an unrecoverable server/push ownership window. If GPS was
       // stopped first, restore it for the still-active session before retry.
       setAuthExpirySuppressed(false);
+      await resumePendingVerification();
       return {
         ok: false,
         reason: 'PENDING_LOGOUT_REVOKE_NOT_DURABLE',

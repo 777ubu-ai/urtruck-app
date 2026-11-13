@@ -336,3 +336,61 @@ def test_pending_confirmation_does_not_reopen_closed_deal(world):
     assert r.status_code == 409 and r.json()['detail']['error'] == 'ROUTE_DEAL_CLOSED'
     with db.get_conn() as c:
         assert tuple(c.execute('SELECT status,from_country_snapshot FROM deals WHERE id=?', (deal,)).fetchone()) == ('cancelled', None)
+
+@pytest.mark.parametrize('target', ['cargo_desc', 'cargo_type', 'from_city', 'to_city', 'party_name', 'currency'])
+def test_waybill_escapes_untrusted_fields_and_is_private(world, target):
+    from html import escape
+    from html.parser import HTMLParser
+    from main import SecurityHeadersMiddleware
+
+    world['http'].app.add_middleware(SecurityHeadersMiddleware)
+    cargo, _bid, deal, _room = legacy_deal(world, status='accepted')
+    payload = '<script>globalThis.__urtruckDocProbe=1</script>'
+    with db.get_conn() as c:
+        if target in ('cargo_desc', 'cargo_type', 'currency'):
+            c.execute(f'UPDATE cargos SET {target}=? WHERE id=?', (payload, cargo))
+        elif target in ('from_city', 'to_city'):
+            c.execute(f'UPDATE deals SET {target}=? WHERE id=?', (payload, deal))
+        else:
+            c.execute('UPDATE drivers_registration SET full_name=? WHERE id=?', (payload, world['owner']))
+    link = post(world, f'/deals/{deal}/waybill-link')
+    assert link.status_code == 200
+    response = world['http'].get(f'/api/v1/market/deals/{deal}/waybill', params=link.json())
+    assert response.status_code == 200
+    assert payload not in response.text
+    assert escape(payload) in response.text
+    assert 'no-store' in response.headers.get('cache-control', '')
+    assert response.headers.get('referrer-policy') == 'no-referrer'
+
+    class Tags(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.scripts = 0
+        def handle_starttag(self, tag, attrs):
+            self.scripts += tag.lower() == 'script'
+    tags = Tags()
+    tags.feed(response.text)
+    assert tags.scripts == 0
+    assert 'window.print()' in response.text
+
+@pytest.mark.parametrize('field', ['passport_intl_url', 'tir_book_url', 'cmr_insurance_url'])
+def test_profile_patch_cannot_rebind_another_users_private_document(world, field):
+    from api.profile import profile_router, _ensure_columns
+    world['http'].app.include_router(profile_router, prefix='/api/v1/users')
+    _ensure_columns()
+    own = '/security/storage/pro-own-fixture/own.jpg'
+    foreign = '/security/storage/pro-other-fixture/other.jpg'
+    with db.get_conn() as c:
+        c.execute(f'UPDATE drivers_registration SET {field}=? WHERE id=?', (own, world['owner']))
+        c.execute(f'UPDATE drivers_registration SET {field}=? WHERE id=?', (foreign, world['driver']))
+    headers = world['headers'][world['owner']]
+    result = world['http'].patch('/api/v1/users/me', headers=headers, json={field: foreign, 'city': 'Тестовый город'})
+    assert result.status_code == 200, result.text
+    with db.get_conn() as c:
+        row = c.execute(f'SELECT {field},city FROM drivers_registration WHERE id=?', (world['owner'],)).fetchone()
+        assert row[0] == own
+        assert row[1] == 'Тестовый город'
+    after = world['http'].get('/api/v1/users/me', headers=headers)
+    assert after.status_code == 200
+    assert 'pro-own-fixture/own.jpg' in after.json()[field]
+    assert 'pro-other-fixture' not in after.json()[field]

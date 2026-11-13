@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="theme-color" content="#F6F8F7" />
+  <meta name="description" content="UrTruck — приложение, которое помогает грузоотправителям и водителям находить друг друга, обсуждать условия и вести перевозку." />
+  <meta property="og:title" content="UrTruck — перевозки в одном приложении" />
+  <meta property="og:description" content="Найдите груз или рейс, обсудите условия и продолжайте работу в приложении UrTruck." />
+  <meta property="og:image" content="https://urtruck.kz/site/assets/cargo-feed.png" />
+  <meta property="og:type" content="website" />
+  <title>UrTruck — приложение для грузоотправителей и водителей</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/site/styles.css?v=1" />
+  <script src="/site/site.js?v=1" defer></script>
+</head>
+<body>
+  <div class="topline" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="wordmark" href="/" aria-label="UrTruck — главная">UrTruck<span>.</span></a>
+    <nav class="main-nav" aria-label="Навигация">
+      <a href="#roles" data-i18n="nav.roles">Кому подходит</a>
+      <a href="#how" data-i18n="nav.how">Как работает</a>
+      <a href="#screens" data-i18n="nav.screens">В приложении</a>
+      <a href="#support" data-i18n="nav.support">Поддержка</a>
+    </nav>
+    <div class="header-actions">
+      <label class="language-picker"><span class="visually-hidden" data-i18n="language.label">Язык сайта</span>
+        <select id="language-select" aria-label="Язык сайта">
+          <option value="ru">RU</option><option value="kk">KK</option><option value="en">EN</option><option value="zh">中文</option>
+        </select>
+      </label>
+      <a class="header-download" href="#download" data-i18n="nav.download">Скачать приложение</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="eyebrow-dot"></span><span data-i18n="hero.eyebrow">Для грузоотправителей и водителей</span></p>
+        <h1 id="hero-title" data-i18n="hero.title">Найдите партнёра для следующего рейса.</h1>
+        <p class="hero-lead" data-i18n="hero.body">UrTruck объединяет объявления о грузах и рейсах, предложения по перевозке и общение участников в мобильном приложении.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#download"><span data-i18n="hero.cta">Посмотреть приложение</span><span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="#how"><span data-i18n="hero.secondary">Как это работает</span><span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="hero-note"><span class="note-check" aria-hidden="true">✓</span><span data-i18n="hero.note">Выберите магазин и подтвердите установку на его странице.</span></div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-photo-wrap" aria-hidden="true"></div>
+        <div class="route-chip"><span class="route-pin">●</span><span data-i18n="hero.route">Груз · рейс · сделка</span><span class="route-arrow" aria-hidden="true">↗</span></div>
+        <div class="phone-preview" aria-label="Скриншот приложения UrTruck">
+          <div class="phone-speaker" aria-hidden="true"></div>
+          <img src="/site/assets/cargo-feed.png" alt="Лента грузов в приложении UrTruck" />
+        </div>
+      </div>
+    </section>
+
+    <section class="trust-strip" aria-label="Возможности приложения">
+      <span data-i18n="strip.one">Объявления о грузах и рейсах</span><i></i>
+      <span data-i18n="strip.two">Предложения и обсуждение условий</span><i></i>
+      <span data-i18n="strip.three">Сделки и чат</span>
+    </section>
+
+    <section class="section roles-section" id="roles">
+      <div class="section-heading">
+        <p class="eyebrow" data-i18n="roles.eyebrow">Один сервис — две стороны перевозки</p>
+        <h2 data-i18n="roles.title">Работайте со своей стороны маршрута</h2>
+        <p data-i18n="roles.intro">В приложении можно искать подходящие предложения, договариваться и продолжать работу в сделке.</p>
+      </div>
+      <div class="role-grid">
+        <article class="role-card role-shipper">
+          <div class="role-card-top"><span class="role-number">01</span><span class="role-mark" aria-hidden="true">↗</span></div>
+          <h3 data-i18n="roles.shipper.title">Грузоотправителю</h3>
+          <p data-i18n="roles.shipper.body">Разместите груз с маршрутом и условиями. Получайте предложения водителей, обсуждайте цену и ведите принятую перевозку в сделке.</p>
+          <a href="#screens" class="role-link"><span data-i18n="roles.more">Посмотреть экраны</span><span aria-hidden="true">→</span></a>
+          <div class="role-image shipper-image"><img src="/site/assets/deal-screen.png" alt="Экран сделок приложения UrTruck" loading="lazy" /></div>
+        </article>
+        <article class="role-card role-driver">
+          <div class="role-card-top"><span class="role-number">02</span><span class="role-mark" aria-hidden="true">↗</span></div>
+          <h3 data-i18n="roles.driver.title">Водителю</h3>
+          <p data-i18n="roles.driver.body">Просматривайте доступные грузы, отправляйте предложение или находите заказчика через публикацию собственного рейса.</p>
+          <a href="#screens" class="role-link"><span data-i18n="roles.more">Посмотреть экраны</span><span aria-hidden="true">→</span></a>
+          <div class="role-image driver-image"><img src="/site/assets/trips-screen.png" alt="Личный список рейсов приложения UrTruck" loading="lazy" /></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="how-section" id="how">
+      <div class="section-heading section-heading-light">
+        <p class="eyebrow" data-i18n="how.eyebrow">Понятная последовательность</p>
+        <h2 data-i18n="how.title">От объявления до завершения перевозки</h2>
+      </div>
+      <div class="steps-grid">
+        <article class="step-card"><span class="step-index">01</span><div class="step-icon" aria-hidden="true">⌕</div><h3 data-i18n="how.step1.title">Найдите или разместите</h3><p data-i18n="how.step1.body">Грузоотправитель публикует груз, а водитель просматривает доступные объявления или размещает свой рейс.</p></article>
+        <article class="step-card"><span class="step-index">02</span><div class="step-icon" aria-hidden="true">↔</div><h3 data-i18n="how.step2.title">Обсудите условия</h3><p data-i18n="how.step2.body">Участники отправляют предложения, обсуждают цену и принимают согласованный вариант.</p></article>
+        <article class="step-card"><span class="step-index">03</span><div class="step-icon" aria-hidden="true">✓</div><h3 data-i18n="how.step3.title">Продолжайте в сделке</h3><p data-i18n="how.step3.body">После принятия предложения участники используют чат и доступные этапы перевозки.</p></article>
+      </div>
+      <p class="how-footnote" data-i18n="how.note">Доступность отдельных действий зависит от условий объявления, роли и состояния сделки.</p>
+    </section>
+
+    <section class="section screens-section" id="screens">
+      <div class="screens-intro">
+        <div class="section-heading">
+          <p class="eyebrow" data-i18n="screens.eyebrow">Взгляд внутрь</p>
+          <h2 data-i18n="screens.title">Рабочие экраны приложения</h2>
+          <p data-i18n="screens.body">Здесь показаны скриншоты UrTruck из материалов приложения.</p>
+        </div>
+        <div class="screen-controls" aria-label="Выбор скриншота">
+          <button type="button" class="screen-tab is-active" data-screen="cargo" aria-pressed="true" data-i18n="screens.tab1">Грузы</button>
+          <button type="button" class="screen-tab" data-screen="trips" aria-pressed="false" data-i18n="screens.tab2">Мои рейсы</button>
+          <button type="button" class="screen-tab" data-screen="deals" aria-pressed="false" data-i18n="screens.tab3">Сделки</button>
+        </div>
+      </div>
+      <div class="screens-showcase">
+        <div class="screen-caption"><span class="caption-number" id="screen-number">01 / 03</span><h3 id="screen-caption" data-i18n="screens.caption1">Лента грузов</h3><p data-i18n="screens.captionBody">Список объявлений с маршрутами и условиями.</p></div>
+        <figure class="screenshot-frame"><img id="app-screenshot" src="/site/assets/cargo-feed.png" alt="Скриншот ленты грузов UrTruck" loading="lazy" /></figure>
+        <div class="screen-side-note"><span class="side-line"></span><span data-i18n="screens.side">Интерфейс показан на подлинных скриншотах приложения</span></div>
+      </div>
+    </section>
+
+    <section class="download-section" id="download">
+      <div class="download-copy">
+        <p class="eyebrow eyebrow-light"><span class="eyebrow-dot"></span><span data-i18n="download.eyebrow">Выберите официальную платформу</span></p>
+        <h2 data-i18n="download.title">Продолжите в приложении UrTruck</h2>
+        <p data-i18n="download.body">Откройте страницу приложения в своём магазине. Установка начинается только после вашего подтверждения.</p>
+        <p class="platform-hint" id="platform-hint" aria-live="polite" data-i18n="download.desktop">Выберите магазин для своего устройства.</p>
+      </div>
+      <div class="store-grid">
+        <article class="store-card" data-store-card="android">
+          <div class="store-card-head"><span class="store-symbol" aria-hidden="true">▶</span><div><p class="store-platform">ANDROID</p><h3>Google Play</h3></div></div>
+          <a class="store-button" data-store-link="android" href="https://play.google.com/store/apps/details?id=com.urtruck.app" target="_blank" rel="noopener noreferrer"><span data-i18n="download.google">Открыть Google Play</span><span aria-hidden="true">↗</span></a>
+          <div class="qr-block"><img src="/site/assets/google-play-qr.png" alt="QR-код официальной страницы UrTruck в Google Play" width="116" height="116" loading="lazy" /><span data-i18n="download.qr">Сканируйте камерой телефона</span></div>
+        </article>
+        <article class="store-card" data-store-card="ios">
+          <div class="store-card-head"><span class="store-symbol store-symbol-apple" aria-hidden="true">●</span><div><p class="store-platform">IPHONE</p><h3>App Store</h3></div></div>
+          <a class="store-button" data-store-link="ios" href="https://apps.apple.com/kz/app/urtruck/id6764504167" target="_blank" rel="noopener noreferrer"><span data-i18n="download.apple">Открыть App Store</span><span aria-hidden="true">↗</span></a>
+          <div class="qr-block"><img src="/site/assets/app-store-qr.png" alt="QR-код официальной страницы UrTruck в App Store" width="116" height="116" loading="lazy" /><span data-i18n="download.qr">Сканируйте камерой телефона</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="support-section" id="support">
+      <div><p class="eyebrow" data-i18n="support.eyebrow">Мы на связи</p><h2 data-i18n="support.title">Нужна помощь?</h2><p data-i18n="support.body">По вопросам приложения, доступа к аккаунту или удаления учётной записи напишите в поддержку.</p></div>
+      <div class="support-actions"><a href="mailto:support@urtruck.kz" class="support-email">support@urtruck.kz <span aria-hidden="true">↗</span></a><a href="https://t.me/UrTruckBot" target="_blank" rel="noopener noreferrer" class="support-telegram">@UrTruckBot <span aria-hidden="true">↗</span></a></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="wordmark footer-wordmark" href="/">UrTruck<span>.</span></a>
+    <p data-i18n="footer.copy">Сервис для участников грузоперевозок. Работа с аккаунтом доступна в мобильном приложении.</p>
+    <nav class="legal-links" aria-label="Юридические документы"><a href="/terms" data-i18n="footer.terms">Условия использования</a><a href="/privacy" data-i18n="footer.privacy">Конфиденциальность</a><a href="/support" data-i18n="footer.support">Поддержка</a><a href="mailto:support@urtruck.kz?subject=Account%20deletion%20request" data-i18n="footer.delete">Запросить удаление аккаунта</a></nav>
+    <p class="copyright">© 2026 UrTruck</p>
+  </footer>
+  <aside id="callback-notice" class="callback-notice" role="status" aria-live="polite" hidden></aside>
+</body>
+</html>

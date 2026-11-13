@@ -28,10 +28,10 @@ test('role is not committed to AuthContext before required profile saves success
 });
 
 
-test('minimal registration asks only name and phone after confirmed email identity', () => {
+test('registration requires only name and phone after confirmed email identity', () => {
   assert.match(profile, /id="name"/);
   assert.match(profile, /testID="profile-v2-phone"/);
-  for (const field of ['company','country','city','messenger','iin','birthDate']) {
+  for (const field of ['iin','birthDate']) {
     assert.doesNotMatch(profile, new RegExp(`id="${field}"`));
   }
   assert.match(profile, /const basicFormValid = validName && validPhone/);

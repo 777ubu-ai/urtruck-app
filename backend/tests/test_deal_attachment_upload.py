@@ -217,6 +217,25 @@ def test_attachment_ownership_is_per_authenticated_participant(monkeypatch):
     assert own["url"] == foreign["url"] == "/signed/pdf"
 
 
+def test_capable_client_gets_private_route_metadata_without_a_bearer_url(monkeypatch):
+    attachment = {"id": "pdf-1", "kind": "document", "uploader_id": "owner", "url": "/storage/chat_attachments/private.pdf"}
+    monkeypatch.setattr(deal_room.dr, "room_exists", lambda _room: True)
+    monkeypatch.setattr(deal_room.dr, "is_participant", lambda _room, uid: uid in ("owner", "partner"))
+    monkeypatch.setattr(deal_room, "_assert_deal_room_open", lambda *_args: None)
+    monkeypatch.setattr(deal_room, "_ensure_attachment_columns", lambda: None)
+    monkeypatch.setattr(deal_room.dr, "list_attachments", lambda _room: [attachment])
+    monkeypatch.setattr(deal_room, "_sign_attachment", lambda *_args: (_ for _ in ()).throw(AssertionError("capable client must not mint a URL")))
+
+    result = deal_room.list_conversation_attachments(
+        "room", {"id": "owner"}, capability="v1", client_version="1.0.51"
+    )["attachments"][0]
+    assert result["id"] == "pdf-1"
+    assert result["url"] is None and result["download_url"] is None
+    assert result["private_file_transport"] == "v1"
+    assert result["private_content_available"] is True
+    assert result["mine"] is True
+
+
 def test_attachment_ownership_does_not_bypass_participant_check(monkeypatch):
     import pytest
     from fastapi import HTTPException

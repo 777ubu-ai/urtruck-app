@@ -21,7 +21,11 @@ async function fetchAccount(token) {
   let timer;
   try {
     return await Promise.race([
-      fetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }),
+      fetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }).then(async response => {
+        if (!response.ok) return response;
+        const data = await response.json();
+        return { status: response.status, ok: response.ok, json: async () => data };
+      }),
       new Promise((_, reject) => {
         timer = setTimeout(() => { controller.abort(); reject(new Error('ACCOUNT_FETCH_TIMEOUT')); }, 15000);
       }),

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { parseExpenseAmount, validExpenseDate, makeExpenseBody, localExpenseDate, EXPENSE_CATEGORIES, EXPENSE_CURRENCIES } from '../../src/utils/expenseModel.js';
-import { EXPENSE_COPY, getExpenseCopy } from '../../src/utils/expenseCopy.js';
+import { EXPENSE_COPY, getExpenseCopy, getExpenseFailureMessage } from '../../src/utils/expenseCopy.js';
 
 test('expense amounts accept comma and spacing without floating point arithmetic', () => {
   for (const [raw, expected] of [['1 500,20', '1500.20'], ['0.01', '0.01'], ['12','12.00'], ['999999999.99','999999999.99']]) assert.equal(parseExpenseAmount(raw), expected);
@@ -30,6 +30,19 @@ test('expense labels cover all categories and all four app languages', () => {
   }
   assert.equal(getExpenseCopy('zh'), EXPENSE_COPY.ZH);
   assert.equal(EXPENSE_CURRENCIES.length, new Set(EXPENSE_CURRENCIES).size);
+});
+test('expense errors distinguish session, access, network, missing service and server failure', () => {
+  const ru = getExpenseCopy('RU');
+  assert.equal(getExpenseFailureMessage({status:401}, 'RU'), ru.sessionError);
+  assert.equal(getExpenseFailureMessage({status:403}, 'RU'), ru.accessError);
+  assert.equal(getExpenseFailureMessage({status:0}, 'RU'), ru.networkError);
+  assert.equal(getExpenseFailureMessage({status:404}, 'RU'), ru.unavailable);
+  assert.equal(getExpenseFailureMessage({status:503}, 'RU'), ru.serverError);
+  assert.equal(getExpenseFailureMessage({status:0}, 'RU', true), ru.saveNetworkError);
+  assert.equal(getExpenseFailureMessage({status:500}, 'RU', true), ru.saveServerError);
+  for (const copy of Object.values(EXPENSE_COPY)) {
+    for (const key of ['sessionError','accessError','networkError','serverError','saveNetworkError','saveServerError']) assert.ok(copy[key], key);
+  }
 });
 function apiHarness() {
   const source = readFileSync('src/utils/expenseAPI.js','utf8').replace(/^import .*;\n/gm,'').replace(/export /g,'');

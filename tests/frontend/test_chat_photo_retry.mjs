@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { sendPhotoWithRecovery } from '../../src/utils/chatMediaRecovery.js';
 
 const source = readFileSync(new URL('../../src/screens/DealWorkspaceScreenV2.js', import.meta.url), 'utf8');
 const body = source.split('const uploadPhoto = React.useCallback(async (item) => {')[1]
@@ -10,7 +11,8 @@ function harness(api) {
   const state = { messages: [{ id: 'photo-1', photo: true, mediaUrl: 'file://test.jpg', optimistic: true }] };
   const env = {
     chatAPI: api, roomId: 'room', recipientId: 'recipient', deal: {}, params: {},
-    photoSendingRef: { current: new Set() }, loadMessages() {}, setTimeout() {}, t: (key) => key,
+    photoSendingRef: { current: new Set() }, photoSessionRef: { current: 'test-session' }, sendPhotoWithRecovery,
+    loadMessages() {}, setTimeout() {}, t: (key) => key,
     setMessages: (fn) => { state.messages = fn(state.messages); },
   };
   const upload = new Function(...Object.keys(env), `return async function(item) { ${body} };`)(...Object.values(env));

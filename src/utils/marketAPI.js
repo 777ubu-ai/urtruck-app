@@ -313,6 +313,28 @@ export const marketAPI = {
     return { ok: true, url: `${BASE}/deals/${dealId}/waybill?exp=${d.exp}&sig=${d.sig}` };
   },
 
+  // Срок публикации: сервер проверяет владельца и period_id.
+  async ownedPublicationAction(kind, id, action, periodId) {
+    if (!['cargo', 'trip'].includes(kind) || !['renew', 'archive', 'hide'].includes(action)) return { ok: false };
+    const controller = new AbortController();
+    let timer;
+    try {
+      const request = (async () => {
+        const auth = await headers();
+        if (controller.signal.aborted) return { ok: false };
+        const response = await authedFetch(`${BASE}/${kind === 'cargo' ? 'cargos' : 'trips'}/${encodeURIComponent(id)}/publication/${action}`, {
+          method: 'POST', headers: auth, signal: controller.signal,
+          ...(action === 'renew' ? { body: JSON.stringify({ period_id: periodId }) } : {}),
+        });
+        const data = await response.json().catch(() => ({}));
+        return response.ok ? data : { ok: false, detail: normalizeDetail(data.detail, response.status), status: response.status };
+      })();
+      const timeout = new Promise(resolve => { timer = setTimeout(() => { controller.abort(); resolve({ ok: false }); }, 15000); });
+      return await Promise.race([request, timeout]);
+    } catch { return { ok: false }; }
+    finally { clearTimeout(timer); }
+  },
+
   // Продлить груз одним тапом («Ещё актуально» — Модель А): дата = сегодня.
   async extendCargo(id) {
     const r = await authedFetch(`${BASE}/cargos/${id}/extend`, {
@@ -550,12 +572,13 @@ export const marketAPI = {
   },
 
   // Собственные объявления без общего dashboard-кэша и unread side effects.
-  async myListings({ kind = 'cargo', section = 'active', limit = 50, offset = 0 } = {}) {
+  async myListings({ kind = 'cargo', section = 'active', limit = 50, offset = 0, listingId = null } = {}) {
     const h = await headers();
     const scope = h.Authorization || null;
     if (!scope) return { authRequired: true, items: [] };
     try {
       const params = new URLSearchParams({ kind, section, limit, offset });
+      if (listingId) params.set('listing_id', listingId);
       const r = await authedFetch(`${BASE}/my/listings?${params}`, { headers: h });
       let d = await r.json().catch(() => null);
       if ((await headers()).Authorization !== scope) return { authRequired: true, stale: true, items: [] };
@@ -570,7 +593,8 @@ export const marketAPI = {
         const archive = all.filter(item => ['unpublished', 'cancelled', 'rejected'].includes(item.status));
         const active = all.filter(item => !item.status || item.status === 'active' || (kind === 'trip' && item.status === 'draft'));
         const history = all.filter(item => item.status && item.status !== 'active' && !(kind === 'trip' && item.status === 'draft'));
-        return { items: section === 'history' ? history : section === 'archive' ? archive : active, archive_total: archive.length,
+        const selected = section === 'history' ? history : section === 'archive' ? archive : active;
+        return { items: listingId ? selected.filter(item => String(item.id) === String(listingId)) : selected, archive_total: archive.length,
           history_total: null,
           next_offset: null, scope, paginationUnavailable: true };
       }

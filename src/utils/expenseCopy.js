@@ -6,6 +6,9 @@ const RU = {
   date: 'Дата (ГГГГ-ММ-ДД)', vehicle: 'Машина', deal: 'Рейс', allVehicles: 'Все машины', allDeals: 'Все рейсы', noVehicle: 'Без машины', noDeal: 'Без рейса',
   privacy: 'Личные записи. Грузоотправитель их не видит, в чат они не отправляются.', total: 'Итого по выбранным фильтрам',
   empty: 'Расходов пока нет', error: 'Не удалось загрузить расходы. Повторите.', unavailable: 'Сервис расходов пока недоступен на этом сервере.',
+  sessionError: 'Сессия не подтверждена. Проверьте вход в приложение и повторите.', accessError: 'У этого аккаунта нет доступа к расходам водителя.',
+  networkError: 'Нет соединения с сервером. Проверьте сеть и повторите.', serverError: 'Сервер расходов временно недоступен. Повторите позже.',
+  saveNetworkError: 'Не удалось связаться с сервером. Запись осталась в форме; можно повторить.', saveServerError: 'Сервер временно недоступен. Запись осталась в форме; повторите позже.',
   saveError: 'Не удалось сохранить. Запись осталась в форме; можно повторить.', conflict: 'Запись изменилась или уже сохранена. Обновите список перед повтором.',
   invalid: 'Укажите сумму больше нуля (до двух знаков после запятой) и дату ГГГГ-ММ-ДД.', retry: 'Обновить', more: 'Показать ещё',
   remove: 'Удалить', removeTitle: 'Удалить расход?', removeMessage: 'Запись исчезнет из вашего списка расходов.', cancel: 'Отмена', close: 'Закрыть',
@@ -18,6 +21,9 @@ const EN = {
   date: 'Date (YYYY-MM-DD)', vehicle: 'Vehicle', deal: 'Trip', allVehicles: 'All vehicles', allDeals: 'All trips', noVehicle: 'No vehicle', noDeal: 'No trip',
   privacy: 'Private notes. The shipper cannot see them; nothing is sent to chat.', total: 'Total for selected filters',
   empty: 'No expenses yet', error: 'Could not load expenses. Please retry.', unavailable: 'Expenses are not available on this server yet.',
+  sessionError: 'Your session could not be verified. Check that you are signed in, then retry.', accessError: 'This account does not have access to driver expenses.',
+  networkError: 'Could not reach the server. Check your connection and retry.', serverError: 'The expenses server is temporarily unavailable. Try again later.',
+  saveNetworkError: 'Could not reach the server. Your entry is still in the form; you can retry.', saveServerError: 'The server is temporarily unavailable. Your entry is still in the form; retry later.',
   saveError: 'Could not save. Your entry remains in the form; you can retry.', conflict: 'This entry changed or was already saved. Refresh the list before retrying.',
   invalid: 'Enter an amount above zero (up to two decimal places) and a YYYY-MM-DD date.', retry: 'Refresh', more: 'Load more',
   remove: 'Delete', removeTitle: 'Delete expense?', removeMessage: 'This entry will disappear from your expenses.', cancel: 'Cancel', close: 'Close',
@@ -30,6 +36,9 @@ const KK = {
   date: 'Күні (ЖЖЖЖ-АА-КК)', vehicle: 'Көлік', deal: 'Рейс', allVehicles: 'Барлық көліктер', allDeals: 'Барлық рейстер', noVehicle: 'Көліксіз', noDeal: 'Рейссіз',
   privacy: 'Жеке жазбалар. Жүк иесіне көрінбейді және чатқа жіберілмейді.', total: 'Таңдалған сүзгілер бойынша барлығы',
   empty: 'Шығындар әзірге жоқ', error: 'Шығындарды жүктеу мүмкін болмады. Қайталаңыз.', unavailable: 'Бұл серверде шығындар қызметі әлі қолжетімсіз.',
+  sessionError: 'Сессия расталмады. Қосымшаға кіргеніңізді тексеріп, қайталап көріңіз.', accessError: 'Бұл аккаунтта жүргізуші шығындарына қолжетімділік жоқ.',
+  networkError: 'Серверге қосылу мүмкін болмады. Желіні тексеріп, қайталап көріңіз.', serverError: 'Шығындар сервері уақытша қолжетімсіз. Кейінірек қайталаңыз.',
+  saveNetworkError: 'Серверге қосылу мүмкін болмады. Жазба пішінде сақталды, қайталауға болады.', saveServerError: 'Сервер уақытша қолжетімсіз. Жазба пішінде сақталды, кейінірек қайталаңыз.',
   saveError: 'Сақтау мүмкін болмады. Жазба нысанда қалды; қайталауға болады.', conflict: 'Жазба өзгертілді немесе сақталды. Тізімді жаңартыңыз.',
   invalid: 'Нөлден үлкен соманы (үтірден кейін екі таңбаға дейін) және ЖЖЖЖ-АА-КК күнін енгізіңіз.', retry: 'Жаңарту', more: 'Тағы көрсету',
   remove: 'Жою', removeTitle: 'Шығынды жою керек пе?', removeMessage: 'Жазба шығындар тізімінен жойылады.', cancel: 'Бас тарту', close: 'Жабу',
@@ -42,6 +51,9 @@ const ZH = {
   date: '日期（YYYY-MM-DD）', vehicle: '车辆', deal: '行程', allVehicles: '所有车辆', allDeals: '所有行程', noVehicle: '未关联车辆', noDeal: '未关联行程',
   privacy: '私人记录，货主不可见，也不会发送到聊天中。', total: '当前筛选条件下的合计',
   empty: '暂无支出', error: '无法加载支出，请重试。', unavailable: '此服务器暂未开通支出功能。',
+  sessionError: '无法验证登录状态。请检查应用登录状态后重试。', accessError: '此账户无权使用司机支出。',
+  networkError: '无法连接服务器。请检查网络后重试。', serverError: '支出服务器暂时不可用，请稍后重试。',
+  saveNetworkError: '无法连接服务器，内容仍保留在表单中，可以重试。', saveServerError: '服务器暂时不可用，内容仍保留在表单中，请稍后重试。',
   saveError: '保存失败，内容仍保留在表单中，可以重试。', conflict: '记录已更改或已保存，请先刷新列表。',
   invalid: '请输入大于零的金额（最多两位小数）及 YYYY-MM-DD 格式的日期。', retry: '刷新', more: '加载更多',
   remove: '删除', removeTitle: '删除此支出？', removeMessage: '此记录将从您的支出列表中移除。', cancel: '取消', close: '关闭',
@@ -50,3 +62,15 @@ const ZH = {
 export const EXPENSE_COPY = { RU, EN, KK, ZH };
 Object.assign(EXPENSE_COPY, withAdditionalLanguageTree(EXPENSE_COPY));
 export const getExpenseCopy = (lang) => EXPENSE_COPY[String(lang).toUpperCase()] || EN;
+
+export function getExpenseFailureMessage(result, lang, saving = false) {
+  const copy = getExpenseCopy(lang);
+  const status = Number(result?.status || 0);
+  if (status === 409) return copy.conflict;
+  if (status === 401) return copy.sessionError;
+  if (status === 403) return copy.accessError;
+  if (status === 404) return copy.unavailable;
+  if (status === 0) return saving ? copy.saveNetworkError : copy.networkError;
+  if (status >= 500) return saving ? copy.saveServerError : copy.serverError;
+  return saving ? copy.saveError : copy.error;
+}

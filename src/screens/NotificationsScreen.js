@@ -14,6 +14,7 @@ import { useI18n } from '../utils/useI18n';
 import { getLanguage } from '../utils/i18n';
 import { useSafeRefresh } from '../hooks/useSafeRefresh';
 import { localizeSystemMessage } from '../utils/places';
+import { localizeExpiryNotification } from '../utils/expiryNotificationLocale';
 import Feather from '@expo/vector-icons/Feather';
 
 const NOTIF_LOCALE = { RU: 'ru-RU', KK: 'kk-KZ', ZH: 'zh-CN', EN: 'en-US' };
@@ -93,7 +94,7 @@ export default function NotificationsScreen({ navigation }) {
   const { t, lang } = useI18n();
   const v1 = useV1Colors();
   const s = React.useMemo(() => StyleSheet.create({
-    titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
+    titleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 },
     titleHero: { color: v1.text, fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
     markAll: { fontSize: 12, fontWeight: '800' },
     card: {
@@ -119,14 +120,21 @@ export default function NotificationsScreen({ navigation }) {
     if (!loadOwner) return;
     if (showLoading) setLoading(true);
     try {
-      const d = await notificationsAPI.list(50);
+      const [d, attention] = await Promise.all([
+        notificationsAPI.list(50),
+        notificationsAPI.attention().catch(() => null),
+      ]);
       if (!mountedRef.current || ownerRef.current !== loadOwner) return;
       const all = Array.isArray(d?.notifications) ? d.notifications : [];
       // Bell is the canonical cross-product inbox. Bid, deal, tracking and
       // chat records are durable server notifications with their own deep
       // links, so hiding lifecycle records here made a delivered push
       // impossible to find or mark read in-app.
-      setItems(all);
+      const byId = new Map(all.map(item => [item.id, item]));
+      for (const item of attention?.notifications || []) {
+        if (!byId.has(item.id)) byId.set(item.id, { ...item, is_read: 0 });
+      }
+      setItems([...byId.values()].sort((a, b) => Number(!!a.is_read) - Number(!!b.is_read) || String(b.created_at || '').localeCompare(String(a.created_at || ''))));
     } catch {}
     if (showLoading && mountedRef.current && ownerRef.current === loadOwner) setLoading(false);
   }, []);
@@ -178,7 +186,9 @@ export default function NotificationsScreen({ navigation }) {
     if (!parsed) return;
     const { kind, id, params } = parsed;
     try {
-      if (kind === "cargos" && id) {
+      if ((kind === "cargos" || kind === "trips") && id && params.publication_expired === '1') {
+        navigation.navigate("MyTripsList", { role, initialTab: 'archive', targetPublicationId: id });
+      } else if (kind === "cargos" && id) {
         navigation.navigate("CargoDetail", { cargoId: id, bidId: params.bid || null, role });
       } else if (kind === "trips" && id) {
         navigation.navigate("TripDetail", { tripId: id, bidId: params.bid || null, role });
@@ -213,8 +223,11 @@ export default function NotificationsScreen({ navigation }) {
 
   const renderItem = ({ item }) => {
     const isUnread = !item.is_read;
+    const localized = localizeExpiryNotification(item, lang);
     const cleanTitle = localizeSystemMessage(cleanNotifText(item.title), lang);
     const cleanBody = localizeSystemMessage(cleanNotifText(item.body), lang);
+    const displayTitle = localized === item ? cleanTitle : localized.title;
+    const displayBody = localized === item ? cleanBody : localized.body;
     return (
       <TouchableOpacity
         style={[s.card, isUnread && { borderColor: accent.main }]}
@@ -223,9 +236,9 @@ export default function NotificationsScreen({ navigation }) {
         <Text style={s.icon}>{item.icon || "🔔"}</Text>
         <View style={{ flex: 1 }}>
           <Text style={[s.title, { fontWeight: isUnread ? "700" : "500" }]}>
-            {cleanTitle}
+            {displayTitle}
           </Text>
-          {cleanBody ? <Text style={s.body}>{cleanBody}</Text> : null}
+          {displayBody ? <Text style={s.body}>{displayBody}</Text> : null}
           <Text style={s.time}>{formatNotifTime(item.created_at)}</Text>
         </View>
         {isUnread && <View style={[s.dot, { backgroundColor: accent.main }]} />}
@@ -243,9 +256,9 @@ export default function NotificationsScreen({ navigation }) {
         rightSlot={<HeaderMenuButton navigation={navigation} role={role} testID="notifications-menu-btn" />}
       />
       <View style={s.titleRow}>
-        <Text style={s.titleHero}>{t('menu_notifications')}</Text>
+        <Text testID="notifications-title" style={s.titleHero}>{t('menu_notifications')}</Text>
         {items.some(i => !i.is_read) ? (
-          <TouchableOpacity onPress={markAllRead}>
+          <TouchableOpacity testID="notifications-mark-all" onPress={markAllRead}>
             <Text style={[s.markAll, { color: accent.main }]}>
               {t("notifications_mark_all_read")}
             </Text>

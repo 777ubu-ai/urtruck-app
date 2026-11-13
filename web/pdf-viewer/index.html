@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://pymddxenwtjcbmrafvnc.supabase.co; worker-src 'self' blob:; font-src 'self' blob:; img-src 'self' blob: data:; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="./viewer.css">
+  <title>PDF</title>
+</head>
+<body>
+  <div id="status" role="status">Загрузка документа…</div>
+  <button id="retry" hidden>Повторить</button>
+  <div id="controls" hidden><button id="previous" aria-label="Предыдущая страница">‹</button><span id="page-count"></span><button id="next" aria-label="Следующая страница">›</button></div>
+  <canvas id="page" hidden></canvas>
+  <script type="module" src="./viewer.js"></script>
+</body>
+</html>

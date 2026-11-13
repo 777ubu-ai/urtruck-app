@@ -81,10 +81,11 @@ test('actual Deals load ignores old dashboard and notification responses', async
   const env = {
     loadRequestRef: { current: 0 },
     marketAPI: { myDashboard: () => new Promise((resolve) => responses.push(resolve)) },
-    notificationsAPI: { list: () => new Promise((resolve) => notifications.push(resolve)) },
+    notificationsAPI: { attention: async () => { throw Object.assign(new Error('legacy server'), { status: 404 }); }, list: () => new Promise((resolve) => notifications.push(resolve)) },
     unreadNotificationPaths: (value) => value,
     setLoadError: (value) => { state.error = value; }, setLoading() {},
     setAllDeals: (value) => { state.deals = value; }, setIncomingBids() {}, setMyBids() {},
+    setAttentionSnapshot() {},
     setUnreadNotifPaths: (value) => { state.notifications = value; }, console: { warn() {} },
   };
   const load = new Function(...Object.keys(env), `return async function({ force = false } = {}) { ${body} };`)(...Object.values(env));

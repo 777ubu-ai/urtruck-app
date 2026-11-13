@@ -23,14 +23,15 @@ function registrationMe(status) {
   return api;
 }
 
-function harness(existingData = null) {
+function harness(existingData = null, { fakeTimers = false } = {}) {
   const data = existingData || new Map([
     ['ur_reg_token', 'token-A'], ['ur_session', JSON.stringify({ apiBase: origin, user: { id: 'A', role: 'client' } })],
     ['ur_verification_level', '1'], ['ur_draft_registration', '{"name":"Сохранить"}'],
     ['ur_publication_draft_v1:cargo:A', '{"cargo_desc":"Мой черновик"}'],
     ['ur_chat_outbox', '[{"clientId":"unsent","userId":"A","payload":{"text":"Не отправлено"}}]'],
   ]);
-  const effects = [], slots = [], cache = new Map(); let cursor = 0;
+  const effects = [], slots = [], cache = new Map(), timers = new Map(), pauses = [], flushes = []; let cursor = 0, timerId = 0;
+  const tracking = { stop: async () => ({ok:true}) };
   const storage = { get: async k => data.get(k) ?? null, set: async (k,v) => data.set(k,v), remove: async k => data.delete(k),
     keys: async () => [...data.keys()], removeByPrefix: async p => [...data.keys()].filter(k => k.startsWith(p)).forEach(k => data.delete(k)) };
   const react = { createContext: () => ({ Provider: 'Provider' }), createElement: (type,props,...children) => ({ type,props:{...props,children} }),
@@ -47,8 +48,8 @@ function harness(existingData = null) {
     if (name==='./registration') return {regAPI};
     if (name==='./publicationSession') return {sessionRole:s=>s.user.role};
     if (['./authMutation','./authEvents','./sessionRecovery'].includes(name)) return load('src/utils/'+name.slice(2)+'.js');
-    if (name==='./backgroundLocation') return {stopBackgroundTrackingForLogout:async()=>({ok:true}),clearBackgroundLocationSampleForLogout:async()=>({ok:true})};
-    if (name==='./outbox') return {clearOutboxForUser:async()=>{throw Error('Нельзя удалять очередь при401');},pauseOutbox:()=>{},flushOutbox:async()=>0};
+    if (name==='./backgroundLocation') return {stopBackgroundTrackingForLogout:(...args)=>tracking.stop(...args),restoreBackgroundTrackingForLogoutFailure:async()=>({ok:true}),clearBackgroundLocationSampleForLogout:async()=>({ok:true})};
+    if (name==='./outbox') return {clearOutboxForUser:async()=>{throw Error('Нельзя удалять очередь при401');},pauseOutbox:value=>pauses.push(value),flushOutbox:async(_,id)=>{flushes.push(id);return 0;}};
     if (name==='./offlineQueue') return {clearQueue:async()=>{throw Error('Нельзя удалять очередь при401');},pauseQueue:()=>{}};
     return new Proxy({}, {get:()=>()=>{}});
   };
@@ -56,12 +57,12 @@ function harness(existingData = null) {
     if(cache.has(path))return cache.get(path);
     const exports={};cache.set(path,exports);
     vm.runInNewContext(sucrase.transform(fs.readFileSync(path,'utf8'),{transforms:['imports','jsx']}).code,
-      {exports,require,console,AbortController,setTimeout:(fn,ms)=>{const timer=setTimeout(fn,ms);timer.unref();return timer;},clearTimeout});
+      {exports,require,console,AbortController,setTimeout:(fn,ms)=>{if(fakeTimers){const id=++timerId;timers.set(id,{fn,ms});return id;}const timer=setTimeout(fn,ms);timer.unref();return timer;},clearTimeout:id=>fakeTimers?timers.delete(id):clearTimeout(id)});
     return exports;
   }
   const authModule=load('src/utils/AuthContext.js');
   const render=()=>{cursor=0;return authModule.AuthProvider({children:null}).props.value;};
-  return {data,storage,regAPI,render,async boot(){render();for(const effect of effects.splice(0))effect();for(let i=0;i<15;i++)await tick();return render();}};
+  return {data,storage,regAPI,render,pauses,flushes,timers,tracking,async fireTimer(){const first=timers.entries().next().value;assert.ok(first,'expected retry timer');timers.delete(first[0]);first[1].fn();for(let i=0;i<20;i++)await tick();},async boot(){render();for(const effect of effects.splice(0))effect();for(let i=0;i<15;i++)await tick();return render();}};
 }
 
 test('register/me:401 явно отклоняет сессию, а503 остаётся временной ошибкой',async()=>{
@@ -200,4 +201,141 @@ test('bootstrap мигрирует свой legacy-черновик только
     if(mode==='other-owner')x.regAPI.me=async()=>({id:'B',role:'client',verification_level:1});
     await x.boot();assert.equal(x.data.has(key),false,mode);assert.ok(x.data.has('ur_publication_draft_v1:cargo:A'));
   }
+});
+
+
+test('signIn: transient 503 retries verification and resumes the same owner outbox', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot();
+  h.flushes.length=0; h.pauses.length=0; let attempts=0;
+  h.regAPI.me=async()=>{attempts++;if(attempts===1)throw Object.assign(Error('temporary'),{status:503});return {id:'A',role:'client',verification_level:1};};
+  await h.render().signIn('phone',1,'token-A',{userId:'A'});
+  for(let i=0;i<20;i++)await tick();
+  assert.equal(attempts,1); assert.equal(h.pauses.at(-1),true); assert.deepEqual(h.flushes,[]);
+  const retry=[...h.timers.entries()].find(([,timer])=>timer.ms===5000);
+  assert.ok(retry,'transient failure must schedule automatic retry');
+  h.timers.delete(retry[0]); retry[1].fn(); for(let i=0;i<30;i++)await tick();
+  assert.equal(attempts,2); assert.equal(h.pauses.at(-1),false); assert.deepEqual(h.flushes,['A']);
+});
+
+
+test('stale retry after account switch cannot verify or flush the old owner', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let attempts=0;
+  h.regAPI.me=async()=>{attempts++;throw Object.assign(Error('temporary'),{status:503});};
+  await h.render().signIn('a',1,'token-A',{userId:'A'}); for(let i=0;i<20;i++)await tick();
+  const oldRetry=[...h.timers.values()].find(timer=>timer.ms===5000); assert.ok(oldRetry);
+  h.regAPI.me=async()=>{attempts++;return {id:'B',role:'client',verification_level:1};};
+  await h.render().signIn('b',1,'token-B',{userId:'B'}); for(let i=0;i<30;i++)await tick();
+  const before=attempts; oldRetry.fn(); for(let i=0;i<20;i++)await tick();
+  assert.equal(attempts,before); assert.deepEqual(h.flushes,['B']);
+});
+
+test('role change while verification is pending restarts retry for the same owner', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let attempts=0;
+  h.regAPI.me=async()=>{attempts++;if(attempts<3)throw Object.assign(Error('temporary'),{status:503});return {id:'A',role:'driver',verification_level:1};};
+  await h.render().signIn('a',1,'token-A',{userId:'A'}); for(let i=0;i<20;i++)await tick();
+  await h.render().setRole('driver'); for(let i=0;i<20;i++)await tick();
+  assert.equal(attempts,2);
+  const retry=[...h.timers.entries()].find(([,timer])=>timer.ms===5000); assert.ok(retry);
+  h.timers.delete(retry[0]); retry[1].fn(); for(let i=0;i<30;i++)await tick();
+  assert.equal(attempts,3); assert.deepEqual(h.flushes,['A']);
+});
+
+test('устаревший /me не теряет повторную проверку роли, пока запись сессии ожидает storage', async () => {
+  const h=harness(null,{fakeTimers:true}); h.flushes.length=0;
+  let attempts=0, resolveFirst;
+  h.regAPI.me=()=>{
+    attempts++;
+    if(attempts===1)return new Promise(resolve=>{resolveFirst=resolve;});
+    return Promise.resolve({id:'A',role:'driver',verification_level:1});
+  };
+  await h.boot();
+  for(let i=0;i<20&&!resolveFirst;i++)await tick();
+  assert.equal(attempts,1,'boot starts the original in-flight /me request');
+
+  const originalSet=h.storage.set; let releaseRoleWrite;
+  h.storage.set=async(k,v)=>{
+    if(k==='ur_session')await new Promise(resolve=>{releaseRoleWrite=()=>originalSet(k,v).then(resolve);});
+    else await originalSet(k,v);
+  };
+  const roleChange=h.render().setRole('driver');
+  for(let i=0;i<10&&!releaseRoleWrite;i++)await tick();
+  assert.equal(typeof releaseRoleWrite,'function','role session write is deliberately held');
+
+  resolveFirst({id:'A',role:'client',verification_level:1});
+  for(let i=0;i<20;i++)await tick();
+  assert.deepEqual(h.flushes,[],'stale verification must not resume the outbox');
+
+  const release=releaseRoleWrite;
+  releaseRoleWrite=null;
+  // Release only the held setRole write; the subsequent session write, if any,
+  // uses the original storage implementation.
+  h.storage.set=originalSet;
+  release();
+  await roleChange;
+  for(let i=0;i<30;i++)await tick();
+
+  assert.equal(attempts,2,'setRole restarts verification for the current generation');
+  assert.equal(h.render().session.user.role,'driver');
+  assert.equal(h.pauses.at(-1),false);
+  assert.deepEqual(h.flushes,['A']);
+});
+
+test('confirmed 401 does not retry or resume queued messages', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let attempts=0;
+  h.regAPI.me=async()=>{attempts++;throw Object.assign(Error('AUTH_REQUIRED'),{status:401,code:'AUTH_REQUIRED'});};
+  await h.render().signIn('a',1,'token-A',{userId:'A'}); for(let i=0;i<30;i++)await tick();
+  assert.equal(attempts,1); assert.equal(h.render().recoveryRequired,true); assert.deepEqual(h.flushes,[]);
+  assert.equal([...h.timers.values()].some(timer=>timer.ms===5000),false);
+});
+
+
+test('temporary failure followed by 401 keeps outbox paused and stops retrying', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; h.pauses.length=0; let attempts=0;
+  h.regAPI.me=async()=>{attempts++;if(attempts===1)throw Object.assign(Error('temporary'),{status:503});throw Object.assign(Error('AUTH_REQUIRED'),{status:401,code:'AUTH_REQUIRED'});};
+  await h.render().signIn('a',1,'token-A',{userId:'A'}); for(let i=0;i<20;i++)await tick();
+  const retry=[...h.timers.entries()].find(([,timer])=>timer.ms===5000); assert.ok(retry);
+  h.timers.delete(retry[0]);retry[1].fn();for(let i=0;i<30;i++)await tick();
+  assert.equal(attempts,2);assert.equal(h.render().recoveryRequired,true);assert.equal(h.pauses.at(-1),true);assert.deepEqual(h.flushes,[]);
+  assert.equal([...h.timers.values()].some(timer=>timer.ms===15000 || timer.ms===60000),false);
+});
+
+
+test('register/me times out if response body hangs after headers', async () => {
+  await realStorage.set('ur_reg_token','synthetic-body-timeout');
+  const fetch = globalThis.fetch, timer = globalThis.setTimeout;
+  globalThis.fetch=async()=>({status:200,ok:true,json:()=>new Promise(()=>{})});
+  globalThis.setTimeout=(fn,ms,...args)=>timer(fn,ms===15000?5:ms,...args);
+  try { await assert.rejects(Promise.race([realRegAPI.me(),new Promise((_,reject)=>timer(()=>reject(Error('BODY_HUNG')),100))]),/ACCOUNT_FETCH_TIMEOUT/); assert.equal(await realStorage.get('ur_reg_token'),'synthetic-body-timeout'); }
+  finally { globalThis.fetch=fetch; globalThis.setTimeout=timer; }
+});
+
+test('failed logout restores pending auth verification for the same owner', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let calls=0;
+  h.regAPI.me=async()=>{calls++;if(calls===1)throw Object.assign(Error('temporary'),{status:503});return {id:'A',role:'client',verification_level:1};};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  assert.equal(calls,1); assert.ok([...h.timers.values()].some(t=>t.ms===5000));
+  h.tracking.stop=async()=>({ok:false,reason:'STOP_FAILED'});
+  const result=await h.render().signOut();for(let i=0;i<30;i++)await tick();
+  assert.equal(result.ok,false);assert.equal(h.data.get('ur_reg_token'),'token-A');
+  assert.equal(calls,2);assert.deepEqual(h.flushes,['A']);assert.equal(h.pauses.at(-1),false);
+});
+
+
+test('logout durable revoke failure resumes pending verification without clearing token', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0; let calls=0;
+  h.regAPI.me=async()=>{calls++;if(calls===1)throw Error('temporary');return {id:'A',role:'client',verification_level:1};};
+  h.regAPI.stageLogoutRevoke=async()=>{throw Error('storage failed');};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  const result=await h.render().signOut();for(let i=0;i<30;i++)await tick();
+  assert.equal(result.reason,'PENDING_LOGOUT_REVOKE_NOT_DURABLE');assert.equal(h.data.get('ur_reg_token'),'token-A');
+  assert.equal(calls,2);assert.deepEqual(h.flushes,['A']);
+});
+
+test('failed logout never retries verification after token changes', async () => {
+  const h=harness(null,{fakeTimers:true}); await h.boot(); h.flushes.length=0;let calls=0;
+  h.regAPI.me=async()=>{calls++;throw Error('temporary');};
+  await h.render().signIn('a',1,'token-A',{userId:'A'});for(let i=0;i<20;i++)await tick();
+  h.tracking.stop=async()=>{await h.storage.set('ur_reg_token','token-B');return {ok:false};};
+  await h.render().signOut();for(let i=0;i<20;i++)await tick();
+  assert.equal(calls,1);assert.deepEqual(h.flushes,[]);assert.equal(h.data.get('ur_reg_token'),'token-B');
 });

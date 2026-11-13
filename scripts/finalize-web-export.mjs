@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 // Вызывается только после успешного Expo export. Все перечисленные файлы —
@@ -88,6 +89,37 @@ try {
     writeFileSync(index, html);
   }
 
+  // The production public website is an installation landing page. Keep the
+  // existing Expo web shell embedded only for real auth callbacks; QA builds
+  // and the normal local export continue to serve the web app unchanged.
+  if (process.env.URTRUCK_PUBLIC_STORE_LANDING === '1') {
+    const landingPath = resolve('web/store/index.html');
+    const runtimePath = resolve('web/store/store-landing-runtime.js');
+    requireFile(landingPath);
+    requireFile(runtimePath);
+    requireFile(resolve('web/store/google-play-qr.png'));
+    requireFile(resolve('web/store/app-store-qr.png'));
+    const landingTemplate = readFileSync(landingPath, 'utf8');
+    const callbackShell = html
+      .replace('</head>', '<style>html.urtruck-oauth-pending #root{visibility:hidden!important}#urtruck-oauth-pending{font:16px system-ui,sans-serif;max-width:32rem;margin:20vh auto;padding:1rem 1.5rem;color:#17352b;text-align:center}</style>\n<script>window.__URTRUCK_PUBLIC_STORE_LANDING_CALLBACK__=true;document.documentElement.classList.add("urtruck-oauth-pending");</script>\n</head>')
+      .replace('<div id="root"></div>', '<div id="urtruck-oauth-pending" role="status">Проверяем завершение входа…</div>\n    <div id="root"></div>');
+    const appShellBase64 = Buffer.from(callbackShell, 'utf8').toString('base64');
+    const runtimeHash = createHash('sha256').update(readFileSync(runtimePath)).digest('hex').slice(0, 12);
+    const publicIndex = landingTemplate
+      .replace('window.__URTRUCK_APP_SHELL_BASE64__="__URTRUCK_APP_SHELL_BASE64__";', `window.__URTRUCK_APP_SHELL_BASE64__="${appShellBase64}";`)
+      .replace('/store/store-landing-runtime.js?v=1', `/store/store-landing-runtime.js?v=${runtimeHash}`);
+    if (publicIndex === landingTemplate || publicIndex.includes('="__URTRUCK_APP_SHELL_BASE64__"')) {
+      throw new Error('Не удалось встроить сохранённую web-оболочку входа в страницу магазинов');
+    }
+    const storeDir = resolve(dist, 'store');
+    mkdirSync(storeDir, { recursive: true });
+    copyFileSync(resolve('web/store/google-play-qr.png'), resolve(storeDir, 'google-play-qr.png'));
+    copyFileSync(resolve('web/store/app-store-qr.png'), resolve(storeDir, 'app-store-qr.png'));
+    copyFileSync(runtimePath, resolve(storeDir, 'store-landing-runtime.js'));
+    html = publicIndex;
+    writeFileSync(index, html);
+  }
+
   // Runtime smoke tests and operators must be able to prove exactly which
   // source revision produced the static artifact. Keep this file intentionally
   // public and limited to non-secret build identity fields.
@@ -97,6 +129,19 @@ try {
   // verifiable source identity; the asset-only fixture remains supported.
   if (existsSync(packagePath)) {
     const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+    // Просмотр PDF выполняется только локальными ресурсами фиксированной версии.
+    const pdfRoot = resolve(process.env.URTRUCK_PDFJS_DIST_DIR || 'node_modules/pdfjs-dist');
+    const pdfPackage = JSON.parse(readFileSync(resolve(pdfRoot, 'package.json'), 'utf8'));
+    if (pdfPackage.version !== packageJson.dependencies?.['pdfjs-dist']) throw new Error('Несовпадение версии PDF.js');
+    const pdfOut = resolve(dist, 'pdf-viewer');
+    mkdirSync(pdfOut, { recursive: true });
+    for (const file of ['index.html', 'viewer.js', 'viewer.css']) {
+      const source = resolve('web/pdf-viewer', file); requireFile(source); copyFileSync(source, resolve(pdfOut, file));
+    }
+    for (const [source, target] of [['legacy/build/pdf.min.mjs','pdfjs.js'], ['legacy/build/pdf.worker.min.mjs','pdf.worker.js']]) {
+      const file = resolve(pdfRoot, source); requireFile(file); copyFileSync(file, resolve(pdfOut, target));
+    }
+    for (const folder of ['cmaps','standard_fonts','wasm','iccs']) cpSync(resolve(pdfRoot, folder), resolve(pdfOut, folder), { recursive: true });
     const commit = (process.env.GITHUB_SHA || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })).trim();
     if (!/^[0-9a-f]{40}$/i.test(commit)) throw new Error('Некорректный commit SHA для build-info.json');
     writeFileSync(resolve(dist, 'build-info.json'), `${JSON.stringify({

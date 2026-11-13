@@ -85,9 +85,9 @@ def test_unknown_conversation_is_404_not_500():
 
 # ── the gate is wired into exactly the right endpoints ──────────────────
 
-def test_gate_is_wired_into_all_four_deal_room_endpoints():
+def test_gate_is_wired_into_all_deal_room_endpoints():
     """Structural: participation check FIRST, then the status gate — in each
-    of the four endpoints that serve or mutate room content."""
+    of the endpoints that serve or mutate room content."""
     import ast
     import inspect
 
@@ -104,6 +104,7 @@ def test_gate_is_wired_into_all_four_deal_room_endpoints():
         "conversation_read",
         "upload_attachment",
         "list_conversation_attachments",
+        "get_attachment_content",
     }, f"unexpected gate placement: {sorted(gated)}"
 
     # Participation must be asserted BEFORE the status gate, so an outsider

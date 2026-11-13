@@ -57,10 +57,10 @@ TEMPLATES: dict[str, dict[str, tuple[str, str]]] = {
         "EN": ("❌ Counter-offer declined", "The other participant declined the counter-offer. The original bid of {amount} is active again."),
     },
     "bid_expired": {
-        "RU": ("⌛ Срок предложения истёк", "Предложение больше не активно. Проверьте архив."),
-        "KK": ("⌛ Ұсыныстың мерзімі аяқталды", "Ұсыныс енді белсенді емес. Мұрағатты тексеріңіз."),
-        "ZH": ("⌛ 报价已过期", "此报价已不再有效。请查看归档。"),
-        "EN": ("⌛ Offer expired", "The offer is no longer active. Check the archive."),
+        "RU": ("⌛ Срок предложения истёк", "Срок ответа на предложение истёк. Откройте связанную карточку, чтобы посмотреть статус."),
+        "KK": ("⌛ Ұсыныстың мерзімі аяқталды", "Ұсынысқа жауап беру мерзімі аяқталды. Күйін көру үшін тиісті карточканы ашыңыз."),
+        "ZH": ("⌛ 报价已过期", "报价回复期限已结束。请打开关联信息查看状态。"),
+        "EN": ("⌛ Offer expired", "The response period has ended. Open the linked listing to view its status."),
     },
     "review_received": {
         "RU": ("⭐ Новый отзыв", "Оценка {rating} из 5"),

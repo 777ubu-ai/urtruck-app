@@ -145,7 +145,7 @@ function contextHarness() {
     clearSessionRecovery:async()=>{},pauseOutbox:()=>{},
     API_BASE:'https://urtruck.kz/api/v1',setRecoveryRequired:()=>{},
     KEY: 'session', setSession: (x) => { state.session = x; },
-    setVerificationLevel: () => {}, setHasToken: () => {}, refreshLevel: async () => {},
+    setVerificationLevel: () => {}, setHasToken: () => {}, startVerifiedRefresh: () => {}, authRetryRef: { current: { pending: false } },
   };
   return { state, api: new Function(...Object.keys(env), `${loginContext}\nreturn { signIn, setRole };`)(...Object.values(env)) };
 }

@@ -264,7 +264,7 @@ test('queued expiry logout cannot stop tracking or clear a newer login',async()=
   const ref={current:1};
   const calls=[];
   const scope={
-    authGenerationRef:ref, regAPI:{getToken:async()=>token},
+    authGenerationRef:ref, authRetryRef:{current:{pending:false}}, startVerifiedRefresh:()=>{}, regAPI:{getToken:async()=>token},
     setAuthExpirySuppressed:()=>calls.push('suppress'),
     stopBackgroundTrackingForLogout:()=>{calls.push('stop'); return {ok:false};},
     withTimeout:async value=>value, LOGOUT_NETWORK_TIMEOUT_MS:3000, AbortController,

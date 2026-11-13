@@ -10,7 +10,7 @@ const script = workflow.split("<<'NODEVERIFY'\n")[1].split('\n          NODEVERI
   .split('\n').map(line => line.replace(/^          /, '')).join('\n');
 const sha = 'a'.repeat(40);
 for (const [name, override, valid] of [
-  ['актуальная версия 1.0.14', {}, true],
+  ['актуальная версия 1.0.15', {}, true],
   ['устаревшая версия 1.0.12', { version: '1.0.12' }, false],
   ['подменённый исходник', { extra: { urtruckSourceSha: 'b'.repeat(40), urtruckExternalFreightFeedEnabled: true } }, false],
   ['отключённая лента', { extra: { urtruckSourceSha: sha, urtruckExternalFreightFeedEnabled: false } }, false],
@@ -19,9 +19,9 @@ for (const [name, override, valid] of [
     const root = mkdtempSync(join(tmpdir(), 'urtruck-aab-identity-'));
     try {
       const path = join(root, 'config.json');
-      writeFileSync(path, JSON.stringify({ version: '1.0.14', extra: { urtruckSourceSha: sha, urtruckExternalFreightFeedEnabled: true }, ...override }));
+      writeFileSync(path, JSON.stringify({ version: '1.0.15', extra: { urtruckSourceSha: sha, urtruckExternalFreightFeedEnabled: true }, ...override }));
       const result = spawnSync(process.execPath, ['-', path], { input: script, encoding: 'utf8',
-        env: { ...process.env, URTRUCK_VERSION_NAME: '1.0.14', URTRUCK_SOURCE_SHA: sha, GITHUB_SHA: 'c'.repeat(40) } });
+        env: { ...process.env, URTRUCK_VERSION_NAME: '1.0.15', URTRUCK_SOURCE_SHA: sha, GITHUB_SHA: 'c'.repeat(40) } });
       assert.equal(result.status === 0, valid, result.stderr);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

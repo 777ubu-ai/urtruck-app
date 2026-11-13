@@ -61,16 +61,11 @@ test("four-language copy exists for new archive/search/error UI", () => {
   assert.match(deals, /archive: ["']Мұрағат["']/);
 });
 
-test("actionable counts remain computed for offer and active deal attention", () => {
-  assert.match(deals, /const offerAttentionCount = useMemo/);
+test("business action counts remain separate from canonical unread attention", () => {
+  assert.match(deals, /countOfferBusinessActions\(offersData\)/);
+  assert.match(deals, /countActiveDealBusinessActions\(activeDeals, role\)/);
   assert.match(deals, /isBidActionable/);
-  assert.match(deals, /const activeAttentionCount = useMemo/);
-  assert.match(
-    deals,
-    /item\.tracking_action_required[\s\S]*role === ["']client["'][\s\S]*item\.status === ["']delivered["'][\s\S]*item\.status === ["']awaiting_confirmation["']/,
-  );
-  assert.match(
-    deals,
-    /const attentionRequired[\s\S]*needsReceiptConfirmation[\s\S]*trackingActionRequired/,
-  );
+  assert.match(deals, /attentionCount=\{attention\?\.tabs\.offers \|\| 0\}/);
+  assert.match(deals, /actionRequiredCount=\{offerActionRequiredCount\}/);
+  assert.match(deals, /actionRequiredCount=\{activeActionRequiredCount\}/);
 });

@@ -9,7 +9,8 @@ import unicodedata
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -20,6 +21,7 @@ from services import storage_service as storage
 from services import upload_validation
 from api.push import send_to_user
 from api.notifications import create_notification, mark_notifications_read_by_urls
+from services import private_file_transport as private_transport
 
 chat_router = APIRouter()
 
@@ -130,6 +132,15 @@ def _volodya_reply(room_id: str, user_text: str, user: dict):
 
 
 def _ensure_columns(c):
+    # Новые загрузки привязываются к серверной сессии; старые сообщения не переписываются.
+    c.execute('''CREATE TABLE IF NOT EXISTS chat_upload_receipts (
+        storage_ref TEXT PRIMARY KEY,
+        uploader_id TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        room_id TEXT,
+        message_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )''')
     # Системные сообщения о статусе/цене ссылаются на сохранённое событие
     # сделки/ставки. Миграция аддитивна: новая схема объявляет колонку в
     # chat_schema.sql, существующая chat_messages получает её без пересоздания
@@ -512,6 +523,34 @@ def _assert_chat_is_accepted(sender_id, recipient_id, *, room_id=None, cargo_id=
         return
     if not any((room_id, cargo_id, trip_id)):
         raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+    if room_id:
+        # Явная связь с комнатой имеет приоритет перед совпадением рейса или
+        # груза. Для старых несвязанных сделок допускаем только однозначную
+        # запись без другой привязанной комнаты и не меняем данные на чтении.
+        with get_conn() as c:
+            pair = (sender_id, recipient_id, recipient_id, sender_id)
+            exact = c.execute(
+                'SELECT status FROM deals WHERE ((shipper_id=? AND driver_id=?) OR (shipper_id=? AND driver_id=?)) AND chat_room_id=?',
+                (*pair, room_id),
+            ).fetchall()
+            if exact:
+                if any(row['status'] in _DEAL_CHAT_STATUSES for row in exact):
+                    return
+                raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
+            legacy_filters, legacy_params = [], []
+            if cargo_id:
+                legacy_filters.append('cargo_id=?'); legacy_params.append(cargo_id)
+            if trip_id:
+                legacy_filters.append('trip_id=?'); legacy_params.append(trip_id)
+            if legacy_filters:
+                legacy = c.execute(
+                    'SELECT status FROM deals WHERE ((shipper_id=? AND driver_id=?) OR (shipper_id=? AND driver_id=?)) '
+                    'AND chat_room_id IS NULL AND (' + ' OR '.join(legacy_filters) + ')',
+                    (*pair, *legacy_params),
+                ).fetchall()
+                if len(legacy) == 1 and legacy[0]['status'] in _DEAL_CHAT_STATUSES:
+                    return
+        raise HTTPException(status_code=403, detail="Чат сделки доступен только после принятия предложения")
     filters, params = [], []
     if room_id:
         filters.append("d.chat_room_id = ?"); params.append(room_id)
@@ -542,8 +581,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
     # http(s) URL (rendered client-side as a tracking pixel on the OTHER
     # participant's device). It must be exactly what /chat/photo or
     # /chat/voice actually returned — never an arbitrary client string.
-    if body.photo_url and not storage.is_owned_storage_ref(body.photo_url):
-        raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
+    if body.photo_url:
+        if not storage.is_owned_storage_ref(body.photo_url):
+            raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
+        if storage.ref_has_purpose(body.photo_url, {'chat'}):
+            raise HTTPException(status_code=403, detail='FILE_UPLOAD_REQUIRED')
+        if not storage.ref_has_purpose(body.photo_url, {'chat_photos', 'chat_voice'}):
+            raise HTTPException(status_code=400, detail="Некорректная ссылка на файл")
     _LAST_SEEN[user["id"]] = _time.time()   # активность для «онлайн»
 
     # Variant B: комната и получатель. Предпочтительно room_id (каноническая
@@ -572,8 +616,45 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
         _assert_chat_is_accepted(user["id"], recipient_id,
                                  cargo_id=body.cargo_id, trip_id=body.trip_id)
         room_id = _get_or_create_room(user["id"], body.to_user_id, body.cargo_id, body.trip_id)
+        with get_conn() as c:
+            selected_room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (room_id,)).fetchone()
+        if not selected_room or set((selected_room['participant_1'], selected_room['participant_2'])) != {user['id'], recipient_id}:
+            raise HTTPException(status_code=403, detail='Вы не участник этого чата')
+        room_cargo = selected_room['cargo_id']
+        _assert_chat_is_accepted(user["id"], recipient_id, room_id=room_id,
+                                 cargo_id=selected_room['cargo_id'], trip_id=selected_room['trip_id'])
     else:
         raise HTTPException(status_code=400, detail="room_id или to_user_id обязателен")
+
+    receipt_required = False
+    if body.photo_url:
+        with get_conn() as c:
+            if body.client_msg_id:
+                existing = c.execute(
+                    'SELECT id FROM chat_messages WHERE sender_id=? AND client_msg_id=? AND room_id=?',
+                    (user['id'], body.client_msg_id, room_id),
+                ).fetchone()
+                if existing:
+                    return {'ok': True, 'room_id': room_id, 'deduped': True}
+            receipt = c.execute(
+                'SELECT uploader_id, purpose, room_id, message_id FROM chat_upload_receipts WHERE storage_ref=?',
+                (body.photo_url,),
+            ).fetchone()
+            if receipt:
+                if (receipt['uploader_id'] != user['id']
+                        or receipt['purpose'] not in {'chat_photos', 'chat_voice'}
+                        or (receipt['room_id'] is not None and receipt['room_id'] != room_id)):
+                    raise HTTPException(status_code=403, detail='Файл недоступен для отправки')
+                receipt_required = receipt['message_id'] is None
+            else:
+                # Только прежняя комната, где файл уже был показан этому участнику;
+                # это не устанавливает автора старой загрузки.
+                historic = c.execute(
+                    'SELECT id FROM chat_messages WHERE room_id=? AND photo_url=? LIMIT 1',
+                    (room_id, body.photo_url),
+                ).fetchone()
+                if not historic:
+                    raise HTTPException(status_code=403, detail='FILE_UPLOAD_REQUIRED')
 
     # UI recorder timers are advisory only. The persisted duration must come
     # from the stored audio container, otherwise a Xiaomi/iOS timer bug turns
@@ -615,6 +696,13 @@ def send_message(body: SendMessageIn, user=Depends(require_level(1))):
             # уникальный индекс отсёк дубль. Это успех (идемпотентность).
             return {"ok": True, "room_id": room_id, "deduped": True}
         message_id = cursor.lastrowid
+        if receipt_required:
+            claimed = c.execute(
+                'UPDATE chat_upload_receipts SET room_id=?, message_id=? WHERE storage_ref=? AND uploader_id=? AND message_id IS NULL',
+                (room_id, message_id, body.photo_url, user['id']),
+            )
+            if claimed.rowcount != 1:
+                raise HTTPException(status_code=403, detail='Файл недоступен для отправки')
         preview = (("🎤 Голосовое сообщение" if body.is_voice else (body.text or "📷 Фото")))[:50]
         c.execute("UPDATE chat_rooms SET last_message = ?, last_at = CURRENT_TIMESTAMP WHERE id = ?", (preview, room_id))
         # The new voice and its hidden STT job commit atomically.  If SQLite
@@ -1002,8 +1090,49 @@ def _enrich_rooms_with_deal_context(rooms: list, uid: str) -> None:
                 pass
 
 
+@chat_router.get('/messages/{room_id}/media/{message_id}')
+def get_message_media(room_id: str, message_id: int, user=Depends(require_level(1))):
+    """Читать медиа только по фактической связи сообщения и доступной комнаты."""
+    def permitted_ref():
+        with get_conn() as c:
+            room = c.execute('SELECT participant_1,participant_2,cargo_id,trip_id FROM chat_rooms WHERE id=?', (room_id,)).fetchone()
+            if not room:
+                raise HTTPException(status_code=404, detail='Беседа не найдена')
+            if user['id'] not in (room['participant_1'], room['participant_2']):
+                raise HTTPException(status_code=403, detail='Вы не участник этой беседы')
+            message = c.execute('SELECT photo_url,is_voice FROM chat_messages WHERE id=? AND room_id=?', (message_id, room_id)).fetchone()
+        partner = room['participant_2'] if user['id'] == room['participant_1'] else room['participant_1']
+        _assert_chat_is_accepted(user['id'], partner, room_id=room_id,
+                                 cargo_id=room['cargo_id'], trip_id=room['trip_id'])
+        if not message or not storage.ref_has_purpose(message['photo_url'], {'chat_photos', 'chat_voice', 'chat'}):
+            raise HTTPException(status_code=404, detail='Вложение не найдено')
+        return message['photo_url'], bool(message['is_voice'])
+
+    ref, is_voice = permitted_ref()
+    try:
+        limit = upload_validation.MAX_CHAT_VOICE_BYTES if is_voice else upload_validation.MAX_CHAT_PHOTO_BYTES
+        content = storage.read_private_bytes(ref, limit)
+    except storage.PrivateFileTooLargeError as exc:
+        raise HTTPException(status_code=413, detail='Файл слишком большой') from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Вложение не найдено') from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail='Хранилище недоступно') from exc
+    if permitted_ref() != (ref, is_voice):
+        raise HTTPException(status_code=404, detail='Вложение не найдено')
+    audio = upload_validation.sniff_audio_mime(content) if is_voice else None
+    mime = (audio[1] if audio else None) if is_voice else upload_validation.sniff_image_mime(content)
+    return Response(content=content, media_type=mime or 'application/octet-stream', headers={
+        'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
+    })
+
+
 @chat_router.get("/messages/{room_id}")
-def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1))):
+def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(require_level(1)),
+                 capability: Optional[str] = Header(None, alias="X-UrTruck-Private-File-Transport"),
+                 client_version: Optional[str] = Header(None, alias="X-UrTruck-Client-Version")):
+    request_headers = {"x-urtruck-private-file-transport": capability or "", "x-urtruck-client-version": client_version or ""}
+    capable = private_transport.supports_private_file_transport(request_headers)
     uid = user["id"]
     # Проверка участия + PR#187-гейт приватности — в отдельном соединении,
     # закрытом до основного (без вложенных get_conn под UPDATE ниже).
@@ -1062,23 +1191,32 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
     # и наоборот (баг «отправляю — копируется себе»). Источник истины — uid.
     messages = []
     signing_failed = False
+    legacy_link_count = 0
     for r in reversed(rows):
         m = dict(r)
         m["mine"] = (m.get("sender_id") == uid)
-        # Вложение чата отдаём участнику подписанной ссылкой (?exp&sig) —
-        # storage больше не публичный. Проверка участия — выше (403 не-участнику).
+        # Новый клиент получает метаданные, а байты читает по авторизованному
+        # endpoint с проверкой комнаты и сообщения. Старый клиент сохраняет
+        # временную ссылку до отдельного совместимого cutoff.
         if m.get("photo_url"):
             # Сбой storage не должен скрывать всю переписку. Не возвращаем
             # сырой приватный ref и не повторяем медленный вызов для каждого
             # вложения в одном ответе; следующий poll попробует снова.
             private_ref = m["photo_url"]
             m["photo_url"] = None
-            if not signing_failed:
+            valid_private_ref = storage.ref_has_purpose(private_ref, {'chat_photos', 'chat_voice', 'chat'})
+            if capable or not private_transport.legacy_links_enabled():
+                m["private_media_available"] = bool(valid_private_ref)
+                m["private_file_transport"] = private_transport.CAPABILITY_V1
+                if not capable:
+                    m["private_file_transport_required"] = True
+            elif not signing_failed and valid_private_ref:
                 try:
                     m["photo_url"] = file_signing.sign(private_ref)
+                    legacy_link_count += int(bool(m["photo_url"]))
                 except Exception:
                     signing_failed = True
-            m["attachment_unavailable"] = not bool(m["photo_url"])
+            m["attachment_unavailable"] = not (m.get("private_media_available") or m["photo_url"])
         if m.get("is_voice"):
             # Background inference is private derived data. History polling
             # contains readiness metadata only; transcript/translation require
@@ -1103,6 +1241,8 @@ def get_messages(room_id: str, limit: int = 100, offset: int = 0, user=Depends(r
         # по устойчивому id, а не по тексту (иначе два одинаковых сообщения
         # «ок»/«ок» схлопывались в одно на время между поллами).
         messages.append(m)
+    if not capable:
+        private_transport.record_legacy_issuance("chat_media", legacy_link_count, request_headers)
     # «Печатает…»: жив ли typing-пинг партнёра (см. /typing).
     partner_id = room["participant_2"] if room["participant_1"] == uid else room["participant_1"]
     ts = _TYPING.get((room_id, partner_id))
@@ -1276,6 +1416,8 @@ async def upload_chat_photo(file: UploadFile = File(...), user=Depends(require_l
         raise HTTPException(status_code=415, detail="Неподдерживаемый тип фото")
     ext = "jpg" if mime == upload_validation.JPEG_MIME else "png"
     key = await run_in_threadpool(storage.save_file, data, "chat_photos", ext=ext, content_type=mime)
+    with get_conn() as c:
+        c.execute('INSERT INTO chat_upload_receipts(storage_ref, uploader_id, purpose) VALUES (?,?,?)', (key, user['id'], 'chat_photos'))
     return {"photo_key": key}
 
 
@@ -1322,6 +1464,8 @@ async def upload_chat_voice(file: UploadFile = File(...), user=Depends(require_l
         if storage_status is None:
             raise HTTPException(status_code=503, detail="Хранилище недоступно (сеть)") from exc
         raise HTTPException(status_code=502, detail="Хранилище отклонило голосовое") from exc
+    with get_conn() as c:
+        c.execute('INSERT INTO chat_upload_receipts(storage_ref, uploader_id, purpose) VALUES (?,?,?)', (key, user['id'], 'chat_voice'))
     return {"voice_key": key}
 
 

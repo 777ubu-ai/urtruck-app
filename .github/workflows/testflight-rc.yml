@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       ios_build_number:
-        description: Номер новой сборки 1–100 внутри версии 1.0.15 (001 соответствует 1)
+        description: Номер новой сборки 1–9999 внутри версии 1.0.15 (001 соответствует 1)
         required: true
         default: '1'
         type: string
@@ -86,10 +86,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           test "$GITHUB_SHA" = "$QA_SOURCE_SHA"
           test "$GITHUB_REPOSITORY" = 777ubu-ai/urtruck-app
-          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^(0|[1-9][0-9]{0,2})$ ]]
-          [[ "$URTRUCK_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,2}$ ]]
-          test "$URTRUCK_MIN_IOS_BUILD" -le 100
-          test "$URTRUCK_IOS_BUILD_NUMBER" -le 100
+          [[ "$URTRUCK_MIN_IOS_BUILD" =~ ^(0|[1-9][0-9]{0,3})$ ]]
+          [[ "$URTRUCK_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,3}$ ]]
+          test "$URTRUCK_MIN_IOS_BUILD" -le 9999
+          test "$URTRUCK_IOS_BUILD_NUMBER" -le 9999
           test "$URTRUCK_IOS_BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
           PR_JSON="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$MERGED_PR_NUMBER")"
           test "$(jq -r '.head.repo.full_name' <<<"$PR_JSON")" = "$GITHUB_REPOSITORY"

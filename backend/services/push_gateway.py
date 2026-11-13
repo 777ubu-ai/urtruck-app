@@ -578,8 +578,8 @@ def send_to_devices(
         # Never turn a typo/misconfiguration into an implicit provider fallback.
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "error": "invalid_provider_mode"}
 
-    from services.notification_policy import delivery_block_reason
-    reason = delivery_block_reason(user_id, data)
+    from services.notification_policy import transport_block_reason
+    reason = transport_block_reason(user_id, data)
     if reason:
         return {"sent": 0, "providers": {}, "devices": 0, "mode": mode, "suppressed_policy": reason}
     if notification_already_read(user_id, data):
@@ -897,8 +897,8 @@ def process_pending_once(provider_send_one=None, limit: int = 100) -> dict[str, 
         attempt = int(row["attempt_count"] or 0) + 1
         try:
             payload = json.loads(row["payload"] or "{}")
-            from services.notification_policy import delivery_block_reason
-            reason = delivery_block_reason(row["recipient_user_id"], payload.get("data") or {})
+            from services.notification_policy import transport_block_reason
+            reason = transport_block_reason(row["recipient_user_id"], {"event": row["event_type"], **(payload.get("data") or {})})
             if reason:
                 with get_conn() as c:
                     c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,attempt_count=MAX(attempt_count,?), "
