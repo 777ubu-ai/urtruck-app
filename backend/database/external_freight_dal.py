@@ -12,6 +12,22 @@ from database.external_freight_connection import get_conn, new_id
 from services.external_freight_parser import valid_phone_contacts
 from services.external_freight_retention import active_days, published_deadline
 
+# Срок показа не меняет срок хранения или существующие записи/закладки.
+VEHICLE_PUBLIC_DAYS = 10
+
+
+def _vehicle_public_cutoff(now=None):
+    return (_utc(now) - timedelta(days=VEHICLE_PUBLIC_DAYS)).isoformat()
+
+
+def _apply_vehicle_public_expiry(item):
+    if item["kind"] == "vehicle" and item.get("source_published_at"):
+        deadline = (_utc(item["source_published_at"]) + timedelta(days=VEHICLE_PUBLIC_DAYS)).isoformat()
+        if not item.get("expires_at") or item["expires_at"] > deadline:
+            item["expires_at"] = deadline
+    return item
+
+
 MAX_TEXT = 20000
 MAX_BATCH = 50
 PURGE_BATCH_SIZE = 500
@@ -185,13 +201,16 @@ def count_active_items(kind: str) -> int:
     if kind not in {"cargo", "vehicle"}:
         raise ValueError("invalid_feed_kind")
     with get_conn() as c:
+        now = _utc()
+        vehicle_filter = " AND source_published_at>?" if kind == "vehicle" else ""
+        params = (kind, now.isoformat(), _vehicle_public_cutoff(now)) if vehicle_filter else (kind, now.isoformat())
         return c.execute(
             # The expiry index requires table reads to filter kind; on the live feed this
             # exceeds the mobile timeout. The existing publication index covers
             # every predicate and counts without reading large message payloads.
             "SELECT COUNT(*) FROM external_freight_items INDEXED BY ix_external_freight_publication "
-            "WHERE kind=? AND status='active' AND expires_at>?",
-            (kind, _utc().isoformat()),
+            "WHERE kind=? AND status='active' AND expires_at>?" + vehicle_filter,
+            params,
         ).fetchone()[0]
 
 
@@ -479,6 +498,9 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
     else:
         clauses.extend(["status='active'", "expires_at>?"])
         params.append(now)
+        if kind == "vehicle":
+            clauses.append("source_published_at>?")
+            params.append(_vehicle_public_cutoff(now))
     for field, value in (("origin_folded", origin), ("destination_folded", destination)):
         if value:
             clauses.append(f"{field} LIKE ?")
@@ -581,9 +603,13 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         if row["status"] in {"hidden", "review"}:
             item = {"id": row["id"], "kind": row["kind"], "status": "unavailable", "saved": True}
         else:
-            item = _serialize(row)
+            item = _apply_vehicle_public_expiry(_serialize(row))
             item["saved"] = row["id"] in saved_ids
-            if item["status"] == "active" and item["expires_at"] and item["expires_at"] <= now:
+            if item["status"] == "active" and (
+                (item["expires_at"] and item["expires_at"] <= now)
+                or (item["kind"] == "vehicle" and (not item["source_published_at"]
+                    or item["source_published_at"] <= _vehicle_public_cutoff(now)))
+            ):
                 item["status"] = "expired"
         items.append(item)
     result = {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
@@ -597,12 +623,14 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
 def set_bookmark(owner_id, item_id, kind, saved):
     """Явное идемпотентное состояние; владелец приходит только из auth."""
     with get_conn() as c:
-        row = c.execute("SELECT kind,status,expires_at FROM external_freight_items WHERE id=?", (item_id,)).fetchone()
+        row = c.execute("SELECT kind,status,expires_at,source_published_at FROM external_freight_items WHERE id=?", (item_id,)).fetchone()
         existing = c.execute("SELECT 1 FROM external_freight_bookmarks WHERE owner_id=? AND item_id=?", (str(owner_id), item_id)).fetchone()
         if not row or row["kind"] != kind:
             return None
         if saved:
-            if not existing and (row["status"] != "active" or not row["expires_at"] or row["expires_at"] <= _utc().isoformat()):
+            if not existing and (row["status"] != "active" or not row["expires_at"] or row["expires_at"] <= _utc().isoformat()
+                                 or (kind == "vehicle" and (not row["source_published_at"]
+                                     or row["source_published_at"] <= _vehicle_public_cutoff()))):
                 return None
             c.execute("INSERT OR IGNORE INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES(?,?,?)", (str(owner_id), item_id, _utc().isoformat()))
         else:
@@ -611,14 +639,23 @@ def set_bookmark(owner_id, item_id, kind, saved):
 
 
 def get_item(item_id, owner_id=None):
+    now = _utc()
+    cutoff = _vehicle_public_cutoff(now)
     with get_conn() as c:
         row = c.execute("""SELECT * FROM external_freight_items WHERE id=?
           AND status IN ('active','expired','closed')
-          AND ((status='active' AND expires_at>?) OR EXISTS (
+          AND ((status='active' AND expires_at>? AND (kind!='vehicle' OR source_published_at>?)) OR EXISTS (
             SELECT 1 FROM external_freight_bookmarks b
             WHERE b.item_id=external_freight_items.id AND b.owner_id=?))""",
-          (item_id, _utc().isoformat(), str(owner_id) if owner_id is not None else "")).fetchone()
-    return _serialize(row) if row else None
+          (item_id, now.isoformat(), cutoff, str(owner_id) if owner_id is not None else "")).fetchone()
+    if not row:
+        return None
+    item = _apply_vehicle_public_expiry(_serialize(row))
+    if item["kind"] == "vehicle" and item["status"] == "active" and (
+        not item["source_published_at"] or item["source_published_at"] <= cutoff
+    ):
+        item["status"] = "expired"
+    return item
 
 
 def hide_item(item_id, actor):

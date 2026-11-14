@@ -62,11 +62,21 @@ export function isValidPublicationRange({ published_from, published_to }) {
   return Boolean(from && to && from <= to);
 }
 
+/** Клиент также удаляет устаревшие машины из ранее загруженного снимка. */
+export function isVisibleExternalItem(item, now = Date.now()) {
+  if (item.status === 'closed' || item.status === 'hidden' || item.status === 'expired') return false;
+  if (item.expires_at && !(Date.parse(item.expires_at) > now)) return false;
+  if (item.kind === 'vehicle') {
+    const published = Date.parse(item.source_published_at);
+    if (!Number.isFinite(published) || published + 10 * 86400000 <= now) return false;
+  }
+  return true;
+}
+
 /** Новый снимок головы: обновляет карточки, сохраняет уже загруженный хвост. */
 export function mergeLiveFeed(current, incoming, { sort = 'newest', now = Date.now(), hasMore = true, savedOnly = false } = {}) {
   if (savedOnly) return incoming;
-  const visible = item => item.status !== 'closed' && item.status !== 'hidden'
-    && item.status !== 'expired' && (!item.expires_at || Date.parse(item.expires_at) > now);
+  const visible = item => isVisibleExternalItem(item, now);
   const fresh = incoming.filter(visible);
   const ids = new Set(incoming.map(item => item.id));
   const last = incoming[incoming.length - 1];

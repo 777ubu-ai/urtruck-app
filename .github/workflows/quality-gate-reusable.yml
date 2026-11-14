@@ -78,6 +78,9 @@ jobs:
       # under either theme later (e.g. the P0 deal/bid race suite, once
       # that track merges) is picked up automatically without editing this
       # workflow again.
+      - name: Изолированная репетиция QA2 deploy и отката
+        run: python -m pytest tests/ops/test_qa2_vehicle_window_deploy.py -q
+
       - name: P0/P1 security regression subset
         env:
           PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/backend
@@ -226,6 +229,7 @@ jobs:
         run: |
           npx playwright test --config playwright.config.js \
             tests/e2e/urtruck-email-login.spec.js \
+            tests/e2e/auth-language-switcher.spec.js \
             tests/e2e/urtruck-deal-mvp.spec.js \
             tests/e2e/urtruck-full-e2e-web.spec.js \
             tests/e2e/profile-save-recovery.spec.js \

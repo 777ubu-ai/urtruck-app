@@ -39,6 +39,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useI18n } from '../../utils/useI18n';
+import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../utils/AuthContext';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
@@ -421,6 +422,7 @@ export default function PhoneV2Screen({ navigation, route }) {
               <Feather name="arrow-left" size={22} color={brand.textPrimary} />
             </Pressable>
           ) : <View style={s.backBtn} />}
+          <LanguageSwitcher compact forceLight testID="auth-language-switcher" />
         </View>
 
         <KeyboardSafeScrollView
@@ -554,7 +556,7 @@ export default function PhoneV2Screen({ navigation, route }) {
 const makeStyles = (brand) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: brand.bg },
   keyboard: { flex: 1 },
-  headerRow: { flexDirection: 'row', minHeight: 48, paddingHorizontal: 16, paddingTop: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48, paddingHorizontal: 16, paddingTop: 4 },
   backBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   scroll: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 28 },
