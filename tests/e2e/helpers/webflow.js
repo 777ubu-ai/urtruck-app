@@ -23,13 +23,10 @@ async function shot(page, name) {
   try { await page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch {}
 }
 
-// Пройти онбординг до canonical Google/Email auth entry.
+// Открыть общий экран входа Google/Email.
 // Apple скрыт на web и поэтому не является обязательным web E2E контрактом.
 async function gotoPhoneScreen(page) {
   await page.goto(BASE, { waitUntil: 'networkidle' });
-  const cta = page.locator(tid('onb-v2-cta-phone'));
-  await cta.waitFor({ state: 'visible', timeout: 30000 });
-  await cta.click();
   await page.locator(tid('email-v2-input')).waitFor({ state: 'visible', timeout: 15000 });
   await expect(page.locator(tid('auth-google'))).toBeVisible();
   await expect(page.locator(tid('auth-legal-consent'))).toBeVisible();

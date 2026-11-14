@@ -23,7 +23,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
-import { useToast } from '../../components/Toast';
 import { useAuth } from '../../utils/AuthContext';
 import { isSocialAuthCallback, takeBufferedSocialCallbackUrl } from '../../utils/socialAuth';
 import { brandLight as brand, radius, typography } from '../../theme/brandV2';
@@ -200,8 +199,6 @@ export default function OnboardingV2Screen({ navigation }) {
   const _b = brand;
   const s = React.useMemo(() => makeStyles(_b), [_b]);
   const { t } = useI18n();
-  const { toast } = useToast();
-  const { ensureGuest } = useAuth();
   const scrollRef = useRef(null);
   const [idx, setIdx] = useState(0);
 
@@ -245,21 +242,6 @@ export default function OnboardingV2Screen({ navigation }) {
     navigation.navigate('PhoneV2');
   };
 
-  const goGuest = async () => {
-    let ok = false;
-    try {
-      const data = await ensureGuest();
-      ok = !!(data && data.token);
-    } catch {}
-    if (!ok) {
-      toast(t('no_connection'), 'error');
-      return;
-    }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main', params: { role: 'driver', guest: true } }],
-    });
-  };
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
@@ -336,17 +318,6 @@ export default function OnboardingV2Screen({ navigation }) {
           <View style={s.ctaArrowBubble}>
             <Feather name="arrow-right" size={24} color="#FFF" />
           </View>
-        </Pressable>
-        <Pressable
-          onPress={goGuest}
-          accessibilityRole="button"
-          accessibilityLabel={t('onb_v2_cta_guest')}
-          testID="onb-v2-cta-guest"
-          style={({ pressed }) => [s.ctaOutline, pressed && { opacity: 0.85 }]}
-        >
-          <Feather name="package" size={18} color={brand.textPrimary} />
-          <Text style={s.ctaOutlineText}>{t('onb_v2_cta_guest')}</Text>
-          <Feather name="arrow-right" size={18} color={brand.textPrimary} />
         </Pressable>
 
         <Text style={s.consent}>

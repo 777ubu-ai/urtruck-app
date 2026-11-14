@@ -18,9 +18,9 @@ test('cold-start URL is read once and a pending URL is consumed exactly once', (
 });
 
 test('all entry points reuse the single Chat route despite different deal and room params', () => {
-  assert.equal((navigator.match(/<Stack\.Screen name="Chat"/g) || []).length, 3);
+  assert.equal((navigator.match(/<Stack\.Screen name="Chat"/g) || []).length, 2);
   assert.match(navigator, /function chatRouteId\(\) \{\s*return 'chat-workspace';/);
-  assert.equal((navigator.match(/getId=\{chatRouteId\}/g) || []).length, 3);
+  assert.equal((navigator.match(/getId=\{chatRouteId\}/g) || []).length, 2);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ dealId: id, role, action:/);
   assert.match(app, /navRef\.current\.navigate\('Chat', \{ roomId: id, role \}\)/);
   assert.doesNotMatch(app, /navigate\('Main',[\s\S]{0,120}navigate\('Chat'/);

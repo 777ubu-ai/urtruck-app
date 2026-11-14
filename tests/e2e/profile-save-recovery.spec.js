@@ -44,7 +44,7 @@ async function openProfile(page, role, response = { ok: true }, existing = {}) {
     return route.continue();
   });
   await page.goto(base, { waitUntil: 'domcontentloaded' });
-  await page.getByTestId('onb-v2-cta-phone').click();
+  await expect(page.getByTestId('email-v2-input')).toBeVisible();
   await page.getByTestId('email-v2-input').fill('qa-profile@example.test');
   await page.getByTestId('phone-v2-cta').click();
   await expect(page.getByTestId('otp-v2-screen')).toBeVisible();
@@ -265,7 +265,7 @@ test('гостевая сессия после reload не пропускает 
   state.level = 0;
   await page.evaluate(() => localStorage.setItem('ur_verification_level', '0'));
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByTestId('onb-v2-cta-phone')).toBeVisible();
+  await expect(page.getByTestId('email-v2-input')).toBeVisible();
   await expect(page.getByTestId('profile-v2-screen')).toHaveCount(0);
   await expect(page.getByTestId('role-v2-screen')).toHaveCount(0);
   expect(state.patches).toHaveLength(0);

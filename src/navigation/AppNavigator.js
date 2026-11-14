@@ -2,7 +2,7 @@ import { sessionRole } from '../utils/publicationSession';
 import DriverExpensesScreen from '../screens/DriverExpensesScreen';
 import { onboardingNavKey } from '../utils/onboardingNavKey';
 import React from 'react';
-import { View, Text, Animated, AppState } from 'react-native';
+import { View, Text, Animated, AppState, ActivityIndicator, Pressable } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useEffect } from 'react';
@@ -187,20 +187,32 @@ const FirstVisitMainTabs = withExternalFeedFirstVisit(MainTabs);
 
 // Реактивная навигация на основе auth state
 export default function AppNavigator() {
-  const { session, hasToken, loading, verificationLevel, recoveryRequired } = useAuth();
+  const { session, hasToken, loading, verificationLevel, restoringSession, retrySessionRestore } = useAuth();
   const { theme } = useTheme();
+  const { t } = useI18n();
 
   if (loading) {
     return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
   }
 
-  const hasRole = !!session?.user?.role;
+  if (restoringSession) {
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg, padding: 24 }}>
+      {restoringSession === 'loading' ? <ActivityIndicator /> : <>
+        <Text style={{ color: theme.text, textAlign: 'center', marginBottom: 16 }}>{t('no_connection')}</Text>
+        <Pressable accessibilityRole="button" onPress={retrySessionRestore} testID="session-restore-retry">
+          <Text style={{ color: theme.text }}>{t('verification_retry')}</Text>
+        </Pressable>
+      </>}
+    </View>;
+  }
+
+  const hasRole = !!sessionRole(session);
 
   // QA Design Preview: ?qa=design in the URL routes straight into a
   // visual gallery before any auth/session check. Every other route is
   // still mounted so navigate() from the preview works without round-trips.
   // Detection is web-only and falls back to false on mobile / SSR.
-  const qaPreview = qaDesignMode();
+  const qaPreview = typeof __DEV__ !== 'undefined' && __DEV__ && qaDesignMode();
   if (qaPreview) {
     return (
       <Stack.Navigator initialRouteName="DesignPreview" screenOptions={{ headerShown: false }}>
@@ -266,14 +278,11 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator
       key={navKey === 'main' ? `main:${session?.user?.id || 'guest'}` : (navKey === 'norole' ? 'guest' : navKey)}
-      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : recoveryRequired ? 'PhoneV2' : 'OnboardingV2')}
+      initialRouteName={navKey === 'norole' ? 'RoleV2' : (navKey === 'main' ? 'Main' : 'PhoneV2')}
       screenOptions={{ headerShown: false }}
     >
-      {!hasToken || !session || !hasRole ? (
-        // Нет токена / нет сессии / нет роли → inDrive-style onboarding.
-        // RC2 batch 1: первый экран = OnboardingV2 (3-слайдовая карусель +
-        // CTA "Продолжить по номеру"). Старый RoleScreen остаётся в стеке
-        // как fallback для legacy deeplink и переключения роли изнутри.
+      {navKey !== 'main' ? (
+        // Рабочие маршруты недоступны до подтверждённого входа и выбора роли.
         <>
           <Stack.Screen name="OnboardingV2" component={OnboardingV2Screen} />
           <Stack.Screen name="PhoneV2" component={PhoneV2Screen} />
@@ -291,22 +300,6 @@ export default function AppNavigator() {
           <Stack.Screen name="Reg" component={PremiumRegisterScreen} />
           <Stack.Screen name="RegOtp" component={PremiumOtpScreen} />
           <Stack.Screen name="RegProfile" component={PremiumProfileScreen} />
-          <Stack.Screen name="Main" component={MainTabs} />
-          {/* Профиль доступен и гостю (☰ в шапке) — показывает
-              ограниченный вид с приглашением зарегистрироваться. Без этой
-              регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
-          <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
-          <Stack.Screen name="TripDetail" component={TripDetailV2} />
-          <Stack.Screen name="DriverDetail" component={DriverDetail} />
-          <Stack.Screen name="Chat" component={ChatScreenV2} getId={chatRouteId} options={{ gestureEnabled: false }} />
-          <Stack.Screen name="Notifications" component={NotificationsScreen} />
-          <Stack.Screen name="VehicleSetupCountry" component={VehicleSetupCountryScreen} />
-          <Stack.Screen name="VehicleSetupMachine" component={VehicleSetupMachineScreen} />
-          <Stack.Screen name="VehicleSetupReview" component={VehicleSetupReviewScreen} />
-          <Stack.Screen name="VehicleSetupSuccess" component={VehicleSetupSuccessScreen} />
-          <Stack.Screen name="VehicleChooser" component={VehicleChooserScreen} />
-          <Stack.Screen name="DriverExpenses" component={DriverExpensesScreen} />
         </>
       ) : (
         // Полностью в приложении

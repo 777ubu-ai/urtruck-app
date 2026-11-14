@@ -339,3 +339,18 @@ test('failed logout never retries verification after token changes', async () =>
   await h.render().signOut();for(let i=0;i<20;i++)await tick();
   assert.equal(calls,1);assert.deepEqual(h.flushes,[]);assert.equal(h.data.get('ur_reg_token'),'token-B');
 });
+
+test('неполная сохранённая сессия при ошибке сети ожидает восстановления, не предлагает новый вход', async () => {
+  const data = new Map([['ur_reg_token', 'token-A']]);
+  const h = harness(data, { fakeTimers: true });
+  h.regAPI.me = async () => { throw Error('offline'); };
+  await h.boot();
+  assert.equal(h.render().restoringSession, 'error');
+  assert.equal(data.get('ur_reg_token'), 'token-A');
+  h.regAPI.me = async () => ({ id: 'A', role: 'client', verification_level: 1 });
+  await h.render().retrySessionRestore();
+  for (let i = 0; i < 20; i++) await tick();
+  assert.equal(h.render().restoringSession, null);
+  assert.equal(h.render().session.user.id, 'A');
+  assert.equal(data.get('ur_reg_token'), 'token-A');
+});

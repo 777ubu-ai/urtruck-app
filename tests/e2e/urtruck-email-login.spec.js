@@ -17,11 +17,6 @@ test('вход по email доходит до выбора роли', async ({ p
   const email = `e2e-email-${Date.now().toString(36)}@urtruck.qa`;
   await page.goto(BASE, { waitUntil: 'networkidle' });
 
-  // 1) Онбординг → общая точка входа в auth.
-  const toPhone = page.locator('[data-testid="onb-v2-cta-phone"]');
-  await toPhone.waitFor({ state: 'visible', timeout: 30000 });
-  await toPhone.click();
-
   // 2) Email — прямой канонический input, отдельной legacy-вкладки нет.
   const emailInput = page.locator('[data-testid="email-v2-input"]');
   await emailInput.waitFor({ state: 'visible', timeout: 10000 });

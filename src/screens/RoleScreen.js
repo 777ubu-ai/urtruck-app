@@ -21,7 +21,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
@@ -66,24 +65,9 @@ const RoleCard = ({
 
 export default function RoleScreen({ navigation }) {
   const { t } = useI18n();
-  const { refreshLevel, session, ensureGuest } = useAuth();
+  const { refreshLevel, session } = useAuth();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
-
-  const browseAsGuest = async () => {
-    if (busy) return;
-    try {
-      setBusy('guest');
-      await ensureGuest();
-      // Гость = грузовладелец (client) по умолчанию: оранжевый бренд +
-      // лента «Машины». Роль сменится на реальную после входа.
-      navigation.navigate('Main', { role: 'client', guest: true });
-    } catch (e) {
-      setError(t('connection_failed'));
-    } finally {
-      setBusy(null);
-    }
-  };
 
   const enterAs = async (role) => {
     if (busy) return;
@@ -183,20 +167,6 @@ export default function RoleScreen({ navigation }) {
               <Text style={styles.loginCta}>{t('login_action')}</Text>
             </Text>
           </Pressable>
-
-          {/* Browse as guest — secondary */}
-          <TouchableOpacity
-            onPress={browseAsGuest}
-            disabled={!!busy}
-            testID="role-browse-guest"
-            accessibilityRole="button"
-            accessibilityLabel={t('browse_as_guest')}
-            activeOpacity={0.7}
-            style={styles.guestBtn}
-          >
-            <Feather name="eye" size={16} color={brand.textSecondary} />
-            <Text style={styles.guestBtnText}>{t('browse_as_guest')}</Text>
-          </TouchableOpacity>
 
           {error ? (
             <View pointerEvents="none" style={styles.errorBox}>
