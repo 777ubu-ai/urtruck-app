@@ -42,6 +42,16 @@ on:
         required: false
         default: false
         type: boolean
+      promote_existing_production_draft:
+        description: Prepare existing 1.0.16/215771502 in production draft without build or rollout
+        required: false
+        default: false
+        type: boolean
+      promotion_confirmation:
+        description: PREPARE_PRODUCTION_1_0_16_DRAFT
+        required: false
+        default: ''
+        type: string
       production_internal_test:
         description: Explicit production API candidate in Internal only; no public rollout
         required: false
@@ -137,6 +147,41 @@ permissions:
   pull-requests: read
 
 jobs:
+  prepare-existing-production-draft:
+    name: Prepare existing 1.0.16 production draft without rebuilding
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.promote_existing_production_draft && !inputs.inspect_store_only && inputs.api_environment == 'production' && inputs.track == 'production' && inputs.status == 'draft' && inputs.promotion_confirmation == 'PREPARE_PRODUCTION_1_0_16_DRAFT' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify immutable existing build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/777ubu-ai/urtruck-app/actions/runs/43598617941 > "$RUNNER_TEMP/source-run.json"
+          python3 - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          r=json.loads((Path(os.environ['RUNNER_TEMP'])/'source-run.json').read_text())
+          assert r['head_sha']=='f2f2dc24672e47740b03f907e49895ad5ddbd103'
+          assert r['conclusion']=='success' and r['status']=='completed'
+          assert r['path']=='.github/workflows/deploy-play.yml'
+          assert r['repository']['full_name']=='777ubu-ai/urtruck-app'
+          PYCODE
+      - name: Install API client only
+        run: python3 -m pip install google-auth requests
+      - name: Prepare production draft only
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: python3 scripts/ops/promote_existing_1016_draft.py --confirmation PREPARE_PRODUCTION_1_0_16_DRAFT --output play-production-draft.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UrTruck-Play-production-draft-215771502
+          path: play-production-draft.json
+          if-no-files-found: error
+          retention-days: 14
+
   inspect-store:
     name: Сверить версии Google Play без загрузки
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.inspect_store_only }}
@@ -161,14 +206,14 @@ jobs:
           if-no-files-found: error
 
   quality-gate:
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only && !inputs.promote_existing_production_draft }}
     uses: ./.github/workflows/quality-gate-reusable.yml
     with:
       source_ref: ${{ inputs.source_sha || github.sha }}
 
   build-and-submit:
     needs: quality-gate
-    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only }}
+    if: ${{ inputs.download_generated_version_code == '' && !inputs.inspect_store_only && !inputs.promote_existing_production_draft }}
     name: Build AAB and upload to Play
     env:
       URTRUCK_VERSION_NAME: 1.0.9
