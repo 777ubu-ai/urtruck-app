@@ -16,11 +16,11 @@ on:
         required: true
         type: string
       last_verified_ios_build:
-        description: Последний подтверждённый номер именно в версии 1.0.15; 0 для пустой серии
+        description: Последний подтверждённый номер именно в версии 1.0.16; 0 для пустой серии
         required: true
         type: string
       ios_build_number:
-        description: Номер новой сборки 1–9999 внутри версии 1.0.15 (001 соответствует 1)
+        description: Номер новой сборки 1–9999 внутри версии 1.0.16 (001 соответствует 1)
         required: true
         default: '1'
         type: string
@@ -49,8 +49,8 @@ jobs:
       URTRUCK_BUILD_FLAVOR: qa2
       URTRUCK_SOURCE_SHA: ${{ inputs.source_sha }}
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
-      # ASC08.11: публичная 1.0.14(127), TestFlight128; выбираем следующую версию.
-      URTRUCK_VERSION_NAME: 1.0.15
+      # Apple закрыла серию 1.0.15; QA2 использует следующую версию.
+      URTRUCK_VERSION_NAME: 1.0.16
       URTRUCK_MIN_IOS_BUILD: ${{ inputs.last_verified_ios_build }}
       URTRUCK_IOS_BUILD_NUMBER: ${{ inputs.ios_build_number }}
       EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
