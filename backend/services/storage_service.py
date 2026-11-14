@@ -297,3 +297,87 @@ def info() -> dict:
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
         "s3_configured": bool(S3_BUCKET),
     }
+
+
+class PrivateFileTooLargeError(ValueError):
+    """Приватный файл превышает установленный предел выдачи."""
+
+
+def ref_has_purpose(value: Optional[str], categories: set[str]) -> bool:
+    """Проверить назначение собственного storage-ref без изменения самого объекта."""
+    if not value or not isinstance(value, str) or '%' in value or '\\' in value:
+        return False
+    parsed = _split_supabase_ref(value)
+    if parsed:
+        key = parsed[1]
+    else:
+        path = value.split('?', 1)[0]
+        key = None
+        for prefix in (LOCAL_PUBLIC_BASE.rstrip('/'), '/security/storage', '/storage'):
+            if prefix and path.startswith(prefix + '/'):
+                key = path[len(prefix) + 1:]
+                break
+        if key is None and S3_BUCKET:
+            prefix = f'https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/'
+            if path.startswith(prefix):
+                key = path[len(prefix):]
+        if key is None:
+            return False
+    parts = key.split('/')
+    return len(parts) >= 2 and parts[0] in categories and all(part not in ('', '.', '..') for part in parts)
+
+
+def read_private_bytes(value: str, limit: int) -> bytes:
+    """Ограниченное чтение только собственного storage без выдачи подписанной ссылки."""
+    if not isinstance(value, str) or not value or any(c in value for c in ('%', '\\', '#', '?')) or limit <= 0:
+        raise ValueError('invalid_private_ref')
+    parsed = _split_supabase_ref(value)
+    if parsed:
+        if not (SUPABASE_URL and SUPABASE_KEY):
+            raise RuntimeError('private_storage_not_configured')
+        bucket, key = parsed
+        parts = key.split('/')
+        if any(p in ('', '.', '..') for p in parts):
+            raise ValueError('invalid_private_ref')
+        data = bytearray()
+        with httpx.stream('GET', f'{SUPABASE_URL}/storage/v1/object/{bucket}/{key}',
+                          headers={'Authorization': f'Bearer {SUPABASE_KEY}'}, timeout=30.0) as response:
+            response.raise_for_status()
+            for chunk in response.iter_bytes(chunk_size=65536):
+                if len(data) + len(chunk) > limit:
+                    raise PrivateFileTooLargeError('private_file_too_large')
+                data.extend(chunk)
+        return bytes(data)
+    path = value.split('?', 1)[0]
+    if S3_BUCKET:
+        prefix = f'https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/'
+        if path.startswith(prefix) and is_owned_storage_ref(value):
+            import boto3
+            obj = boto3.client('s3', region_name=S3_REGION).get_object(Bucket=S3_BUCKET, Key=path[len(prefix):])
+            body = obj['Body']
+            try:
+                if obj.get('ContentLength', 0) > limit:
+                    raise PrivateFileTooLargeError('private_file_too_large')
+                data = body.read(limit + 1)
+            finally:
+                body.close()
+            if len(data) > limit:
+                raise PrivateFileTooLargeError('private_file_too_large')
+            return data
+    for prefix in (LOCAL_PUBLIC_BASE.rstrip('/'), '/security/storage', '/storage'):
+        if prefix and path.startswith(prefix + '/'):
+            key = path[len(prefix) + 1:]
+            if any(p in ('', '.', '..') for p in key.split('/')):
+                raise ValueError('invalid_private_ref')
+            root = LOCAL_ROOT.resolve()
+            target = (root / key).resolve()
+            try:
+                target.relative_to(root)
+            except ValueError as exc:
+                raise ValueError('invalid_private_ref') from exc
+            with target.open('rb') as f:
+                data = f.read(limit + 1)
+            if len(data) > limit:
+                raise PrivateFileTooLargeError('private_file_too_large')
+            return data
+    raise ValueError('invalid_private_ref')

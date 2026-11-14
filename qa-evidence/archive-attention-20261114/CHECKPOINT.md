@@ -18,3 +18,9 @@ Production not changed. Store binaries not rebuilt.
 - git diff --check passed.
 - Physical post-deploy archive indicator/read behavior NOT RUN.
 - Production endpoint remains absent until separately authorized deployment. No mobile build required for source f2f2dc.
+
+## Expanded compatibility scope
+Read-only production probes also confirm HTTP404 for protected media and attachment-content routes required by installed f2f2dc clients. Added the two byte routes, isolated exact-room ACL helper, bounded storage read primitives; existing function ASTs remain identical to main for chat.py, deal_room.py and storage_service.py. No upload/send/status implementation or schema changed.
+Ported endpoint/storage regressions cover both participants, strangers, expired tokens, wrong IDs/categories, revoked access mid-read, replaced objects, ambiguous/unlinked historical rooms, path traversal and byte bounds. Total related backend run: 70 passed. Client screen runtime: both roles pass archive/card mapping and scoped-read preservation.
+Frontend CI blockers corrected separately: node-forge 1.4.2→1.4.3 only in lockfile, exploit and valid-signature regressions pass; production smoke now verifies actual owner-approved store landing rather than obsolete phone onboarding. Local 839 unit tests, lint, web build, dependency audits pass. Existing production smoke: 3 passed, 1 preview-only skipped.
+Runtime deployment must include notifications.py, chat.py, deal_room.py and storage_service.py from one checked candidate; do not deploy only attention and declare files ready. No production write performed. Physical native acceptance remains pending; Huawei still501, iPhone unavailable.
