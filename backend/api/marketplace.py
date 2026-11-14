@@ -336,6 +336,21 @@ def _public_trip_ok(row: dict, today=None) -> bool:
     return _within_publication_window(row, today=today)
 
 
+def _public_count_visible(kind, show_demo, now):
+    """Тот же фильтр, что у карточек, для агрегата без загрузки выдачи."""
+    def visible(description, origin, destination, category, published, created, owner, status):
+        row = {"from_city": origin, "to_city": destination, "published_at": published,
+               "created_at": created, "status": status}
+        if kind == "cargo":
+            row.update(cargo_desc=description, cargo_type=category, owner_id=owner)
+            check = _public_cargo_ok
+        else:
+            row.update(driver_name=description, truck_type=category, driver_id=owner)
+            check = _public_trip_ok
+        return int(_within_publication_window(row, today=now) if show_demo else check(row, today=now))
+    return visible
+
+
 def _init():
     base = Path(__file__).resolve().parent.parent / "database"
     with get_conn() as c:
@@ -885,6 +900,10 @@ def list_cargos(
         from services import owned_publication_periods as periods
         if periods.is_enabled(c):
             where_sql += periods.public_listing_deadline_clause('cargo')
+        now = datetime.utcnow()
+        c.create_function("public_listing_visible", 8, _public_count_visible("cargo", show_demo, now))
+        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql} AND "
+                          "public_listing_visible(cargo_desc,from_city,to_city,cargo_type,published_at,created_at,owner_id,status)", params).fetchone()[0]
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
@@ -894,7 +913,6 @@ def list_cargos(
             FROM cargos WHERE {where_sql}
             ORDER BY {order_sql} LIMIT ? OFFSET ?
         """, (*params, limit + 1, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
 
     # Следующая страница определяется ДО hygiene/expiry-фильтров.
     # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.
@@ -902,7 +920,7 @@ def list_cargos(
     rows = rows[:limit]
 
     result = []
-    today = datetime.utcnow()
+    today = now
     for r in rows:
         d = dict(r)
         try:
@@ -922,9 +940,9 @@ def list_cargos(
         if not show_demo and not _public_cargo_ok(d, today=today):
             continue
         result.append(d)
-    # Recompute total to match what the caller actually sees
+    # Общий итог использует те же правила видимости, что и страницы.
     return {
-        "cargos": result, "total": len(result), "next_offset": next_offset,
+        "cargos": result, "total": total, "next_offset": next_offset,
         "page_count": len(result), "has_more": next_offset is not None,
         "search_contract": 1,
     }
@@ -1834,6 +1852,10 @@ def list_trips(
         from services import owned_publication_periods as periods
         if periods.is_enabled(c):
             where_sql += periods.public_listing_deadline_clause('trip')
+        now = datetime.utcnow()
+        c.create_function("public_listing_visible", 8, _public_count_visible("trip", show_demo, now))
+        total = c.execute(f"SELECT COUNT(*) FROM trips WHERE {where_sql} AND "
+                          "public_listing_visible(driver_name,from_city,to_city,truck_type,published_at,created_at,driver_id,status)", params).fetchone()[0]
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
@@ -1850,11 +1872,11 @@ def list_trips(
     rows = rows[:limit]
 
     trips = [dict(r) for r in rows]
-    trips = [t for t in trips if _within_publication_window(t)]
+    trips = [t for t in trips if _within_publication_window(t, today=now)]
     if not show_demo:
         # Дата отправления описывает рейс. Срок публикации считается от
         # published_at; активные собственные грузы/рейсы продлеваются циклами 30 суток.
-        trips = [t for t in trips if _public_trip_ok(t)]
+        trips = [t for t in trips if _public_trip_ok(t, today=now)]
     # Обогащаем каждый рейс РЕАЛЬНЫМИ данными водителя (статус верификации +
     # рейтинг/число отзывов), чтобы фронт не выдумывал «★5.0 · Проверен».
     # Обогащение не должно ронять ленту — при любом сбое отдаём дефолты.
@@ -1883,7 +1905,7 @@ def list_trips(
             t.setdefault("driver_rating", 0)
             t.setdefault("driver_reviews_count", 0)
     return {
-        "trips": trips, "total": len(trips), "next_offset": next_offset,
+        "trips": trips, "total": total, "next_offset": next_offset,
         "page_count": len(trips), "has_more": next_offset is not None,
         "search_contract": 1,
     }
