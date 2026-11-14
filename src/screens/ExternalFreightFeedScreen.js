@@ -148,7 +148,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const errorMessage = error === 'network_error' ? l.network : error === 'auth_required' ? t('session_expired') : error === 'access_denied' ? (ACCESS_COPY[lang] || ACCESS_COPY.EN) : l.server;
 
   const load = useCallback(async ({ reset = false, background = false, signal: suppliedSignal } = {}) => {
-    if (busyRef.current && (background || !reset)) return;
+    if (busyRef.current && !reset) return;
     if (reset) {
       requestRef.current?.abort?.();
       sequenceRef.current += 1;
@@ -161,97 +161,103 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     if (!background) setBusy(true);
     const owner = ownerKey;
     const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly, include_counts: false };
-    let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
-    // Для цены нельзя склеивать старый порядок с новой головой: обновляем
-    // весь загруженный префикс атомарно, как и сохранённые, вместе с cursor.
-    if (background && (savedOnly || !timeline) && result.ok) {
-      const refreshed = [...(result.items || [])];
-      let next = result.next_cursor;
-      const pages = Math.max(1, Math.ceil(rows.length / 30));
-      for (let page = 1; page < pages && next; page += 1) {
-        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-        const older = await listWithTimeout({ ...raw, cursor: next }, signal).catch(() => ({ ok: false, error: 'network_error' }));
-        if (!older.ok) { result = older; break; }
-        refreshed.push(...(older.items || []));
-        next = older.next_cursor;
-      }
-      if (result.ok) result = { ...result, items: appendUnique([], refreshed), next_cursor: next };
-    }
-    if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-    if (!result.ok) {
-      if (result.status === 401 || result.status === 403) {
-        firstPageCache.delete(firstPageCacheKey(owner, filters, savedOnly));
-        setRows([]); setCursor(null);
-      }
-      paginationPendingRef.current = false;
-      setError(result.status === 401 ? 'auth_required' : result.status === 403 ? 'access_denied' : result.error || 'server_error');
-      setErrorPage(!reset && !background);
-      busyRef.current = false; setBusy(false); setRefreshing(false);
-      return;
-    }
-    setError(null);
-    setErrorPage(false);
-    if (reset && !isDriver) {
-      // Подсчёт не задерживает первую страницу. Он использует те же фильтры,
-      // но собственный запрос и не подменяется числом загруженных карточек.
-      const valid = counts => counts && ['total', 'offers', 'carriers'].every(key => Number.isSafeInteger(counts[key]) && counts[key] >= 0)
-        && counts.total === counts.offers + counts.carriers;
-      setCountError(false);
-      const unfiltered = !savedOnly && filters.sort === 'newest' && !Object.entries(filters)
-        .some(([key, value]) => key !== 'sort' && value !== '' && value != null);
-      (async () => {
-        const reply = await listWithTimeout({ ...raw, include_counts: true, limit: 1 }, signal).catch(() => null);
-        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-        let counts = reply?.ok ? reply.counts : null;
-        if (!counts && unfiltered && typeof externalFreightAPI.count === 'function') {
-          const fallback = await countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted);
+    try {
+      let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
+      // Для цены нельзя склеивать старый порядок с новой головой: обновляем
+      // весь загруженный префикс атомарно, как и сохранённые, вместе с cursor.
+      if (background && (savedOnly || !timeline) && result.ok) {
+        const refreshed = [...(result.items || [])];
+        let next = result.next_cursor;
+        const pages = Math.max(1, Math.ceil(rows.length / 30));
+        for (let page = 1; page < pages && next; page += 1) {
           if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-          counts = fallback?.ok && fallback.kind === 'vehicle'
-            ? { total: fallback.count, offers: fallback.offer_count, carriers: fallback.carrier_count } : null;
+          const older = await listWithTimeout({ ...raw, cursor: next }, signal).catch(() => ({ ok: false, error: 'network_error' }));
+          if (!older.ok) { result = older; break; }
+          refreshed.push(...(older.items || []));
+          next = older.next_cursor;
         }
-        if (valid(counts)) { setFeedCounts(counts); setCountError(false); }
-        else { setFeedCounts(null); setCountError(true); }
-      })();
-    }
+        if (result.ok) result = { ...result, items: appendUnique([], refreshed), next_cursor: next };
+      }
+      if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+      if (!result.ok) {
+        if (result.status === 401 || result.status === 403) {
+          firstPageCache.delete(firstPageCacheKey(owner, filters, savedOnly));
+          setRows([]); setCursor(null);
+        }
+        paginationPendingRef.current = false;
+        setError(result.status === 401 ? 'auth_required' : result.status === 403 ? 'access_denied' : result.error || 'server_error');
+        setErrorPage(!reset && !background);
+        return;
+      }
+      setError(null);
+      setErrorPage(false);
+      if (reset && !isDriver) {
+        // Подсчёт не задерживает первую страницу. Он использует те же фильтры,
+        // но собственный запрос и не подменяется числом загруженных карточек.
+        const valid = counts => counts && ['total', 'offers', 'carriers'].every(key => Number.isSafeInteger(counts[key]) && counts[key] >= 0)
+          && counts.total === counts.offers + counts.carriers;
+        setCountError(false);
+        const unfiltered = !savedOnly && filters.sort === 'newest' && !Object.entries(filters)
+          .some(([key, value]) => key !== 'sort' && value !== '' && value != null);
+        (async () => {
+          const reply = await listWithTimeout({ ...raw, include_counts: true, limit: 1 }, signal).catch(() => null);
+          if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+          let counts = reply?.ok ? reply.counts : null;
+          if (!counts && unfiltered && typeof externalFreightAPI.count === 'function') {
+            const fallback = await countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted);
+            if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+            counts = fallback?.ok && fallback.kind === 'vehicle'
+              ? { total: fallback.count, offers: fallback.offer_count, carriers: fallback.carrier_count } : null;
+          }
+          if (valid(counts)) { setFeedCounts(counts); setCountError(false); }
+          else { setFeedCounts(null); setCountError(true); }
+        })();
+      }
 
-    const incoming = Array.isArray(result.items) ? result.items : [];
-    if (reset && session?.user?.id && !savedOnly) rememberFirstPage(firstPageCacheKey(owner, filters, savedOnly), incoming);
-    if (result.sort_error && filters.sort !== 'newest') {
-      setFilters(current => ({ ...current, sort: 'newest' }));
-      setDraft(current => ({ ...current, sort: 'newest' }));
-      toast(result.sort_error === 'mixed_currency' ? l.mixedCurrency : l.priceUnavailable, 'error');
-    }
-    setRowsOwner(owner);
-    anchorRef.current = null;
-    if (background && Platform.OS === 'web' && (!timeline || !followingRef.current) && viewportRef.current.offset > 16) {
-      const node = cardRefs.current.get(visibleAnchorRef.current);
-      if (node?.measureInWindow) {
-        const measured = await new Promise(resolve => {
-          const timeout = setTimeout(() => resolve(null), 100);
-          node.measureInWindow((_x, y) => { clearTimeout(timeout); resolve({ node, y }); });
-        });
-        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-        anchorRef.current = measured;
-        if (measured) setTimeout(() => { if (anchorRef.current === measured) anchorRef.current = null; }, 250);
+      const incoming = Array.isArray(result.items) ? result.items : [];
+      if (reset && session?.user?.id && !savedOnly) rememberFirstPage(firstPageCacheKey(owner, filters, savedOnly), incoming);
+      if (result.sort_error && filters.sort !== 'newest') {
+        setFilters(current => ({ ...current, sort: 'newest' }));
+        setDraft(current => ({ ...current, sort: 'newest' }));
+        toast(result.sort_error === 'mixed_currency' ? l.mixedCurrency : l.priceUnavailable, 'error');
+      }
+      setRowsOwner(owner);
+      anchorRef.current = null;
+      if (background && Platform.OS === 'web' && (!timeline || !followingRef.current) && viewportRef.current.offset > 16) {
+        const node = cardRefs.current.get(visibleAnchorRef.current);
+        if (node?.measureInWindow) {
+          const measured = await new Promise(resolve => {
+            const timeout = setTimeout(() => resolve(null), 100);
+            node.measureInWindow((_x, y) => { clearTimeout(timeout); resolve({ node, y }); });
+          });
+          if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+          anchorRef.current = measured;
+          if (measured) setTimeout(() => { if (anchorRef.current === measured) anchorRef.current = null; }, 250);
+        }
+      }
+      if (background && timeline) {
+        const known = new Set(rows.map(item => String(item.id)));
+        const active = mergeLiveFeed(rows, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly });
+        const activeIds = new Set(active.map(item => String(item.id)));
+        const added = incoming.filter(item => !known.has(String(item.id)) && activeIds.has(String(item.id)));
+        if (followingRef.current) {
+          followUpdateRef.current = added.length > 0;
+          scrollToLatestRef.current = Platform.OS === 'web' && added.length > 0;
+          setUnseenIds([]);
+        } else {
+          setUnseenIds(current => [...new Set([...current, ...added.map(item => String(item.id))])].filter(id => activeIds.has(id)));
+        }
+      }
+      if (reset && !background && timeline && Platform.OS === 'web' && !savedOnly) scrollToLatestRef.current = true;
+      setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
+      if (!background || savedOnly || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
+    } finally {
+      // Only the current request may release loading. An aborted old request
+      // can settle after a cached filter reset has already started a new one.
+      if (sequence === sequenceRef.current && owner === ownerRef.current) {
+        busyRef.current = false; setBusy(false); setRefreshing(false);
       }
     }
-    if (background && timeline) {
-      const known = new Set(rows.map(item => String(item.id)));
-      const active = mergeLiveFeed(rows, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly });
-      const activeIds = new Set(active.map(item => String(item.id)));
-      const added = incoming.filter(item => !known.has(String(item.id)) && activeIds.has(String(item.id)));
-      if (followingRef.current) {
-        followUpdateRef.current = added.length > 0;
-        scrollToLatestRef.current = Platform.OS === 'web' && added.length > 0;
-        setUnseenIds([]);
-      } else {
-        setUnseenIds(current => [...new Set([...current, ...added.map(item => String(item.id))])].filter(id => activeIds.has(id)));
-      }
-    }
-    if (reset && !background && timeline && Platform.OS === 'web' && !savedOnly) scrollToLatestRef.current = true;
-    setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
-    if (!background || savedOnly || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
-    busyRef.current = false; setBusy(false); setRefreshing(false);
   }, [filters, cursor, savedOnly, ownerKey, rows, timeline, isDriver]);
   loadRef.current = load;
 

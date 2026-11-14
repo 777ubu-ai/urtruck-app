@@ -16,12 +16,12 @@ const LEVEL_KEY = 'ur_verification_level';
 const PENDING_LOGOUT_KEY = 'ur_pending_logout_token';
 let pendingLogoutMutation = Promise.resolve();
 
-async function fetchAccount(token) {
+async function fetchAccount(token, url = `${BASE}/me`) {
   const controller = new AbortController();
   let timer;
   try {
     return await Promise.race([
-      fetch(`${BASE}/me`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }).then(async response => {
+      fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }).then(async response => {
         if (!response.ok) return response;
         const data = await response.json();
         return { status: response.status, ok: response.ok, json: async () => data };
@@ -408,9 +408,9 @@ export const regAPI = {
     const token = await this.getToken();
     if (!token) return null;
     try {
-      const r = await fetch(`${API_BASE}/users/me`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      // Bound headers and JSON decoding just like the canonical account lookup.
+      // An optional profile must never hold session recovery/outbox indefinitely.
+      const r = await fetchAccount(token, `${API_BASE}/users/me`);
       if (!r.ok) return null;
       return await r.json();
     } catch {
