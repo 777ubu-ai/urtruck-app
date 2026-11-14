@@ -120,3 +120,38 @@ def test_saved_only_lookup_uses_owner_type_item_index():
         ).fetchall()
     details = " ".join(row["detail"] for row in plan)
     assert "sqlite_autoindex_favorites_1" in details
+
+
+@pytest.mark.parametrize("kind,endpoint", [("cargo", "cargos"), ("trip", "trips")])
+def test_total_counts_all_visible_filtered_rows_across_pages(kind, endpoint):
+    city = "Рубеж" + uuid.uuid4().hex[:10]
+    ids = [_seed(kind, city=city, country="KZ", amount=100 + i,
+                 currency="KZT", day="2099-10-20") for i in range(3)]
+    hidden = _seed(kind, city=city, country="KZ", amount=200,
+                   currency="KZT", day="2099-10-20")
+    with get_conn() as c:
+        if kind == "cargo":
+            c.execute("UPDATE cargos SET cargo_desc='test' WHERE id=?", (hidden,))
+        else:
+            c.execute("UPDATE trips SET driver_name='test' WHERE id=?", (hidden,))
+    found = []
+    offset = 0
+    while True:
+        response = client.get(f"/api/v1/market/{endpoint}", params={
+            "from_city": city, "currency": "KZT", "limit": 1, "offset": offset,
+        })
+        assert response.status_code == 200, response.text
+        page = response.json()
+        assert page["total"] == 3
+        assert page["page_count"] == len(page[endpoint])
+        found.extend(row["id"] for row in page[endpoint])
+        if not page["has_more"]:
+            break
+        assert page["next_offset"] > offset
+        offset = page["next_offset"]
+    assert len(found) == len(set(found)) == 3
+    assert set(found) == set(ids)
+    demo = client.get(f"/api/v1/market/{endpoint}", params={
+        "from_city": city, "show_demo": "true", "limit": 1,
+    }).json()
+    assert demo["total"] == 4

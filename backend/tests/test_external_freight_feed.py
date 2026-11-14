@@ -156,11 +156,11 @@ def test_concurrent_expiry_cleanup_and_import_preserve_both_results():
         purged = purge_future.result(timeout=10)
         outcomes = [future.result(timeout=10) for future in import_futures]
 
-    assert purged == 24
+    assert purged == 0
     assert all(result["result"] == "created" for batch in outcomes for result in batch)
     with get_conn() as c:
-        assert c.execute("SELECT count(*) FROM external_freight_items WHERE source_id='concurrent-expiry'").fetchone()[0] == 0
-        assert c.execute("SELECT count(*) FROM external_freight_expired_sources").fetchone()[0] == 24
+        assert c.execute("SELECT count(*) FROM external_freight_items WHERE source_id='concurrent-expiry'").fetchone()[0] == 24
+        assert c.execute("SELECT count(*) FROM external_freight_expired_sources").fetchone()[0] == 0
         assert c.execute("SELECT count(*) FROM external_freight_items WHERE source_id='concurrent-live'").fetchone()[0] == 24
 
 
@@ -326,7 +326,7 @@ def test_vehicle_retention_uses_same_exact_utc_30_day_boundary(age, expected, re
     assert datetime.fromisoformat(result["expires_at"]) == published + timedelta(days=30)
 
 
-def test_vehicle_cleanup_keeps_29_day_row_and_purges_at_30_days():
+def test_vehicle_expiry_keeps_30_day_row_without_showing_it():
     published = datetime.now(timezone.utc) - timedelta(days=29)
     raw = _record(kind="vehicle", source="vehicle-cleanup-boundary", published=published,
                   text="Есть свободная машина")
@@ -341,10 +341,10 @@ def test_vehicle_cleanup_keeps_29_day_row_and_purges_at_30_days():
         c.execute("UPDATE external_freight_items SET source_published_at=?,expires_at=? WHERE id=?",
                   (old_published.isoformat(), deadline, item_id))
     assert dal.count_active_items("vehicle") == 0
-    assert dal.purge_expired_items() == 1
+    assert dal.purge_expired_items() == 0
     with get_conn() as c:
-        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 0
-        assert c.execute("SELECT COUNT(*) FROM external_freight_expired_sources").fetchone()[0] == 1
+        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 1
+        assert c.execute("SELECT COUNT(*) FROM external_freight_expired_sources").fetchone()[0] == 0
 
 
 def test_ttl_does_not_override_explicit_closed_hidden_or_review_status():
@@ -406,8 +406,8 @@ def test_schema_migration_applies_thirty_day_cargo_ttl_and_preserves_explicit_cl
     assert datetime.fromisoformat(rows[ids["vehicle"]]["expires_at"]) == published + timedelta(days=30)
 
 
-def test_expired_external_item_is_physically_purged_after_thirty_days_and_replay_stays_purged():
-    record = _record(source="purge-after-thirty-days", text="Нужен тент, груз готов")
+def test_expired_external_item_and_bookmark_survive_retention_and_replay():
+    record = _record(source="retained-after-thirty-days", text="Нужен тент, груз готов")
     item_id = _import(record).json()["results"][0]["id"]
     old_publication = datetime.now(timezone.utc) - timedelta(days=31)
     record["source_published_at"] = old_publication.isoformat()
@@ -416,17 +416,14 @@ def test_expired_external_item_is_physically_purged_after_thirty_days_and_replay
                   (old_publication.isoformat(), (old_publication + timedelta(days=30)).isoformat(), item_id))
         c.execute("INSERT INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES('saved-driver',?,?)",
                   (item_id, datetime.now(timezone.utc).isoformat()))
-    assert dal.purge_expired_items() == 1
+        audit_before = c.execute("SELECT COUNT(*) FROM external_freight_audit WHERE item_id=?", (item_id,)).fetchone()[0]
+    assert dal.purge_expired_items() == 0
+    assert dal.count_active_items("cargo") == 0
+    assert _import(record).json()["results"][0]["status"] == "expired"
     with get_conn() as c:
-        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 0
-        assert c.execute("SELECT COUNT(*) FROM external_freight_bookmarks WHERE item_id=?", (item_id,)).fetchone()[0] == 0
-        assert c.execute("SELECT COUNT(*) FROM external_freight_audit WHERE item_id=?", (item_id,)).fetchone()[0] == 0
-        assert c.execute("SELECT COUNT(*) FROM external_freight_expired_sources").fetchone()[0] == 1
-    replay = _import(record)
-    assert replay.status_code == 200
-    assert replay.json()["results"][0]["status"] == "expired"
-    with get_conn() as c:
-        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE source_id=?", (record["source_id"],)).fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM external_freight_items WHERE id=?", (item_id,)).fetchone()[0] == 1
+        assert c.execute("SELECT COUNT(*) FROM external_freight_bookmarks WHERE item_id=?", (item_id,)).fetchone()[0] == 1
+        assert c.execute("SELECT COUNT(*) FROM external_freight_audit WHERE item_id=?", (item_id,)).fetchone()[0] >= audit_before
 
 
 def test_import_requires_secret_and_user_is_read_only():
