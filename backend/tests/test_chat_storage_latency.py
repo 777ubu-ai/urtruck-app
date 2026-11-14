@@ -2,6 +2,7 @@
 import asyncio
 import io
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -91,7 +92,7 @@ def test_slow_upload_does_not_block_event_loop(monkeypatch, endpoint, payload):
     def slow_save(*args, **kwargs):
         entered.set()
         assert release.wait(timeout=3), "Обработчик заблокировал цикл событий"
-        return "supabase://private/file"
+        return "supabase://private/" + str(args[1]) + "/" + uuid.uuid4().hex
 
     monkeypatch.setattr(chat.storage, "save_file", slow_save)
 
