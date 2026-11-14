@@ -9,3 +9,9 @@ Preflight: fix/production-api-internal-1016-20261114, base1c59865493810acc701294
 - Production register/me, users/me and external-freight/count GET without bearer return401; routes exist. OpenAPI unavailable, so full authenticated compatibility remains unverified. attention client has404 fallback. Live login, full push receipt NOT RUN.
 - Initial full unit2021/2032,11 failures from unset new optional flags/previous QA2-only assertion. Default compatibility restored and contract updated for owner-authorized opt-in. All77 affected workflow/guard tests now PASS; prior30 native/store identity tests PASS. YAML parsed; diff check PASS. No tests disabled. Hosted CI pending.
 - Next: exact PR CI; fresh ASC/Play numbers; merge through QA2 integration; exact merge checks; dispatch one pair internal builds with production API only. Never dispatch old QA2 API defaults. Verify binary metadata and store processing. No production track promotion or backend deploy.
+
+## Pre-build compatibility defect found and fixed
+
+Newer client hardcoded10day vehicle age independently of server expiry. Against unchanged production30day backend this could hide live cards on cache/background merge while server counter stayed higher. Regression reproduced on the real model; removed client age override and retained server expires_at/status checks. QA2 backend already serializes10day expires_at, so QA2 policy remains enforced without frontend guessing. No backend/import/data changes. This is the only additional app-code change, needed to preserve the existing production feed. Initial workflow-only statement above applies to first commit only.
+
+Repeat registration manifest check:707 rows, and removing exactly one new ID reproduced the original706-ID checksum; all original IDs remained. New store inspection43597019648: max215771501, next215771502; Apple fresh read1.0.16(3) VALID, next4. No binary built yet.

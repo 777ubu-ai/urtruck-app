@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { isVisibleExternalItem } from '../../src/utils/externalFreightModel.js';
+import { isVisibleExternalItem, mergeLiveFeed } from '../../src/utils/externalFreightModel.js';
 
 const source = readFileSync('src/screens/ExternalFreightFeedScreen.js', 'utf8');
 const helper = source.slice(source.indexOf('async function listWithTimeout('), source.indexOf('\nfunction formatNumber', source.indexOf('async function listWithTimeout(')));
@@ -33,11 +33,21 @@ test('кэш страницы разделяет владельцев, роли 
 });
 
 
-test('кэш внешних машин соблюдает 10 дней, не сокращая срок грузов', () => {
+test('кэш соблюдает серверный срок машин и не сокращает срок грузов', () => {
   const now = Date.parse('2026-11-14T00:00:00Z');
   const item = { status: 'active', source_published_at: '2026-11-04T00:00:00Z' };
-  assert.equal(isVisibleExternalItem({ ...item, kind: 'vehicle' }, now), false);
-  assert.equal(isVisibleExternalItem({ ...item, kind: 'vehicle' }, now - 1), true);
+  assert.equal(isVisibleExternalItem({ ...item, kind: 'vehicle', expires_at: '2026-11-14T00:00:00Z' }, now), false);
+  assert.equal(isVisibleExternalItem({ ...item, kind: 'vehicle', expires_at: '2026-11-14T00:00:00Z' }, now - 1), true);
   assert.equal(isVisibleExternalItem({ ...item, kind: 'cargo' }, now), true);
   assert.equal(isVisibleExternalItem({ ...item, kind: 'carrier_contact' }, now), true);
+});
+
+
+test('production vehicle older than ten days remains visible until its server deadline', () => {
+  const now = Date.parse('2026-11-14T00:00:00Z');
+  const vehicle = { id: 'production-live', kind: 'vehicle', status: 'active', source_published_at: '2026-11-01T00:00:00Z', expires_at: '2026-12-01T00:00:00Z' };
+  assert.equal(isVisibleExternalItem(vehicle, now), true);
+  assert.deepEqual(mergeLiveFeed([], [vehicle], { now }).map(item => item.id), ['production-live']);
+  assert.equal(isVisibleExternalItem({ ...vehicle, status: 'closed' }, now), false);
+  assert.equal(isVisibleExternalItem({ ...vehicle, expires_at: '2026-11-13T00:00:00Z' }, now), false);
 });
