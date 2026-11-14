@@ -226,6 +226,7 @@ jobs:
         run: |
           npx playwright test --config playwright.config.js \
             tests/e2e/urtruck-email-login.spec.js \
+            tests/e2e/auth-language-switcher.spec.js \
             tests/e2e/urtruck-deal-mvp.spec.js \
             tests/e2e/urtruck-full-e2e-web.spec.js \
             tests/e2e/profile-save-recovery.spec.js \
