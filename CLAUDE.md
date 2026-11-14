@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Перед сборкой и загрузкой в магазины
+
+Обязательно прочитать [постоянную инструкцию владельца](docs/release/OWNER_RELEASE_INSTRUCTIONS.md) и актуальный checkpoint. Правила действуют для QA2, TestFlight, Play Internal и боевого выпуска. Сохранять ссылку при переносе веток.
+
 ## Язык общения
 
 Общаться с владельцем проекта — **по-русски** (см. глобальный `~/.claude/CLAUDE.md`). Комментарии в коде, git-сообщения, названия задач — тоже по-русски. Имена переменных/функций/файлов, shell-команды, URL, API-эндпоинты — остаются на английском.
