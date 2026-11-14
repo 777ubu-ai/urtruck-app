@@ -143,6 +143,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
   checks: read
   pull-requests: read
 
