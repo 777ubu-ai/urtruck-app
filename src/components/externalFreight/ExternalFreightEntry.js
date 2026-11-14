@@ -53,10 +53,16 @@ export default function ExternalFreightEntry(props) {
       const request = new AbortController();
       controller = request;
       let retryable = false;
-      const requestTimeout = setTimeout(() => request.abort(), 8000);
+      let requestTimeout;
+      const timedOut = new Promise((_, reject) => {
+        requestTimeout = setTimeout(() => { request.abort(); reject(new Error('count_timeout')); }, 8000);
+      });
       timeout = requestTimeout;
       try {
-        const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
+        const data = await Promise.race([
+          externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted),
+          timedOut,
+        ]);
         if (!current() || controller !== request) return;
         if (request.signal.aborted) throw new Error('count_timeout');
         const kind = role === 'driver' ? 'cargo' : 'vehicle';

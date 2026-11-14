@@ -45,7 +45,7 @@ test('final onboarding uses the three approved vertical assets', () => {
   assert.match(onboarding, /style=\{s\.title\} testID="onb-v2-slide-title"/);
   assert.doesNotMatch(onboarding, /onb_v2_slide[123]_subtitle|style=\{s\.subtitle\}/, 'subtitle must not render in onboarding');
   assert.match(onboarding, /testID="onb-v2-cta-phone"/);
-  assert.match(onboarding, /testID="onb-v2-cta-guest"/);
+  assert.doesNotMatch(onboarding, /testID="onb-v2-cta-guest"/);
 });
 
 test('onboarding copy stays localized in all four supported languages', () => {

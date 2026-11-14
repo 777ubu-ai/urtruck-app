@@ -1,3 +1,4 @@
+import { sessionRole } from './src/utils/publicationSession';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -228,7 +229,7 @@ function AppInner() {
   const navReadyRef = useRef(false);
   const pendingUrlRef = useRef(null);
   const routeFromUrlRef = useRef(null);
-  const { session, hasToken } = useAuth();
+  const { session, hasToken, verificationLevel } = useAuth();
   const { theme, isDark } = useTheme();
 
   // Android hardware Back must pop the in-app stack before allowing the
@@ -269,11 +270,9 @@ function AppInner() {
     } catch {}
   }, [isDark, theme.bg]);
 
-  // Авторизован ли для закрытых «глубоких» экранов (Chat/Deals/Profile…).
-  // Карточки активных грузов/рейсов — публичный marketplace: guest-стек уже
-  // регистрирует CargoDetail/TripDetail, а backend анонимно отдаёт только
-  // active-объявления. Поэтому share-link обязан открыть карточку до входа.
-  const authedForDeepLink = !!(session && session.user && session.user.role);
+  // Все переходы в рабочую область ожидают подтверждённую сессию.
+  const authedForDeepLink = !!(hasToken && Number(verificationLevel) >= 1
+    && sessionRole(session));
 
   // P5: единая точка навигации по url из пуша. Если навигатор не готов или
   // пользователь ещё не в авторизованном стеке — откладываем url и повторим,
@@ -282,23 +281,18 @@ function AppInner() {
     if (!pendingUrlRef.current || !navReadyRef.current || !navRef.current) return;
     const url = pendingUrlRef.current;
     const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
+    const needsAuth = !!parsed;
     if (needsAuth && !authedForDeepLink) return;
+    if (needsAuth && !navRef.current.getRootState?.()?.routeNames?.includes('Main')) return;
     pendingUrlRef.current = null;
     navigateFromUrl(navRef, url, session?.user?.role);
   }, [authedForDeepLink, session?.user?.role]);
 
   const routeFromUrl = useCallback((url) => {
-    if (!url) return;
-    const parsed = parseNotifUrl(url);
-    const needsAuth = parsed && ['chats', 'chat', 'deals', 'driver', 'profile', 'notifications'].includes(parsed.kind);
-    if (!navReadyRef.current || !navRef.current || (needsAuth && !authedForDeepLink)) {
-      pendingUrlRef.current = url;  // отложить
-      return;
-    }
-    pendingUrlRef.current = null;
-    navigateFromUrl(navRef, url, session?.user?.role);
-  }, [authedForDeepLink, session?.user?.role]);
+    if (!url || !parseNotifUrl(url)) return;
+    pendingUrlRef.current = url;
+    dispatchPendingUrl();
+  }, [dispatchPendingUrl]);
   routeFromUrlRef.current = routeFromUrl;
 
   // Повторяем отложенный deep-link, когда появилась авторизация (или навигатор
@@ -440,6 +434,7 @@ function AppInner() {
           ref={navRef}
           theme={navTheme}
           onReady={() => { navReadyRef.current = true; dispatchPendingUrl(); }}
+          onStateChange={dispatchPendingUrl}
         >
           <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.bg} />
           <AppNavigator />

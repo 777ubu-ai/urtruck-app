@@ -143,7 +143,7 @@ function contextHarness() {
     storage: { set: async (key, value) => { if (key === 'ur_reg_token') state.token = value; }, remove: async()=>{} },
     pendingRecoveryRef: {current:null}, legacyBootstrapRef:{current:null}, readSessionRecovery:async()=>null, completeSessionRecovery:async()=>{},
     clearSessionRecovery:async()=>{},pauseOutbox:()=>{},
-    API_BASE:'https://urtruck.kz/api/v1',setRecoveryRequired:()=>{},
+    API_BASE:'https://urtruck.kz/api/v1',setRecoveryRequired:()=>{}, restoringSessionRef:{current:false}, setRestoringSession:()=>{},
     KEY: 'session', setSession: (x) => { state.session = x; },
     setVerificationLevel: () => {}, setHasToken: () => {}, startVerifiedRefresh: () => {}, authRetryRef: { current: { pending: false } },
   };

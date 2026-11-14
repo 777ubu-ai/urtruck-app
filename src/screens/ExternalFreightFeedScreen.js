@@ -51,6 +51,10 @@ const SAVED_COPY = {
   EN: { saved: 'Saved', save: 'Save', unsave: 'Remove from saved', expired: 'Expired', closed: 'Closed', unavailable: 'Listing unavailable' },
 };
 Object.assign(SAVED_COPY, withAdditionalLanguageTree(SAVED_COPY));
+const ACCESS_COPY = withAdditionalLanguageTree({
+  RU: 'Нет доступа к этой ленте.', KK: 'Бұл лентаға қол жеткізуге рұқсат жоқ.',
+  ZH: '无权访问此信息流。', EN: 'You do not have access to this feed.',
+});
 const COUNT_COPY = {
   RU: { total: 'Всего', offers: 'Предложения машин', carriers: 'Перевозчики и компании' },
   KK: { total: 'Барлығы', offers: 'Көлік ұсыныстары', carriers: 'Тасымалдаушылар мен компаниялар' },
@@ -58,6 +62,22 @@ const COUNT_COPY = {
   EN: { total: 'Total', offers: 'Truck offers', carriers: 'Carriers and companies' },
 };
 Object.assign(COUNT_COPY, withAdditionalLanguageTree(COUNT_COPY));
+
+// Короткий локальный снимок первой страницы изолирован по аккаунту, роли и фильтрам.
+const firstPageCache = new Map();
+const firstPageCacheKey = (owner, filters, savedOnly) => JSON.stringify([owner, filters, savedOnly]);
+function readFirstPageCache(key) {
+  const entry = firstPageCache.get(key);
+  if (!entry || Date.now() - entry.time > 300000) { firstPageCache.delete(key); return null; }
+  const rows = entry.rows.filter(item => item.status !== 'closed' && item.status !== 'hidden'
+    && item.status !== 'expired' && (!item.expires_at || Date.parse(item.expires_at) > Date.now()));
+  return rows.length ? rows : null;
+}
+function rememberFirstPage(key, rows) {
+  firstPageCache.delete(key);
+  if (rows.length) firstPageCache.set(key, { time: Date.now(), rows: rows.slice(0, 30) });
+  if (firstPageCache.size > 8) firstPageCache.delete(firstPageCache.keys().next().value);
+}
 
 export default function ExternalFreightFeedScreen({ navigation }) {
   const { session } = useAuth();
@@ -108,6 +128,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [errorPage, setErrorPage] = useState(false);
   const [feedCounts, setFeedCounts] = useState(null);
+  const [countError, setCountError] = useState(false);
   const requestRef = useRef(null);
   const busyRef = useRef(false);
   const paginationPendingRef = useRef(false);
@@ -125,6 +146,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const loadRef = useRef(null);
   const styles = useMemo(() => makeStyles(theme, sp), [theme, lang]);
   const title = isDriver ? l.cargoTitle : l.vehicleTitle;
+  const errorMessage = error === 'network_error' ? l.network : error === 'auth_required' ? t('session_expired') : error === 'access_denied' ? (ACCESS_COPY[lang] || ACCESS_COPY.EN) : l.server;
 
   const load = useCallback(async ({ reset = false, background = false, signal: suppliedSignal } = {}) => {
     if (busyRef.current && (background || !reset)) return;
@@ -139,7 +161,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     busyRef.current = true;
     if (!background) setBusy(true);
     const owner = ownerKey;
-    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly, include_counts: reset };
+    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly, include_counts: false };
     let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
     // Для цены нельзя склеивать старый порядок с новой головой: обновляем
     // весь загруженный префикс атомарно, как и сохранённые, вместе с cursor.
@@ -158,32 +180,43 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     }
     if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
     if (!result.ok) {
+      if (result.status === 401 || result.status === 403) {
+        firstPageCache.delete(firstPageCacheKey(owner, filters, savedOnly));
+        setRows([]); setCursor(null);
+      }
       paginationPendingRef.current = false;
-      setError(result.error || 'server_error');
+      setError(result.status === 401 ? 'auth_required' : result.status === 403 ? 'access_denied' : result.error || 'server_error');
       setErrorPage(!reset && !background);
       busyRef.current = false; setBusy(false); setRefreshing(false);
       return;
     }
     setError(null);
     setErrorPage(false);
-    if (reset) {
+    if (reset && !isDriver) {
+      // Подсчёт не задерживает первую страницу. Он использует те же фильтры,
+      // но собственный запрос и не подменяется числом загруженных карточек.
       const valid = counts => counts && ['total', 'offers', 'carriers'].every(key => Number.isSafeInteger(counts[key]) && counts[key] >= 0)
         && counts.total === counts.offers + counts.carriers;
-      const counts = result.counts;
-      setFeedCounts(valid(counts) ? counts : null);
+      setCountError(false);
       const unfiltered = !savedOnly && filters.sort === 'newest' && !Object.entries(filters)
         .some(([key, value]) => key !== 'sort' && value !== '' && value != null);
-      // Дополнительный запрос к старому серверу не задерживает уже полученные карточки.
-      if (!counts && !isDriver && unfiltered && typeof externalFreightAPI.count === 'function') {
-        countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted).then(fallback => {
+      (async () => {
+        const reply = await listWithTimeout({ ...raw, include_counts: true, limit: 1 }, signal).catch(() => null);
+        if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
+        let counts = reply?.ok ? reply.counts : null;
+        if (!counts && unfiltered && typeof externalFreightAPI.count === 'function') {
+          const fallback = await countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted);
           if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-          const next = fallback?.ok && fallback.kind === 'vehicle'
+          counts = fallback?.ok && fallback.kind === 'vehicle'
             ? { total: fallback.count, offers: fallback.offer_count, carriers: fallback.carrier_count } : null;
-          if (valid(next)) setFeedCounts(next);
-        });
-      }
+        }
+        if (valid(counts)) { setFeedCounts(counts); setCountError(false); }
+        else { setFeedCounts(null); setCountError(true); }
+      })();
     }
+
     const incoming = Array.isArray(result.items) ? result.items : [];
+    if (reset && session?.user?.id && !savedOnly) rememberFirstPage(firstPageCacheKey(owner, filters, savedOnly), incoming);
     if (result.sort_error && filters.sort !== 'newest') {
       setFilters(current => ({ ...current, sort: 'newest' }));
       setDraft(current => ({ ...current, sort: 'newest' }));
@@ -223,7 +256,14 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   }, [filters, cursor, savedOnly, ownerKey, rows, timeline, isDriver]);
   loadRef.current = load;
 
-  useEffect(() => { paginationPendingRef.current = false; setFeedCounts(null); setErrorPage(false); setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => {
+    paginationPendingRef.current = false; setFeedCounts(null); setCountError(false); setErrorPage(false); setUnseenIds([]);
+    followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0;
+    const cached = session?.user?.id && !savedOnly ? readFirstPageCache(firstPageCacheKey(ownerKey, filters, savedOnly)) : null;
+    setRowsOwner(ownerKey); setRows(cached || []); setCursor(null);
+    load({ reset: true, background: !!cached });
+    return () => requestRef.current?.abort?.();
+  }, [filters, savedOnly, ownerKey]);
   useEffect(() => {
     if (!busy && !busyRef.current && paginationPendingRef.current) {
       paginationPendingRef.current = false;
@@ -451,8 +491,11 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     {!isDriver && feedCounts ? <Text testID="external-feed-count-breakdown" style={styles.countBreakdown}>
       {`${(COUNT_COPY[lang] || COUNT_COPY.EN).total}: ${feedCounts.total} · ${(COUNT_COPY[lang] || COUNT_COPY.EN).offers}: ${feedCounts.offers} · ${(COUNT_COPY[lang] || COUNT_COPY.EN).carriers}: ${feedCounts.carriers}`}
     </Text> : null}
-    {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: !errorPage })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
-    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
+    {!isDriver && countError ? <TouchableOpacity testID="external-feed-count-retry" style={styles.warning} onPress={() => load({ reset: true })}>
+      <Text style={styles.warningText}>{l.server} {l.retry}</Text>
+    </TouchableOpacity> : null}
+    {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: !errorPage })}><Text style={styles.warningText}>{errorMessage} {l.retry}</Text></TouchableOpacity> : null}
+    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{errorMessage}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
     {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline && Platform.OS !== 'web'} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
       onScrollBeginDrag={() => { scrollToLatestRef.current = false; clearTimeout(latestScrollTimerRef.current); }} onScroll={event => {
         const offset = Math.max(0, event.nativeEvent.contentOffset.y);
@@ -576,9 +619,15 @@ async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
   const abortFromParent = () => controller.abort();
   if (parentSignal?.aborted) controller.abort();
   else parentSignal?.addEventListener('abort', abortFromParent, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer;
   try {
-    return await externalFreightAPI.list(filters, controller.signal);
+    return await Promise.race([
+      externalFreightAPI.list(filters, controller.signal),
+      new Promise(resolve => { timer = setTimeout(() => {
+        controller.abort();
+        resolve({ ok: false, error: 'network_error' });
+      }, timeoutMs); }),
+    ]);
   } finally {
     clearTimeout(timer);
     parentSignal?.removeEventListener('abort', abortFromParent);

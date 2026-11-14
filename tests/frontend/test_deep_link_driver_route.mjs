@@ -40,16 +40,13 @@ test('App.js: native push tap / universal-link router understands kind === "driv
   assert.match(block, /navigate\('DriverDetail', \{ driver: \{ id, _server: true, _isDriver: true \}, role \}\)/);
 });
 
-test('App.js: private driver/deal/chat links wait for auth while public cargo/trip shares do not', () => {
-  const needsAuthIdx = appJs.indexOf('const needsAuth =');
-  assert.ok(needsAuthIdx > -1);
-  const line = appJs.slice(needsAuthIdx, appJs.indexOf('\n', needsAuthIdx));
-  for (const kind of ['deals', 'chats', 'driver']) {
-    assert.ok(line.includes(`'${kind}'`), `needsAuth list is missing '${kind}'`);
-  }
-  for (const kind of ['cargos', 'trips']) {
-    assert.ok(!line.includes(`'${kind}'`), `public share kind '${kind}' must not wait for login`);
-  }
+test('App.js: все распознанные ссылки ожидают входа', () => {
+  const gates = appJs.match(/const needsAuth = !!parsed;/g) || [];
+  assert.equal(gates.length, 1);
+  assert.match(appJs, /if \(needsAuth && !authedForDeepLink\) return/);
+  assert.match(appJs, /pendingUrlRef\.current = url/);
+  assert.match(appJs, /getRootState\?\.\(\)\?\.routeNames\?\.includes\('Main'\)/);
+  assert.match(appJs, /onStateChange=\{dispatchPendingUrl\}/);
 });
 
 test('NotificationsScreen.js: in-app notification-list tap has the same driver branch as the push router', () => {
@@ -133,4 +130,28 @@ test('backend fails closed on a direct chat-room API call by a non-participant (
 test('backend fails closed on the deal-room conversation/message endpoints for a non-participant, and on an unknown deal for user_can_access_deal', () => {
   assert.match(dealRoomApi, /if not dr\.is_participant\(conversation_id, user\["id"\]\):\s*\n\s*raise HTTPException\(status_code=403, detail="Вы не участник этой беседы"\)/);
   assert.match(dealRoomApi, /if not dr\.user_can_access_deal\(deal_id, user\["id"\]\):\s*\n\s*raise HTTPException\(status_code=403, detail="Нет доступа к этой сделке"\)/);
+});
+
+test('ожидающая ссылка сохраняется до появления рабочего стека и открывается один раз', async () => {
+  const vm = await import('node:vm');
+  const start = appJs.indexOf('  const dispatchPendingUrl = useCallback(');
+  const end = appJs.indexOf('\n  const routeFromUrl =', start);
+  const snippet = appJs.slice(start, end);
+  const pendingUrlRef = { current: 'urtruck://cargos/123' };
+  const navReadyRef = { current: true };
+  let routeNames = ['PhoneV2'];
+  const navRef = { current: { getRootState: () => ({ routeNames }) } };
+  const calls = [];
+  const dispatch = vm.runInNewContext(`(() => { ${snippet}; return dispatchPendingUrl; })()`, {
+    useCallback: fn => fn, pendingUrlRef, navReadyRef, navRef,
+    parseNotifUrl: () => ({ kind: 'cargos' }), navigateFromUrl: (...args) => calls.push(args),
+    authedForDeepLink: true, session: { user: { role: 'driver' } },
+  });
+  dispatch();
+  assert.equal(pendingUrlRef.current, 'urtruck://cargos/123');
+  assert.equal(calls.length, 0);
+  routeNames = ['Main', 'CargoDetail'];
+  dispatch(); dispatch();
+  assert.equal(calls.length, 1);
+  assert.equal(pendingUrlRef.current, null);
 });

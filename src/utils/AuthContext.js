@@ -77,6 +77,8 @@ export const AuthProvider = ({ children }) => {
   const [hasToken, setHasToken] = useState(false);
   const [loading, setLoading] = useState(true);
   const [recoveryRequired, setRecoveryRequired] = useState(false);
+  const [restoringSession, setRestoringSession] = useState(null);
+  const restoringSessionRef = useRef(false);
   const authGenerationRef = useRef(0);
   const sessionRef = useRef(session);
   const pendingRecoveryRef = useRef(null);
@@ -99,6 +101,8 @@ export const AuthProvider = ({ children }) => {
     setHasToken(false);
     setVerificationLevel(0);
     setRecoveryRequired(true);
+    restoringSessionRef.current = false;
+    setRestoringSession(null);
     await saveSessionRecovery(recovery);
     pendingRecoveryRef.current = await completeSessionRecovery(recovery);
     await regAPI.clearToken();
@@ -189,7 +193,13 @@ export const AuthProvider = ({ children }) => {
     const attempt = async (index = 0) => {
       if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
       try {
-        await refreshLevel({ expectedToken: token, expectedGeneration: generation });
+        const me = await refreshLevel({ expectedToken: token, expectedGeneration: generation });
+        if (restoringSessionRef.current && (!me || typeof me.verification_level !== 'number'
+          || (me.verification_level >= 1 && !me.id))) throw new Error('SESSION_RESTORE_INCOMPLETE');
+        if (state.epoch === epoch && authGenerationRef.current === generation && restoringSessionRef.current) {
+          restoringSessionRef.current = false;
+          setRestoringSession(null);
+        }
         // Смена роли увеличивает authGenerationRef до завершения записи сессии.
         // Старый ответ /me может стать устаревшим, пока setRole ещё не успел
         // запустить проверку заново. Сохраняем pending, пока новую проверку
@@ -197,6 +207,7 @@ export const AuthProvider = ({ children }) => {
         if (state.epoch === epoch && authGenerationRef.current === generation) state.pending = false;
       } catch {
         if (state.epoch !== epoch || authGenerationRef.current !== generation) return;
+        if (restoringSessionRef.current) setRestoringSession('error');
         const delay = index === 0 ? 5000 : index === 1 ? 15000 : 60000;
         state.timer = setTimeout(() => { state.timer = null; attempt(Math.min(index + 1, 2)); }, delay);
       }
@@ -258,6 +269,10 @@ export const AuthProvider = ({ children }) => {
       legacyBootstrapRef.current = { token, ownerId: restored?.user?.id, apiBase: restored?.apiBase };
       const savedLevel = await regAPI.getLevel();
       setVerificationLevel(savedLevel);
+      if (!restored?.user?.id || savedLevel < 1) {
+        restoringSessionRef.current = true;
+        setRestoringSession('loading');
+      }
       setLoading(false);
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         // eslint-disable-next-line no-console
@@ -270,6 +285,14 @@ export const AuthProvider = ({ children }) => {
       }
       startVerifiedRefresh(token, authGenerationRef.current);
     })();
+  }, [startVerifiedRefresh]);
+
+  const retrySessionRestore = useCallback(async () => {
+    if (!restoringSessionRef.current) return;
+    const token = await regAPI.getToken();
+    if (!token) return;
+    setRestoringSession('loading');
+    startVerifiedRefresh(token, authGenerationRef.current);
   }, [startVerifiedRefresh]);
 
   const ensureGuest = useCallback(async () => {
@@ -313,6 +336,8 @@ export const AuthProvider = ({ children }) => {
     setVerificationLevel(level);
     setHasToken(true);
     setRecoveryRequired(false);
+    restoringSessionRef.current = false;
+    setRestoringSession(null);
     pendingRecoveryRef.current = null;
     await storage.set(KEY, JSON.stringify(s));
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -495,7 +520,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider value={{
       session, verificationLevel, hasToken,
       signIn, signOut, setRole,
-      ensureGuest, refreshLevel, loading, recoveryRequired,
+      ensureGuest, refreshLevel, loading, recoveryRequired, restoringSession, retrySessionRestore,
     }}>
       {children}
     </AuthContext.Provider>
