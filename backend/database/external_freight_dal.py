@@ -123,8 +123,7 @@ def _source_fingerprint(source_id, source_message_id, segment_id):
 def _apply_publication_retention(c, now=None):
     """Recompute per-kind source-based expiry without reopening closures.
 
-    The subsequent purge removes expired feed content and leaves only a
-    one-way source-identity digest to prevent a delayed replay from restoring it.
+    Expired content and its links are retained; visibility is enforced on reads.
     """
     now = _utc(now)
     rows = c.execute(
@@ -147,53 +146,12 @@ def _apply_publication_retention(c, now=None):
 
 
 def purge_expired_items(now=None):
-    """Delete external offers after their kind-specific source-based lifetime."""
-    now = _utc(now)
-    cargo_cutoff = now - timedelta(days=30)
-    vehicle_cutoff = now - timedelta(days=active_days("vehicle"))
-    undated_cutoff = now - timedelta(days=max(active_days("cargo"), active_days("vehicle")))
-    started = time.monotonic()
-    with get_conn() as c:
-        # Split dated and undated retention queries so both can use their
-        # ordered indexes; the previous OR + COALESCE sort scanned all cards.
-        dated = c.execute(
-            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
-            "FROM external_freight_items WHERE source_published_at IS NOT NULL AND ((kind='cargo' AND source_published_at<=?) "
-            "OR (kind='vehicle' AND source_published_at<=?)) ORDER BY source_published_at,id LIMIT ?",
-            (cargo_cutoff.isoformat(), vehicle_cutoff.isoformat(), PURGE_BATCH_SIZE),
-        ).fetchall()
-        undated = c.execute(
-            "SELECT id,source_id,source_message_id,segment_id,source_published_at,ingested_at "
-            "FROM external_freight_items INDEXED BY ix_external_freight_ingested_purge "
-            "WHERE source_published_at IS NULL "
-            "AND ingested_at<=? ORDER BY ingested_at,id LIMIT ?",
-            (undated_cutoff.isoformat(), PURGE_BATCH_SIZE),
-        ).fetchall()
-        rows = sorted(
-            (*dated, *undated),
-            key=lambda row: (row["source_published_at"] or row["ingested_at"], row["id"]),
-        )[:PURGE_BATCH_SIZE]
-        if not rows:
-            return 0
-        item_ids = [row["id"] for row in rows]
-        c.executemany(
-            "INSERT OR IGNORE INTO external_freight_expired_sources(source_fingerprint,expired_at) VALUES(?,?)",
-            [(_source_fingerprint(row["source_id"], row["source_message_id"], row["segment_id"]), now.isoformat())
-             for row in rows],
-        )
-        placeholders = ",".join("?" for _ in item_ids)
-        for table in ("external_freight_bookmarks", "external_freight_item_body_types",
-                      "external_freight_audit"):
-            c.execute(f"DELETE FROM {table} WHERE item_id IN ({placeholders})", item_ids)
-        c.executemany(
-            "DELETE FROM external_freight_delivery WHERE source_id=? AND source_message_id=? AND segment_id=?",
-            [(row["source_id"], row["source_message_id"], row["segment_id"]) for row in rows],
-        )
-        c.execute(f"DELETE FROM external_freight_items WHERE id IN ({placeholders})", item_ids)
-        removed = len(rows)
-    duration_ms = round((time.monotonic() - started) * 1000)
-    logger.info("external_feed_retention_batch removed=%d duration_ms=%d", removed, duration_ms)
-    return removed
+    """Сохраняет истёкшие карточки и их связи; срок показа проверяется при чтении.
+
+    Оставляем прежнюю точку вызова для совместимости планировщика и старых
+    операторов. Прошедший срок не даёт права удалять данные или закладки.
+    """
+    return 0
 
 
 def count_active_items(kind: str) -> int:

@@ -89,8 +89,11 @@ def test_undated_review_has_finite_non_rolling_retention(tmp_path,monkeypatch):
     dal.import_records([raw])
     with get_conn() as db:assert db.execute('SELECT expires_at FROM external_freight_items').fetchone()[0]==first['expires_at']
     clock[0]=now+timedelta(days=31)
-    assert dal.purge_expired_items()==1
-    assert dal.import_records([raw])[0]['result']=='expired', 'replay must not restore purged text'
+    assert dal.purge_expired_items()==0
+    assert dal.import_records([raw])[0]['result']=='replayed'
+    with get_conn() as db:
+        assert db.execute('SELECT count(*) FROM external_freight_items').fetchone()[0]==1
+        assert db.execute('SELECT expires_at FROM external_freight_items').fetchone()[0]==first['expires_at']
 
 
 def test_undated_ready_identity_ages_even_when_other_deliveries_succeed():
@@ -104,15 +107,15 @@ def test_undated_ready_identity_ages_even_when_other_deliveries_succeed():
     assert 'incoming_ready_age_exceeded' not in recovered['problems']
 
 
-def test_legacy_undated_null_expiry_is_purged_after_thirty_days_without_extension(tmp_path,monkeypatch):
+def test_legacy_undated_null_expiry_is_retained_after_thirty_days(tmp_path,monkeypatch):
     monkeypatch.setenv('EXTERNAL_FREIGHT_DB_PATH',str(tmp_path/'feed.db'))
     dal.init_schema()
     raw={'source_id':'legacy','source_message_id':'1','kind':'cargo','original_text':'Объявление без даты'}
     dal.import_records([raw])
     old=(datetime.now(timezone.utc)-timedelta(days=31)).isoformat()
     with get_conn() as db:db.execute('UPDATE external_freight_items SET ingested_at=?,expires_at=NULL',(old,))
-    assert dal.purge_expired_items()==1
-    assert dal.import_records([raw])[0]['result']=='expired'
+    assert dal.purge_expired_items()==0
+    with get_conn() as db: assert db.execute('SELECT count(*) FROM external_freight_items').fetchone()[0]==1
 
 
 def test_import_limits_actual_stream_before_json_and_keeps_auth(tmp_path,monkeypatch):
