@@ -155,3 +155,13 @@ def test_ambiguous_legacy_deals_deny_media_before_storage_read(legacy_media):
         chat.get_message_media(room, message, user={'id': owner})
     assert denied.value.status_code == 403
     assert not calls
+
+
+def test_capable_message_history_omits_legacy_url_and_marks_protected_media(legacy_media):
+    owner, _, _, room, _, message, _ = legacy_media
+    result = chat.get_messages(room, user={'id': owner}, capability='v1')
+    item = next(row for row in result['messages'] if row['id'] == message)
+    assert item['photo_url'] is None
+    assert item['private_file_transport'] == 'v1'
+    assert item['private_media_available'] is True
+    assert item['attachment_unavailable'] is False
