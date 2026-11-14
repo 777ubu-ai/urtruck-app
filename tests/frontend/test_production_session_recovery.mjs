@@ -354,3 +354,37 @@ test('неполная сохранённая сессия при ошибке �
   assert.equal(h.render().session.user.id, 'A');
   assert.equal(data.get('ur_reg_token'), 'token-A');
 });
+
+
+test('optional profile body timeout completes verified login and resumes the same owner outbox', async () => {
+  const h = harness(); await h.boot(); h.flushes.length = 0; h.pauses.length = 0;
+  await realStorage.set('ur_reg_token', 'token-A');
+  const originalFetch = globalThis.fetch, originalTimer = globalThis.setTimeout;
+  globalThis.fetch = async () => ({ status: 200, ok: true, json: () => new Promise(() => {}) });
+  globalThis.setTimeout = (fn, ms, ...args) => originalTimer(fn, ms === 15000 ? 5 : ms, ...args);
+  h.regAPI.profile = () => realRegAPI.profile();
+  try {
+    await h.render().signIn('a', 1, 'token-A', { userId: 'A' });
+    await new Promise(resolve => originalTimer(resolve, 30));
+    for (let i = 0; i < 15; i++) await tick();
+    assert.equal(h.render().session.user.id, 'A');
+    assert.equal(h.render().hasToken, true);
+    assert.equal(h.pauses.at(-1), false);
+    assert.deepEqual(h.flushes, ['A']);
+  } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalTimer; }
+});
+
+test('late optional profile result cannot resume outbox for a replaced token', async () => {
+  const h = harness(); await h.boot(); h.flushes.length = 0; h.pauses.length = 0;
+  let release;
+  h.regAPI.profile = () => new Promise(resolve => { release = resolve; });
+  await h.render().signIn('a', 1, 'token-A', { userId: 'A' });
+  for (let i = 0; i < 15; i++) await tick();
+  assert.equal(typeof release, 'function');
+  await h.storage.set('ur_reg_token', 'token-B');
+  release({ name: 'Previous owner' });
+  for (let i = 0; i < 15; i++) await tick();
+  assert.equal(h.data.get('ur_reg_token'), 'token-B');
+  assert.equal(h.pauses.at(-1), true);
+  assert.deepEqual(h.flushes, []);
+});
