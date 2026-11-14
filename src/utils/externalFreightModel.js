@@ -62,14 +62,10 @@ export function isValidPublicationRange({ published_from, published_to }) {
   return Boolean(from && to && from <= to);
 }
 
-/** Клиент также удаляет устаревшие машины из ранее загруженного снимка. */
+/** Сервер задаёт срок показа; клиент не сокращает его собственным правилом. */
 export function isVisibleExternalItem(item, now = Date.now()) {
   if (item.status === 'closed' || item.status === 'hidden' || item.status === 'expired') return false;
   if (item.expires_at && !(Date.parse(item.expires_at) > now)) return false;
-  if (item.kind === 'vehicle') {
-    const published = Date.parse(item.source_published_at);
-    if (!Number.isFinite(published) || published + 10 * 86400000 <= now) return false;
-  }
   return true;
 }
 

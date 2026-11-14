@@ -1,0 +1,17 @@
+# Internal store candidate with production API — 14.11.2026
+
+Preflight: fix/production-api-internal-1016-20261114, base1c59865493810acc701294ebae942cdca3609825. Owner authorized next Android/iOS test build, max1.0.16, preserving existing accounts/data/feed. Scope only existing build workflows and their guards/tests; no auth/feed/backend implementation, migration, data or production deployment. Protected existing source and concurrent worktree. Known-good source1c CI43581732967; physical Huawei smoke partial. Production full source SHA UNKNOWN. Rollback code-only revert; no database rollback required.
+
+- Added explicit production API selection to TestFlight RC (QA2 remains default) with separate confirmation BUILD_PRODUCTION_API_TESTFLIGHT. Keeps exact source/merged PR/CI guards, bundle, local build number, signature and embedded API/SHA verification; upload only to TestFlight.
+- Android explicit production_internal_test permits production API only in Internal/completed; production draft route and QA2 path remain guarded. Internal opt-in uses1.0.16. No public release authorized.
+- Source1c already includes mandatory login + fixes #711. This workflow patch leaves all app/backend/data files unchanged. Production backend TTL/import changes must NOT be deployed with it.
+- Before-change production SELECT-only manifest: drivers_registration706 rows, ordered ID SHA2562e175ac73e217b5e10a18245ee9c39a7b6077bba22d9a323b1366eff12ab91d8. Rows are not distinct people. No IDs/content/secrets stored. Existing accounts must be reused, not recreated. No database writes performed.
+- Production register/me, users/me and external-freight/count GET without bearer return401; routes exist. OpenAPI unavailable, so full authenticated compatibility remains unverified. attention client has404 fallback. Live login, full push receipt NOT RUN.
+- Initial full unit2021/2032,11 failures from unset new optional flags/previous QA2-only assertion. Default compatibility restored and contract updated for owner-authorized opt-in. All77 affected workflow/guard tests now PASS; prior30 native/store identity tests PASS. YAML parsed; diff check PASS. No tests disabled. Hosted CI pending.
+- Next: exact PR CI; fresh ASC/Play numbers; merge through QA2 integration; exact merge checks; dispatch one pair internal builds with production API only. Never dispatch old QA2 API defaults. Verify binary metadata and store processing. No production track promotion or backend deploy.
+
+## Pre-build compatibility defect found and fixed
+
+Newer client hardcoded10day vehicle age independently of server expiry. Against unchanged production30day backend this could hide live cards on cache/background merge while server counter stayed higher. Regression reproduced on the real model; removed client age override and retained server expires_at/status checks. QA2 backend already serializes10day expires_at, so QA2 policy remains enforced without frontend guessing. No backend/import/data changes. This is the only additional app-code change, needed to preserve the existing production feed. Initial workflow-only statement above applies to first commit only.
+
+Repeat registration manifest check:707 rows, and removing exactly one new ID reproduced the original706-ID checksum; all original IDs remained. New store inspection43597019648: max215771501, next215771502; Apple fresh read1.0.16(3) VALID, next4. No binary built yet.

@@ -3,8 +3,16 @@ name: UrTruck QA2 TestFlight
 on:
   workflow_dispatch:
     inputs:
+      api_environment:
+        description: API for internal testing only; does not deploy the server
+        required: true
+        default: qa2
+        type: choice
+        options:
+          - qa2
+          - production
       confirmation:
-        description: Type BUILD_QA2_TESTFLIGHT
+        description: BUILD_QA2_TESTFLIGHT or BUILD_PRODUCTION_API_TESTFLIGHT for the selected API
         required: true
         type: string
       source_sha:
@@ -44,9 +52,10 @@ jobs:
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
       GH_TOKEN: ${{ github.token }}
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-      QA2_API_URL: ${{ secrets.QA2_API_URL }}
-      EXPO_PUBLIC_API_URL: ${{ secrets.QA2_API_URL }}
-      URTRUCK_BUILD_FLAVOR: qa2
+      QA2_API_URL: ${{ inputs.api_environment == 'production' && 'https://urtruck.kz' || secrets.QA2_API_URL }}
+      EXPO_PUBLIC_API_URL: ${{ inputs.api_environment == 'production' && 'https://urtruck.kz' || secrets.QA2_API_URL }}
+      URTRUCK_BUILD_FLAVOR: ${{ inputs.api_environment == 'production' && 'production' || 'qa2' }}
+      API_ENVIRONMENT: ${{ inputs.api_environment || 'qa2' }}
       URTRUCK_SOURCE_SHA: ${{ inputs.source_sha }}
       EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true'
       # Apple закрыла серию 1.0.15; QA2 использует следующую версию.
@@ -80,7 +89,12 @@ jobs:
           set -euo pipefail
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF_NAME" = qa2/integration-candidate
-          test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
+          if [ "${API_ENVIRONMENT:-qa2}" = production ]; then
+            test "$CONFIRMATION" = BUILD_PRODUCTION_API_TESTFLIGHT
+          else
+            test "${API_ENVIRONMENT:-qa2}" = qa2
+            test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
+          fi
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$MERGED_PR_NUMBER" =~ ^[1-9][0-9]{0,7}$ ]]
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
@@ -130,11 +144,17 @@ jobs:
           print(urlparse(os.environ['QA2_API_URL']).hostname or '')
           PY
           )"
-          test "$QA_HOST" = qa2.urtruck.kz || {
-            echo "::error::QA2 TestFlight must target exactly qa2.urtruck.kz"
-            exit 1
-          }
-          test "${QA2_API_URL%/}" != https://urtruck.kz
+          if [ "${API_ENVIRONMENT:-qa2}" = production ]; then
+            test "$QA_HOST" = urtruck.kz
+            test "$QA2_API_URL" = https://urtruck.kz
+            test "$URTRUCK_BUILD_FLAVOR" = production
+          else
+            test "$QA_HOST" = qa2.urtruck.kz || {
+              echo "::error::QA2 TestFlight must target exactly qa2.urtruck.kz"
+              exit 1
+            }
+            test "${QA2_API_URL%/}" != https://urtruck.kz
+          fi
           curl -fsS --max-time 20 "${QA2_API_URL%/}/health" >/dev/null
           echo "SOURCE_SHA=$QA_SOURCE_SHA"
           echo "QA2_API_HOST=$QA_HOST"
@@ -169,7 +189,7 @@ jobs:
           if (config.ios?.buildNumber !== process.env.URTRUCK_IOS_BUILD_NUMBER) {
             throw new Error('Номер сборки Expo не совпадает с выбранным номером серии');
           }
-          if (config.extra?.urtruckBuildFlavor !== 'qa2') {
+          if (config.extra?.urtruckBuildFlavor !== process.env.URTRUCK_BUILD_FLAVOR) {
             throw new Error(`Unexpected build flavor: ${config.extra?.urtruckBuildFlavor}`);
           }
           if ((config.extra?.urtruckApiUrl || '').replace(/\/+$/, '') !== expectedApi.replace(/\/+$/, '')) {
@@ -263,8 +283,8 @@ jobs:
           app = Path(sys.argv[1])
           config = json.loads((app/'EXConstants.bundle/app.config').read_text())
           extra = config['extra']
-          assert extra['urtruckApiUrl'].rstrip('/') == 'https://qa2.urtruck.kz'
-          assert extra['urtruckBuildFlavor'] == 'qa2'
+          assert extra['urtruckApiUrl'].rstrip('/') == os.environ['QA2_API_URL'].rstrip('/')
+          assert extra['urtruckBuildFlavor'] == os.environ['URTRUCK_BUILD_FLAVOR']
           assert extra['urtruckSourceSha'] == os.environ['QA_SOURCE_SHA']
           assert extra['urtruckExternalFreightFeedEnabled'] is True
           entitlements = plistlib.loads(Path(sys.argv[2]).read_bytes())
@@ -280,7 +300,7 @@ jobs:
             echo "bundleIdentifier=$BUNDLE_ID"
             echo "versionName=$VERSION_NAME"
             echo "buildNumber=$BUILD_NUMBER"
-            echo "apiHost=qa2.urtruck.kz"
+            echo "apiHost=${QA2_API_URL#https://}"
             echo "ipaSHA256=$(shasum -a 256 "$RUNNER_TEMP/UrTruck-QA2.ipa" | awk '{print $1}')"
           } | tee "$RUNNER_TEMP/UrTruck-QA2-manifest.txt"
 
