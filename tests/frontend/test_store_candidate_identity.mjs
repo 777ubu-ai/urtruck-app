@@ -116,3 +116,16 @@ test('неверная структура/identity отказывает до л�
     assert.equal(readFileSync(join(root, 'app.json'), 'utf8'), before);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('iOS QA2 1.0.16(1) synchronizes the next Apple version', () => {
+  const root = fixture();
+  try {
+    const result = run(root, 'ios', '1.0.16', source, '1');
+    assert.equal(result.status, 0, result.stderr);
+    const app = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8')).expo;
+    assert.equal(app.version, '1.0.16');
+    assert.equal(app.ios.buildNumber, '1');
+    const project = readFileSync(join(root, 'ios/UrTruck.xcodeproj/project.pbxproj'), 'utf8');
+    assert.equal((project.match(/MARKETING_VERSION = 1\.0\.16;/g) || []).length, 2);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
