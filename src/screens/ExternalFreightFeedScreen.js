@@ -28,7 +28,7 @@ import { sessionRole } from '../utils/externalFreightSession';
 import { BODY_TYPES } from '../utils/truckConstants';
 import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
-import { externalTelegramPost, mergeLiveFeed, appendUnique, buildExternalFeedQuery, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
+import { externalTelegramPost, mergeLiveFeed, isVisibleExternalItem, appendUnique, buildExternalFeedQuery, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
   RU: { ourTelegram: 'В Telegram UrTruck', telegramContact: 'Открыть контакт в Telegram', noContact: 'Прямой контакт не указан', newListings: 'Новые объявления', mixedCurrency: 'Сортировка по цене доступна, когда в выдаче одна валюта. Сейчас показаны новые объявления.', priceUnavailable: 'В отфильтрованных объявлениях нет цен для сортировки. Сейчас показаны новые объявления.', telegram: 'Объявление в Telegram', direction: 'Направление в тексте объявления', cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', customBody: 'Или укажите свой тип кузова', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', newest: 'Новые', asc: '↓ Дешевле', desc: '↑ Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidDate: 'Начало периода не может быть позже окончания.' },
@@ -69,8 +69,7 @@ const firstPageCacheKey = (owner, filters, savedOnly) => JSON.stringify([owner, 
 function readFirstPageCache(key) {
   const entry = firstPageCache.get(key);
   if (!entry || Date.now() - entry.time > 300000) { firstPageCache.delete(key); return null; }
-  const rows = entry.rows.filter(item => item.status !== 'closed' && item.status !== 'hidden'
-    && item.status !== 'expired' && (!item.expires_at || Date.parse(item.expires_at) > Date.now()));
+  const rows = entry.rows.filter(item => isVisibleExternalItem(item));
   return rows.length ? rows : null;
 }
 function rememberFirstPage(key, rows) {

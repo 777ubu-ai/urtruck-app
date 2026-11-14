@@ -1620,10 +1620,10 @@ def test_count_uses_covering_index_and_preserves_kind_status_and_expiry(monkeypa
             ("cargo", "active", past), ("cargo", "active", None),
         ]):
             c.execute("""INSERT INTO external_freight_items
-                (id,kind,source_id,source_message_id,ingested_at,updated_at,
+                (id,kind,source_id,source_message_id,source_published_at,ingested_at,updated_at,
                  expires_at,original_text,source_revision,status)
-                VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (str(i), kind, "count-plan", str(i), now.isoformat(), now.isoformat(),
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (str(i), kind, "count-plan", str(i), now.isoformat(), now.isoformat(), now.isoformat(),
                  expires, "synthetic payload " * 1000, "1", status))
     statements = []
 
@@ -1645,3 +1645,69 @@ def test_count_uses_covering_index_and_preserves_kind_status_and_expiry(monkeypa
             assert "kind=? AND status=?" in plan, plan
     with pytest.raises(ValueError, match="invalid_feed_kind"):
         dal.count_active_items("other")
+
+
+def test_vehicle_public_window_is_ten_days_without_mutating_storage(retention_now):
+    global _actor
+    ids = []
+    for name, age in [('recent', timedelta(days=9)), ('edge', timedelta(days=10)), ('old', timedelta(days=11))]:
+        record = _record(source='vehicle-public-window', message=name, kind='vehicle',
+                         published=retention_now - age, text='Есть свободный тент, ищу груз')
+        result = _import(record)
+        assert result.status_code == 200, result.text
+        ids.append(result.json()['results'][0]['id'])
+    cargo = _record(source='cargo-public-window', kind='cargo', published=retention_now - timedelta(days=20))
+    assert _import(cargo).status_code == 200
+    with get_conn() as c:
+        before = [tuple(row) for row in c.execute('SELECT id,status,expires_at FROM external_freight_items ORDER BY id')]
+        c.execute('INSERT INTO external_freight_bookmarks(owner_id,item_id,saved_at) VALUES(?,?,?)',
+                  ('client', ids[2], retention_now.isoformat()))
+    _actor = {'id': 'client', 'role': 'client'}
+    page = client.get('/api/v1/external-freight', params={'include_counts': 'true', 'limit': 1}).json()
+    assert [item['id'] for item in page['items']] == [ids[0]]
+    assert datetime.fromisoformat(page['items'][0]['expires_at']) == retention_now + timedelta(days=1)
+    assert page['counts'] == {'total': 1, 'offers': 1, 'carriers': 0}
+    assert page['next_cursor'] is None
+    assert client.get('/api/v1/external-freight/count').json()['count'] == 1
+    assert client.get(f'/api/v1/external-freight/{ids[1]}').status_code == 404
+    assert client.put(f'/api/v1/external-freight/{ids[1]}/bookmark').status_code == 404
+    saved = client.get('/api/v1/external-freight', params={'saved_only': 'true'}).json()
+    assert [(x['id'], x['status']) for x in saved['items']] == [(ids[2], 'expired')]
+    assert client.get(f'/api/v1/external-freight/{ids[2]}').json()['item']['status'] == 'expired'
+    _actor = {'id': 'driver', 'role': 'driver'}
+    assert client.get('/api/v1/external-freight/count').json()['count'] == 1
+    with get_conn() as c:
+        after = [tuple(row) for row in c.execute('SELECT id,status,expires_at FROM external_freight_items ORDER BY id')]
+        assert c.execute('SELECT COUNT(*) FROM external_freight_bookmarks WHERE owner_id=? AND item_id=?', ('client', ids[2])).fetchone()[0] == 1
+    assert after == before
+
+
+def test_vehicle_window_paginated_ids_match_count(retention_now):
+    global _actor
+    expected = set()
+    for index in range(35):
+        record = _record(source='vehicle-pagination-window', message=str(index), kind='vehicle',
+                         published=retention_now - timedelta(days=index % 9),
+                         text='Есть свободный тент, ищу груз')
+        expected.add(_import(record).json()['results'][0]['id'])
+    for index in range(3):
+        record = _record(source='vehicle-pagination-window-old', message=str(index), kind='vehicle',
+                         published=retention_now - timedelta(days=11),
+                         text='Есть свободный тент, ищу груз')
+        _import(record)
+    _actor = {'id': 'client', 'role': 'client'}
+    seen = []
+    params = {'limit': 7, 'include_counts': 'true'}
+    while True:
+        response = client.get('/api/v1/external-freight', params=params)
+        assert response.status_code == 200, response.text
+        page = response.json()
+        if not seen:
+            assert page['counts']['total'] == len(expected)
+        seen.extend(item['id'] for item in page['items'])
+        if not page['next_cursor']:
+            break
+        params['cursor'] = page['next_cursor']
+    assert len(seen) == len(set(seen)) == len(expected)
+    assert set(seen) == expected
+    assert client.get('/api/v1/external-freight/count').json()['count'] == len(expected)
