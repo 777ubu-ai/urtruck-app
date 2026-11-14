@@ -209,13 +209,16 @@ def test_02d_real_local_wav_metadata_and_http_limit(monkeypatch, tmp_path):
     _as(B)
     for seconds in (60, 61):
         name = 'duration-' + str(seconds) + '.wav'
-        path = tmp_path / name
+        (tmp_path / 'chat_voice').mkdir(exist_ok=True)
+        path = tmp_path / 'chat_voice' / name
         with wave.open(str(path), 'wb') as audio:
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(8000)
             audio.writeframes(bytes(seconds * 8000 * 2))
-        ref = storage_service.LOCAL_PUBLIC_BASE + '/' + name
+        ref = storage_service.LOCAL_PUBLIC_BASE + '/chat_voice/' + name
+        with get_conn() as c:
+            c.execute('INSERT INTO chat_upload_receipts(storage_ref,uploader_id,purpose) VALUES (?,?,?)', (ref, B, 'chat_voice'))
         assert storage_service.is_owned_storage_ref(ref)
         assert audio_metadata.duration_seconds_from_ref(ref) == seconds
         key = 'real-container-' + uuid.uuid4().hex

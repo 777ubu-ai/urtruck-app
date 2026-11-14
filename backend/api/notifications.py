@@ -36,6 +36,60 @@ _ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
 )
 
 
+def unread_badge_snapshot(user_id: str) -> dict:
+    """Return the one authoritative native-app badge total for ``user_id``.
+
+    Bottom navigation, launcher and push payloads share a Deals attention
+    counter: durable deal/bid/tracking events plus unread messages in live
+    participant rooms. General reminders and profile reviews remain in the
+    notification history, but must not make a fully read Deals tab show 9+.
+    Chat notification mirrors are excluded to avoid counting a message twice.
+    """
+    if not user_id:
+        return {"badge": 0, "notifications": [], "rooms": []}
+    placeholders = ",".join("?" for _ in _ACTIVE_CHAT_BADGE_DEAL_STATUSES)
+    chat_query = f"""
+        SELECT r.id AS room_id, r.cargo_id, r.trip_id, COUNT(*) AS unread_count FROM chat_messages m
+        JOIN chat_rooms r ON m.room_id = r.id
+        WHERE (r.participant_1 = ? OR r.participant_2 = ?)
+          AND m.sender_id != ? AND m.sender_id != 'system' AND m.is_read = 0
+          AND (
+            (r.cargo_id IS NULL AND r.trip_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM deals d0 WHERE d0.chat_room_id = r.id))
+            OR EXISTS (
+              SELECT 1 FROM deals d
+              WHERE d.status IN ({placeholders})
+                AND (
+                  d.chat_room_id = r.id
+                  OR (d.chat_room_id IS NULL AND (
+                    (r.cargo_id IS NOT NULL AND d.cargo_id = r.cargo_id)
+                    OR (r.trip_id IS NOT NULL AND d.trip_id = r.trip_id)
+                  ))
+                )
+            )
+          )
+    """
+    chat_query += " GROUP BY r.id, r.cargo_id, r.trip_id"
+    with get_conn() as c:
+        # One read transaction: list and total describe the same snapshot.
+        if not c.in_transaction:
+            c.execute("BEGIN")
+        event_placeholders = ",".join("?" for _ in _DEAL_BADGE_NOTIFICATION_TYPES)
+        notification_rows = c.execute(
+            "SELECT id,type,url,title,created_at,event_key FROM notifications "
+            f"WHERE user_id = ? AND is_read = 0 AND type IN ({event_placeholders})",
+            (user_id, *_DEAL_BADGE_NOTIFICATION_TYPES),
+        ).fetchall()
+        chat_rows = c.execute(
+            chat_query,
+            (user_id, user_id, user_id, *_ACTIVE_CHAT_BADGE_DEAL_STATUSES),
+        ).fetchall()
+    return {"badge": len(notification_rows) + sum(int(row["unread_count"]) for row in chat_rows),
+            "notifications": [dict(row) for row in notification_rows],
+            "rooms": [dict(row) for row in chat_rows]}
+
+
+
 def unread_badge_count(user_id: str) -> int:
     """Return the one authoritative native-app badge total for ``user_id``.
 
@@ -216,6 +270,12 @@ def unread_count(user=Depends(require_level(1))):
             (user["id"],),
         ).fetchone()
     return {"unread": row["cnt"] if row else 0}
+
+
+@notif_router.get("/attention")
+def attention_snapshot(user=Depends(require_level(1))):
+    """Owner-scoped unread references for existing mobile tab/card badges."""
+    return unread_badge_snapshot(user["id"])
 
 
 @notif_router.get("/badge")

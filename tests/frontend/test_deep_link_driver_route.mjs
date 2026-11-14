@@ -122,7 +122,8 @@ test('backend fails closed on a direct chat-room API call by a non-participant (
   // once it resolves a room id, whether reached via deep link or in-app.
   const idx = chatApi.indexOf('def get_messages');
   assert.ok(idx > -1);
-  const block = chatApi.slice(idx, idx + 700);
+  const nextRoute = chatApi.indexOf("\n@chat_router.", idx);
+  const block = chatApi.slice(idx, nextRoute < 0 ? undefined : nextRoute);
   assert.match(block, /raise HTTPException\(status_code=404\)/);
   assert.match(block, /raise HTTPException\(status_code=403, detail="Вы не участник этого чата"\)/);
 });
