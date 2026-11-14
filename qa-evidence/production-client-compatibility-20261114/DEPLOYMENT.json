@@ -1,0 +1,39 @@
+{
+  "status": "DEPLOYED",
+  "source_sha": "e1cb79f79085962bb7f1cb29c5439631e6445ddb",
+  "scope": "five-file-client-compatibility-overlay",
+  "files": {
+    "api/chat.py": "c171e1848051ce30c175f20d72b2b07b5f1440fad521a141ae362eecfd0e7be3",
+    "api/deal_room.py": "bc0f27beca8933e3b9caa54d6b92a3e5c79631aaea0885b91421e97caab21a77",
+    "api/notifications.py": "0d3b88434a84af0aa1633cf9772811313ea5f1b2682a194254e60d7b05a052a2",
+    "services/private_file_transport.py": "52c79540d3e1e3ff0c3b2b426f79795b42fed48cd63293a8adb4bd641821a4b3",
+    "services/storage_service.py": "4264fd18e8743d3c17c49d075e6e1c44b0935c5790205f77dd8757271bc78fcd"
+  },
+  "backup": "/home/ubuntu/urtruck-backups/client-compat-e1cb79f7-20261114T160430Z",
+  "backup_proof": {
+    "sha256": "ece9c99bebfe4fe3d8aa8c10b8967e42b6d267754acd26d11df1cac3336ca0ca",
+    "bytes": 435175424,
+    "quick_check": "ok",
+    "restore_checksum": "PASS"
+  },
+  "routes_anonymous_http": {
+    "/api/v1/notifications/attention": 401,
+    "/api/v1/chat/messages/compatibility-read-probe/media/1": 401,
+    "/api/v1/chat/conversations/compatibility-read-probe/attachments/compatibility-file/content": 401
+  },
+  "protected_code_env": "UNCHANGED",
+  "public_landing": "UNCHANGED",
+  "historical_ids": "PRESERVED",
+  "records_after": {
+    "drivers_registration": 708,
+    "cargos": 282,
+    "trips": 37,
+    "bids": 107,
+    "deals": 50,
+    "chat_rooms": 58,
+    "chat_messages": 648,
+    "message_attachments": 22
+  },
+  "public_store_release": false,
+  "deployed_at": "2026-11-14T16:05:55.052133+00:00"
+}

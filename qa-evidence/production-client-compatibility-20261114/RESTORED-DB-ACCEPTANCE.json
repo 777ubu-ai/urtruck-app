@@ -1,0 +1,33 @@
+{
+  "status": "PASS",
+  "scope": "isolated_ASGI_restored_production_DB_actual_storage",
+  "files": [
+    {
+      "kind": "attachment",
+      "participants": 2,
+      "bytes_match": true,
+      "outsider": "DENIED",
+      "anonymous": "DENIED",
+      "revocation": "DENIED"
+    },
+    {
+      "kind": "photo",
+      "participants": 2,
+      "bytes_match": true,
+      "outsider": "DENIED",
+      "anonymous": "DENIED",
+      "revocation": "DENIED"
+    },
+    {
+      "kind": "voice",
+      "participants": 2,
+      "bytes_match": true,
+      "outsider": "DENIED",
+      "anonymous": "DENIED",
+      "revocation": "DENIED"
+    }
+  ],
+  "attention_accounts": 20,
+  "production_database_writes": 0,
+  "live_authenticated_phone_test": false
+}
