@@ -2,7 +2,7 @@
 import sys
 from contextlib import nullcontext
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -159,6 +159,7 @@ def _notification_path(value: str) -> str:
 def mark_notifications_read_by_urls(
     user_id: str, urls, *, read_through_id: int | None = None,
     chat_message_read_through: int | None = None,
+    bid_id: str | None = None,
 ) -> int:
     """Mark unread notifications whose canonical path was actually opened.
 
@@ -184,6 +185,18 @@ def mark_notifications_read_by_urls(
             for row in rows:
                 if _notification_path(row["url"]) not in target_paths:
                     continue
+                if bid_id is not None:
+                    # Объявление может иметь несколько карточек предложений.
+                    # При открытии одной нельзя погасить события остальных.
+                    event_key = str(row["event_key"] or "")
+                    event_bid = event_key.split(":", 2)[1] if event_key.startswith("bid:") and event_key.count(":") >= 2 else None
+                    try:
+                        query = parse_qs(urlsplit(row["url"] or "").query)
+                        url_bid = (query.get("bid") or query.get("bid_id") or [None])[0]
+                    except ValueError:
+                        url_bid = None
+                    if str(event_bid or url_bid or "") != str(bid_id):
+                        continue
                 # Chat event_key содержит исходный message id. Пагинация
                 # старой истории не читает более новые события той же комнаты.
                 # Старые записи без ключа ограничены снимком notification id.

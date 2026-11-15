@@ -97,7 +97,7 @@ export default function TripDetail({ navigation, route }) {
   myBidBtnText: { fontSize: 14, fontWeight: '800' },
 
   }), [v1]);
-  const { trip: rawTrip, tripId, role, dealId: routeDealId, readOnly = false } = route.params || {};
+  const { trip: rawTrip, tripId, role, dealId: routeDealId, bidId: routeBidId, readOnly = false } = route.params || {};
   const [serverTrip, setServerTrip] = React.useState(null);
   // Canonical shape: TripDetail never reads raw fields directly. If we got
   // a trip object via navigation, use it; otherwise fall back to whatever the
@@ -276,7 +276,7 @@ export default function TripDetail({ navigation, route }) {
     if (!tid) return;
     // Свежий рейс с сервера — актуальная цена/статус + driver_rating/
     // driver_verified для карточки водителя (get_trip обогащает).
-    marketAPI.getTrip(tid).then(d => {
+    (routeBidId ? marketAPI.getTrip(tid, routeBidId) : marketAPI.getTrip(tid)).then(d => {
       if (d && !d.detail) { setServerTrip(d); setTripNotFound(false); }
       else if (!rawTrip) setTripNotFound(true);
     }).catch(() => { if (!rawTrip) setTripNotFound(true); });
@@ -295,7 +295,7 @@ export default function TripDetail({ navigation, route }) {
         if (foundDeal) applyDeal(foundDeal, seq);
       }).catch(() => {});
     }
-  }, [tid, routeDealId, dealId, loadBids]);
+  }, [tid, routeDealId, routeBidId, dealId, loadBids]);
 
   useFocusEffect(React.useCallback(() => {
     refreshAll();

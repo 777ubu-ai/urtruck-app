@@ -965,7 +965,7 @@ async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_
 
 
 @mp_router.get("/cargos/{cargo_id}")
-def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
+def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None), bid_id: Optional[str] = None):
     with get_conn() as c:
         row = c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
     if not row:
@@ -992,7 +992,7 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     if caller and caller.get("id"):
         try:
             from api.notifications import mark_notifications_read_by_urls
-            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"])
+            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"], bid_id=bid_id)
         except Exception:
             pass
     # Инфо о грузоотправителе (доверие: водитель видит, кому ставит ставку) —
@@ -1912,7 +1912,7 @@ def list_trips(
 
 
 @mp_router.get("/trips/{trip_id}")
-def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
+def get_trip(trip_id: str, authorization: Optional[str] = Header(None), bid_id: Optional[str] = None):
     with get_conn() as c:
         row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
     if not row:
@@ -1932,7 +1932,7 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     if caller and caller.get("id"):
         try:
             from api.notifications import mark_notifications_read_by_urls
-            mark_notifications_read_by_urls(caller["id"], [f"/trips/{trip_id}"])
+            mark_notifications_read_by_urls(caller["id"], [f"/trips/{trip_id}"], bid_id=bid_id)
         except Exception:
             pass
     # Инфо о водителе (доверие: клиент видит, кому доверяет груз) — имя,

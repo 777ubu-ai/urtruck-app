@@ -209,8 +209,10 @@ export const marketAPI = {
     }
   },
 
-  async getCargo(id) {
-    const r = await authedFetch(`${BASE}/cargos/${id}`, { headers: await headers() });
+  async getCargo(id, bidId = null) {
+    const r = bidId
+      ? await authedFetch(`${BASE}/cargos/${id}?bid_id=${encodeURIComponent(bidId)}`, { headers: await headers() })
+      : await authedFetch(`${BASE}/cargos/${id}`, { headers: await headers() });
     return r.json();
   },
 
@@ -388,8 +390,10 @@ export const marketAPI = {
     }
   },
 
-  async getTrip(id) {
-    const r = await authedFetch(`${BASE}/trips/${id}`, { headers: await headers() });
+  async getTrip(id, bidId = null) {
+    const r = bidId
+      ? await authedFetch(`${BASE}/trips/${id}?bid_id=${encodeURIComponent(bidId)}`, { headers: await headers() })
+      : await authedFetch(`${BASE}/trips/${id}`, { headers: await headers() });
     return r.json();
   },
 

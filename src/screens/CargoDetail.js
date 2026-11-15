@@ -151,7 +151,7 @@ export default function CargoDetail({ navigation, route }) {
   deleteMyBtnText: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
 
   }), [v1]);
-  const { cargo: paramCargo, cargoId, role, dealId: routeDealId, readOnly = false } = route.params || {};
+  const { cargo: paramCargo, cargoId, role, dealId: routeDealId, bidId: routeBidId, readOnly = false } = route.params || {};
   // Canonical cargo: locale is explicit so normalizers stay pure and Node-testable.
   const { t, lang } = useI18n();
   const editBidLabel = (withAdditionalLanguages({
@@ -454,7 +454,7 @@ export default function CargoDetail({ navigation, route }) {
   // экрана + лёгкий поллинг раз в 15с, пока экран открыт (как в чате/сделках).
   const refreshDeal = useCallback(() => {
     if (!cid) return;
-    marketAPI.getCargo(cid).then(d => {
+    (routeBidId ? marketAPI.getCargo(cid, routeBidId) : marketAPI.getCargo(cid)).then(d => {
       if (d && d.id) {
         setFullCargo(d);
         setCargoNotFound(false);
@@ -484,7 +484,7 @@ export default function CargoDetail({ navigation, route }) {
         if (found) applyDeal(found, seq);
       }).catch(() => {});
     }
-  }, [cid, routeDealId, dealId, myUserId]);
+  }, [cid, routeDealId, routeBidId, dealId, myUserId]);
 
   useFocusEffect(useCallback(() => {
     refreshDeal();
