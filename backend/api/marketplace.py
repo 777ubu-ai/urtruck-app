@@ -104,9 +104,10 @@ def _can_view_non_public_listing(c, *, table: str, listing_id: str, row: dict,
         if periods.is_due(c, kind='cargo' if table == 'cargos' else 'trip', listing_id=listing_id, now=datetime.utcnow()):
             is_public = False
     if is_public:
-        if table == "cargos":
-            return _public_cargo_ok(row)
-        return _public_trip_ok(row)
+        feed_visible = _public_cargo_ok(row) if table == "cargos" else _public_trip_ok(row)
+        if feed_visible:
+            return True
+        # Скрытое из ленты объявление остаётся доступным его участникам.
 
     caller_id = caller.get("id") if caller else None
     if not caller_id:
