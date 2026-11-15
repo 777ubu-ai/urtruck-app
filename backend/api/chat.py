@@ -1354,10 +1354,9 @@ def unread_count(user=Depends(require_level(1))):
     # событие живёт в общем счётчике только через notifications —
     # см. services/push_sender._compute_recipient_badge (тот же фильтр).
     uid = user["id"]
-    # Только active deal rooms. Старые сообщения completed/cancelled/rejected
-    # сделок не должны возвращать phantom 9+ после relaunch. Комнаты без
-    # сделки (например, support) остаются валидным источником unread.
-    active_statuses = ("accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received")
+    # Завершённая сделка остаётся читаемой в архиве: непрочитанное сообщение
+    # сохраняется до открытия комнаты. Отменённые сделки не включаются.
+    active_statuses = _DEAL_CHAT_STATUSES
     placeholders = ",".join("?" for _ in active_statuses)
     query = f"""
             SELECT COUNT(*) as cnt FROM chat_messages m
