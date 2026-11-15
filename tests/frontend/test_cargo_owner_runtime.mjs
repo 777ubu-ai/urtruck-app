@@ -54,15 +54,17 @@ test('real refresh callback captures the updated account at the same cargo', () 
     if (!cached || deps.some((value, index) => value !== cached.deps[index])) cached = { fn, deps };
     return cached.fn;
   };
-  const render = new Function('useCallback', 'cid', 'routeDealId', 'dealId', 'myUserId',
+  const render = new Function('useCallback', 'cid', 'routeDealId', 'routeBidId', 'dealId', 'myUserId',
     'marketAPI', 'setFullCargo', 'setCargoNotFound', 'setListingUnavailable', 'cargo',
     'loadBids', 'dealFetchSeq', 'applyDeal', detail.slice(start, end) + '\nreturn refreshDeal;');
   const noop = () => {};
-  const api = { getCargo: async () => cargo, myDashboard: async () => ({ my_deals: [] }) };
+  const requests = [];
+  const api = { getCargo: async (...args) => { requests.push(args); return cargo; }, myDashboard: async () => ({ my_deals: [] }) };
   for (const userId of ['local-user', 'backend-user']) {
-    const callback = render(useCallback, cargo.id, null, null, userId, api,
+    const callback = render(useCallback, cargo.id, null, 'bid-one', null, userId, api,
       noop, noop, noop, cargo, () => seen.push(userId), { current: 0 }, noop);
     callback();
   }
   assert.deepEqual(seen, ['local-user', 'backend-user']);
+  assert.deepEqual(requests, [[cargo.id, 'bid-one'], [cargo.id, 'bid-one']]);
 });
