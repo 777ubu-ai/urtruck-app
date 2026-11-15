@@ -258,7 +258,7 @@ def test_inv7_idempotent_client_msg_id():
     assert unread_count(user=_u(o))["unread"] == 1
 
 
-@pytest.mark.parametrize("status", ["completed", "cancelled", "rejected"])
+@pytest.mark.parametrize("status", ["cancelled", "rejected"])
 def test_closed_deal_room_cannot_create_phantom_badge(status):
     """Closed/dead deal rooms are excluded from Bell and app-icon unread."""
     o, d = _ids()
@@ -273,14 +273,8 @@ def test_closed_deal_room_cannot_create_phantom_badge(status):
     assert push_sender._compute_recipient_badge(o) == 0
 
 
-def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
-    """The APNs/FCM payload must use the same total as the mobile client.
-
-    A real incoming message creates both a raw chat row and a durable Bell
-    row.  Once its deal is completed, both client unread endpoints exclude the
-    event; counting raw notifications in the native push sender used to leave
-    this one historical event on the launcher badge indefinitely.
-    """
+def test_completed_deal_unread_persists_until_room_read():
+    """Непрочитанное сохраняется в архиве и не возвращается после чтения."""
     o, d = _ids()
     cargo = "cg_" + uuid.uuid4().hex[:6]
     room = get_or_create_deal_room(cargo, o, d)
@@ -292,6 +286,9 @@ def test_completed_deal_chat_notification_cannot_leave_native_badge_stuck():
     with get_conn() as c:
         c.execute("UPDATE deals SET status = 'completed' WHERE id = ?", (deal_id,))
 
+    assert unread_count(user=_u(o))["unread"] == 1
+    assert push_sender._compute_recipient_badge(o) == 1
+    get_messages(room, user=_u(o))
     assert unread_count(user=_u(o))["unread"] == 0
     assert push_sender._compute_recipient_badge(o) == 0
 

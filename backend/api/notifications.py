@@ -32,7 +32,7 @@ DEAL_NOTIFICATION_TYPES = {
 _CHAT_NOTIFICATION_TYPES = ("chat_message", "chat_attachment")
 _DEAL_BADGE_NOTIFICATION_TYPES = tuple(sorted(DEAL_NOTIFICATION_TYPES))
 _ACTIVE_CHAT_BADGE_DEAL_STATUSES = (
-    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received",
+    "accepted", "in_progress", "at_border", "awaiting_confirmation", "delivered", "received", "completed",
 )
 
 
@@ -40,8 +40,8 @@ def unread_badge_snapshot(user_id: str) -> dict:
     """Return the one authoritative native-app badge total for ``user_id``.
 
     Bottom navigation, launcher and push payloads share a Deals attention
-    counter: durable deal/bid/tracking events plus unread messages in live
-    participant rooms. General reminders and profile reviews remain in the
+    counter: durable deal/bid/tracking events plus unread messages in active
+    and completed participant rooms. General reminders and profile reviews remain in the
     notification history, but must not make a fully read Deals tab show 9+.
     Chat notification mirrors are excluded to avoid counting a message twice.
     """
