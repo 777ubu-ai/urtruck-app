@@ -213,7 +213,11 @@ def send(user_id: str, title: str, body: str, kind: str = "info", data: Optional
     native_retryable = bool(native.get("retryable", True)) or web_batch["failed"] > 0
     native_errors = native.get("errors") or {}
     safe_error = ",".join(sorted(str(code) for code in native_errors))[:500] or ("web_push_failed" if web_batch["failed"] else "non_retryable_provider_error")
-    if native.get("suppressed_policy"):
+    if native_devices == 0 and web_targets == 0 and not native.get("suppressed_policy") and not native.get("suppressed_read"):
+        # Совпадаем с обработчиком очереди: неподдерживаемый старый токен
+        # не означает ошибку провайдера, если отправлять некому.
+        push_gateway._skip_row_without_devices(claimed["id"], attempt, claimed["claim_token"])
+    elif native.get("suppressed_policy"):
         with get_conn() as c:
             c.execute("UPDATE push_outbox SET status='skipped_policy',last_error=?,claimed_at=NULL,locked_by=NULL,claim_token=NULL WHERE id=? AND status='processing' AND claim_token=?",
                       (native["suppressed_policy"],claimed["id"],claimed["claim_token"]))
