@@ -426,6 +426,7 @@ export default function DealsScreen({ navigation, route }) {
       return incomingBids
         .filter((bid) => bid.cargo_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid))
         .map((bid) => ({ ...bid, _incoming: true }))
+        .concat(myBids.filter((bid) => bid.trip_id && OPEN_BID_STATUSES.has(bid.status) && isBidFresh(bid)))
         .sort((a, b) => {
           const ta = parseServerDate(a.updated_at || a.created_at)?.getTime() || 0;
           const tb = parseServerDate(b.updated_at || b.created_at)?.getTime() || 0;
@@ -453,9 +454,12 @@ export default function DealsScreen({ navigation, route }) {
   const closedBidsData = useMemo(() => {
     const rows =
       role === "client"
-        ? incomingBids.filter(
-            (bid) => bid.cargo_id && CLOSED_BID_STATUSES.has(bid.status),
-          )
+        ? [
+            ...incomingBids.filter(
+              (bid) => bid.cargo_id && CLOSED_BID_STATUSES.has(bid.status),
+            ),
+            ...myBids.filter((bid) => bid.trip_id && CLOSED_BID_STATUSES.has(bid.status)),
+          ]
         : [
             ...myBids.filter((bid) => CLOSED_BID_STATUSES.has(bid.status)),
             ...incomingBids

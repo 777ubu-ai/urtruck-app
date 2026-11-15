@@ -10,7 +10,7 @@ const code = require('@babel/core').transformSync(readFileSync('src/screens/Deal
   plugins: [require('@babel/plugin-transform-react-jsx'),require('@babel/plugin-transform-modules-commonjs')],
 }).code;
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness(role) {
+function harness(role, override = {}) {
   const slots = [], effects = []; let cursor = 0, dirty = true, tree, refresh;
   let snapshot = { badge: 2, notifications: [{ id: 1, type: 'bid_rejected', url: 'urtruck://cargos/cargo?bid=closed' }], rooms: [{ room_id: 'room', unread_count: 1 }] };
   const React = {
@@ -21,6 +21,8 @@ function harness(role) {
   };
   let focused=false;
   const dashboard = { my_deals: [{ id:'live',status:'in_progress',chat_room_id:'room',unread_count:1 }], my_bids: role==='driver'?[{id:'closed',cargo_id:'cargo',status:'rejected'}]:[], incoming_bids: role==='client'?[{id:'closed',cargo_id:'cargo',status:'rejected'}]:[] };
+  Object.assign(dashboard, override.dashboard || {});
+  if (override.snapshot) snapshot = override.snapshot;
   const native = Object.fromEntries(['ActivityIndicator','FlatList','RefreshControl','Text','TextInput','TouchableOpacity','View'].map(x=>[x,x]));
   native.StyleSheet={create:x=>x};
   const mocks = {
@@ -71,4 +73,16 @@ for(const role of ['driver','client']) test(`${role}: lower snapshot maps to act
   await h.readChat();await h.flush();
   assert.equal(h.tab('active').props.attentionCount,0);
   assert.equal(h.tab('archive').props.attentionCount,1);
+});
+
+test('client sees own trip offers and keeps archived unread on the right card', async()=>{
+  const snapshot={badge:1,notifications:[{id:7,type:'bid_rejected',url:'urtruck://trips/trip?bid=closed-trip'}],rooms:[]};
+  const h=harness('client',{snapshot,dashboard:{my_deals:[],incoming_bids:[],my_bids:[{id:'closed-trip',trip_id:'trip',status:'rejected'},{id:'open-trip',trip_id:'trip2',status:'pending'}]}});
+  await h.flush();
+  assert.equal(h.tab('archive').props.attentionCount,1);
+  h.tab('offers').props.onPress();await h.flush();
+  assert.equal(h.list().props.data.filter(x=>x.data?.id==='open-trip').length,1);
+  h.tab('archive').props.onPress();await h.flush();
+  const row=h.list().props.data.find(x=>x.data?.id==='closed-trip');
+  assert.ok(row);assert.equal(h.list().props.renderItem({item:row}).props.unread,1);
 });
