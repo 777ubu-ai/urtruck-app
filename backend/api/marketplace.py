@@ -965,7 +965,7 @@ async def upload_cargo_photo(file: UploadFile = File(...), user=Depends(require_
 
 
 @mp_router.get("/cargos/{cargo_id}")
-def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
+def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None), bid_id: Optional[str] = None):
     with get_conn() as c:
         row = c.execute("SELECT * FROM cargos WHERE id = ?", (cargo_id,)).fetchone()
     if not row:
@@ -992,7 +992,7 @@ def get_cargo(cargo_id: str, authorization: Optional[str] = Header(None)):
     if caller and caller.get("id"):
         try:
             from api.notifications import mark_notifications_read_by_urls
-            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"])
+            mark_notifications_read_by_urls(caller["id"], [f"/cargos/{cargo_id}"], bid_id=bid_id)
         except Exception:
             pass
     # Инфо о грузоотправителе (доверие: водитель видит, кому ставит ставку) —
@@ -1912,7 +1912,7 @@ def list_trips(
 
 
 @mp_router.get("/trips/{trip_id}")
-def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
+def get_trip(trip_id: str, authorization: Optional[str] = Header(None), bid_id: Optional[str] = None):
     with get_conn() as c:
         row = c.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
     if not row:
@@ -1932,7 +1932,7 @@ def get_trip(trip_id: str, authorization: Optional[str] = Header(None)):
     if caller and caller.get("id"):
         try:
             from api.notifications import mark_notifications_read_by_urls
-            mark_notifications_read_by_urls(caller["id"], [f"/trips/{trip_id}"])
+            mark_notifications_read_by_urls(caller["id"], [f"/trips/{trip_id}"], bid_id=bid_id)
         except Exception:
             pass
     # Инфо о водителе (доверие: клиент видит, кому доверяет груз) — имя,
@@ -2569,7 +2569,7 @@ def my_dashboard(user=Depends(require_level(1))):
             "COALESCE(c.currency, t.currency) AS currency "
             "FROM bids b LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
-            "WHERE b.bidder_id = ? ORDER BY b.created_at DESC LIMIT 50", (uid,)).fetchall()]
+            "WHERE b.bidder_id = ? ORDER BY b.created_at DESC", (uid,)).fetchall()]
         # Ставки на МОИ листинги (входящие): грузы (клиент) И рейсы (водитель).
         # Раньше JOIN шёл только на cargos — ставки клиентов на рейс водителя
         # не попадали в incoming_bids вообще, водитель их нигде не видел.
@@ -2586,7 +2586,7 @@ def my_dashboard(user=Depends(require_level(1))):
             "LEFT JOIN cargos c ON b.cargo_id = c.id "
             "LEFT JOIN trips t ON b.trip_id = t.id "
             "WHERE c.owner_id = ? OR t.driver_id = ? "
-            "ORDER BY b.created_at DESC LIMIT 50", (uid, uid)).fetchall()]
+            "ORDER BY b.created_at DESC", (uid, uid)).fetchall()]
         # Мои сделки. LEFT JOIN на cargos (описание/тип кузова/дата подачи) и на
         # drivers_registration (имя водителя/грузоотправителя) — без JOIN карточка
         # сделки на клиенте «Везут»/«Доставлено» рендерилась без груза, без типа
@@ -2621,7 +2621,7 @@ def my_dashboard(user=Depends(require_level(1))):
             "LEFT JOIN drivers_registration sh ON sh.id = d.shipper_id "
             "LEFT JOIN deal_tracking dt ON dt.deal_id = d.id "
             "WHERE d.shipper_id = ? OR d.driver_id = ? "
-            "ORDER BY d.created_at DESC LIMIT 50",
+            "ORDER BY d.created_at DESC",
             (uid, uid, uid, uid)).fetchall()]
 
     for cargo in my_cargos:
