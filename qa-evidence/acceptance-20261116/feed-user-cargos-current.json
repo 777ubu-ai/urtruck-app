@@ -1,0 +1,71 @@
+[
+  {
+    "role": "driver",
+    "utc_start": "2026-11-16T11:44:44.410Z",
+    "web": "b6da933ec538f5114d01af83a902f5c475c40cc9",
+    "screen_count": "20 711",
+    "screen_time": "2026-11-16T11:44:55.826Z",
+    "count_responses": [
+      {
+        "utc": "2026-11-16T11:44:55.824Z",
+        "status": 200,
+        "kind": "cargo",
+        "count": 20711,
+        "offer_count": 20711,
+        "carrier_count": 0
+      }
+    ],
+    "user_cargo_first_page": {
+      "status": 200,
+      "keys": [
+        "cargos",
+        "total",
+        "next_offset",
+        "page_count",
+        "has_more",
+        "search_contract"
+      ],
+      "length": 13,
+      "total": 13
+    },
+    "cargo_screen_comparison": {
+      "status": 200,
+      "total": 13,
+      "screen_count": 13,
+      "all_screen_ids_in_api": true,
+      "all_api_ids_on_screen": true
+    },
+    "utc_end": "2026-11-16T11:44:55.952Z"
+  },
+  {
+    "role": "client",
+    "utc_start": "2026-11-16T11:44:56.137Z",
+    "web": "b6da933ec538f5114d01af83a902f5c475c40cc9",
+    "screen_count": "1 315",
+    "screen_time": "2026-11-16T11:45:09.075Z",
+    "count_responses": [
+      {
+        "utc": "2026-11-16T11:45:09.059Z",
+        "status": 200,
+        "kind": "vehicle",
+        "count": 1315,
+        "offer_count": 18,
+        "carrier_count": 1297
+      }
+    ],
+    "user_cargo_first_page": {
+      "status": 200,
+      "keys": [
+        "cargos",
+        "total",
+        "next_offset",
+        "page_count",
+        "has_more",
+        "search_contract"
+      ],
+      "length": 13,
+      "total": 13
+    },
+    "utc_end": "2026-11-16T11:45:09.162Z"
+  }
+]

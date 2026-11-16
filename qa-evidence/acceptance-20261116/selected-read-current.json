@@ -1,0 +1,91 @@
+{
+  "utc": "2026-11-16T11:45:15.160Z",
+  "environment": "QA2",
+  "web": "b6da933ec538f5114d01af83a902f5c475c40cc9",
+  "trip_id": "d74347ce-9986-4d8a-8153-d86d6e8667e4",
+  "trip_get_status": 200,
+  "trip_status": "active",
+  "create_status": 200,
+  "bid_id": "b69ce15b-9df0-4b90-9929-577405999ea9",
+  "reject_status": 200,
+  "before": {
+    "client": {
+      "status": 200,
+      "badge": 65,
+      "events": [
+        {
+          "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42",
+          "ids": [
+            1712
+          ]
+        },
+        {
+          "bid_id": "b69ce15b-9df0-4b90-9929-577405999ea9",
+          "ids": [
+            1714
+          ]
+        }
+      ]
+    },
+    "driver": {
+      "status": 200,
+      "badge": 3,
+      "events": [
+        {
+          "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42",
+          "ids": []
+        },
+        {
+          "bid_id": "b69ce15b-9df0-4b90-9929-577405999ea9",
+          "ids": [
+            1713
+          ]
+        }
+      ]
+    }
+  },
+  "requests": [
+    {
+      "path": "/api/v1/market/trips/d74347ce-9986-4d8a-8153-d86d6e8667e4",
+      "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42"
+    }
+  ],
+  "cards": {
+    "first": 1,
+    "second": 1
+  },
+  "after": {
+    "client": {
+      "status": 200,
+      "badge": 64,
+      "events": [
+        {
+          "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42",
+          "ids": []
+        },
+        {
+          "bid_id": "b69ce15b-9df0-4b90-9929-577405999ea9",
+          "ids": [
+            1714
+          ]
+        }
+      ]
+    },
+    "driver": {
+      "status": 200,
+      "badge": 3,
+      "events": [
+        {
+          "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42",
+          "ids": []
+        },
+        {
+          "bid_id": "b69ce15b-9df0-4b90-9929-577405999ea9",
+          "ids": [
+            1713
+          ]
+        }
+      ]
+    }
+  }
+}
