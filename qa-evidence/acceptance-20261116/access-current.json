@@ -1,0 +1,11 @@
+{
+  "utc": "2026-11-16T11:42:28.161Z",
+  "own_bids": {
+    "status": 200,
+    "count": 52,
+    "statuses": {
+      "rejected": 52
+    }
+  },
+  "outsider_status": 404
+}

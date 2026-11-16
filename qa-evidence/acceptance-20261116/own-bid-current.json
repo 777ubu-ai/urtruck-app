@@ -1,0 +1,13 @@
+{
+  "utc": "2026-11-16T11:43:21.183Z",
+  "environment": "QA2",
+  "web": "b6da933ec538f5114d01af83a902f5c475c40cc9",
+  "trip_id": "d74347ce-9986-4d8a-8153-d86d6e8667e4",
+  "trip_get_status": 200,
+  "trip_status": "active",
+  "create_status": 200,
+  "bid_id": "cda9a83a-d546-4ec9-af39-0c793a793a42",
+  "offers_card_count": 1,
+  "reject_status": 200,
+  "archive_card_count": 1
+}
