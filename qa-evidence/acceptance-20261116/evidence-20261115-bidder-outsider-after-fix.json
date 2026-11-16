@@ -1,0 +1,7 @@
+{
+  "environment": "QA2",
+  "actor": "agent-auditor",
+  "trip_id": "d74347ce-9986-4d8a-8153-d86d6e8667e4",
+  "bid_id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+  "status": 404
+}

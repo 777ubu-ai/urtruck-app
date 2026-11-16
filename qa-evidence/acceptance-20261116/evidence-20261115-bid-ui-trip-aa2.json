@@ -1,0 +1,84 @@
+{
+  "before": {
+    "serik": {
+      "badge": 4,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "notifications": [
+            1605
+          ]
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "notifications": [
+            1607
+          ]
+        }
+      ]
+    },
+    "boris": {
+      "badge": 15,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "notifications": [
+            1606
+          ]
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "notifications": [
+            1608
+          ]
+        }
+      ]
+    },
+    "card1": "1",
+    "card2": "1"
+  },
+  "requests": [
+    {
+      "path": "/api/v1/market/trips/d74347ce-9986-4d8a-8153-d86d6e8667e4",
+      "query": {
+        "bid_id": "de34db65-c89e-4edf-b9ad-1c94348a9cec"
+      },
+      "method": "GET"
+    }
+  ],
+  "targetFound": 1,
+  "after": {
+    "serik": {
+      "badge": 3,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "notifications": []
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "notifications": [
+            1607
+          ]
+        }
+      ]
+    },
+    "boris": {
+      "badge": 15,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "notifications": [
+            1606
+          ]
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "notifications": [
+            1608
+          ]
+        }
+      ]
+    }
+  }
+}

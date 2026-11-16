@@ -1,0 +1,52 @@
+[
+  {
+    "role": "driver",
+    "utc": "2026-11-16T11:40:19.488Z",
+    "/external-freight/count?include_carriers=true": {
+      "status": 200,
+      "kind": "cargo",
+      "count": 20700,
+      "offer_count": 20700,
+      "carrier_count": 0
+    },
+    "/market/cargos?status=active&limit=100&offset=0": {
+      "status": 200,
+      "keys": [
+        "cargos",
+        "total",
+        "next_offset",
+        "page_count",
+        "has_more",
+        "search_contract"
+      ],
+      "length": 13,
+      "total": 13,
+      "has_more": false
+    }
+  },
+  {
+    "role": "client",
+    "utc": "2026-11-16T11:40:19.686Z",
+    "/external-freight/count?include_carriers=true": {
+      "status": 200,
+      "kind": "vehicle",
+      "count": 1315,
+      "offer_count": 18,
+      "carrier_count": 1297
+    },
+    "/market/cargos?status=active&limit=100&offset=0": {
+      "status": 200,
+      "keys": [
+        "cargos",
+        "total",
+        "next_offset",
+        "page_count",
+        "has_more",
+        "search_contract"
+      ],
+      "length": 13,
+      "total": 13,
+      "has_more": false
+    }
+  }
+]

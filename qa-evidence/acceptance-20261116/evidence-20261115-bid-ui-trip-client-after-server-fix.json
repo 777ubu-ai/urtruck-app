@@ -1,0 +1,81 @@
+{
+  "ids": [
+    "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+    "3171899e-e995-4ac2-b16c-49f8ffc1dc7a"
+  ],
+  "requests": [
+    {
+      "path": "/api/v1/market/trips/d74347ce-9986-4d8a-8153-d86d6e8667e4",
+      "bid_id": "de34db65-c89e-4edf-b9ad-1c94348a9cec"
+    }
+  ],
+  "scroll": [],
+  "before": {
+    "boris": {
+      "badge": 64,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "events": [
+            1606
+          ]
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "events": [
+            1608
+          ]
+        }
+      ]
+    },
+    "serik": {
+      "badge": 53,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "events": []
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "events": [
+            1607
+          ]
+        }
+      ]
+    },
+    "card": "1"
+  },
+  "cardFound": true,
+  "after": {
+    "boris": {
+      "badge": 63,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "events": []
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "events": [
+            1608
+          ]
+        }
+      ]
+    },
+    "serik": {
+      "badge": 53,
+      "targets": [
+        {
+          "id": "de34db65-c89e-4edf-b9ad-1c94348a9cec",
+          "events": []
+        },
+        {
+          "id": "3171899e-e995-4ac2-b16c-49f8ffc1dc7a",
+          "events": [
+            1607
+          ]
+        }
+      ]
+    }
+  }
+}

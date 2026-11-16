@@ -1,0 +1,80 @@
+{
+  "before": {
+    "serik": {
+      "badge": 3,
+      "targets": [
+        {
+          "id": "e844630f-4fe2-4747-b3a5-df984e665fef",
+          "notifications": [
+            1601
+          ]
+        },
+        {
+          "id": "c8cbacab-dbaf-48be-8d70-c757ba1cffa5",
+          "notifications": [
+            1603
+          ]
+        }
+      ]
+    },
+    "boris": {
+      "badge": 13,
+      "targets": [
+        {
+          "id": "e844630f-4fe2-4747-b3a5-df984e665fef",
+          "notifications": []
+        },
+        {
+          "id": "c8cbacab-dbaf-48be-8d70-c757ba1cffa5",
+          "notifications": [
+            1602
+          ]
+        }
+      ]
+    },
+    "card1": "1",
+    "card2": "1"
+  },
+  "requests": [
+    {
+      "path": "/api/v1/market/cargos/fb7402c8-ad39-471f-914a-e6b0320ab274",
+      "query": {
+        "bid_id": "e844630f-4fe2-4747-b3a5-df984e665fef"
+      },
+      "method": "GET"
+    }
+  ],
+  "targetFound": 1,
+  "after": {
+    "serik": {
+      "badge": 2,
+      "targets": [
+        {
+          "id": "e844630f-4fe2-4747-b3a5-df984e665fef",
+          "notifications": []
+        },
+        {
+          "id": "c8cbacab-dbaf-48be-8d70-c757ba1cffa5",
+          "notifications": [
+            1603
+          ]
+        }
+      ]
+    },
+    "boris": {
+      "badge": 13,
+      "targets": [
+        {
+          "id": "e844630f-4fe2-4747-b3a5-df984e665fef",
+          "notifications": []
+        },
+        {
+          "id": "c8cbacab-dbaf-48be-8d70-c757ba1cffa5",
+          "notifications": [
+            1602
+          ]
+        }
+      ]
+    }
+  }
+}

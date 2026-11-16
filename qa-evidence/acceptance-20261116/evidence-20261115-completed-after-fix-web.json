@@ -1,0 +1,24 @@
+{
+  "before": {
+    "server": 4,
+    "room": 1,
+    "bottom": "4",
+    "archive": "4",
+    "card": "1",
+    "other": 13
+  },
+  "afterArchive": {
+    "server": 4,
+    "room": 1
+  },
+  "afterRead": {
+    "server": 3,
+    "room": 0,
+    "other": 13
+  },
+  "restart": {
+    "server": 3,
+    "bottom": "3",
+    "cardUnread": 0
+  }
+}
