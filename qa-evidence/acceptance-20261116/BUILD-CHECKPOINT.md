@@ -5,3 +5,5 @@
 Контрактные проверки локально: 13 PASS. Черновой PR: https://github.com/777ubu-ai/urtruck-app/pull/718. Полный CI точного commit запущен: https://github.com/777ubu-ai/urtruck-app/actions/runs/43860870565. До успешного CI, сборки и проверки артефакта статус — NOT BUILT. Новый source SHA не следует называть исходным SHA 37dc; это его потомок с единственным изменением номера.
 
 Стандартный GitHub-hosted Ubuntu runner для публичного репозитория бесплатен по [документации GitHub](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job). Отдельные платные EAS, store release и другие новые платные сервисы не запускаются. Фактический артефакт и установку поверх сессии необходимо проверить отдельно.
+
+Дополнение: полный CI точного `f769bd25385393eab12fb852f8315bbd3495ddc0` завершён success. Запущена одна Android-сборка через стандартный Ubuntu runner: https://github.com/777ubu-ai/urtruck-app/actions/runs/43862449430, target QA2, архитектура arm64-v8a. До окончания workflow и проверки файла артефакт и установка не подтверждены.
