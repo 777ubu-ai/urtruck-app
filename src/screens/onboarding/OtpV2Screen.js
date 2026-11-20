@@ -33,6 +33,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { trackAuth } from '../../utils/authObservability';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
@@ -79,6 +80,7 @@ export default function OtpV2Screen({ navigation, route }) {
 
   const channel = route?.params?.channel === 'email' ? 'email' : 'phone';
   const isEmail = channel === 'email';
+  useEffect(() => { trackAuth('auth_otp_screen_opened', { method: channel }); }, [channel]);
   const phone = route?.params?.phone || '+7';
   const emailAddr = route?.params?.email || '';
   // Единый идентификатор для verify/signIn (телефон или e-mail).
@@ -148,6 +150,7 @@ export default function OtpV2Screen({ navigation, route }) {
       setError(t('otp_v2_wrong'));
       return;
     }
+    trackAuth('auth_otp_verify_started', { method: channel });
     setLoading(true);
     setError('');
     try {
@@ -155,12 +158,14 @@ export default function OtpV2Screen({ navigation, route }) {
         ? await regAPI.verifyEmailCode(identifier, c)
         : await regAPI.verifyCode(identifier, c);
       if (r.cooldown) {
+        trackAuth('auth_otp_verify_failed', { method: channel });
         setSecondsLeft(r.cooldown_sec || 60);
         setError(t('otp_v2_wrong'));
         setCode('');
         return;
       }
       if (!r.token) {
+        trackAuth('auth_otp_verify_failed', { method: channel, code: r.detail?.error });
         // #round-4 contract fix: a correct OTP code can still legitimately
         // fail identity resolution (duplicate canonical email → fail
         // closed, no session). That is NOT "wrong code" — showing the
@@ -177,6 +182,7 @@ export default function OtpV2Screen({ navigation, route }) {
         return;
       }
       await signIn(identifier, r.verification_level || 1);
+      trackAuth('auth_otp_verify_succeeded', { method: channel });
       push.autoRegister?.().catch(() => {});
 
       // RC2: если backend знает роль — в Main. Иначе на RoleV2.
@@ -201,6 +207,7 @@ export default function OtpV2Screen({ navigation, route }) {
         routes: [{ name: 'RoleV2', params: { phone: identifier, channel, email: emailAddr } }],
       });
     } catch (e) {
+      trackAuth('auth_otp_verify_failed', { method: channel });
       // 7.4: сетевой сбой (fetch throw) ≠ неверный код. На 3G в рейсе водитель
       // тыкал код, думая что ошибся, а это отвалилась связь. Разводим.
       setError(t('no_connection'));
