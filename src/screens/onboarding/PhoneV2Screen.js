@@ -39,6 +39,7 @@ import Feather from '@expo/vector-icons/Feather';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { trackAuth } from '../../utils/authObservability';
 import { useToast } from '../../components/Toast';
 import { regAPI } from '../../utils/registration';
 import { push } from '../../utils/push';
@@ -166,6 +167,8 @@ export default function PhoneV2Screen({ navigation, route }) {
   const role = route?.params?.role || null;
   const routedSocialUrl = route?.params?.socialAuthUrl || null;
 
+  useEffect(() => { trackAuth('auth_screen_opened'); }, []);
+
   const emailOk = isValidEmail(email);
   const anyBusy = emailBusy || !!socialBusy;
 
@@ -292,6 +295,7 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   const onSocialPress = async (provider) => {
     if (anyBusy) return;
+    trackAuth('auth_method_selected', { method: provider });
     setSocialError(null);
     setSocialBusy(provider);
     try {
@@ -314,6 +318,8 @@ export default function PhoneV2Screen({ navigation, route }) {
 
   const submitEmail = async () => {
     if (!emailOk || anyBusy) return;
+    trackAuth('auth_method_selected', { method: 'email' });
+    trackAuth('auth_email_send_started', { method: 'email' });
     setEmailBusy(true);
     setEmailError(null);
     try {
@@ -323,15 +329,18 @@ export default function PhoneV2Screen({ navigation, route }) {
         role,
       });
       if (result?.sent === false && result?.error && !result?.cooldown) {
+        trackAuth('auth_email_send_failed', { method: 'email' });
         setEmailError(t('phone_v2_send_failed'));
         return;
       }
+      trackAuth('auth_email_otp_screen_requested', { method: 'email' });
       navigation.navigate('OtpV2', {
         channel: 'email',
         email: cleanEmail,
         mockCode: result?.mock ? result.code : null,
       });
     } catch {
+      trackAuth('auth_email_send_failed', { method: 'email' });
       setEmailError(t('phone_v2_send_failed'));
     } finally {
       setEmailBusy(false);

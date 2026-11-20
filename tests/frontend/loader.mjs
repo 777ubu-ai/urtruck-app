@@ -9,6 +9,7 @@
 import { fileURLToPath } from 'node:url';
 
 const MOCKS = {
+  'posthog-react-native': new URL('./mocks/posthog.mjs', import.meta.url).href,
   'react-native': new URL('./mocks/react-native.mjs', import.meta.url).href,
   '@react-native-async-storage/async-storage': new URL('./mocks/async-storage.mjs', import.meta.url).href,
   'expo-constants': new URL('./mocks/expo-constants.mjs', import.meta.url).href,

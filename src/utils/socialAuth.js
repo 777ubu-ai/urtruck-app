@@ -1,3 +1,4 @@
+import { trackAuth } from './authObservability';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '../config/supabase';
@@ -90,6 +91,7 @@ export class SocialAuthError extends Error {
  * backend_verify_start → backend_verify_success → urtruck_session_saved →
  * role_resolved → navigation_complete. */
 export function logAuthStage(stage, meta = {}) {
+  trackAuth('auth_social_stage', { stage, method: meta.provider, code: meta.code, status: meta.httpStatus });
   const safe = {};
   if (meta.provider) safe.provider = meta.provider;
   if (meta.httpStatus != null) safe.httpStatus = meta.httpStatus;
