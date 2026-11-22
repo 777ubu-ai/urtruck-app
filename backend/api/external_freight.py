@@ -1,6 +1,8 @@
 """Read-only client API and isolated importer for external freight feed."""
 import hmac
 import os
+from threading import Lock
+from time import monotonic
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -13,6 +15,9 @@ from services.owned_telegram_feed import OWNED_SOURCE
 
 router = APIRouter(tags=["external-freight"])
 OWNED_TELEGRAM_SOURCE_ID = "4325478296"  # Telethon peer id; marked Telegram id is -1004325478296.
+COUNT_CACHE_SECONDS = 30
+_count_cache = {}
+_count_lock = Lock()
 
 
 def feature_enabled():
@@ -53,11 +58,27 @@ def list_carrier_directory(
 
 
 @router.get("/count")
-def count_external_feed(include_carriers: bool = Query(False), user: dict = Depends(require_level(1))):
+def count_external_feed(include_carriers: bool = Query(False), cached: bool = Query(False),
+                        user: dict = Depends(require_level(1))):
     _ensure_enabled()
     kind = _user_kind(user)
+    include_carriers = include_carriers and kind == "vehicle"
+    if not cached:
+        return _read_count(kind, include_carriers)
+    key = (kind, include_carriers)
+    with _count_lock:
+        entry = _count_cache.get(key)
+        now = monotonic()
+        if entry is not None and now < entry[0]:
+            return entry[1]
+        result = _read_count(kind, include_carriers)
+        _count_cache[key] = (now + COUNT_CACHE_SECONDS, result)
+        return result
+
+
+def _read_count(kind, include_carriers):
     from services.carrier_directory import list_contacts
-    extra = list_contacts(limit=1)["total"] if include_carriers and kind == "vehicle" else 0
+    extra = list_contacts(limit=1)["total"] if include_carriers else 0
     offers = dal.count_active_items(kind)
     return {"kind": kind, "count": offers + extra, "offer_count": offers, "carrier_count": extra}
 
@@ -74,6 +95,7 @@ def list_external_feed(
     limit: int = Query(30, ge=1, le=100), cursor: str | None = Query(None, max_length=1000),
     saved_only: bool = Query(False),
     include_carriers: bool = Query(False),
+    include_price_metadata: bool = Query(True),
     user: dict = Depends(require_level(1)),
 ):
     _ensure_enabled()
@@ -106,7 +128,7 @@ def list_external_feed(
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
-                              owner_id=user["id"], saved_only=saved_only)
+                              owner_id=user["id"], saved_only=saved_only, include_price_metadata=include_price_metadata)
         if use_carriers:
             from services.carrier_directory import append_contacts
             return append_contacts(result, limit=limit)

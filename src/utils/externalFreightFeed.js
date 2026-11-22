@@ -3,6 +3,7 @@ import { storage } from './storage';
 import { authedFetch } from './authEvents';
 
 export const EXTERNAL_FREIGHT_ENABLED = String(process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED || '').toLowerCase() === 'true';
+const LIST_TIMEOUT_MS = 10_000;
 
 function queryString(values = {}) {
   const params = new URLSearchParams();
@@ -14,6 +15,7 @@ function queryString(values = {}) {
 
 async function request(path, { signal, method = 'GET', body, isCurrent } = {}) {
   const token = await storage.get('ur_reg_token');
+  if (signal?.aborted) return { ok: false, error: 'request_cancelled' };
   if (isCurrent && !isCurrent()) return { ok: false, error: 'session_changed' };
   if (!token) return { ok: false, status: 401, error: 'auth_required' };
   try {
@@ -33,11 +35,31 @@ async function request(path, { signal, method = 'GET', body, isCurrent } = {}) {
 
 export const externalFreightAPI = {
   count(signal, isCurrent) {
-    return request('/count?include_carriers=true', { signal, isCurrent });
+    return request('/count?include_carriers=true&cached=true', { signal, isCurrent });
   },
-  list(filters = {}, signal) {
-    const query = queryString({ ...filters, include_carriers: true });
-    return request(query ? `?${query}` : '', { signal });
+  async list(filters = {}, signal) {
+    if (signal?.aborted) return { ok: false, error: 'request_cancelled' };
+    const query = queryString({ ...filters, include_carriers: true, include_price_metadata: false });
+    const controller = new AbortController();
+    let abort;
+    let timer;
+    try {
+      const deadline = new Promise(resolve => {
+        abort = () => {
+          resolve({ ok: false, error: 'request_cancelled' });
+          controller.abort();
+        };
+        signal?.addEventListener('abort', abort);
+        timer = setTimeout(() => {
+          resolve({ ok: false, error: 'request_timeout' });
+          controller.abort();
+        }, LIST_TIMEOUT_MS);
+      });
+      return await Promise.race([deadline, request(`?${query}`, { signal: controller.signal })]);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
   },
   bookmark(id, saved, signal, isCurrent) {
     return request(`/${encodeURIComponent(id)}/bookmark`, { method: saved ? 'PUT' : 'DELETE', signal, isCurrent });
