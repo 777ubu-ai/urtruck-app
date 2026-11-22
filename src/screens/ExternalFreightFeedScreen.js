@@ -530,9 +530,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + delta), animated: false });
         });
       }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => {
-        if (webTimeline || !cursor || error) return;
+        if (webTimeline || error || !visibleRows.length) return;
         if (busyRef.current) { paginationPendingRef.current = true; return; }
-        load();
+        if (cursor) load();
       }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
       onPress={() => {

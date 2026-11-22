@@ -208,6 +208,24 @@ test('достижение конца во время фонового запр�
   assert.equal(h.queries.at(-1).cursor, 'page2');
 });
 
+test('достижение конца кэшированной страницы сохраняет запрос до получения курсора', async () => {
+  const h = harness();
+  await h.flush();
+  h.saved();
+  await h.flush();
+
+  h.suspend();
+  h.saved();
+  await h.flush();
+  assert.equal(h.list().props.data.length, 30);
+  h.list().props.onEndReached();
+  h.release();
+  await h.flush();
+
+  assert.equal(h.queries.at(-1).cursor, 'page2');
+  assert.equal(h.list().props.data.length, 60);
+});
+
 test('сброс кузова сохраняет откуда, а отдельный общий сброс очищает всё', async () => {
   const h = harness(); await h.flush();
   h.node('external-feed-filter-origin').props.onPress(); await h.flush();
