@@ -1,4 +1,6 @@
 """Права и совместимость старых клиентов в единой ленте."""
+from datetime import datetime, timezone
+
 from database import external_freight_dal as dal
 from services.carrier_directory import publish_contacts
 from fastapi import FastAPI, HTTPException
@@ -45,6 +47,7 @@ def test_contacts_share_counter_and_feed_only_for_capable_client(monkeypatch, tm
         'phones': ['+77000000001'], 'emails': [], 'city': 'Алматы', 'availability': 'unknown',
         'publication_status': 'ready_for_directory_import', 'provenance': [], 'iin': 'private'}], tmp_path / 'catalog.sqlite3')
     _actor = None
+
     assert client.get('/api/v1/external-freight/directory').status_code == 401
     _actor = {'id': 'driver', 'role': 'driver'}
     assert client.get('/api/v1/external-freight/directory').status_code == 403
@@ -66,3 +69,30 @@ def test_contacts_share_counter_and_feed_only_for_capable_client(monkeypatch, tm
     monkeypatch.setenv('EXTERNAL_FREIGHT_FEED_ENABLED', 'false')
     assert client.get('/api/v1/external-freight/directory').status_code == 404
     _actor = None
+
+
+def test_legacy_first_page_reuses_currency_snapshot_without_caching_cards(monkeypatch, tmp_path):
+    monkeypatch.setenv('EXTERNAL_FREIGHT_DB_PATH', str(tmp_path / 'external.sqlite3'))
+    dal.init_schema()
+    real_utc = dal._utc
+    now = datetime(2026, 11, 22, 12, 0, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(dal, '_utc', lambda value=None: now if value is None else real_utc(value))
+    with dal.get_conn() as conn:
+        conn.execute(
+            """INSERT INTO external_freight_items (
+                id, kind, source_id, source_message_id, source_published_at, ingested_at, updated_at,
+                expires_at, original_text, source_revision, amount, currency, price_state, status
+            ) VALUES ('a', 'cargo', 'test', 'a', '2020-01-01', '2020-01-01', '2020-01-01',
+                '2999-01-01', 'Test', '1', 100, 'USD', 'known', 'active')"""
+        )
+    first = dal.list_items(kind='cargo')
+    assert first['price_currencies'] == ['USD']
+    assert first['price_sort_available']
+    with dal.get_conn() as conn:
+        conn.execute("UPDATE external_freight_items SET currency='CNY' WHERE id='a'")
+    same_bucket = dal.list_items(kind='cargo')
+    assert same_bucket['items'][0]['currency'] == 'CNY'
+    assert same_bucket['price_currencies'] == ['USD']
+    assert dal.list_items(kind='cargo', sort='price_asc')['price_currencies'] == ['CNY']
+    now = now.replace(second=16)
+    assert dal.list_items(kind='cargo')['price_currencies'] == ['CNY']
