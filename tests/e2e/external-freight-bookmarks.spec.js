@@ -22,7 +22,7 @@ test.use({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', permi
 
 async function boot(page, role = 'driver', options = {}) {
   const user = { id: 'feed-fixture-' + role, role, verification_level: 3, basic_onboarding_completed: 1 };
-  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [], liveItems: null };
+  const box = { saved: false, fail: false, writes: 0, errors: [], feedQueries: [], businessWrites: [], aiRequests: [], liveItems: null, countFail: !!options.countFail };
   const item = { id: 'external-fixture', kind: role === 'driver' ? 'cargo' : 'vehicle', status: 'active', origin: 'Алматы', destination: 'Ташкент',
     original_text: options.text ?? Array.from({ length: 16 }, (_, i) => `Условие ${i + 1}: нужен тент, груз готов, документы на погрузке.`).join('\n'), source_revision: 'fixture-revision', source_published_at: '2026-10-21T05:00:00Z', body_types: ['tent'], amount: 1500, currency: 'USD', price_state: 'known', contacts: ['+7 700 000 00 01'], ...options.item };
   page.on('pageerror', error => box.errors.push(error.message));
@@ -51,7 +51,7 @@ async function boot(page, role = 'driver', options = {}) {
     if (pathname === '/api/v1/register/me') data = user;
     else if (pathname === '/api/v1/users/me') data = { ...user, name: 'Тест ленты' };
     else if (pathname === '/api/v1/external-freight/count') {
-      if (options.countFail) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+      if (box.countFail) return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
       data = { kind: role === 'driver' ? 'cargo' : 'vehicle', count: options.count ?? 100001 };
     }
     else if (pathname.endsWith('/external-fixture/bookmark')) {
@@ -282,6 +282,8 @@ for (const role of ['driver', 'client']) {
 for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
   test('all filters: apply, cancel and reopen ' + name, async ({ page }) => {
     const box = await boot(page, 'client');
+    const cardQueries = () => box.feedQueries.filter(query => query.include_counts !== 'true');
+    const lastCardQuery = () => cardQueries().at(-1);
     const button = page.getByTestId('external-feed-filter-' + name);
     await button.scrollIntoViewIfNeeded();
     await button.click();
@@ -297,21 +299,22 @@ for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
     else if (name === 'price') await page.getByTestId('external-feed-price-options').getByText('↓ Дешевле').click();
     await page.getByTestId('external-feed-apply-filters').click();
     await expect(overlay).not.toBeVisible();
-    if (name === 'origin') await expect.poll(() => box.feedQueries.at(-1)?.origin_country).toBe('CN');
-    if (name === 'destination') await expect.poll(() => box.feedQueries.at(-1)?.destination).toBe('Алматы');
-    if (name === 'body') await expect.poll(() => box.feedQueries.at(-1)?.body_type).toBe('tent');
+    if (name === 'origin') await expect.poll(() => lastCardQuery()?.origin_country).toBe('CN');
+    if (name === 'destination') await expect.poll(() => lastCardQuery()?.destination).toBe('Алматы');
+    if (name === 'body') await expect.poll(() => lastCardQuery()?.body_type).toBe('tent');
     if (name === 'date') {
-      await expect.poll(() => box.feedQueries.at(-1)?.published_from).toBeTruthy();
+      await expect.poll(() => lastCardQuery()?.published_from).toBeTruthy();
       // Выбранная дата видна на чипе, а не только в отправленном query.
       const month = await page.evaluate(() => new Intl.DateTimeFormat('ru-RU', { month: 'short' }).format(new Date()));
       await expect(button).toContainText(month);
     }
     if (name === 'price') {
-      await expect.poll(() => box.feedQueries.at(-1)?.sort).toBe('price_asc');
-      expect(box.feedQueries.at(-1)?.currency).toBeUndefined();
-      expect(box.feedQueries.at(-1)?.min_price).toBeUndefined();
+      await expect.poll(() => lastCardQuery()?.sort).toBe('price_asc');
+      expect(lastCardQuery()?.currency).toBeUndefined();
+      expect(lastCardQuery()?.min_price).toBeUndefined();
     }
-    const appliedQuery = JSON.stringify(box.feedQueries.at(-1));
+    const appliedQuery = lastCardQuery();
+    const appliedRequests = cardQueries().length;
     await button.click();
     await expect(overlay).toBeVisible();
     if (name === 'origin' || name === 'destination') await page.getByTestId('external-feed-location-search').fill('Не применять');
@@ -320,7 +323,8 @@ for (const name of ['origin', 'destination', 'body', 'date', 'price']) {
     else if (name === 'price') await page.getByTestId('external-feed-price-options').getByText('↑ Дороже').click();
     await overlay.getByText('Отмена', { exact: true }).click();
     await expect(overlay).not.toBeVisible();
-    expect(JSON.stringify(box.feedQueries.at(-1))).toBe(appliedQuery);
+    expect(lastCardQuery()).toEqual(appliedQuery);
+    expect(cardQueries()).toHaveLength(appliedRequests);
     await button.click();
     await expect(overlay).toBeVisible();
     if (name === 'origin') await expect(page.getByTestId('external-feed-location-search')).toHaveValue('Китай');
@@ -369,13 +373,26 @@ test('entry distinguishes a confirmed zero from an unavailable count', async ({ 
 });
 test('entry remains usable without a count when API is unavailable', async ({ page }) => {
   const box = await boot(page, 'client', { countFail: true, entryOnly: true });
-  await expect(page.getByTestId('external-freight-count')).toHaveCount(0);
+  await expect(page.getByTestId('external-freight-count')).toHaveText('—');
   await page.getByTestId('external-freight-entry').click();
   await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
   expect(box.errors).toEqual([]);
 });
 
 // Проверяем наблюдаемое поведение и границы, а не копию реализации стилей.
+test('entry restores the last count after restart while the count API is unavailable', async ({ page }) => {
+  const box = await boot(page, 'driver', { count: 51768, entryOnly: true });
+  box.countFail = true;
+  await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname.endsWith('/external-freight/count') && response.status() === 503),
+    page.reload(),
+  ]);
+  await expect(page.getByTestId('external-freight-count')).toHaveText('51 768');
+  await page.getByTestId('external-freight-entry').click();
+  await expect(page.getByTestId('external-feed-card-external-fixture')).toBeVisible();
+  expect(box.errors).toEqual([]);
+});
+
 for (const role of ['driver', 'client']) {
   test(role + ': compact card and full title fit 320px; full description is recoverable', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 740 });

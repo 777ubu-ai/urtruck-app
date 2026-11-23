@@ -29,6 +29,16 @@ test('deployment script is scoped to feed components, online backups, and code-o
   assert.match(script, /# Code backup and consistent online snapshots; database snapshots are never restored over newer live state\./);
 });
 
+test('QA2 deploy includes the new count service and rolls back its first install', () => {
+  const service = 'backend/services/external_freight_count_snapshots.py';
+  const files = script.match(/^paths=\(([\s\S]*?)^\)/m)?.[1] || '';
+  const installed = script.match(/^code_paths=\(([^)]*)\)/m)?.[1] || '';
+  assert.ok(files.includes(service));
+  assert.ok(installed.includes(service));
+  assert.match(script, /external_freight_count_snapshots\.py\) touch "\$backup\/count-module-was-absent"/);
+  assert.match(script, /test -f "\$backup\/count-module-was-absent"; then\s+rm -f -- "\$qa\/backend\/services\/external_freight_count_snapshots\.py"/);
+});
+
 test('QA2 deployment waits for API readiness before starting either bridge', () => {
   const stopTimers = script.indexOf('sudo -n systemctl stop "${bridge_timers[@]}"');
   const waitForRunningBridges = script.indexOf('for unit in "${bridge_units[@]}"; do wait_for_oneshot_idle "$unit"; done');
