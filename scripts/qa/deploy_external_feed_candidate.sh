@@ -12,6 +12,7 @@ trap 'rm -rf "$bundle_dir"' EXIT
 paths=(
   backend/scheduler/jobs.py
   backend/services/external_freight_classifier.py
+  backend/services/external_freight_count_snapshots.py
   backend/services/external_freight_import_adapter.py
   backend/services/external_freight_queue_bridge.py
   backend/services/external_freight_parser.py
@@ -46,6 +47,7 @@ stage="$qa/.feed-candidate-$deploy_id"
 backup="$qa/backups/feed-candidate-$deploy_id"
 lock="$qa/.feed-candidate-deploy.lock"
 code_paths=(backend/scheduler/jobs.py backend/services/external_freight_classifier.py
+  backend/services/external_freight_count_snapshots.py
   backend/services/external_freight_import_adapter.py backend/services/external_freight_queue_bridge.py
   backend/services/external_freight_parser.py backend/database/external_freight_dal.py
   backend/api/external_freight.py ops/telegram-feed/health.py)
@@ -103,8 +105,11 @@ for path in "${code_paths[@]}"; do
   if test -f "$qa/$path"; then
     install -D -m 0600 "$qa/$path" "$backup/$path"
   else
-    test "$path" = ops/telegram-feed/health.py
-    touch "$backup/health-module-was-absent"
+    case "$path" in
+      ops/telegram-feed/health.py) touch "$backup/health-module-was-absent" ;;
+      backend/services/external_freight_count_snapshots.py) touch "$backup/count-module-was-absent" ;;
+      *) echo "missing_existing_code: $path" >&2; exit 1 ;;
+    esac
   fi
 done
 for unit in "${health_units[@]}"; do
@@ -167,6 +172,9 @@ rollback() {
   done
   if test -f "$backup/health-module-was-absent"; then
     rm -f -- "$qa/ops/telegram-feed/health.py"
+  fi
+  if test -f "$backup/count-module-was-absent"; then
+    rm -f -- "$qa/backend/services/external_freight_count_snapshots.py"
   fi
   for unit in "${health_units[@]}"; do
     if test -f "$backup/$unit"; then

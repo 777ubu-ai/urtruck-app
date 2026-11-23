@@ -417,7 +417,8 @@ def _serialize(row):
 
 def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
-               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False, include_total=False):
+               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False, include_total=False,
+               include_price_metadata=True):
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
@@ -495,17 +496,19 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
     sort_error = None
     price_currencies = []
     count_clauses, count_params = list(clauses), list(params)
-    with get_conn() as c:
-        currency_rows = c.execute(
-            f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
-            "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
-            tuple(params),
-        ).fetchall()
+    price_sort = sort.startswith("price_")
+    if include_price_metadata or price_sort:
+        with get_conn() as c:
+            currency_rows = c.execute(
+                f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
+                "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
+                tuple(params),
+            ).fetchall()
         price_currencies = [str(row[0]).upper() for row in currency_rows]
-        effective_sort = sort
-        if sort.startswith("price_") and not currency and len(price_currencies) != 1:
-            effective_sort = "newest"
-            sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
+    effective_sort = sort
+    if price_sort and not currency and len(price_currencies) != 1:
+        effective_sort = "newest"
+        sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
     # Порядок фиксируется на весь курсор: новая валюта между страницами
     # не должна превращать ценовой курсор в курсор даты.
     if decoded.get("effective_sort") in {"newest", "price_asc", "price_desc"}:

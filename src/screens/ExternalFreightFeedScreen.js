@@ -160,7 +160,12 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     busyRef.current = true;
     if (!background) setBusy(true);
     const owner = ownerKey;
-    const raw = { ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }), saved_only: savedOnly, include_counts: false };
+    const raw = {
+      ...buildExternalFeedQuery(filters, { cursor, limit: 30, reset }),
+      saved_only: savedOnly,
+      include_counts: false,
+      include_price_metadata: false,
+    };
     try {
       let result = await listWithTimeout(raw, signal).catch(() => ({ ok: false, error: 'network_error' }));
       // Для цены нельзя склеивать старый порядок с новой головой: обновляем
@@ -200,14 +205,17 @@ export default function ExternalFreightFeedScreen({ navigation }) {
         const unfiltered = !savedOnly && filters.sort === 'newest' && !Object.entries(filters)
           .some(([key, value]) => key !== 'sort' && value !== '' && value != null);
         (async () => {
-          const reply = await listWithTimeout({ ...raw, include_counts: true, limit: 1 }, signal).catch(() => null);
-          if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-          let counts = reply?.ok ? reply.counts : null;
-          if (!counts && unfiltered && typeof externalFreightAPI.count === 'function') {
-            const fallback = await countWithTimeout(signal, () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted);
-            if (sequence !== sequenceRef.current || signal?.aborted || owner !== ownerRef.current) return;
-            counts = fallback?.ok && fallback.kind === 'vehicle'
-              ? { total: fallback.count, offers: fallback.offer_count, carriers: fallback.carrier_count } : null;
+          const current = () => sequence === sequenceRef.current && owner === ownerRef.current && !signal?.aborted;
+          let counts;
+          const standalone = unfiltered && typeof externalFreightAPI.count === 'function';
+          const reply = standalone ? await countWithTimeout(signal, current) : null;
+          if (!current()) return;
+          if (reply?.ok && reply.kind === 'vehicle') {
+            counts = { total: reply.count, offers: reply.offer_count, carriers: reply.carrier_count };
+          } else if (!standalone || reply?.status === 404) {
+            const page = await listWithTimeout({ ...raw, include_counts: true, limit: 1 }, signal).catch(() => null);
+            if (!current()) return;
+            counts = page?.ok ? page.counts : null;
           }
           if (valid(counts)) { setFeedCounts(counts); setCountError(false); }
           else { setFeedCounts(null); setCountError(true); }
@@ -530,9 +538,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
           if (Math.abs(delta) > 1) listRef.current?.scrollToOffset({ offset: Math.max(0, viewportRef.current.offset + delta), animated: false });
         });
       }} data={webTimeline ? [...visibleRows].reverse() : visibleRows} renderItem={renderItem} keyExtractor={item => String(item.id)} contentContainerStyle={rows.length ? styles.list : styles.listEmpty} onRefresh={() => { setRefreshing(true); load({ reset: true }); }} refreshing={refreshing} onEndReached={() => {
-        if (webTimeline || !cursor || error) return;
+        if (webTimeline || error || !visibleRows.length) return;
         if (busyRef.current) { paginationPendingRef.current = true; return; }
-        load();
+        if (cursor) load();
       }} onEndReachedThreshold={0.45} ListEmptyComponent={busy ? <ActivityIndicator color={'#168759'} style={{ marginTop: 40 }} /> : <Text style={styles.message}>{filters.origin || filters.destination || filters.body_type || filters.body_query || filters.published_from ? l.none : l.empty}</Text>} ListFooterComponent={busy && rows.length ? <ActivityIndicator color={'#168759'} style={{ marginVertical: 14 }} /> : null} initialNumToRender={8} maxToRenderPerBatch={8} windowSize={7} removeClippedSubviews /> : null}
     {timeline && unseenIds.length > 0 ? <TouchableOpacity style={styles.newListings} accessibilityRole="button" testID="external-feed-new-listings"
       onPress={() => {
@@ -606,6 +614,7 @@ function vehicleCountLabel(value, lang, needed) {
 async function countWithTimeout(parentSignal, isCurrent, timeoutMs = 8000) {
   const controller = new AbortController();
   const abortFromParent = () => controller.abort();
+  if (parentSignal?.aborted) return null;
   parentSignal?.addEventListener('abort', abortFromParent, { once: true });
   let timeout;
   try {

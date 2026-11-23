@@ -23,7 +23,7 @@ const code = babel.transformSync(readFileSync('src/screens/ExternalFreightFeedSc
 const stamp = '2026-10-23T10:00:00Z';
 const cards = Array.from({ length: 60 }, (_, i) => ({ id: String(100 - i), status: 'active', source_published_at: stamp, original_text: 'Исходный текст', contacts: [], body_types: [] }));
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness({ role = 'driver', fixtures = cards, platform = 'android', lang = 'RU', countReply = null, listCounts = null, countPagePending = null } = {}) {
+function harness({ role = 'driver', fixtures = cards, platform = 'android', lang = 'RU', countReply = { ok: false, status: 404 }, listCounts = null, countPagePending = null } = {}) {
   const opened = [], copied = [], scrollOffsets = [];
   const slots = [], pending = [], listeners = new Map(), intervals = new Map(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
@@ -206,6 +206,24 @@ test('достижение конца во время фонового запр�
   h.release(); await h.flush();
   assert.equal(h.list().props.data.length, 60);
   assert.equal(h.queries.at(-1).cursor, 'page2');
+});
+
+test('достижение конца кэшированной страницы сохраняет запрос до получения курсора', async () => {
+  const h = harness();
+  await h.flush();
+  h.saved();
+  await h.flush();
+
+  h.suspend();
+  h.saved();
+  await h.flush();
+  assert.equal(h.list().props.data.length, 30);
+  h.list().props.onEndReached();
+  h.release();
+  await h.flush();
+
+  assert.equal(h.queries.at(-1).cursor, 'page2');
+  assert.equal(h.list().props.data.length, 60);
 });
 
 test('сброс кузова сохраняет откуда, а отдельный общий сброс очищает всё', async () => {
@@ -399,10 +417,11 @@ for (const [lang, total, offers, carriers] of [
   assert.equal(h.queries[1].include_counts, true);
   assert.equal(h.queries[1].limit, 1);
 });
-test('старый сервер: общий счётчик берётся из совместимого endpoint', async () => {
+test('общий счётчик берётся из отдельного endpoint без второго запроса ленты', async () => {
   const h = harness({ role: 'client', countReply: { ok: true, kind: 'vehicle', count: 1353, offer_count: 56, carrier_count: 1297 } });
   await h.flush();
   assert.ok(h.node('external-feed-count-breakdown').props.children.join('').includes('1353'));
+  assert.equal(h.queries.length, 1);
 });
 test('некорректное расхождение категорий не отображается как достоверный счётчик', async () => {
   const h = harness({ role: 'client', listCounts: { total: 99, offers: 56, carriers: 1297 } });

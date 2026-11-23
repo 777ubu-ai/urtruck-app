@@ -34,6 +34,7 @@ function harness(role, reply = null) {
     '../../theme/designV1': { useV1Colors: () => ({}), useDriverCeramicColors: () => ({}) },
     '../../utils/useI18n': { useI18n: () => ({ lang: 'RU', t:key=>key }) },
     '../../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'synthetic-' + role, role } } }) },
+    '../../utils/storage': { storage: { async get() {}, async set() {}, async remove() {} } },
     '../../utils/externalFreightSession': { sessionRole: () => role },
     '../../utils/externalFreightFeed': { EXTERNAL_FREIGHT_ENABLED: true, externalFreightAPI: {
       async count() { calls++; return reply || { ok: true, kind: role === 'driver' ? 'cargo' : 'vehicle', count: 42 }; },

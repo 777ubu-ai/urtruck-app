@@ -9,8 +9,8 @@ const code = require('@babel/core').transformSync(readFileSync('src/components/e
   plugins: [require('@babel/plugin-transform-react-jsx'), require('@babel/plugin-transform-modules-commonjs')],
 }).code;
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function harness(role = 'driver') {
-  let slots = [], cursor = 0, effects = [], dirty = true, tree, calls = 0, now = 0, serial = 0;
+function harness(role = 'driver', stored = new Map()) {
+  let slots = [], cursor = 0, effects = [], dirty = true, tree, calls = 0, now = 1000, serial = 0;
   let user = 'one', focused = true, appCallback, reply = { ok: true, kind: role === 'driver' ? 'cargo' : 'vehicle', count: 42 };
   const timers = new Map(), listeners = new Map();
   const React = {
@@ -26,12 +26,17 @@ function harness(role = 'driver') {
     '@expo/vector-icons/Feather': 'Feather', '../../theme/designV1': { useV1Colors: () => ({}), useDriverCeramicColors: () => ({}) },
     '../../utils/useI18n': { useI18n: () => ({ lang: 'RU', t: x => x }) },
     '../../utils/AuthContext': { useAuth: () => ({ session: { user: { id: user, role } } }) },
+    '../../utils/storage': { storage: {
+      async get(key) { return stored.get(key); },
+      async set(key, value) { stored.set(key, value); },
+      async remove(key) { stored.delete(key); },
+    } },
     '../../utils/externalFreightSession': { sessionRole: () => role },
     '../../utils/additionalLocales.js': { withAdditionalLanguageTree: x => x },
     '../../utils/externalFreightFeed': { EXTERNAL_FREIGHT_ENABLED: true, externalFreightAPI: { count(signal) { calls++; return typeof reply === 'function' ? reply(signal) : Promise.resolve(reply); } } },
   };
   const module = { exports: {} };
-  vm.runInNewContext(code, { module, exports: module.exports, AbortController, Date: { now: () => now },
+  vm.runInNewContext(code, { module, exports: module.exports, AbortController, Date: { now: () => now, parse: Date.parse },
     require: name => { assert.ok(name in mocks, name); return mocks[name]; },
     setTimeout: (fn, delay) => { const id = ++serial; timers.set(id, { fn, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id),
   });
@@ -40,6 +45,7 @@ function harness(role = 'driver') {
   function unmount() { slots.forEach(s => s.cleanup?.()); slots = []; }
   const h = {
     render, calls: () => calls, count: () => nodes().find(n => n.props.testID === 'external-freight-count')?.props.children.join(''),
+    outdated: () => nodes().some(n => n.props.name === 'clock'),
     failed: () => nodes().some(n => n.props.name === 'alert-circle'),
     setReply(value) { reply = value; },
     async flush() { for (let i = 0; i < 5; i++) { render(); await tick(); } },
@@ -94,8 +100,39 @@ for (const status of [401, 403]) test(`${status}: clears cached count without re
   const h = harness(); await h.flush(); h.setReply({ ok: false, status }); h.focus(); await h.flush(); assert.equal(h.count(), '—');
   await h.advance(60000); assert.equal(h.calls(), 2); h.remount(); assert.equal(h.count(), '…'); h.unmount();
 });
-test('expired memory snapshot is not presented as a current count', async () => {
-  const h = harness(); await h.flush(); await h.advance(300001); h.setReply(() => new Promise(() => {})); h.remount(); assert.equal(h.count(), '…'); h.unmount();
+test('old count remains visible with a clock marker during refresh', async () => {
+  const h = harness();
+  await h.flush();
+  await h.advance(300001);
+  h.setReply(() => new Promise(() => {}));
+  h.remount();
+  assert.equal(h.count(), '42');
+  assert.ok(h.outdated());
+  h.unmount();
+});
+
+test('restart restores saved count before the API completes and respects account scope', async () => {
+  const stored = new Map();
+  const before = harness('driver', stored);
+  await before.flush();
+  before.unmount();
+  const after = harness('driver', stored);
+  after.setReply(() => new Promise(() => {}));
+  await after.flush();
+  assert.equal(after.count(), '42');
+  after.user('two');
+  await after.flush();
+  assert.equal(after.count(), '…');
+  after.unmount();
+});
+
+test('server stale snapshot retains its number and shows the clock marker', async () => {
+  const h = harness();
+  h.setReply({ ok: true, kind: 'cargo', count: 421, as_of: '1970-01-01T00:00:00.001Z', stale: true });
+  await h.flush();
+  assert.equal(h.count(), '421');
+  assert.ok(h.outdated());
+  h.unmount();
 });
 
 for (const role of ['driver', 'client']) test(`${role}: recovers from a prolonged outage without opening the feed`, async () => {

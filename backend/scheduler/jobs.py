@@ -12,7 +12,7 @@ from database import db
 from parsers import telegram_parser
 from scoring.engine import calculate_score
 from scheduler.backup_job import run_backup
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def parse_telegram_job():
@@ -251,6 +251,13 @@ def start_scheduler():
     # Истёкшие записи скрываются при запросе; пакетная задача выполняет
     # физическую очистку независимо от открытия ленты пользователями.
     sched.add_job(external_freight_retention_job, IntervalTrigger(minutes=5), id="external_freight_retention")
+    from services import external_freight_count_snapshots as count_snapshots
+
+    if count_snapshots.enabled():
+        sched.add_job(
+            count_snapshots.refresh, IntervalTrigger(seconds=count_snapshots.REFRESH_SECONDS),
+            id="external_freight_count_snapshots", next_run_time=datetime.now(timezone.utc),
+        )
     sched.start()
     _scheduler = sched
     print("Scheduler started: TG-parse 6h, rescore monthly, DB backup hourly, reminders 10:00 Almaty, no-bids 3h, push-outbox-drain 30s, gps-heartbeat 5m, external-feed-retention 5m")
