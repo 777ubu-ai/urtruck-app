@@ -63,6 +63,7 @@ def _publish(key, count, as_of):
 
 
 def refresh():
+    published = {}
     for key, compute in (
         ("cargo", lambda: dal.count_active_items("cargo")),
         ("vehicle", lambda: dal.count_active_items("vehicle")),
@@ -70,12 +71,15 @@ def refresh():
     ):
         started = time.time()
         try:
-            _publish(key, compute(), started)
+            count = compute()
+            _publish(key, count, started)
         except Exception:
             logger.exception("external_freight_count_snapshot_refresh_failed key=%s", key)
         else:
+            published[key] = count
             logger.info("external_freight_count_snapshot_published key=%s elapsed_ms=%.0f",
                         key, (time.time() - started) * 1000)
+    return published
 
 
 def get(kind, include_carriers):
