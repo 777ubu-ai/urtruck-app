@@ -15,7 +15,7 @@ test('external-feed QA2 deploy requires promoted exact SHA and full quality gate
   assert.match(workflow, /environment:\s*\n\s+name: qa2/);
 });
 
-test('deployment script is scoped to feed components, online backups, and code-only rollback', () => {
+test('deployment script is scoped to QA2 feed components with reversible configuration', () => {
   for (const marker of [
     'external_freight_classifier.py', 'external_freight_import_adapter.py',
     'external_freight_queue_bridge.py', 'external-feed-owned/adapter.sqlite3',
@@ -27,6 +27,9 @@ test('deployment script is scoped to feed components, online backups, and code-o
   assert.doesNotMatch(script, /urtruck-telegram-feed\.service|collector\/(?:feed|health)\.py/);
   assert.doesNotMatch(script, /systemctl restart[^\n]*(?:production|telegram-feed)/i);
   assert.match(script, /# Code backup and consistent online snapshots; database snapshots are never restored over newer live state\./);
+  assert.match(script, /systemctl show urtruck-qa2\.service -p EnvironmentFiles/);
+  assert.match(script, /test ! -L "\$qa_env"/);
+  assert.match(script, /qa2-env-was-changed/);
 });
 
 test('QA2 deploy includes the new count service and rolls back its first install', () => {
@@ -44,20 +47,35 @@ test('QA2 deployment waits for API readiness before starting either bridge', () 
   const waitForRunningBridges = script.indexOf('for unit in "${bridge_units[@]}"; do wait_for_oneshot_idle "$unit"; done');
   const firstCopy = script.indexOf('install -D -m 0644 "$stage/$path" "$qa/$path"');
   const restartApi = script.indexOf('sudo -n systemctl restart urtruck-qa2.service', firstCopy);
-  const apiReady = script.indexOf('wait_for_qa2_api\nsudo -n systemctl start urtruck-qa2-feed-bridge.service', restartApi);
-  const incomingStart = script.indexOf('sudo -n systemctl start urtruck-qa2-feed-bridge.service', apiReady);
+  const apiReady = script.indexOf('wait_for_qa2_api\nPYTHONPATH=', restartApi);
+  const snapshotRuntime = script.indexOf('QA2_COUNT_SNAPSHOT_RUNTIME=enabled,fresh', apiReady);
+  const startBridge = script.indexOf('sudo -n systemctl start urtruck-qa2-feed-bridge.service', snapshotRuntime);
+  const incomingStart = script.indexOf('sudo -n systemctl start urtruck-qa2-feed-bridge.service', startBridge);
   const ownedStart = script.indexOf('sudo -n systemctl start urtruck-qa2-owned-feed-bridge.service', incomingStart);
   const restoreTimers = script.indexOf('for unit in "${bridge_timers[@]}"; do', ownedStart);
 
   for (const index of [stopTimers, waitForRunningBridges, firstCopy, restartApi, apiReady,
-    incomingStart, ownedStart, restoreTimers]) assert.notEqual(index, -1);
+    snapshotRuntime, startBridge, incomingStart, ownedStart, restoreTimers]) assert.notEqual(index, -1);
   assert.ok(stopTimers < waitForRunningBridges && waitForRunningBridges < firstCopy);
   assert.ok(firstCopy < restartApi && restartApi < apiReady && apiReady < incomingStart);
+  assert.ok(snapshotRuntime < startBridge);
   assert.ok(incomingStart < ownedStart && ownedStart < restoreTimers);
   assert.match(script, /\/openapi\.json/);
   assert.match(script, /\/api\/v1\/external-freight\/import/);
   assert.match(script, /qa2_bridge_did_not_quiesce/);
   assert.doesNotMatch(script, /systemctl restart\s+"\$\{(?:units|bridge_units)\[@\]\}"/);
+});
+
+test('QA2 snapshots are refreshed and verified before the feature flag is enabled', () => {
+  const warmup = script.indexOf('QA2_COUNT_SNAPSHOT_WARMUP=');
+  const envChanged = script.indexOf('touch "$backup/qa2-env-was-changed"');
+  const enable = script.indexOf('EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=true');
+  const restart = script.indexOf('sudo -n systemctl restart urtruck-qa2.service', envChanged);
+  assert.ok(warmup >= 0 && envChanged > warmup && enable > envChanged && restart > enable);
+  assert.match(script, /qa2_external_freight_database_precondition_failed/);
+  assert.match(script, /qa2_carrier_database_precondition_failed/);
+  assert.match(script, /qa2_count_snapshot_warmup_mismatch/);
+  assert.match(script, /qa2_count_snapshot_not_fresh/);
 });
 
 test('rollback restores code and readiness before resuming timers without firing a bridge one-shot', () => {
@@ -68,6 +86,8 @@ test('rollback restores code and readiness before resuming timers without firing
   assert.match(rollback, /systemctl restart urtruck-qa2\.service/);
   assert.match(rollback, /wait_for_qa2_api/);
   assert.match(rollback, /rollback_api_not_ready; QA2 timers remain stopped/);
+  assert.match(rollback, /qa2-env-was-changed/);
+  assert.match(rollback, /qa2-env"/);
   assert.doesNotMatch(rollback, /systemctl (?:start|restart) urtruck-qa2-(?:owned-)?feed-bridge\.service/);
 });
 
