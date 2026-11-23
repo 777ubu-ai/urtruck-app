@@ -1708,3 +1708,88 @@ def test_vehicle_window_paginated_ids_match_count(retention_now):
     assert len(seen) == len(set(seen)) == len(expected)
     assert set(seen) == expected
     assert client.get('/api/v1/external-freight/count').json()['count'] == len(expected)
+
+
+def test_count_uses_persisted_snapshots_without_querying_feed_on_request(monkeypatch):
+    global _actor
+    from services import external_freight_count_snapshots as snapshots
+
+    url = "/api/v1/external-freight/count"
+    monkeypatch.setenv("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED", "true")
+    assert client.get(url).status_code == 401
+    _actor = {"role": "driver", "id": "count-cargo-test"}
+    assert client.get(url).status_code == 503
+
+    assert _import(_record()).status_code == 200
+    monkeypatch.setattr(snapshots, "list_contacts", lambda **_: {"total": 1297})
+    snapshots.refresh()
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("simulated database read failure")
+
+    monkeypatch.setattr(snapshots.dal, "count_active_items", unavailable)
+    monkeypatch.setattr(snapshots, "list_contacts", unavailable)
+    cargo = client.get(url + "?include_carriers=true")
+    assert cargo.status_code == 200
+    assert cargo.json()["count"] == cargo.json()["offer_count"] == 1
+    assert cargo.json()["carrier_count"] == 0
+    assert cargo.json()["stale"] is False
+    page = client.get("/api/v1/external-freight?limit=1&include_counts=true")
+    assert page.status_code == 200
+    assert page.json()["counts"] == {"total": 1, "offers": 1, "carriers": 0}
+
+    _actor = {"role": "client", "user_id": "count-vehicle-test"}
+    assert client.get(url).json()["count"] == 0
+    vehicles = client.get(url + "?include_carriers=true").json()
+    assert vehicles["count"] == vehicles["carrier_count"] == 1297
+    assert vehicles["offer_count"] == 0
+    snapshots.refresh()
+    assert client.get(url + "?include_carriers=true").json() == vehicles
+
+    now = snapshots.time.time()
+    monkeypatch.setattr(snapshots.time, "time", lambda: now + snapshots.STALE_SECONDS + 1)
+    stale = client.get(url + "?include_carriers=true").json()
+    assert stale == {**vehicles, "stale": True}
+
+
+def test_count_snapshot_refresh_reuses_publication_rules_and_can_decrease(monkeypatch):
+    global _actor
+    from services import external_freight_count_snapshots as snapshots
+
+    _actor = {"role": "driver", "user_id": "count-expiry-test"}
+    url = "/api/v1/external-freight/count"
+    assert _import(_record()).status_code == 200
+    legacy = client.get(url).json()
+    assert legacy == {"kind": "cargo", "count": 1, "offer_count": 1, "carrier_count": 0}
+    monkeypatch.setenv("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED", "true")
+    snapshots.refresh()
+    assert client.get(url).json()["count"] == 1
+
+    with get_conn() as conn:
+        conn.execute("UPDATE external_freight_items SET expires_at = '2000-01-01T00:00:00+00:00'")
+    assert client.get(url).json()["count"] == 1
+    snapshots.refresh()
+    assert client.get(url).json()["count"] == 0
+
+
+def test_feed_price_metadata_opt_out_keeps_cursors_and_price_sort_compatible():
+    global _actor
+    _actor = {"id": "price-metadata-test", "role": "driver"}
+    for amount, currency in [(100, "USD"), (200, "KZT"), (150, "USD")]:
+        assert _import(_record(amount=amount, currency=currency)).status_code == 200
+    url = "/api/v1/external-freight"
+
+    legacy = client.get(url, params={"limit": 2}).json()
+    assert set(legacy["price_currencies"]) == {"USD", "KZT"}
+    fast = client.get(url, params={"limit": 2, "include_price_metadata": "false"}).json()
+    assert fast["price_currencies"] == []
+    assert [item["id"] for item in fast["items"]] == [item["id"] for item in legacy["items"]]
+    following = client.get(url, params={"limit": 2, "cursor": fast["next_cursor"]}).json()
+    assert len(following["items"]) == 1
+    assert following["items"][0]["id"] not in {item["id"] for item in fast["items"]}
+
+    mixed = client.get(url, params={"sort": "price_asc", "include_price_metadata": "false"}).json()
+    assert mixed["sort_error"] == "mixed_currency"
+    sorted_usd = client.get(url, params={"sort": "price_asc", "currency": "USD", "include_price_metadata": "false"}).json()
+    assert sorted_usd["sort_applied"] == "price_asc"
+    assert [item["amount"] for item in sorted_usd["items"]] == [100, 150]

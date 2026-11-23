@@ -9,6 +9,7 @@ from fastapi.routing import APIRoute
 
 from api.verification_gate import require_level, require_admin
 from database import external_freight_dal as dal
+from services import external_freight_count_snapshots as count_snapshots
 from services.external_freight_classifier import classify_message
 from services.external_freight_parser import apply_core_review, valid_phone_contacts
 from services.owned_telegram_feed import OWNED_SOURCE
@@ -89,6 +90,11 @@ def list_carrier_directory(
 def count_external_feed(include_carriers: bool = Query(False), user: dict = Depends(require_level(1))):
     _ensure_enabled()
     kind = _user_kind(user)
+    if count_snapshots.enabled():
+        snapshot = count_snapshots.get(kind, include_carriers)
+        if snapshot is None:
+            raise HTTPException(status_code=503, detail={"error": "external_freight_count_unavailable"})
+        return snapshot
     from services.carrier_directory import list_contacts
     extra = list_contacts(limit=1)["total"] if include_carriers and kind == "vehicle" else 0
     offers = dal.count_active_items(kind)
@@ -107,6 +113,7 @@ def list_external_feed(
     limit: int = Query(30, ge=1, le=100), cursor: str | None = Query(None, max_length=1000),
     saved_only: bool = Query(False),
     include_carriers: bool = Query(False), include_counts: bool = Query(False),
+    include_price_metadata: bool = Query(True),
     user: dict = Depends(require_level(1)),
 ):
     _ensure_enabled()
@@ -125,9 +132,13 @@ def list_external_feed(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail={"error": "invalid_date_range"}) from exc
     kind = _user_kind(user)
-    use_carriers = include_carriers and kind == "vehicle" and not saved_only and sort == "newest" and not any((
+    unfiltered = not saved_only and not any((
         origin, destination, origin_country, destination_country, body_type, body_query, published_from, published_to, currency,
         min_price is not None, max_price is not None))
+    use_carriers = include_carriers and kind == "vehicle" and unfiltered and sort == "newest"
+    snapshot = None
+    if include_counts and not cursor and unfiltered and sort == "newest" and count_snapshots.enabled():
+        snapshot = count_snapshots.get(kind, use_carriers)
     try:
         if cursor and cursor.startswith("carrier:"):
             if not use_carriers or not cursor[8:].isdigit() or len(cursor) > 30:
@@ -139,14 +150,18 @@ def list_external_feed(
                               origin_country=origin_country, destination_country=destination_country,
                               published_from=published_from, published_to=published_to, currency=currency,
                               min_price=min_price, max_price=max_price, sort=sort, limit=limit, cursor=cursor,
-                              owner_id=user["id"], saved_only=saved_only, include_total=include_counts and not cursor)
+                              owner_id=user["id"], saved_only=saved_only, include_total=include_counts and not cursor and snapshot is None,
+                              include_price_metadata=include_price_metadata)
         if include_counts and not cursor:
-            offers = result.pop("total")
-            if use_carriers:
-                from services.carrier_directory import list_contacts
-                carriers = list_contacts(limit=1)["total"]
+            if snapshot is not None:
+                offers, carriers = snapshot["offer_count"], snapshot["carrier_count"]
             else:
-                carriers = 0
+                offers = result.pop("total")
+                if use_carriers:
+                    from services.carrier_directory import list_contacts
+                    carriers = list_contacts(limit=1)["total"]
+                else:
+                    carriers = 0
             result["counts"] = {"total": offers + carriers, "offers": offers, "carriers": carriers}
         if use_carriers:
             from services.carrier_directory import append_contacts

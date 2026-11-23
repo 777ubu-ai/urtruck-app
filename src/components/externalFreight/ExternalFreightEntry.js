@@ -5,15 +5,16 @@ import Feather from '@expo/vector-icons/Feather';
 import { useV1Colors, useDriverCeramicColors } from '../../theme/designV1';
 import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
+import { storage } from '../../utils/storage';
 import { sessionRole } from '../../utils/externalFreightSession';
 import { EXTERNAL_FREIGHT_ENABLED, externalFreightAPI } from '../../utils/externalFreightFeed';
 
-// Short-lived, memory-only snapshots survive screen remounts. Never share across owners/roles.
+// Only the latest successful count per role is stored on disk, with its owner.
 const countSnapshots = new Map();
 const snapshotLifetime = 5 * 60 * 1000;
 function cachedCount(ownerKey) {
   const snapshot = countSnapshots.get(ownerKey);
-  return snapshot && Date.now() - snapshot.updatedAt < snapshotLifetime ? snapshot : null;
+  return snapshot || null;
 }
 function rememberCount(snapshot) {
   countSnapshots.delete(snapshot.ownerKey);
@@ -39,6 +40,20 @@ export default function ExternalFreightEntry(props) {
     let alive = true, controller = null, timeout = null, retryTimer = null;
     setResult(cachedCount(ownerKey));
     const current = () => alive && ownerRef.current === ownerKey;
+    const storageKey = `ur_external_freight_count_v1:${role}`;
+    let acceptStoredCount = true;
+    storage.get(storageKey).then(raw => {
+      if (!current() || !acceptStoredCount || !raw) return;
+      let snapshot;
+      try { snapshot = JSON.parse(raw); } catch { return; }
+      if (snapshot?.ownerKey !== ownerKey || !Number.isSafeInteger(snapshot.count) || snapshot.count < 0
+        || !Number.isFinite(snapshot.updatedAt) || snapshot.updatedAt <= 0) return;
+      const stored = { ownerKey, count: snapshot.count, updatedAt: snapshot.updatedAt, stale: snapshot.stale === true };
+      setResult(previous => {
+        if (previous?.ownerKey === ownerKey && previous.updatedAt >= stored.updatedAt) return previous;
+        return { ...stored, error: previous?.ownerKey === ownerKey && previous.error };
+      });
+    });
     const cancel = () => {
       const request = controller;
       controller = null;
@@ -73,12 +88,23 @@ export default function ExternalFreightEntry(props) {
         const hasParts = data.offer_count != null || data.carrier_count != null;
         const partsMatch = !hasParts || (offerCount !== null && carrierCount !== null && count === offerCount + carrierCount);
         if (data.ok && data.kind === kind && Number.isSafeInteger(count) && count >= 0 && partsMatch) {
-          const snapshot = { ownerKey, count, offerCount, carrierCount, updatedAt: Date.now() };
+          acceptStoredCount = false;
+          retryable = data.stale === true;
+          const snapshot = {
+            ownerKey, count, offerCount, carrierCount,
+            updatedAt: Date.parse(data.as_of) || Date.now(),
+            stale: data.stale === true,
+          };
           rememberCount(snapshot);
           setResult(snapshot);
+          void storage.set(storageKey, JSON.stringify(snapshot));
         } else {
           const unauthorized = data.status === 401 || data.status === 403;
-          if (unauthorized) countSnapshots.delete(ownerKey);
+          if (unauthorized) {
+            acceptStoredCount = false;
+            countSnapshots.delete(ownerKey);
+            void storage.remove(storageKey);
+          }
           retryable = !unauthorized;
           setResult(previous => ({ ...(!unauthorized && previous?.ownerKey === ownerKey ? previous : {}), ownerKey, error: true }));
         }
@@ -118,6 +144,7 @@ Object.assign(labels, withAdditionalLanguageTree(labels));
   const palette = ceramic ? ceramicColors : colors;
   const count = result?.ownerKey === ownerKey ? result.count ?? null : null;
   const failed = result?.ownerKey === ownerKey && result.error;
+  const outdated = count !== null && (result.stale || Date.now() - result.updatedAt >= snapshotLifetime);
   const countText = count === null ? (failed ? '—' : '…') : String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   const label = labels[lang] || labels.EN;
   return <View>
@@ -129,7 +156,8 @@ Object.assign(labels, withAdditionalLanguageTree(labels));
         style={[styles.entry, { backgroundColor: colors.driverSoft, borderColor: palette.border }]}>
         <Feather name="list" size={15} color={palette.text} />
         <Text numberOfLines={1} style={[styles.label, { color: palette.text }]}>{label}</Text>
-        {failed ? <Feather name="alert-circle" size={15} color={palette.text} accessibilityLabel={t('load_error')} /> : null}
+        {failed || outdated ? <Feather name={failed ? 'alert-circle' : 'clock'} size={15} color={palette.text}
+          accessibilityLabel={failed ? t('load_error') : t('track_updated')} /> : null}
         <Text testID="external-freight-count" numberOfLines={1}
           style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText}</Text>
       </TouchableOpacity>
