@@ -99,7 +99,7 @@ jobs:
     env:
       SERVER_HOST: ${{ secrets.SERVER_HOST }}
       SERVER_USER: ${{ secrets.SERVER_USER }}
-      SERVER_PASS: ${{ secrets.SERVER_PASS }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
       SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
       QA2_API_URL: ${{ secrets.QA2_API_URL }}
       QA_SOURCE_SHA: ${{ inputs.source_sha }}
@@ -119,9 +119,11 @@ jobs:
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
           git fetch --no-tags origin qa2/integration-candidate
           git merge-base --is-ancestor "$QA_SOURCE_SHA" origin/qa2/integration-candidate
-          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_PASS"
+          test -n "$SERVER_HOST" && test -n "$SERVER_USER" && test -n "$SERVER_SSH_KEY"
           test -n "$SERVER_SSH_KNOWN_HOSTS" && test "$QA2_API_URL" = https://qa2.urtruck.kz
-      - name: Install pinned SSH transport
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+      - name: Verify pinned OpenSSH transport
+        run: |
+          command -v ssh
+          command -v scp
       - name: Install, verify and preserve rollback on QA2
         run: bash scripts/qa/deploy_external_feed_candidate.sh
