@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${SERVER_HOST:?}" "${SERVER_USER:?}" "${SERVER_PASS:?}" "${SERVER_SSH_KNOWN_HOSTS:?}" "${QA2_API_URL:?}" "${QA_SOURCE_SHA:?}" "${GITHUB_RUN_ID:?}"
+: "${SERVER_HOST:?}" "${SERVER_USER:?}" "${SERVER_SSH_KEY:?}" "${SERVER_SSH_KNOWN_HOSTS:?}" "${QA2_API_URL:?}" "${QA_SOURCE_SHA:?}" "${GITHUB_RUN_ID:?}"
 test "$QA2_API_URL" = "https://qa2.urtruck.kz"
 [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
 run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
@@ -31,13 +31,14 @@ for path in "${paths[@]}"; do install -D -m 0644 "$path" "$bundle_dir/$path"; do
 )
 bundle_sha="$(shasum -a 256 "$bundle_dir/feed-candidate.tar.gz" | awk '{print $1}')"
 known_hosts="$bundle_dir/known_hosts"
+key_file="$bundle_dir/deploy_key"
 printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts"
-chmod 600 "$known_hosts"
-export SSHPASS="$SERVER_PASS"
-ssh_opts=(-o BatchMode=no -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
+printf '%s\\n' "$SERVER_SSH_KEY" > "$key_file"
+chmod 600 "$known_hosts" "$key_file"
+ssh_opts=(-i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
 remote_tar="/tmp/urtruck-feed-candidate-${GITHUB_RUN_ID}-${run_attempt}.tar.gz"
-sshpass -e scp "${ssh_opts[@]}" "$bundle_dir/feed-candidate.tar.gz" "$SERVER_USER@$SERVER_HOST:$remote_tar"
-sshpass -e ssh "${ssh_opts[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_RUN_ID" "$run_attempt" "$QA_SOURCE_SHA" "$bundle_sha" "$remote_tar" <<'REMOTE'
+scp "${ssh_opts[@]}" "$bundle_dir/feed-candidate.tar.gz" "$SERVER_USER@$SERVER_HOST:$remote_tar"
+ssh "${ssh_opts[@]}" "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_RUN_ID" "$run_attempt" "$QA_SOURCE_SHA" "$bundle_sha" "$remote_tar" <<'REMOTE'
 set -euo pipefail
 run_id="$1"; run_attempt="$2"; source_sha="$3"; bundle_sha="$4"; archive="$5"
 qa=/home/ubuntu/urtruck-qa2
