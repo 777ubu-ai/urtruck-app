@@ -59,6 +59,8 @@ def test_real_deploy_installs_health_and_rolls_back_without_overwriting_new_rows
         values={'EXTERNAL_FREIGHT_API_URL':'https://qa2.urtruck.kz','EXTERNAL_FREIGHT_DEPLOYMENT_TARGET':'qa2','EXTERNAL_FREIGHT_ADAPTER_DB':str(qa/directory/'adapter.sqlite3'),'EXTERNAL_FREIGHT_SOURCE_DB':str(collector/'state/feed.sqlite3'),'EXTERNAL_FREIGHT_SOURCE_MODE':mode,'EXTERNAL_FREIGHT_IMPORT_ENABLED':'true'}
         filename.write_text('\n'.join(k+'='+v for k,v in values.items()))
     qa_env=qa/'.env';qa_env.write_text('DB_PATH='+str(qa/'backend/database/security.db')+'\n')
+    qa_env_initial=qa_env.read_text()
+    qa_env_mode=qa_env.stat().st_mode & 0o777
     (qa/'backend/.env').symlink_to(qa_env)
     python_shim=qa/'backend/venv/bin/python';python_shim.parent.mkdir(parents=True)
     executable(python_shim,"""import sys
@@ -101,6 +103,7 @@ else:
     calls=log.read_text()
     assert 'urtruck-telegram-feed.service' not in calls
     if fail_hash:
+        assert qa_env.read_text()==qa_env_initial
         assert (qa/'backend/services/external_freight_parser.py').read_text()=='# previous code\n'
         assert not (qa/'external-feed-component-manifest').exists()
         if existing == 'absent':
@@ -111,6 +114,8 @@ else:
             assert (qa/'ops/telegram-feed/health.py').read_text()=='# previous QA2 health\n'
         assert (tmp_path/'timer-active').exists() == (existing == 'enabled')
     else:
+        assert 'EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=true' in qa_env.read_text()
+        assert qa_env.stat().st_mode & 0o777 == qa_env_mode
         assert 'QA2_FEED_DEPLOY=verified' in result.stdout
         assert (qa/'ops/telegram-feed/health.py').read_bytes()==(ROOT/'ops/telegram-feed/health.py').read_bytes()
         assert (unit_root/'urtruck-qa2-feed-health.timer').is_file()
