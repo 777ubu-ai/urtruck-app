@@ -33,7 +33,7 @@ bundle_sha="$(shasum -a 256 "$bundle_dir/feed-candidate.tar.gz" | awk '{print $1
 known_hosts="$bundle_dir/known_hosts"
 key_file="$bundle_dir/deploy_key"
 printf '%s\n' "$SERVER_SSH_KNOWN_HOSTS" > "$known_hosts"
-printf '%s\\n' "$SERVER_SSH_KEY" > "$key_file"
+printf '%s\n' "$SERVER_SSH_KEY" > "$key_file"
 chmod 600 "$known_hosts" "$key_file"
 ssh_opts=(-i "$key_file" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
 remote_tar="/tmp/urtruck-feed-candidate-${GITHUB_RUN_ID}-${run_attempt}.tar.gz"
