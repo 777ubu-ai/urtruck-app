@@ -261,7 +261,8 @@ from pathlib import Path
 path, metadata = map(Path, sys.argv[1:])
 if path.is_symlink() or not path.is_file():
     raise SystemExit("qa2_environment_file_must_be_regular")
-uid, gid, mode = map(int, metadata.read_text().split())
+uid, gid, raw_mode = metadata.read_text().split()
+uid, gid, mode = int(uid), int(gid), int(raw_mode, 8)
 lines = path.read_text(encoding="utf-8").splitlines()
 lines = [line for line in lines if not line.startswith("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=")]
 lines.append("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=true")
