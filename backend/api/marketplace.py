@@ -854,7 +854,6 @@ def list_cargos(
             FROM cargos WHERE {where_sql}
             ORDER BY {order_sql} LIMIT ? OFFSET ?
         """, (*params, limit + 1, offset)).fetchall()
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql}", params).fetchone()[0]
 
     # Следующая страница определяется ДО hygiene/expiry-фильтров.
     # Иначе неполная/пустая видимая страница скрывает оставшиеся записи.

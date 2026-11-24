@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -154,6 +154,7 @@ export default function FeedScreen({ navigation }) {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
+  const loadRequestRef = useRef(0);
 
   const countryLabel = (code) => {
     if (!code) return '';
@@ -203,6 +204,7 @@ export default function FeedScreen({ navigation }) {
   }, [myUserId]);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setError(false);
     try {
       const result = await marketAPI.listTrips({
@@ -213,6 +215,7 @@ export default function FeedScreen({ navigation }) {
         truckType: filterType || '',
         limit: pageLimit,
       });
+      if (requestId !== loadRequestRef.current) return;
       if (result?.serverError) throw new Error('trip_feed_failed');
 
       const mapped = (result?.trips || [])
@@ -229,19 +232,21 @@ export default function FeedScreen({ navigation }) {
         .filter((trip) => trip?.id && trip.from && trip.to);
       setItems(mapped);
     } catch (err) {
+      if (requestId !== loadRequestRef.current) return;
       console.warn('[FeedScreen] load trips failed:', err);
       setError(true);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === loadRequestRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [dirFrom, dirTo, filterType, pageLimit, myUserId]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
     load();
     loadSaved();
+    return () => { loadRequestRef.current += 1; };
   }, [load, loadSaved]));
 
   const visibleItems = useMemo(() => {

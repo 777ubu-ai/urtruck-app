@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -246,6 +246,7 @@ export default function CargoFeedScreen({ navigation }) {
   const [savedIds, setSavedIds] = useState(() => new Set());
   const [savedOnly, setSavedOnly] = useState(false);
   const savedBusyRef = React.useRef(new Set());
+  const loadRequestRef = useRef(0);
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -259,6 +260,7 @@ export default function CargoFeedScreen({ navigation }) {
   }, [myUserId]);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setError(false);
     try {
       const result = await marketAPI.listCargos({
@@ -269,6 +271,7 @@ export default function CargoFeedScreen({ navigation }) {
         cargoType: filterType || '',
         limit: pageLimit,
       });
+      if (requestId !== loadRequestRef.current) return;
       // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
       // бросает при сетевой ошибке / 5xx — он возвращает
       // `{ cargos: [], serverError: true }` (src/utils/marketAPI.js), чтобы
@@ -288,18 +291,18 @@ export default function CargoFeedScreen({ navigation }) {
         .filter((cargo) => cargo.from && cargo.to);
       setItems(mapped);
     } catch (e) {
+      if (requestId !== loadRequestRef.current) return;
       console.warn('[CargoFeed] load failed:', e);
       setError(true);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, pageLimit, myUserId]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { loadSaved(); }, [loadSaved]);
   useFocusEffect(useCallback(() => {
     load();
     loadSaved();
+    return () => { loadRequestRef.current += 1; };
   }, [load, loadSaved]));
 
   const visibleItems = useMemo(() => {
