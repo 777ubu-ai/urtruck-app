@@ -653,7 +653,14 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     ? localizeCheckpointName({ ...selected, name: live?.name || selected.name }, lang).split(/\s+[—–-]\s+/).map((part) => part.trim()).filter(Boolean)
     : [];
   const vehicleRows = isDriver
-    ? (privateContext.vehicles.length ? privateContext.vehicles : (selectedDeal?.plate ? [{ id: selectedDeal.vehicle_id || selectedDeal.deal_id, license_plate: selectedDeal.plate, make: selectedDeal.make, model: selectedDeal.model }] : []))
+    ? (() => {
+      const rows = [...privateContext.vehicles];
+      const activeDealPlate = normalizePlate(selectedDeal?.plate);
+      if (activeDealPlate && !rows.some((item) => normalizePlate(item?.license_plate || item?.plate) === activeDealPlate)) {
+        rows.unshift({ id: selectedDeal.vehicle_id || selectedDeal.deal_id, license_plate: selectedDeal.plate, make: selectedDeal.make, model: selectedDeal.model });
+      }
+      return rows;
+    })()
     : privateContext.deals;
   const visibleVehicleRows = vehicleRows.filter((item) => normalizePlate(item?.license_plate || item?.plate).includes(normalizePlate(vehicleFilter)));
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
@@ -675,7 +682,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         {screenMode === 'vehicles' ? (<>
         {isDriver ? (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-driver-vehicle-card">
-            <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{L.myCarsTab}</Text></View><Text style={[s.source, { color: theme.textDim }]}>{privateContext.vehicles.length}</Text></View>
+            <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{L.myCarsTab}</Text></View><Text style={[s.source, { color: theme.textDim }]}>{vehicleRows.length}</Text></View>
             <View style={[s.vehicleSearchWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><TextInput value={vehicleFilter} onChangeText={setVehicleFilter} placeholder={L.searchCars} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.vehicleSearchInput, { color: theme.text }]} testID="border-vehicle-filter" /></View>
             {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : visibleVehicleRows.length ? visibleVehicleRows.map((item) => {
               const itemPlate = normalizePlate(item?.license_plate || item?.plate);
