@@ -15,13 +15,13 @@ on:
         description: Reviewed QA2 pull request
         type: choice
         default: '561'
-        options: ['561', '728']
+        options: ['561', '729']
       qa2_version:
-        description: App Store Connect version for PR 728
+        description: App Store Connect version for PR 729
         type: string
         required: false
       qa2_build_number:
-        description: Unused build number confirmed in App Store Connect for PR 728
+        description: Unused build number confirmed in App Store Connect for PR 729
         type: string
         required: false
 
@@ -82,8 +82,8 @@ jobs:
           candidate_pr="${QA_CANDIDATE_PR:-561}"
           case "$candidate_pr" in
             561) ;;
-            728)
-              test "$QA_SOURCE_SHA" = 1852ab46fe5f3d4c2324b95e06354108fc8dc7a5
+            729)
+              test "$QA_SOURCE_SHA" = e06363c6cf76fd2ad6357a0c41bd6dfc2e8652ef
               [[ "$QA_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
               [[ "$QA_RELEASE_BUILD" =~ ^[123456789][0123456789]{0,8}$ ]] || {
                 echo '::error::Build number must be a positive integer'
@@ -145,7 +145,7 @@ jobs:
           npx eas-cli@latest whoami
 
       - name: Prepare approved version in the runner checkout
-        if: inputs.candidate_pr == '728'
+        if: inputs.candidate_pr == '729'
         shell: bash
         run: |
           python3 - <<'PYVERSION'

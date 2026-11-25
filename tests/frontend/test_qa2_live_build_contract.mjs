@@ -54,8 +54,8 @@ test('TestFlight workflow builds allowed open candidates against QA2 behind Envi
   assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = main'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
   assert.ok(testflightWorkflow.includes('pulls/$candidate_pr'));
-  assert.ok(testflightWorkflow.includes("options: ['561', '728']"));
-  assert.ok(testflightWorkflow.includes('1852ab46fe5f3d4c2324b95e06354108fc8dc7a5'));
+  assert.ok(testflightWorkflow.includes("options: ['561', '729']"));
+  assert.ok(testflightWorkflow.includes('e06363c6cf76fd2ad6357a0c41bd6dfc2e8652ef'));
   assert.ok(testflightWorkflow.includes("test \"$QA_HOST\" = qa2.urtruck.kz"));
   assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
 });
