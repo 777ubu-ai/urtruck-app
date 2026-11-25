@@ -59,7 +59,7 @@ const COPY = {
     board: 'Сейчас на табло', openBoard: 'Открыть табло', boardTabTitle: 'Онлайн-табло', boardApply: 'Применить', boardFind: 'Найти', boardFound: 'Найдено:', rangeOf: 'из', trackedPlates: 'Отслеживаемые номера', savePlate: 'Сохранить номер', removePlate: 'Убрать сохранённый номер', savedPlateError: 'Не удалось обновить сохранённые номера', boardNoMatches: 'По этим фильтрам записей нет', boardPrevious: 'Предыдущая страница', boardNext: 'Следующая страница', boardClear: 'Очистить', limit: 'Лимит', perDay: '/сутки', calendar: 'Календарь загрузки', noPlaces: 'Нет мест', noData: 'Нет данных',
     dayOff: 'Выходной', updated: 'CGR обновлено', refresh: 'Обновить', details: 'Бронирование в CarGoRuqsat', favorite: 'В избранное',
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
-    platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
+    platePlaceholder: 'Госномер', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
     cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', tapToOpen: 'Нажать', allDates: 'Все даты', collapseDates: 'Свернуть',
   },
@@ -72,7 +72,7 @@ const COPY = {
     noStandard: 'Қолжетімді күнтізбеде 1 АЕК бойынша бос орын жоқ', board: 'Қазір таблода', openBoard: 'Таблоны ашу', boardTabTitle: 'Онлайн табло', boardApply: 'Қолдану', boardFind: 'Іздеу', boardFound: 'Табылды:', rangeOf: 'ішінен', trackedPlates: 'Бақыланатын нөмірлер', savePlate: 'Нөмірді сақтау', removePlate: 'Сақталған нөмірді өшіру', savedPlateError: 'Сақталған нөмірлерді жаңарту мүмкін болмады', boardNoMatches: 'Бұл сүзгілер бойынша жазба жоқ', boardPrevious: 'Алдыңғы бет', boardNext: 'Келесі бет', boardClear: 'Тазалау', limit: 'Лимит', perDay: '/тәулік',
     calendar: 'Жүктеме күнтізбесі', noPlaces: 'Орын жоқ', noData: 'Дерек жоқ', dayOff: 'Демалыс', updated: 'CGR жаңартылды', refresh: 'Жаңарту',
     details: 'CarGoRuqsat арқылы брондау', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
-    checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
+    checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
     status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Басу', allDates: 'Барлық күндер', collapseDates: 'Жию',
   },
@@ -85,7 +85,7 @@ const COPY = {
     noStandard: 'No 1 MCI slots in the published calendar', board: 'On live board now', openBoard: 'Open board', boardTabTitle: 'Online board', boardApply: 'Apply', boardFind: 'Search', boardFound: 'Found:', rangeOf: 'of', trackedPlates: 'Tracked plates', savePlate: 'Save plate', removePlate: 'Remove saved plate', savedPlateError: 'Could not update saved plates', boardNoMatches: 'No records match these filters', boardPrevious: 'Previous page', boardNext: 'Next page', boardClear: 'Clear', limit: 'Limit', perDay: '/day',
     calendar: 'Load calendar', noPlaces: 'No slots', noData: 'No data', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Book in CarGoRuqsat',
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
-    platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
+    platePlaceholder: 'Plate number', notFound: 'No active queue found', lookupError: 'Could not check plate',
     checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', tapToOpen: 'Tap',
     allDates: 'All dates', collapseDates: 'Collapse',
   },
@@ -96,8 +96,8 @@ const COPY = {
     myCarsTab: '我的车辆', checkpointsTab: '口岸', searchCars: '按车牌搜索', statusNotChecked: '点击查询排队状态', sideKz: '哈萨克斯坦', sideCn: '中国',
     noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', openBoard: '打开电子屏', boardTabTitle: '在线电子屏', boardApply: '应用', boardFind: '查找', boardFound: '找到：', rangeOf: '共', trackedPlates: '关注的车牌', savePlate: '保存车牌', removePlate: '取消保存车牌', savedPlateError: '无法更新已保存的车牌', boardNoMatches: '没有符合条件的记录', boardPrevious: '上一页', boardNext: '下一页', boardClear: '清除', limit: '每日限额', perDay: '/天', calendar: '负载日历',
     noPlaces: '无空位', noData: '无数据', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '在 CarGoRuqsat 预约', favorite: '收藏',
-    favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
-    check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
+    favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号',
+    notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', allDates: '所有日期', collapseDates: '收起',
   },
 };
@@ -889,10 +889,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         </View> : null}
         {screenMode === 'vehicles' ? (<>
         {(isDriver || showManualLookup) ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
-          <Text style={[s.sectionTitle, { color: theme.text }]}>{L.platePlaceholder}</Text>
+          <Text style={[s.sectionTitle, { color: theme.text }]}>{L.searchCars}</Text>
           <View style={s.searchRow}>
             <View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { manualRequest.current += 1; setManualLookupLoading(false); setPlate(value.toUpperCase()); setManualLookup(null); setManualWatchEnabled(false); }} onSubmitEditing={() => searchPlate()} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" returnKeyType="search" maxLength={32} /></View>
-            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity>
+            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.boardFind}</Text>}</TouchableOpacity>
           </View>
           {plate ? <TouchableOpacity accessibilityRole="button" accessibilityLabel={L.boardClear} onPress={() => { manualRequest.current += 1; setManualLookupLoading(false); setPlate(''); setManualLookup(null); setManualWatchEnabled(false); }} style={s.iconButton}><Feather name="x" size={17} color={theme.textMuted} /></TouchableOpacity> : null}
           {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>
