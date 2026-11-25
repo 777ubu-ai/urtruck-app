@@ -1045,7 +1045,6 @@ const s = StyleSheet.create({
   dateFree: { color: '#738396', fontSize: 20, fontWeight: '950', marginTop: 5 },
   datePremium: { color: '#B7791F', fontSize: 20, fontWeight: '950', marginTop: 5 },
   dateState: { fontSize: 9.5, fontWeight: '700', textAlign: 'center', marginTop: 3 },
-  dateAmount: { fontSize: 8.5, lineHeight: 11, fontWeight: '700', textAlign: 'center', marginTop: 2 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
   source: { fontSize: 11 },
   refreshButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },
