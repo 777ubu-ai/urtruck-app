@@ -31,6 +31,9 @@ import { LEVELS } from '../utils/AuthContext';
 
 const BASE = `${API_BASE}/borders`;
 const FAVORITES_KEY = 'ur_border_favorites_v2';
+const TRACKED_PLATE_TYPE = 'border_plate';
+const favoritesUrl = `${API_BASE}/favorites`;
+const trackedPlatesUrl = `${favoritesUrl}?item_type=${TRACKED_PLATE_TYPE}`;
 const RECENT_LOOKUPS_KEY = 'ur_border_recent_lookups_v1';
 const DEFAULT_COUNTRY = 'CN';
 const COUNTRY_ORDER = ['CN', 'KG', 'RU', 'UZ', 'TM', 'CASPIAN'];
@@ -53,7 +56,7 @@ const COPY = {
     tap: 'Нажмите на КПП, чтобы увидеть реальную обстановку', loading: 'Получаем данные CGR…',
     nearest: 'Ближайшая свободная бронь', places: 'свободных мест', standard: '1 МРП', premium: '100 МРП',
     premiumNearest: 'Ближайшая бронь за 100 МРП', noStandard: 'Свободных мест за 1 МРП в доступном календаре нет',
-    board: 'Сейчас на табло', openBoard: 'Открыть табло', boardTabTitle: 'Онлайн-табло', boardApply: 'Применить', boardFind: 'Найти', boardFound: 'Найдено:', boardNoMatches: 'По этим фильтрам записей нет', boardPrevious: 'Предыдущая страница', boardNext: 'Следующая страница', boardClear: 'Очистить', limit: 'Лимит', perDay: '/сутки', calendar: 'Календарь загрузки', noPlaces: 'Нет мест', noData: 'Нет данных',
+    board: 'Сейчас на табло', openBoard: 'Открыть табло', boardTabTitle: 'Онлайн-табло', boardApply: 'Применить', boardFind: 'Найти', boardFound: 'Найдено:', rangeOf: 'из', trackedPlates: 'Отслеживаемые номера', savePlate: 'Сохранить номер', removePlate: 'Убрать сохранённый номер', savedPlateError: 'Не удалось обновить сохранённые номера', boardNoMatches: 'По этим фильтрам записей нет', boardPrevious: 'Предыдущая страница', boardNext: 'Следующая страница', boardClear: 'Очистить', limit: 'Лимит', perDay: '/сутки', calendar: 'Календарь загрузки', noPlaces: 'Нет мест', noData: 'Нет данных',
     dayOff: 'Выходной', updated: 'CGR обновлено', refresh: 'Обновить', details: 'Бронирование в CarGoRuqsat', favorite: 'В избранное',
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
@@ -66,7 +69,7 @@ const COPY = {
     choose: 'Өткізу бекетін таңдаңыз', hint: 'Жылжытып, қажет бекетті басыңыз — деректер тек сол бекетке жүктеледі',
     tap: 'Нақты жағдайды көру үшін бекетті басыңыз', loading: 'CGR деректері жүктелуде…', nearest: 'Ең жақын бос бронь',
     places: 'бос орын', standard: '1 АЕК', premium: '100 АЕК', premiumNearest: '100 АЕК бойынша жақын бронь',
-    noStandard: 'Қолжетімді күнтізбеде 1 АЕК бойынша бос орын жоқ', board: 'Қазір таблода', openBoard: 'Таблоны ашу', boardTabTitle: 'Онлайн табло', boardApply: 'Қолдану', boardFind: 'Іздеу', boardFound: 'Табылды:', boardNoMatches: 'Бұл сүзгілер бойынша жазба жоқ', boardPrevious: 'Алдыңғы бет', boardNext: 'Келесі бет', boardClear: 'Тазалау', limit: 'Лимит', perDay: '/тәулік',
+    noStandard: 'Қолжетімді күнтізбеде 1 АЕК бойынша бос орын жоқ', board: 'Қазір таблода', openBoard: 'Таблоны ашу', boardTabTitle: 'Онлайн табло', boardApply: 'Қолдану', boardFind: 'Іздеу', boardFound: 'Табылды:', rangeOf: 'ішінен', trackedPlates: 'Бақыланатын нөмірлер', savePlate: 'Нөмірді сақтау', removePlate: 'Сақталған нөмірді өшіру', savedPlateError: 'Сақталған нөмірлерді жаңарту мүмкін болмады', boardNoMatches: 'Бұл сүзгілер бойынша жазба жоқ', boardPrevious: 'Алдыңғы бет', boardNext: 'Келесі бет', boardClear: 'Тазалау', limit: 'Лимит', perDay: '/тәулік',
     calendar: 'Жүктеме күнтізбесі', noPlaces: 'Орын жоқ', noData: 'Дерек жоқ', dayOff: 'Демалыс', updated: 'CGR жаңартылды', refresh: 'Жаңарту',
     details: 'CarGoRuqsat арқылы брондау', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
@@ -79,7 +82,7 @@ const COPY = {
     choose: 'Choose checkpoint', hint: 'Swipe and tap a checkpoint — data loads only for that checkpoint',
     tap: 'Tap a checkpoint to see the real situation', loading: 'Loading CGR data…', nearest: 'Nearest free booking',
     places: 'free slots', standard: '1 MCI', premium: '100 MCI', premiumNearest: 'Nearest 100 MCI booking',
-    noStandard: 'No 1 MCI slots in the published calendar', board: 'On live board now', openBoard: 'Open board', boardTabTitle: 'Online board', boardApply: 'Apply', boardFind: 'Search', boardFound: 'Found:', boardNoMatches: 'No records match these filters', boardPrevious: 'Previous page', boardNext: 'Next page', boardClear: 'Clear', limit: 'Limit', perDay: '/day',
+    noStandard: 'No 1 MCI slots in the published calendar', board: 'On live board now', openBoard: 'Open board', boardTabTitle: 'Online board', boardApply: 'Apply', boardFind: 'Search', boardFound: 'Found:', rangeOf: 'of', trackedPlates: 'Tracked plates', savePlate: 'Save plate', removePlate: 'Remove saved plate', savedPlateError: 'Could not update saved plates', boardNoMatches: 'No records match these filters', boardPrevious: 'Previous page', boardNext: 'Next page', boardClear: 'Clear', limit: 'Limit', perDay: '/day',
     calendar: 'Load calendar', noPlaces: 'No slots', noData: 'No data', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Book in CarGoRuqsat',
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
@@ -91,7 +94,7 @@ const COPY = {
     hint: '左右滑动并点击口岸 — 只加载所选口岸的数据', tap: '点击口岸查看实时情况', loading: '正在获取 CGR 数据…',
     nearest: '最近可预约日期', places: '个空位', standard: '1 MCI', premium: '100 MCI', premiumNearest: '最近 100 MCI 预约',
     myCarsTab: '我的车辆', checkpointsTab: '口岸', searchCars: '按车牌搜索', statusNotChecked: '点击查询排队状态', sideKz: '哈萨克斯坦', sideCn: '中国',
-    noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', openBoard: '打开电子屏', boardTabTitle: '在线电子屏', boardApply: '应用', boardFind: '查找', boardFound: '找到：', boardNoMatches: '没有符合条件的记录', boardPrevious: '上一页', boardNext: '下一页', boardClear: '清除', limit: '每日限额', perDay: '/天', calendar: '负载日历',
+    noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', openBoard: '打开电子屏', boardTabTitle: '在线电子屏', boardApply: '应用', boardFind: '查找', boardFound: '找到：', rangeOf: '共', trackedPlates: '关注的车牌', savePlate: '保存车牌', removePlate: '取消保存车牌', savedPlateError: '无法更新已保存的车牌', boardNoMatches: '没有符合条件的记录', boardPrevious: '上一页', boardNext: '下一页', boardClear: '清除', limit: '每日限额', perDay: '/天', calendar: '负载日历',
     noPlaces: '无空位', noData: '无数据', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '在 CarGoRuqsat 预约', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
@@ -178,8 +181,8 @@ function lookupStatusLabel(code, lang) {
 
 function normalizePlate(value) { return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, ''); }
 function jsonArray(raw) { if (!raw) return []; try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; } }
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
   let body = {};
   try { body = await response.json(); } catch {}
   if (!response.ok) throw new Error(body?.detail || `HTTP ${response.status}`);
@@ -328,6 +331,77 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const [recentLookups, setRecentLookups] = useState([]);
   const [manualWatchEnabled, setManualWatchEnabled] = useState(false);
+  const [savedPlates, setSavedPlates] = useState(null);
+  const [savedPlateError, setSavedPlateError] = useState(false);
+  const [savedPlateBusy, setSavedPlateBusy] = useState(false);
+  const savedPlateScope = useRef(null);
+
+  useEffect(() => {
+    const scope = { busy: false };
+    savedPlateScope.current = scope;
+    setSavedPlates(null);
+    setSavedPlateError(false);
+    setSavedPlateBusy(false);
+    if (contextToken) {
+      fetchJson(trackedPlatesUrl, { headers: { Authorization: `Bearer ${contextToken}` } }).then((data) => {
+        if (savedPlateScope.current === scope) {
+          setSavedPlates({ token: contextToken, plates: data.favorites.map((item) => normalizePlate(item.item_id)).filter(Boolean) });
+        }
+      }).catch(() => {
+        if (savedPlateScope.current === scope) setSavedPlateError(true);
+      });
+    }
+    return () => { savedPlateScope.current = null; };
+  }, [contextToken]);
+
+  const currentSavedPlates = savedPlates?.token === contextToken ? savedPlates.plates : null;
+  const toggleSavedPlate = async (number) => {
+    const scope = savedPlateScope.current;
+    if (!currentSavedPlates || !scope || scope.busy || number.length < 3) return;
+    scope.busy = true;
+    setSavedPlateBusy(true);
+    setSavedPlateError(false);
+    const saved = currentSavedPlates.includes(number);
+    try {
+      const headers = { Authorization: `Bearer ${contextToken}`, 'Content-Type': 'application/json' };
+      if (saved) {
+        await fetchJson(`${trackedPlatesUrl}&item_id=${encodeURIComponent(number)}`, { method: 'DELETE', headers });
+      } else {
+        await fetchJson(favoritesUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ item_type: TRACKED_PLATE_TYPE, item_id: number }),
+        });
+      }
+    } catch {
+      if (savedPlateScope.current === scope) setSavedPlateError(true);
+      return;
+    } finally {
+      if (savedPlateScope.current === scope) {
+        scope.busy = false;
+        setSavedPlateBusy(false);
+      }
+    }
+    if (savedPlateScope.current !== scope) return;
+    setSavedPlates({
+      token: contextToken,
+      plates: saved ? currentSavedPlates.filter((item) => item !== number) : [number, ...currentSavedPlates],
+    });
+  };
+
+  const renderSavedPlateButton = (number) => {
+    if (!currentSavedPlates || number.length < 3) return null;
+    const saved = currentSavedPlates.includes(number);
+    return <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={saved ? L.removePlate : L.savePlate}
+      accessibilityState={{ selected: saved, disabled: savedPlateBusy }}
+      disabled={savedPlateBusy}
+      onPress={() => toggleSavedPlate(number)}
+      style={[s.iconButton, { minWidth: 44, minHeight: 44 }]}
+      testID="border-save-plate"
+    ><Feather name="star" size={18} color={saved ? activeColor : theme.textMuted} /></TouchableOpacity>;
+  };
   const [roadRoute, setRoadRoute] = useState(null);
   const [roadRouteLoading, setRoadRouteLoading] = useState(false);
   const checkpointCarouselRef = useRef(null);
@@ -802,6 +876,9 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 <Text style={{ color: theme.textMuted }}>{localizeCheckpointName(row.checkpoint, lang)} · {row.date} · {row.slot}</Text>
                 <Text style={{ color: theme.text }}>{row.status}</Text>
               </View>)}
+              {boardData.range_start > 0 ? <Text style={[s.source, { color: theme.textMuted }]} testID="border-board-range">
+                {boardData.range_start}–{boardData.range_end} {L.rangeOf} {boardData.total}
+              </Text> : null}
               {boardData.page > 1 || boardData.has_next ? <View style={s.contextHeader}>
                 <TouchableOpacity disabled={boardLoading || boardData.page <= 1} accessibilityLabel={L.boardPrevious} onPress={() => setBoardQuery((value) => ({ ...value, page: value.page - 1 }))} style={s.iconButton}><Feather name="chevron-left" size={20} color={theme.text} /></TouchableOpacity>
                 <Text style={{ color: theme.text }}>{boardData.page}</Text>
@@ -831,9 +908,20 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               </View>
             </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
           </View> : null}
+          {manualLookup && !manualLookup.error ? renderSavedPlateButton(normalizePlate(plate)) : null}
           {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
         </View> : null}
 
+        {savedPlateError ? <Text style={[s.hint, { color: '#B42318' }]}>{L.savedPlateError}</Text> : null}
+        {currentSavedPlates?.length ? <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-tracked-plates">
+          <Text style={[s.contextTitle, { color: theme.text }]}>{L.trackedPlates} · {currentSavedPlates.length}</Text>
+          {currentSavedPlates.map((number) => <View key={number} style={s.contextHeader}>
+            <TouchableOpacity accessibilityRole="button" onPress={() => searchPlate(number)}>
+              <Text style={[s.vehicleName, { color: theme.text }]}>{number}</Text>
+            </TouchableOpacity>
+            {renderSavedPlateButton(number)}
+          </View>)}
+        </View> : null}
         {isDriver ? (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-driver-vehicle-card">
             <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{L.myCarsTab}</Text></View><Text style={[s.source, { color: theme.textDim }]}>{vehicleRows.length}</Text></View>
@@ -859,6 +947,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 </View>
                 {isSelectedVehicle && lookupLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="chevron-right" size={20} color={theme.textDim} />}
               </TouchableOpacity>
+              {isSelectedVehicle ? renderSavedPlateButton(itemPlate) : null}
               {isSelectedVehicle && currentLookup ? <View style={s.contextHeader}>
                 <Text style={[s.source, { color: theme.textMuted }]}>{currentLookup.error ? L.lookupError : formatSourceTime(currentLookup.checkedAt)}</Text>
                 <TouchableOpacity accessibilityRole="button" accessibilityLabel={L.refresh} onPress={() => lookupPlateValue(itemPlate)} style={s.iconButton}><Feather name="refresh-cw" size={16} color={activeColor} /></TouchableOpacity>

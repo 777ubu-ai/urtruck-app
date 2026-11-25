@@ -299,12 +299,19 @@ async def fetch_online_board(checkpoint_code: str, statuses: list[str], plate: s
     if len(rows) > total or (page == 1 and total > 0 and not rows):
         raise CGRParseError("scoreboard total does not match page")
     next_page = pagination.select_one('li:not(.disabled) a[aria-label="Следующая страница"]')
+    # The upstream result has full pages followed by a possibly shorter final page.
+    has_next = next_page is not None
+    offset = (page - 1) * len(rows) if has_next else total - len(rows)
+    if rows and (offset < page - 1 or (page == 1 and offset) or (has_next and offset + len(rows) >= total)):
+        raise CGRParseError("scoreboard page range does not match the total")
     return {
         "rows": rows,
         "statuses": options,
         "total": total,
         "page": page,
-        "has_next": next_page is not None,
+        "has_next": has_next,
+        "range_start": offset + 1 if rows else 0,
+        "range_end": offset + len(rows) if rows else 0,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

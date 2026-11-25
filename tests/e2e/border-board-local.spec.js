@@ -17,6 +17,8 @@ test('online board searches beyond the current page and keeps the selected check
       rows: [{ plate, checkpoint: checkpoint.name, date: '25.11.2026', slot: '11:00–12:00', status: 'В очереди' }],
       statuses: [{ code: 'Pending', label: 'В очереди' }],
       total: searching ? 1 : 2,
+      range_start: current,
+      range_end: current,
       page: current,
       has_next: current === 1 && !searching,
       updated_at: '2026-11-25T12:00:00Z',
@@ -29,7 +31,9 @@ test('online board searches beyond the current page and keeps the selected check
   await board.getByTestId('border-board-checkpoint').click();
   await board.getByText(checkpoint.name, { exact: true }).click();
   await expect(board.getByText('TEST111', { exact: true })).toBeVisible();
+  await expect(board.getByTestId('border-board-range')).toHaveText('1–1 из 2');
   await board.getByTestId('border-board-next').click();
+  await expect(board.getByTestId('border-board-range')).toHaveText('2–2 из 2');
   await expect(board.getByText('TEST222', { exact: true })).toBeVisible();
   const search = board.getByTestId('border-board-search');
   await search.fill('TEST222');
@@ -87,4 +91,31 @@ test('filters the full board and distinguishes zero from source failure', async 
   await expect.poll(() => requests.at(-1)).toEqual({ statuses: ['Pending', 'Called'], plate: 'MISSING0001', page: '1' });
   await expect(board.getByText('По этим фильтрам записей нет')).toBeVisible();
   await expect(board.getByText('QA0001', { exact: true })).toHaveCount(0);
+});
+
+test('saves and removes a checked plate across reloads without adding a vehicle', async ({ page }) => {
+  const plate = 'TEST7777';
+  await page.route('**/borders/lookup?*', route => route.fulfill({
+    json: { success: true, found: false, plate },
+  }));
+  await H.emailLogin(page, 'board-save-' + Date.now() + '@urtruck.kz', 'driver');
+  const openBorder = () => page.locator(H.tid('bottom-nav-queue')).click();
+  await openBorder();
+  const input = page.getByTestId('border-plate-input');
+  await input.fill(plate);
+  await page.getByTestId('border-plate-check').click();
+  const tracked = page.getByTestId('border-tracked-plates');
+  await expect(tracked).toHaveCount(0);
+  await page.getByRole('button', { name: 'Сохранить номер' }).click();
+  await expect(tracked.getByText(plate, { exact: true })).toBeVisible();
+  await expect(page.getByTestId('border-driver-vehicle-card').getByText(plate, { exact: true })).toHaveCount(0);
+  await page.reload();
+  await openBorder();
+  await expect(tracked.getByText(plate, { exact: true })).toBeVisible();
+  await tracked.getByRole('button', { name: 'Убрать сохранённый номер' }).click();
+  await expect(tracked).toHaveCount(0);
+  await page.reload();
+  await openBorder();
+  await expect(page.getByTestId('border-plate-input')).toBeVisible();
+  await expect(tracked).toHaveCount(0);
 });
