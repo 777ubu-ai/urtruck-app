@@ -5,8 +5,8 @@
  * installed directly on physical test devices and never submitted to Play.
  */
 // Новый APK нужен для подтверждённой потери ссылки при холодном восстановлении.
-const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494491;
-const QA2_ANDROID_VERSION_CODE = 214494492;
+const QA2_ANDROID_PREVIOUS_VERSION_CODE = 214494493;
+const QA2_ANDROID_VERSION_CODE = 214494494;
 
 if (!Number.isSafeInteger(QA2_ANDROID_VERSION_CODE)
   || QA2_ANDROID_VERSION_CODE <= QA2_ANDROID_PREVIOUS_VERSION_CODE) {

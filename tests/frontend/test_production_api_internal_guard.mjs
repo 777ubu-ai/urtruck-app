@@ -43,7 +43,7 @@ test('iOS validates exact selected host and flavor', () => {
   }
 });
 test('Internal workflows preserve exact source, version cap and embedded configuration checks', () => {
-  assert.match(ios, /URTRUCK_VERSION_NAME: 1\.0\.16/);
+  assert.match(ios, /URTRUCK_VERSION_NAME: 1\.0\.17/);
   assert.match(ios, /assert extra\['urtruckApiUrl'\].*os.environ\['QA2_API_URL'\]/);
   assert.match(ios, /test "\$GITHUB_SHA" = "\$QA_SOURCE_SHA"/);
   assert.match(ios, /codesign --verify --deep --strict/);
