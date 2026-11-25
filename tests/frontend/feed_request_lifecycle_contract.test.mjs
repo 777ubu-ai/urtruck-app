@@ -29,3 +29,12 @@ test('feed count keeps the last confirmed value across failures and is scoped to
   assert.match(source, /countText \?\? '—'/);
   assert.doesNotMatch(source, /setResult\(null\)/);
 });
+
+test('external freight route is available after sign-in when the flag is enabled', () => {
+  const source = fs.readFileSync('src/navigation/AppNavigator.js', 'utf8');
+  const [onboarding, signedIn] = source
+    .split('<Stack.Navigator key={navKey}')[1]
+    .split('// Полностью в приложении');
+  assert.doesNotMatch(onboarding, /name="ExternalFreightFeed"/);
+  assert.match(signedIn, /EXTERNAL_FREIGHT_ENABLED \? <Stack\.Screen name="ExternalFreightFeed"/);
+});
