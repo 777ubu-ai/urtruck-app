@@ -48,7 +48,7 @@ test('Queue micro labels (≤10.5) go through sp()', () => {
   assert.match(queue, /s\.cpRoute, \{ color: theme\.textDim, fontSize: sp\(10\.5\) \}/);
   assert.match(queue, /s\.swipeHint, \{ color: theme\.textDim, fontSize: sp\(10\.5\) \}/);
   assert.ok((queue.match(/fontSize: sp\(9\.5\)/g) || []).length >= 3, 'dateState rows use sp(9.5)');
-  assert.ok((queue.match(/fontSize: sp\(8\.5\)/g) || []).length >= 2, 'dateAmount rows use sp(8.5)');
+  assert.doesNotMatch(queue, /s\.dateAmount/, 'calendar does not render fixed MRP amounts');
 });
 
 test('Deals tab count / attention badges go through sp()', () => {
