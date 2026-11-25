@@ -113,7 +113,7 @@ export default function PremiumOtpScreen({ navigation, route }) {
         setCode('');
         return;
       }
-      await signIn(phone, r.verification_level || 1);
+      await signIn(phone, r.verification_level || 1, null, r.user_id);
       push.autoRegister?.().catch(() => {});
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         // eslint-disable-next-line no-console

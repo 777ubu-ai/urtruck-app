@@ -255,7 +255,6 @@ export default function AppNavigator() {
               ограниченный вид с приглашением зарегистрироваться. Без этой
               регистрации маршрута navigate('Profile') у гостя не срабатывал. */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
-          {EXTERNAL_FREIGHT_ENABLED ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="TripDetail" component={TripDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
@@ -274,6 +273,7 @@ export default function AppNavigator() {
           {/* Профиль теперь открывается из ☰ (top-right) как отдельный экран
               стека, а не как вкладка таб-бара (её занял «Дела»). */}
           <Stack.Screen name="Profile" component={ProfileScreen} />
+          {EXTERNAL_FREIGHT_ENABLED ? <Stack.Screen name="ExternalFreightFeed" component={ExternalFreightFeedScreen} /> : null}
           <Stack.Screen name="CargoDetail" component={CargoDetailV2} />
           <Stack.Screen name="DriverDetail" component={DriverDetail} />
           <Stack.Screen name="Chat" component={ChatScreenV2} options={{ gestureEnabled: false }} />

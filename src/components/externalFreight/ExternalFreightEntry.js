@@ -6,6 +6,8 @@ import { useI18n } from '../../utils/useI18n';
 import { useAuth } from '../../utils/AuthContext';
 import { sessionRole } from '../../utils/externalFreightSession';
 import { EXTERNAL_FREIGHT_ENABLED, externalFreightAPI } from '../../utils/externalFreightFeed';
+import { API_BASE } from '../../config/env';
+import { storage } from '../../utils/storage';
 
 // Основная шапка не изменяется: у ленты только отдельная кнопка входа.
 export default function ExternalFreightEntry(props) {
@@ -17,12 +19,14 @@ export default function ExternalFreightEntry(props) {
   const enabled = EXTERNAL_FREIGHT_ENABLED && !showBack && ['driver', 'client'].includes(role);
   const currentRole = sessionRole(session);
   const ownerKey = `${session?.user?.id || ''}:${role}:${currentRole || ''}`;
+  const kind = role === 'driver' ? 'cargo' : 'vehicle';
+  const countCacheKey = `external_feed_count_v1:${API_BASE}:${kind}:${ownerKey}`;
   const ownerRef = useRef(ownerKey);
   ownerRef.current = ownerKey;
   const [result, setResult] = useState(null);
   useEffect(() => {
     if (!enabled || !session?.user?.id || currentRole !== role) return undefined;
-    let alive = true, controller = null, timeout = null;
+    let alive = true, controller = null, timeout = null, hasConfirmed = false;
     const current = () => alive && ownerRef.current === ownerKey;
     const cancel = () => { controller?.abort(); clearTimeout(timeout); };
     const refresh = async () => {
@@ -34,22 +38,33 @@ export default function ExternalFreightEntry(props) {
       try {
         const data = await externalFreightAPI.count(request.signal, () => current() && !request.signal.aborted);
         if (!current() || request.signal.aborted) return;
-        const kind = role === 'driver' ? 'cargo' : 'vehicle';
-        setResult({ ownerKey, count: data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0 ? data.count : null });
+        if (data.ok && data.kind === kind && Number.isSafeInteger(data.count) && data.count >= 0) {
+          const confirmed = { ownerKey, count: data.count };
+          hasConfirmed = true;
+          setResult(confirmed);
+          storage.set(countCacheKey, JSON.stringify(confirmed)).catch(() => {});
+        }
       } catch {
-        if (current() && controller === request) setResult(null);
+        // Keep the last confirmed value visible during a timeout or offline period.
       } finally {
         if (controller === request) clearTimeout(timeout);
       }
     };
-    const onBlur = () => { cancel(); setResult(null); };
+    const onBlur = () => { cancel(); };
+    storage.get(countCacheKey).then(raw => {
+      if (!current() || hasConfirmed || !raw) return;
+      try {
+        const cached = JSON.parse(raw);
+        if (cached?.ownerKey === ownerKey && Number.isSafeInteger(cached.count) && cached.count >= 0) setResult(cached);
+      } catch {}
+    }).catch(() => {});
     const removeFocus = navigation.addListener('focus', refresh);
     const removeBlur = navigation.addListener('blur', onBlur);
     const appListener = AppState.addEventListener('change', state => state === 'active' ? refresh() : onBlur());
     const interval = setInterval(refresh, 60000);
     refresh();
     return () => { alive = false; cancel(); clearInterval(interval); removeFocus(); removeBlur(); appListener.remove(); };
-  }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole]);
+  }, [enabled, ownerKey, role, navigation, session?.user?.id, currentRole, kind, countCacheKey]);
   if (!EXTERNAL_FREIGHT_ENABLED || showBack || !['driver', 'client'].includes(role)) return children;
   const labels = {
     RU: role === 'driver' ? 'Лента грузов' : 'Лента машин',
@@ -69,8 +84,8 @@ export default function ExternalFreightEntry(props) {
         style={[styles.entry, { backgroundColor: colors.driverSoft, borderColor: palette.border }]}>
         <Feather name="list" size={15} color={palette.text} />
         <Text numberOfLines={1} style={[styles.label, { color: palette.text }]}>{label}</Text>
-        {countText !== null && <Text testID="external-freight-count" numberOfLines={1}
-          style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText}</Text>}
+        <Text testID="external-freight-count" numberOfLines={1}
+          style={[styles.count, { color: palette.text, backgroundColor: palette.surface }]}>{countText ?? '—'}</Text>
       </TouchableOpacity>
     </View>
   </View>;

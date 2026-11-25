@@ -82,19 +82,29 @@ test('production auth, deals, chat, documents and favorites routes are live and 
   }
 });
 
-test('production onboarding renders its current auth entry without crashing', async ({ page }) => {
+test('production landing renders both UrTruck store links', async ({ page }) => {
+  const response = await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  expect(response.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const ios = page.locator('[data-store-link="ios"]');
+  const android = page.locator('[data-store-link="android"]');
+  await expect(ios).toBeVisible();
+  await expect(ios).toHaveAttribute('href', /^https:\/\/apps\.apple\.com\/.*\/id6764504167(?:[?#].*)?$/);
+  await expect(android).toBeVisible();
+  await expect(android).toHaveAttribute('href', 'https://play.google.com/store/apps/details?id=com.urtruck.app');
+});
+
+test('candidate onboarding renders its auth entry without crashing', async ({ page }) => {
+  test.skip(!AUDIT_BASE, 'candidate onboarding requires the local or preview build URL');
   fs.mkdirSync('qa-artifacts/production-smoke', { recursive: true });
-  await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.goto(AUDIT_BASE, { waitUntil: 'domcontentloaded', timeout: 60000 });
   const start = page.getByTestId('onb-v2-cta-phone');
   await expect(start).toBeVisible({ timeout: 30000 });
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'qa-artifacts/production-smoke/01-live-onboarding.png', fullPage: true });
+  await page.screenshot({ path: 'qa-artifacts/production-smoke/01-candidate-onboarding.png', fullPage: true });
 
   await start.click();
-  // Email exists in both the current deployed auth screen and the new
-  // Google+Apple+Email candidate, so this remains a valid production health
-  // signal before and after social auth is eventually deployed.
   await expect(page.getByTestId('email-v2-input')).toBeVisible({ timeout: 15000 });
-  await page.screenshot({ path: 'qa-artifacts/production-smoke/02-live-auth-entry.png', fullPage: true });
+  await page.screenshot({ path: 'qa-artifacts/production-smoke/02-candidate-auth-entry.png', fullPage: true });
 });
