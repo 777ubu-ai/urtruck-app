@@ -58,7 +58,7 @@ const COPY = {
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
-    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', tapToOpen: 'Нажать', swipeCalendar: 'Листайте даты →',
+    cached: 'из кэша UrTruck', live: 'живые данные', selected: 'Выбрано', tapToOpen: 'Нажать', allDates: 'Все даты', collapseDates: 'Свернуть',
   },
   KK: {
     title: 'Шекара', subtitle: 'CGR нақты жүктемесі және қолжетімді бронь', where: 'Қайда барасыз?', all: 'Барлығы',
@@ -71,7 +71,7 @@ const COPY = {
     details: 'CarGoRuqsat арқылы брондау', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
-    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Басу', swipeCalendar: 'Күндерді жылжытыңыз →',
+    status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Басу', allDates: 'Барлық күндер', collapseDates: 'Жию',
   },
   EN: {
     title: 'Border', subtitle: 'Real CGR load and booking availability', where: 'Where are you going?', all: 'All',
@@ -84,7 +84,7 @@ const COPY = {
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
     checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', tapToOpen: 'Tap',
-    swipeCalendar: 'Swipe dates →',
+    allDates: 'All dates', collapseDates: 'Collapse',
   },
   ZH: {
     title: '边境', subtitle: 'CGR 实时负载与预约空位', where: '您要去哪里？', all: '全部', choose: '选择口岸',
@@ -95,7 +95,7 @@ const COPY = {
     noPlaces: '无空位', noData: '无数据', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '在 CarGoRuqsat 预约', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
-    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
+    cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', allDates: '所有日期', collapseDates: '收起',
   },
 };
 Object.assign(COPY, withAdditionalLanguageTree(COPY));
@@ -263,7 +263,7 @@ export function completeBookingCalendar(live) {
     if (current.premium_free == null) current.premium_free = live.nearest_premium_free ?? null;
     byDate.set(live.nearest_premium_booking, current);
   }
-  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(0, 31);
+  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
 export default function QueueScreenLazyV2({ navigation, route }) {
@@ -315,6 +315,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [showManualLookup, setShowManualLookup] = useState(false);
   const [screenMode, setScreenMode] = useState('vehicles');
   const [bookingTariff, setBookingTariff] = useState('standard');
+  const [expandedCalendar, setExpandedCalendar] = useState(false);
   const [boardResult, setBoardResult] = useState(null);
   const [boardOptions, setBoardOptions] = useState([]);
   const [boardPicker, setBoardPicker] = useState(null);
@@ -575,6 +576,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     if (!checkpoint) return;
     const request = ++liveRequest.current;
     setSelectedId(checkpoint.id);
+    if (!force) setExpandedCalendar(false);
     setLiveLoading(true);
     setLiveError('');
     setLiveStatus('checking');
@@ -850,7 +852,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               {currentLookup?.found && catalog.some((item) => sameCheckpoint(item.name_ru || item.name, currentLookup.checkpoint)) ? <TouchableOpacity accessibilityRole="button" onPress={() => openVehicleOnBoard(currentLookup)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Text style={{ color: activeColor }}>{L.openBoard}</Text></TouchableOpacity> : null}
               </View>;
             }) : <View style={s.emptyVehicleState} testID="border-driver-empty-vehicle"><Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text></View>}
-            {!contextLoading && privateContext.vehicles.length === 0 && !selectedDeal?.plate ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehiclePrimary, { backgroundColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color="#fff" /><Text style={s.emptyVehiclePrimaryText}>{R.addVehicle}</Text></TouchableOpacity> : null}
+            {!contextLoading && privateContext.vehicles.length === 0 && !selectedDeal?.plate ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehicleSecondary, { borderColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: activeColor }]}>{R.addVehicle}</Text></TouchableOpacity> : null}
             {privateContext.vehicles.length > 0 ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehicleSecondary, { borderColor: theme.border }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.addVehicle}</Text></TouchableOpacity> : null}
           </View>
         ) : (
@@ -985,12 +987,15 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
             <TouchableOpacity onPress={() => openBoard(selected)} style={[s.secondaryDealAction, { borderColor: activeColor, marginTop: 12 }]} accessibilityRole="button" testID="border-open-board"><Feather name="list" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: activeColor }]}>{L.openBoard}</Text></TouchableOpacity>
 
-            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim, fontSize: sp(10.5) }]}>{L.swipeCalendar}</Text></View>
+            <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: expandedCalendar }} onPress={() => setExpandedCalendar((value) => !value)} style={s.calendarToggle}><Text style={{ color: activeColor }}>{expandedCalendar ? L.collapseDates : L.allDates}</Text></TouchableOpacity></View>
             <View style={s.chips}>
               {[['standard', L.standard], ['premium', L.premium]].map(([value, label]) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: bookingTariff === value }} onPress={() => setBookingTariff(value)} style={[s.countryChip, { borderColor: bookingTariff === value ? activeColor : theme.border }]}><Text style={{ color: theme.text }}>{label}</Text></TouchableOpacity>)}
             </View>
             <FlatList
-              horizontal
+              key={expandedCalendar ? 'all-dates' : 'date-strip'}
+              horizontal={!expandedCalendar}
+              numColumns={expandedCalendar ? 4 : 1}
+              scrollEnabled={!expandedCalendar}
               data={calendarRows}
               keyExtractor={(item) => item.date}
               renderItem={({ item }) => {
@@ -998,7 +1003,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
                 const available = free != null && Number(free) > 0;
                 const unavailable = free != null && Number(free) === 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, expandedCalendar && s.dateCardExpanded, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
                     {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text>
                       : available ? <Text style={s.dateFree}>{free}</Text>
@@ -1142,7 +1147,9 @@ const s = StyleSheet.create({
   swipeHint: { fontSize: 10.5, fontWeight: '650' },
   calendarList: { width: '100%', overflow: 'visible' },
   dateStrip: { gap: 8, paddingRight: 4, paddingBottom: 4 },
-  dateCard: { width: 90, minHeight: 101, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
+  calendarToggle: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  dateCardExpanded: { flex: 1, margin: 3 },
+  dateCard: { width: 68, minHeight: 66, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
   dateText: { fontSize: 12, fontWeight: '850' },
   dateFree: { color: '#738396', fontSize: 20, fontWeight: '950', marginTop: 5 },
   datePremium: { color: '#B7791F', fontSize: 20, fontWeight: '950', marginTop: 5 },
