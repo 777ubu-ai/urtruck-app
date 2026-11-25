@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }) => {
     return data;
   }, []);
 
-  const signIn = async (phone, level = 1, token = null) => {
+  const signIn = async (phone, level = 1, token = null, userId = null) => {
     if (token) {
       await storage.set('ur_reg_token', token);
     }
@@ -125,7 +125,7 @@ export const AuthProvider = ({ children }) => {
       throw new Error('NO_TOKEN');
     }
     const prevRole = session?.user?.role || null;
-    const s = { user: { phone, role: prevRole, id: session?.user?.id || ('u_' + Date.now()) } };
+    const s = { user: { phone, role: prevRole, id: userId || session?.user?.id || ('u_' + Date.now()) } };
     setSession(s);
     setVerificationLevel(level);
     setHasToken(true);

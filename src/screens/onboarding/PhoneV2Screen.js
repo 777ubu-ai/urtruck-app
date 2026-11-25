@@ -194,7 +194,7 @@ export default function PhoneV2Screen({ navigation, route }) {
   }, [routedSocialUrl]);
 
   const goAfterLogin = useCallback(async (result, identifier, channel) => {
-    await signIn(identifier, result.verification_level || 1, result.token);
+    await signIn(identifier, result.verification_level || 1, result.token, result.user_id);
     push.autoRegister?.().catch(() => {});
 
     let detectedRole = result.role && result.role !== 'guest' ? result.role : null;
