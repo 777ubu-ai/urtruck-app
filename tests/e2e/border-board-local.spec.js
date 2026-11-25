@@ -38,3 +38,53 @@ test('online board searches beyond the current page and keeps the selected check
   await expect(board.getByText('TEST222', { exact: true })).toBeVisible();
   await expect(board.getByText('TEST111', { exact: true })).toHaveCount(0);
 });
+
+test('filters the full board and distinguishes zero from source failure', async ({ page }) => {
+  const checkpoint = { id: 'kalzhat', name: 'Калжат - Дулаты', name_ru: 'Калжат - Дулаты', country: 'CN' };
+  const statuses = [
+    { code: 'Pending', label: 'В очереди' },
+    { code: 'Called', label: 'Вызван на пункт пропуска' },
+    { code: 'Revoked', label: 'Пропуск отозван' },
+  ];
+  const requests = [];
+  let unavailable = false;
+  await page.route('**/borders/catalog', route => route.fulfill({
+    json: { checkpoints: [checkpoint], countries: [{ country: 'CN' }] },
+  }));
+  await page.route('**/borders/online-board?*', route => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push({ statuses: params.getAll('statuses'), plate: params.get('plate'), page: params.get('page') });
+    if (unavailable) return route.fulfill({ status: 502, json: { detail: 'Source unavailable' } });
+    const rows = params.get('plate') ? [] : [
+      { plate: 'QA0001', checkpoint: checkpoint.name, date: '25.11.2026', slot: '08:00–09:00', status: 'В очереди' },
+    ];
+    return route.fulfill({ json: { rows, statuses, total: rows.length, page: 1, has_next: false, updated_at: '2026-11-25T12:00:00Z' } });
+  });
+
+  await H.emailLogin(page, 'board-filter-' + Date.now() + '@urtruck.kz', 'driver');
+  await page.locator(H.tid('bottom-nav-queue')).click();
+  await page.getByTestId('border-tab-board').click();
+  const board = page.getByTestId('border-board-screen');
+  await board.getByTestId('border-board-checkpoint').click();
+  await board.getByText(checkpoint.name, { exact: true }).click();
+  await expect(board.getByText('QA0001', { exact: true })).toBeVisible();
+
+  await board.getByTestId('border-board-statuses').click();
+  await board.getByRole('checkbox', { name: 'Пропуск отозван' }).click();
+  await board.getByTestId('border-board-apply').click();
+  await expect.poll(() => requests.at(-1)).toEqual({ statuses: ['Pending', 'Called'], plate: '', page: '1' });
+
+  unavailable = true;
+  await board.getByRole('button', { name: 'Обновить' }).click();
+  await expect(board.getByText('Не удалось получить данные CGR. Повторите.')).toBeVisible();
+  await expect(board.getByText('QA0001', { exact: true })).toBeVisible();
+  await expect(board.getByText('По этим фильтрам записей нет')).toHaveCount(0);
+
+  unavailable = false;
+  const search = board.getByTestId('border-board-search');
+  await search.fill('MISSING0001');
+  await search.press('Enter');
+  await expect.poll(() => requests.at(-1)).toEqual({ statuses: ['Pending', 'Called'], plate: 'MISSING0001', page: '1' });
+  await expect(board.getByText('По этим фильтрам записей нет')).toBeVisible();
+  await expect(board.getByText('QA0001', { exact: true })).toHaveCount(0);
+});
