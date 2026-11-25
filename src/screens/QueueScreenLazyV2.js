@@ -53,8 +53,8 @@ const COPY = {
     tap: 'Нажмите на КПП, чтобы увидеть реальную обстановку', loading: 'Получаем данные CGR…',
     nearest: 'Ближайшая свободная бронь', places: 'свободных мест', standard: '1 МРП', premium: '100 МРП',
     premiumNearest: 'Ближайшая бронь за 100 МРП', noStandard: 'Свободных мест за 1 МРП в доступном календаре нет',
-    board: 'Сейчас на табло', openBoard: 'Открыть табло CarGoRuqsat', limit: 'Лимит', perDay: '/сутки', calendar: 'Календарь загрузки', noPlaces: 'Нет мест', noData: 'Нет данных',
-    dayOff: 'Выходной', updated: 'CGR обновлено', refresh: 'Обновить', details: 'Открыть CGR', favorite: 'В избранное',
+    board: 'Сейчас на табло', openBoard: 'Открыть табло', boardTabTitle: 'Онлайн-табло', boardApply: 'Применить', boardFind: 'Найти', boardFound: 'Найдено:', boardNoMatches: 'По этим фильтрам записей нет', boardPrevious: 'Предыдущая страница', boardNext: 'Следующая страница', boardClear: 'Очистить', limit: 'Лимит', perDay: '/сутки', calendar: 'Календарь загрузки', noPlaces: 'Нет мест', noData: 'Нет данных',
+    dayOff: 'Выходной', updated: 'CGR обновлено', refresh: 'Обновить', details: 'Бронирование в CarGoRuqsat', favorite: 'В избранное',
     favorited: 'В избранном', sourceError: 'Не удалось получить данные CGR. Повторите.', checkQueue: 'Проверить свою очередь',
     platePlaceholder: 'Госномер, например 123ABC02', check: 'Проверить', notFound: 'Активная очередь не найдена',
     lookupError: 'Не удалось проверить номер', checkpoint: 'КПП', queueTime: 'Время очереди', status: 'Статус',
@@ -66,9 +66,9 @@ const COPY = {
     choose: 'Өткізу бекетін таңдаңыз', hint: 'Жылжытып, қажет бекетті басыңыз — деректер тек сол бекетке жүктеледі',
     tap: 'Нақты жағдайды көру үшін бекетті басыңыз', loading: 'CGR деректері жүктелуде…', nearest: 'Ең жақын бос бронь',
     places: 'бос орын', standard: '1 АЕК', premium: '100 АЕК', premiumNearest: '100 АЕК бойынша жақын бронь',
-    noStandard: 'Қолжетімді күнтізбеде 1 АЕК бойынша бос орын жоқ', board: 'Қазір таблода', openBoard: 'CarGoRuqsat таблосын ашу', limit: 'Лимит', perDay: '/тәулік',
+    noStandard: 'Қолжетімді күнтізбеде 1 АЕК бойынша бос орын жоқ', board: 'Қазір таблода', openBoard: 'Таблоны ашу', boardTabTitle: 'Онлайн табло', boardApply: 'Қолдану', boardFind: 'Іздеу', boardFound: 'Табылды:', boardNoMatches: 'Бұл сүзгілер бойынша жазба жоқ', boardPrevious: 'Алдыңғы бет', boardNext: 'Келесі бет', boardClear: 'Тазалау', limit: 'Лимит', perDay: '/тәулік',
     calendar: 'Жүктеме күнтізбесі', noPlaces: 'Орын жоқ', noData: 'Дерек жоқ', dayOff: 'Демалыс', updated: 'CGR жаңартылды', refresh: 'Жаңарту',
-    details: 'CGR ашу', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
+    details: 'CarGoRuqsat арқылы брондау', favorite: 'Таңдаулыға', favorited: 'Таңдаулыда', sourceError: 'CGR деректерін алу мүмкін болмады.',
     checkQueue: 'Өз кезегіңізді тексеру', platePlaceholder: 'Мемлекеттік нөмір, мысалы 123ABC02', check: 'Тексеру',
     notFound: 'Белсенді кезек табылмады', lookupError: 'Нөмірді тексеру мүмкін болмады', checkpoint: 'Бекет', queueTime: 'Кезек уақыты',
     status: 'Күйі', cached: 'UrTruck кэшінен', live: 'нақты дерек', selected: 'Таңдалды', tapToOpen: 'Басу', swipeCalendar: 'Күндерді жылжытыңыз →',
@@ -79,8 +79,8 @@ const COPY = {
     choose: 'Choose checkpoint', hint: 'Swipe and tap a checkpoint — data loads only for that checkpoint',
     tap: 'Tap a checkpoint to see the real situation', loading: 'Loading CGR data…', nearest: 'Nearest free booking',
     places: 'free slots', standard: '1 MCI', premium: '100 MCI', premiumNearest: 'Nearest 100 MCI booking',
-    noStandard: 'No 1 MCI slots in the published calendar', board: 'On live board now', openBoard: 'Open CarGoRuqsat board', limit: 'Limit', perDay: '/day',
-    calendar: 'Load calendar', noPlaces: 'No slots', noData: 'No data', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Open CGR',
+    noStandard: 'No 1 MCI slots in the published calendar', board: 'On live board now', openBoard: 'Open board', boardTabTitle: 'Online board', boardApply: 'Apply', boardFind: 'Search', boardFound: 'Found:', boardNoMatches: 'No records match these filters', boardPrevious: 'Previous page', boardNext: 'Next page', boardClear: 'Clear', limit: 'Limit', perDay: '/day',
+    calendar: 'Load calendar', noPlaces: 'No slots', noData: 'No data', dayOff: 'Day off', updated: 'CGR updated', refresh: 'Refresh', details: 'Book in CarGoRuqsat',
     favorite: 'Favorite', favorited: 'Favorited', sourceError: 'Could not load CGR data. Try again.', checkQueue: 'Check your queue',
     platePlaceholder: 'Plate number, e.g. 123ABC02', check: 'Check', notFound: 'No active queue found', lookupError: 'Could not check plate',
     checkpoint: 'Checkpoint', queueTime: 'Queue time', status: 'Status', cached: 'UrTruck cache', live: 'live data', selected: 'Selected', tapToOpen: 'Tap',
@@ -91,8 +91,8 @@ const COPY = {
     hint: '左右滑动并点击口岸 — 只加载所选口岸的数据', tap: '点击口岸查看实时情况', loading: '正在获取 CGR 数据…',
     nearest: '最近可预约日期', places: '个空位', standard: '1 MCI', premium: '100 MCI', premiumNearest: '最近 100 MCI 预约',
     myCarsTab: '我的车辆', checkpointsTab: '口岸', searchCars: '按车牌搜索', statusNotChecked: '点击查询排队状态', sideKz: '哈萨克斯坦', sideCn: '中国',
-    noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', openBoard: '打开 CarGoRuqsat 电子屏', limit: '每日限额', perDay: '/天', calendar: '负载日历',
-    noPlaces: '无空位', noData: '无数据', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '打开 CGR', favorite: '收藏',
+    noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', openBoard: '打开电子屏', boardTabTitle: '在线电子屏', boardApply: '应用', boardFind: '查找', boardFound: '找到：', boardNoMatches: '没有符合条件的记录', boardPrevious: '上一页', boardNext: '下一页', boardClear: '清除', limit: '每日限额', perDay: '/天', calendar: '负载日历',
+    noPlaces: '无空位', noData: '无数据', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '在 CarGoRuqsat 预约', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
     check: '查询', notFound: '未找到有效排队', lookupError: '无法查询车牌', checkpoint: '口岸', queueTime: '排队时间', status: '状态',
     cached: 'UrTruck 缓存', live: '实时数据', selected: '已选择', tapToOpen: '点击查看', swipeCalendar: '左右滑动日期 →',
@@ -176,7 +176,7 @@ function lookupStatusLabel(code, lang) {
   return entry[lang] || entry.RU;
 }
 
-function normalizePlate(value) { return String(value || '').trim().toUpperCase().replace(/\s+/g, ''); }
+function normalizePlate(value) { return String(value || '').trim().toUpperCase().replace(/[\s-]+/g, ''); }
 function jsonArray(raw) { if (!raw) return []; try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; } }
 async function fetchJson(url) {
   const response = await fetch(url);
@@ -314,11 +314,14 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [selectedDealId, setSelectedDealId] = useState(null);
   const [showManualLookup, setShowManualLookup] = useState(false);
   const [screenMode, setScreenMode] = useState('vehicles');
-  const [vehicleFilter, setVehicleFilter] = useState('');
-  const [boardRows, setBoardRows] = useState([]);
+  const [bookingTariff, setBookingTariff] = useState('standard');
+  const [boardResult, setBoardResult] = useState(null);
+  const [boardOptions, setBoardOptions] = useState([]);
+  const [boardPicker, setBoardPicker] = useState(null);
+  const [boardDraft, setBoardDraft] = useState([]);
   const [boardLoading, setBoardLoading] = useState(false);
   const [boardError, setBoardError] = useState('');
-  const [boardStatus, setBoardStatus] = useState('all');
+  const [boardQuery, setBoardQuery] = useState({ checkpoint: null, plate: '', statuses: [], page: 1 });
   const [boardPlate, setBoardPlate] = useState('');
   const [boardRefresh, setBoardRefresh] = useState(0);
 
@@ -328,6 +331,10 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [roadRouteLoading, setRoadRouteLoading] = useState(false);
   const checkpointCarouselRef = useRef(null);
   const checkpointCarouselX = useRef(0);
+  const liveRequest = useRef(0);
+  const lookupRequest = useRef(0);
+  const manualRequest = useRef(0);
+  const scrollRef = useRef(null);
 
   const countryName = useCallback((code) => {
     const normalizedCode = String(code || '').trim().toUpperCase();
@@ -464,15 +471,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     return selectedDeal?.plate || '';
   }, [isDriver, selectedDeal, selectedVehicle]);
 
-  const cycleVehicle = useCallback(() => {
-    if (!isDriver || privateContext.vehicles.length < 2) return;
-    const current = privateContext.vehicles.findIndex((item) => String(item.id) === String(selectedVehicle?.id));
-    const next = privateContext.vehicles[(current + 1) % privateContext.vehicles.length];
-    setSelectedVehicleId(next?.id || null);
-    const matchingDeal = privateContext.deals.find((item) => String(item.vehicle_id) === String(next?.id));
-    setSelectedDealId(matchingDeal?.deal_id || null);
-  }, [isDriver, privateContext.vehicles, privateContext.deals, selectedVehicle]);
-
   const countryCodes = useMemo(() => {
     const available = new Set(countries.map((item) => String(item.country || '').trim().toUpperCase()).filter(Boolean));
     const ordered = COUNTRY_ORDER.filter((code) => available.has(code) || ['CN', 'KG', 'RU'].includes(code));
@@ -502,23 +500,48 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         : R.cgrUnavailable;
   const calendarRows = useMemo(() => completeBookingCalendar(live), [live]);
 
+  const openBoard = (checkpoint, number = '') => {
+    setBoardPlate(number);
+    setBoardQuery({ checkpoint, plate: number, statuses: [], page: 1 });
+    setBoardPicker(null);
+    setScreenMode('board');
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
+
+  const sameCheckpoint = (first, second) => {
+    const key = (name) => String(name || '').toLowerCase().replace(/[\s—–-]+/g, '');
+    return key(first) === key(second);
+  };
+  const openVehicleOnBoard = (result) => {
+    const match = catalog.find((item) => sameCheckpoint(item.name_ru || item.name, result.checkpoint));
+    if (match) openBoard(match, normalizePlate(result.plate));
+  };
+
+  const boardKey = JSON.stringify([boardQuery.checkpoint?.id, boardQuery.plate, boardQuery.statuses, boardQuery.page]);
+  const boardData = boardResult?.key === boardKey ? boardResult.data : null;
   useEffect(() => {
-    if (screenMode !== 'board' || !selected) return undefined;
-    let active = true;
-    setBoardRows([]);
+    if (screenMode !== 'board' || !boardQuery.checkpoint) return undefined;
+    let current = true;
     setBoardLoading(true);
     setBoardError('');
-    fetchJson(`${BASE}/board?checkpoint=${encodeURIComponent(selected.name_ru || selected.name)}`)
-      .then((result) => {
-        if (!active) return;
-        if (!result?.enabled || result?.error || !Array.isArray(result?.rows)) throw new Error('unavailable');
-        setBoardRows(result.rows);
+    const params = new URLSearchParams({
+      checkpoint: boardQuery.checkpoint.id,
+      plate: boardQuery.plate,
+      page: String(boardQuery.page),
+    });
+    boardQuery.statuses.forEach((item) => params.append('statuses', item));
+    fetchJson(BASE + '/online-board?' + params.toString())
+      .then((data) => {
+        if (!current) return;
+        if (!Array.isArray(data?.rows) || !Array.isArray(data?.statuses)
+          || !Number.isInteger(data.total) || data.page !== boardQuery.page) throw new Error('invalid_board');
+        setBoardOptions(data.statuses);
+        setBoardResult({ key: boardKey, data });
       })
-      .catch(() => { if (active) setBoardError(L.sourceError); })
-      .finally(() => { if (active) setBoardLoading(false); });
-    return () => { active = false; };
-  }, [screenMode, selected, L.sourceError, boardRefresh]);
-
+      .catch(() => { if (current) setBoardError(L.sourceError); })
+      .finally(() => { if (current) setBoardLoading(false); });
+    return () => { current = false; };
+  }, [screenMode, boardQuery, boardKey, L.sourceError, boardRefresh]);
 
   useEffect(() => {
     const origin = selectedDeal?.location;
@@ -549,7 +572,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   }, [selectedDeal?.location?.lat, selectedDeal?.location?.lng, selected?.lat, selected?.lon]);
 
   const loadLive = useCallback(async (checkpoint, force = false) => {
-    if (!checkpoint || liveLoading) return;
+    if (!checkpoint) return;
+    const request = ++liveRequest.current;
     setSelectedId(checkpoint.id);
     setLiveLoading(true);
     setLiveError('');
@@ -557,13 +581,19 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     try {
       const data = await fetchJson(`${BASE}/live/${encodeURIComponent(checkpoint.id)}${force ? '?force=true' : ''}`);
       if (!data || typeof data !== 'object') throw new Error('invalid_cgr_live_payload');
+      if (request !== liveRequest.current) return;
       setLiveById((previous) => ({ ...previous, [String(checkpoint.id)]: data }));
       setLiveStatus('ready');
-    } catch { setLiveError(L.sourceError); setLiveStatus('unavailable'); }
-    finally { setLiveLoading(false); }
-  }, [liveLoading, L.sourceError]);
+    } catch {
+      if (request === liveRequest.current) { setLiveError(L.sourceError); setLiveStatus('unavailable'); }
+    } finally {
+      if (request === liveRequest.current) setLiveLoading(false);
+    }
+  }, [L.sourceError]);
 
   const selectCountry = useCallback((code) => {
+    liveRequest.current += 1;
+    setLiveLoading(false);
     setSelectedCountry(code);
     setSelectedId(null);
     setLiveError('');
@@ -583,36 +613,53 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const lookupPlateValue = useCallback(async (value) => {
     const normalized = normalizePlate(value);
     if (normalized.length < 3) return;
+    const request = ++lookupRequest.current;
     setLookupLoading(true);
-    setLookup(null);
     try {
       const result = await fetchJson(`${BASE}/lookup?plate=${encodeURIComponent(normalized)}`);
-      setLookup(result);
-    } catch { setLookup({ error: true }); }
-    finally { setLookupLoading(false); }
+      if (request === lookupRequest.current) setLookup({ ...result, plate: normalized, checkedAt: new Date().toISOString() });
+    } catch {
+      if (request === lookupRequest.current) setLookup((previous) => normalizePlate(previous?.plate) === normalized ? { ...previous, error: true } : { plate: normalized, error: true });
+    } finally {
+      if (request === lookupRequest.current) setLookupLoading(false);
+    }
   }, []);
 
   const searchPlate = useCallback(async (requestedPlate = plate) => {
     const normalized = normalizePlate(requestedPlate);
-    if (normalized.length < 3 || manualLookupLoading) return;
+    if (normalized.length < 3) return;
+    const request = ++manualRequest.current;
     setPlate(normalized);
+    const saved = privateContext.vehicles.find((item) => normalizePlate(item.license_plate || item.plate) === normalized);
+    if (isDriver && saved) {
+      setSelectedVehicleId(saved.id);
+      setSelectedDealId(privateContext.deals.find((item) => normalizePlate(item.plate) === normalized)?.deal_id || null);
+      setManualLookup(null);
+      setManualLookupLoading(false);
+      return normalizePlate(activePlate) === normalized ? lookupPlateValue(normalized) : undefined;
+    }
     setManualLookupLoading(true);
     setManualLookup(null);
     setManualWatchEnabled(false);
     let result;
     try { result = await fetchJson(`${BASE}/lookup?plate=${encodeURIComponent(normalized)}`); }
     catch { result = { error: true }; }
+    if (request !== manualRequest.current) return;
     setManualLookup(result);
     const nextRecent = [{ plate: normalized, status: result?.status || null, checkpoint: result?.checkpoint || null, found: Boolean(result?.found), checked_at: new Date().toISOString() }, ...recentLookups.filter((item) => normalizePlate(item?.plate) !== normalized)].slice(0, 10);
     setRecentLookups(nextRecent);
     storage.set(RECENT_LOOKUPS_KEY, JSON.stringify(nextRecent)).catch(() => {});
     setManualLookupLoading(false);
-  }, [plate, manualLookupLoading, recentLookups]);
+  }, [plate, recentLookups, privateContext.vehicles, privateContext.deals, isDriver, activePlate, lookupPlateValue]);
 
   useEffect(() => {
     const normalized = normalizePlate(activePlate);
-    if (!normalized) return;
-    setPlate(normalized);
+    if (!normalized) {
+      lookupRequest.current += 1;
+      setLookup(null);
+      setLookupLoading(false);
+      return;
+    }
     lookupPlateValue(normalized);
   }, [activePlate, lookupPlateValue]);
 
@@ -640,15 +687,6 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     if (!checkedPlate) return null;
     return privateContext.deals.find((item) => normalizePlate(item?.plate) === checkedPlate) || null;
   }, [manualLookup, plate, privateContext.deals]);
-
-  const queueStages = useMemo(() => [
-    { code: 'payment', label: R.paymentStep },
-    { code: 'validating', label: R.reviewStep },
-    { code: 'in_queue', label: R.queueStep },
-    { code: 'called', label: R.calledStep },
-    { code: 'crossed', label: R.crossedStep },
-  ], [R]);
-  const currentQueueStage = queueStages.findIndex((item) => item.code === lookup?.status);
 
   const enableManualWatch = useCallback(async () => {
     const normalized = normalizePlate(manualLookup?.plate || plate);
@@ -682,7 +720,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
       return rows;
     })()
     : privateContext.deals;
-  const visibleVehicleRows = vehicleRows.filter((item) => normalizePlate(item?.license_plate || item?.plate).includes(normalizePlate(vehicleFilter)));
+
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
 
   return (
@@ -696,52 +734,124 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         <TouchableOpacity onPress={() => setScreenMode('checkpoints')} style={[s.screenTab, screenMode === 'checkpoints' && { borderColor: activeColor, backgroundColor: activeColor + '0D' }]} accessibilityRole="tab" accessibilityState={{ selected: screenMode === 'checkpoints' }} testID="border-tab-checkpoints">
           <Feather name="map-pin" size={18} color={screenMode === 'checkpoints' ? activeColor : theme.textMuted} /><Text style={[s.screenTabText, { color: screenMode === 'checkpoints' ? activeColor : theme.text }]}>{L.checkpointsTab}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setScreenMode('board')} style={[s.screenTab, screenMode === 'board' && { borderColor: activeColor, backgroundColor: activeColor + '0D' }]} accessibilityRole="tab" accessibilityState={{ selected: screenMode === 'board' }} testID="border-tab-board"><Feather name="list" size={18} color={screenMode === 'board' ? activeColor : theme.textMuted} /><Text style={[s.screenTabText, { color: screenMode === 'board' ? activeColor : theme.text }]}>{({ RU: 'Табло', KK: 'Табло', EN: 'Board', ZH: '电子屏' })[lang] || 'Табло'}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => { if (!boardQuery.checkpoint && selected) openBoard(selected); else setScreenMode('board'); }} style={[s.screenTab, screenMode === 'board' && { borderColor: activeColor, backgroundColor: activeColor + '0D' }]} accessibilityRole="tab" accessibilityState={{ selected: screenMode === 'board' }} testID="border-tab-board"><Feather name="list" size={18} color={screenMode === 'board' ? activeColor : theme.textMuted} /><Text style={[s.screenTabText, { color: screenMode === 'board' ? activeColor : theme.text }]}>{({ RU: 'Табло', KK: 'Табло', EN: 'Board', ZH: '电子屏' })[lang] || 'Табло'}</Text></TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+      <ScrollView ref={scrollRef} contentContainerStyle={s.content} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled" nestedScrollEnabled>
         {screenMode === 'board' ? <View testID="border-board-screen">
-          <Text style={[s.sectionTitle, { color: theme.text }]}>{({ RU: 'Табло КПП', KK: 'Өткізу бекетінің таблосы', EN: 'Checkpoint board', ZH: '口岸电子屏' })[lang] || 'Табло КПП'}</Text>
-          <Text style={[s.hint, { color: theme.textMuted }]}>{({ RU: 'Выберите страну и пункт пропуска', KK: 'Ел мен өткізу бекетін таңдаңыз', EN: 'Select a country and checkpoint', ZH: '选择国家和口岸' })[lang] || 'Выберите страну и пункт пропуска'}</Text>
-          <ScrollView horizontal contentContainerStyle={s.chips}>{countryCodes.map((code) => <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: theme.border, backgroundColor: selectedCountry === code ? activeColor : theme.card }]}><Text style={{ color: selectedCountry === code ? '#fff' : theme.text }}>{countryName(code)}</Text></TouchableOpacity>)}</ScrollView>
-          <ScrollView horizontal contentContainerStyle={s.chips}>{visible.map((cp) => <TouchableOpacity key={cp.id} onPress={() => setSelectedId(cp.id)} style={[s.countryChip, { borderColor: String(selectedId) === String(cp.id) ? activeColor : theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text }}>{localizeCheckpointName(cp, lang)}</Text></TouchableOpacity>)}</ScrollView>
-          {selected ? <>
-            <Text style={[s.hint, { color: theme.textMuted }]}>{({ RU: 'Первые страницы реестра. Для полного поиска откройте CarGoRuqsat.', KK: 'Тізілімнің алғашқы беттері. Толық іздеу үшін CarGoRuqsat ашыңыз.', EN: 'First registry pages only. Open CarGoRuqsat for a complete search.', ZH: '仅显示登记簿前几页。完整搜索请打开 CarGoRuqsat。' })[lang] || 'Первые страницы реестра. Для полного поиска откройте CarGoRuqsat.'}</Text>
-            <TextInput value={boardPlate} onChangeText={setBoardPlate} placeholder={L.searchCars} placeholderTextColor={theme.textDim} autoCapitalize="characters" style={[s.vehicleSearchInput, { color: theme.text, borderWidth: 1, borderColor: theme.border, padding: 12, marginTop: 10 }]} testID="border-board-search" />
-            <ScrollView horizontal contentContainerStyle={s.chips}>{['all', 'in_queue', 'called', 'crossed', 'revoked'].map((status) => <TouchableOpacity key={status} onPress={() => setBoardStatus(status)} style={[s.countryChip, { borderColor: theme.border, backgroundColor: boardStatus === status ? activeColor : theme.card }]}><Text style={{ color: boardStatus === status ? '#fff' : theme.text }}>{status === 'all' ? L.all : lookupStatusLabel(status, lang)}</Text></TouchableOpacity>)}</ScrollView>
-            {boardLoading ? <ActivityIndicator color={activeColor} /> : boardError ? <Text style={{ color: '#B42318' }}>{boardError}</Text> : boardRows.filter((row) => (boardStatus === 'all' || row.status === boardStatus) && normalizePlate(row.plate).includes(normalizePlate(boardPlate))).map((row, index) => <View key={`${row.plate}-${row.queue_datetime}-${index}`} style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]}><Text style={[s.vehicleName, { color: theme.text }]}>{row.plate || '—'}</Text><Text style={{ color: theme.textMuted }}>{row.checkpoint || '—'} · {row.queue_datetime || '—'}</Text><Text style={{ color: theme.text }}>{row.status_raw || lookupStatusLabel(row.status, lang)}</Text></View>)}
-            {!boardLoading && !boardError && !boardRows.filter((row) => (boardStatus === 'all' || row.status === boardStatus) && normalizePlate(row.plate).includes(normalizePlate(boardPlate))).length ? <Text style={[s.hint, { color: theme.textMuted }]}>{({ RU: 'В загруженных записях ничего не найдено.', KK: 'Жүктелген жазбаларда ештеңе табылмады.', EN: 'No matching records in the loaded pages.', ZH: '已加载的记录中没有匹配结果。' })[lang] || 'В загруженных записях ничего не найдено.'}</Text> : null}
-            <TouchableOpacity onPress={() => setBoardRefresh((value) => value + 1)} disabled={boardLoading} style={[s.secondaryDealAction, { borderColor: theme.border, marginTop: 10 }]}><Text style={[s.secondaryDealActionText, { color: activeColor }]}>{L.refresh}</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => Linking.openURL(live?.cgr_checkpoint_id ? `https://cgr.qoldau.kz/ru/registry/scoreboard?flCheckpoint=${encodeURIComponent(live.cgr_checkpoint_id)}` : 'https://cgr.qoldau.kz/ru/registry/scoreboard').catch(() => {})} style={s.cgrButton} testID="border-board-official"><Text style={s.cgrButtonText}>{L.openBoard}</Text></TouchableOpacity>
-          </> : <Text style={[s.hint, { color: theme.textMuted }]}>{L.tap}</Text>}
+          <Text style={[s.sectionTitle, { color: theme.text }]}>{L.boardTabTitle}</Text>
+          <Text style={[s.source, { color: theme.textMuted }]}>CarGoRuqsat</Text>
+          <TouchableOpacity accessibilityRole="button" testID="border-board-checkpoint" onPress={() => setBoardPicker(boardPicker === 'checkpoint' ? null : 'checkpoint')} style={[s.vehicleSearchWrap, { borderColor: theme.border }]}>
+            <Text style={{ flex: 1, color: theme.text }}>{boardQuery.checkpoint ? localizeCheckpointName(boardQuery.checkpoint, lang) : L.checkpoint}</Text>
+            <Feather name="chevron-down" size={18} color={theme.textMuted} />
+          </TouchableOpacity>
+          {boardPicker === 'checkpoint' ? [...new Set(catalog.map((cp) => cp.country))].map((code) => <View key={code}>
+            <Text style={[s.metricLabel, { color: theme.textMuted }]}>{countryName(code)}</Text>
+            {catalog.filter((cp) => cp.country === code).map((cp) => <TouchableOpacity key={cp.id} onPress={() => { setBoardQuery((value) => ({ ...value, checkpoint: cp, plate: normalizePlate(boardPlate), page: 1 })); setBoardPicker(null); }} style={s.vehicleListRow}>
+              <Text style={{ color: theme.text }}>{localizeCheckpointName(cp, lang)}</Text>
+            </TouchableOpacity>)}
+          </View>) : null}
+          {boardQuery.checkpoint ? <>
+            <TouchableOpacity accessibilityRole="button" testID="border-board-statuses" disabled={!boardOptions.length} onPress={() => { setBoardDraft(boardQuery.statuses.length ? boardQuery.statuses : boardOptions.map((item) => item.code)); setBoardPicker(boardPicker === 'status' ? null : 'status'); }} style={[s.vehicleSearchWrap, { borderColor: theme.border }]}>
+              <Text style={{ flex: 1, color: theme.text }}>{L.status} · {boardQuery.statuses.length || L.all}</Text>
+              <Feather name="chevron-down" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+            {boardPicker === 'status' ? <View>
+              <TouchableOpacity accessibilityRole="button" onPress={() => setBoardDraft(boardOptions.map((item) => item.code))} style={s.vehicleListRow}><Text style={{ color: theme.text }}>{L.all}</Text></TouchableOpacity>
+              {boardOptions.map((item) => {
+                const checked = boardDraft.includes(item.code);
+                return <TouchableOpacity key={item.code} accessibilityRole="checkbox" accessibilityState={{ checked }} style={s.vehicleListRow} onPress={() => setBoardDraft((current) => {
+                  return current.includes(item.code) ? current.filter((code) => code !== item.code) : [...current, item.code];
+                })}>
+                  <Feather name={checked ? 'check-square' : 'square'} size={18} color={activeColor} />
+                  <Text style={{ flex: 1, color: theme.text }}>{item.label}</Text>
+                </TouchableOpacity>;
+              })}
+              <TouchableOpacity accessibilityRole="button" testID="border-board-apply" disabled={!boardDraft.length} onPress={() => { setBoardQuery((value) => ({ ...value, statuses: boardDraft.length === boardOptions.length ? [] : boardDraft, plate: normalizePlate(boardPlate), page: 1 })); setBoardPicker(null); }} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Text style={{ color: theme.text }}>{L.boardApply}</Text></TouchableOpacity>
+            </View> : null}
+            <View style={[s.vehicleSearchWrap, { borderColor: theme.border }]}>
+              <TextInput value={boardPlate} onChangeText={setBoardPlate} onSubmitEditing={() => setBoardQuery((value) => ({ ...value, plate: normalizePlate(boardPlate), page: 1 }))} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} maxLength={32} returnKeyType="search" style={[s.vehicleSearchInput, { color: theme.text }]} testID="border-board-search" />
+              <TouchableOpacity accessibilityRole="button" onPress={() => setBoardQuery((value) => ({ ...value, plate: normalizePlate(boardPlate), page: 1 }))} style={[s.secondaryDealAction, { borderColor: activeColor }]}><Text style={{ color: activeColor }}>{L.boardFind}</Text></TouchableOpacity>
+            </View>
+            {boardLoading ? <ActivityIndicator color={activeColor} /> : null}
+            {boardError ? <Text style={[s.hint, { color: '#B42318' }]}>{boardError}</Text> : null}
+            {boardData ? <>
+              <View style={s.contextHeader}>
+                <Text style={{ color: theme.text }}>{L.boardFound} {boardData.total} · {formatSourceTime(boardData.updated_at)}</Text>
+                <TouchableOpacity onPress={() => setBoardRefresh((value) => value + 1)} style={s.iconButton} accessibilityRole="button" accessibilityLabel={L.refresh}><Feather name="refresh-cw" size={17} color={activeColor} /></TouchableOpacity>
+              </View>
+              {!boardData.total && !boardError ? <Text style={[s.hint, { color: theme.textMuted }]}>{L.boardNoMatches}</Text> : null}
+              {boardData.rows.map((row, index) => <View key={row.plate + '-' + index} style={[s.contextCard, { backgroundColor: theme.card, borderColor: boardQuery.plate && normalizePlate(row.plate) === boardQuery.plate ? activeColor : theme.border }]}>
+                <Text style={[s.vehicleName, { color: theme.text }]}>{row.plate}</Text>
+                <Text style={{ color: theme.textMuted }}>{localizeCheckpointName(row.checkpoint, lang)} · {row.date} · {row.slot}</Text>
+                <Text style={{ color: theme.text }}>{row.status}</Text>
+              </View>)}
+              {boardData.page > 1 || boardData.has_next ? <View style={s.contextHeader}>
+                <TouchableOpacity disabled={boardLoading || boardData.page <= 1} accessibilityLabel={L.boardPrevious} onPress={() => setBoardQuery((value) => ({ ...value, page: value.page - 1 }))} style={s.iconButton}><Feather name="chevron-left" size={20} color={theme.text} /></TouchableOpacity>
+                <Text style={{ color: theme.text }}>{boardData.page}</Text>
+                <TouchableOpacity disabled={boardLoading || !boardData.has_next} testID="border-board-next" accessibilityLabel={L.boardNext} onPress={() => setBoardQuery((value) => ({ ...value, page: value.page + 1 }))} style={s.iconButton}><Feather name="chevron-right" size={20} color={theme.text} /></TouchableOpacity>
+              </View> : null}
+            </> : boardError ? <TouchableOpacity onPress={() => setBoardRefresh((value) => value + 1)}><Text style={{ color: activeColor }}>{L.refresh}</Text></TouchableOpacity> : null}
+          </> : null}
         </View> : null}
         {screenMode === 'vehicles' ? (<>
+        {(isDriver || showManualLookup) ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
+          <Text style={[s.sectionTitle, { color: theme.text }]}>{L.platePlaceholder}</Text>
+          <View style={s.searchRow}>
+            <View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { manualRequest.current += 1; setManualLookupLoading(false); setPlate(value.toUpperCase()); setManualLookup(null); setManualWatchEnabled(false); }} onSubmitEditing={() => searchPlate()} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" returnKeyType="search" maxLength={32} /></View>
+            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity>
+          </View>
+          {plate ? <TouchableOpacity accessibilityRole="button" accessibilityLabel={L.boardClear} onPress={() => { manualRequest.current += 1; setManualLookupLoading(false); setPlate(''); setManualLookup(null); setManualWatchEnabled(false); }} style={s.iconButton}><Feather name="x" size={17} color={theme.textMuted} /></TouchableOpacity> : null}
+          {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>
+            {manualLookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : manualLookup.found ? <>
+              <Text style={[s.lookupPlate, { color: theme.text }]}>{manualLookup.plate || normalizePlate(plate)}</Text>
+              {manualLookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(manualLookup.status, lang)}</Text> : null}
+              {manualLookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(manualLookup.checkpoint, lang)}</Text> : null}
+              {manualLookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {manualLookup.queue_datetime}</Text> : null}
+              <View style={s.dealActions}>
+                {manualLookup.checkpoint && catalog.some((item) => sameCheckpoint(item.name_ru || item.name, manualLookup.checkpoint)) ? <TouchableOpacity onPress={() => openVehicleOnBoard({ ...manualLookup, plate: manualLookup.plate || plate })} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Text style={{ color: theme.text }}>{L.openBoard}</Text></TouchableOpacity> : null}
+                {manualOwnDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: manualOwnDeal.chat_room_id, dealId: manualOwnDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]} testID="border-manual-open-own-deal"><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openShipment}</Text></TouchableOpacity> : null}
+                {contextToken ? <TouchableOpacity onPress={enableManualWatch} disabled={manualWatchEnabled} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-manual-watch"><Feather name={manualWatchEnabled ? 'check-circle' : 'bell'} size={17} color={manualWatchEnabled ? '#168759' : theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: manualWatchEnabled ? '#168759' : theme.text }]}>{manualWatchEnabled ? R.following : R.followStatus}</Text></TouchableOpacity> : null}
+              </View>
+            </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
+          </View> : null}
+          {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
+        </View> : null}
+
         {isDriver ? (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-driver-vehicle-card">
             <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{L.myCarsTab}</Text></View><Text style={[s.source, { color: theme.textDim }]}>{vehicleRows.length}</Text></View>
-            <View style={[s.vehicleSearchWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><TextInput value={vehicleFilter} onChangeText={setVehicleFilter} placeholder={L.searchCars} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.vehicleSearchInput, { color: theme.text }]} testID="border-vehicle-filter" /></View>
-            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : visibleVehicleRows.length ? visibleVehicleRows.map((item) => {
+
+            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : vehicleRows.length ? vehicleRows.map((item) => {
               const itemPlate = normalizePlate(item?.license_plate || item?.plate);
               const isSelectedVehicle = itemPlate && itemPlate === normalizePlate(activePlate);
               const itemDeal = privateContext.deals.find((deal) => normalizePlate(deal?.plate) === itemPlate);
               const currentLookup = isSelectedVehicle && normalizePlate(lookup?.plate) === itemPlate ? lookup : null;
-              return <TouchableOpacity key={String(item?.id || item?.deal_id || itemPlate)} onPress={() => {
+              return <View key={String(item?.id || item?.deal_id || itemPlate)}><TouchableOpacity onPress={() => {
                 if (item?.deal_id) { setSelectedDealId(item.deal_id); setSelectedVehicleId(item.vehicle_id || null); }
                 else { setSelectedVehicleId(item.id || null); setSelectedDealId(itemDeal?.deal_id || null); }
+                setManualLookup(null);
+                manualRequest.current += 1;
+                setManualLookupLoading(false);
               }} style={[s.vehicleListRow, { borderColor: isSelectedVehicle ? activeColor : theme.border, backgroundColor: isSelectedVehicle ? activeColor + '0D' : v1.surfaceMuted }]} accessibilityRole="button" testID="border-vehicle-row">
                 <View style={[s.shipmentTruck, { backgroundColor: theme.card }]}><Feather name="truck" size={25} color={activeColor} /></View>
                 <View style={{ flex: 1 }}>
                   {(itemDeal?.make || item?.make || itemDeal?.model || item?.model) ? <Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{[itemDeal?.make || item?.make, itemDeal?.model || item?.model].filter(Boolean).join(' ')}</Text> : null}
                   <Text style={[s.vehicleName, { color: theme.text }]}>{itemPlate || '—'}</Text>
-                  <View style={s.vehicleStatusLine}><View style={[s.onlineDot, { backgroundColor: currentLookup?.found ? (currentLookup.status === 'revoked' ? '#D64545' : currentLookup.status === 'called' ? '#3478D4' : '#168759') : '#9AA7A0' }]} /><Text style={[s.shipmentMeta, { color: currentLookup?.found ? theme.text : theme.textMuted }]}>{currentLookup?.found ? lookupStatusLabel(currentLookup.status, lang) : isSelectedVehicle && lookupLoading ? L.loading : L.statusNotChecked}</Text></View>
+                  <View style={s.vehicleStatusLine}><View style={[s.onlineDot, { backgroundColor: currentLookup?.found ? (currentLookup.status === 'revoked' ? '#D64545' : currentLookup.status === 'called' ? '#3478D4' : '#168759') : '#9AA7A0' }]} /><Text style={[s.shipmentMeta, { color: currentLookup?.found ? theme.text : theme.textMuted }]}>{currentLookup?.found ? (currentLookup.status_raw || lookupStatusLabel(currentLookup.status, lang)) : isSelectedVehicle && lookupLoading ? L.loading : currentLookup?.error ? L.lookupError : currentLookup ? L.notFound : L.statusNotChecked}</Text></View>
                   {currentLookup?.found && currentLookup.checkpoint ? <Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{localizeCheckpointName(currentLookup.checkpoint, lang)}{currentLookup.queue_datetime ? ` · ${currentLookup.queue_datetime}` : ''}</Text> : itemDeal ? <Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{localizePlace(itemDeal.from_city, lang)} → {localizePlace(itemDeal.to_city, lang)}</Text> : null}
                 </View>
                 {isSelectedVehicle && lookupLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="chevron-right" size={20} color={theme.textDim} />}
-              </TouchableOpacity>;
+              </TouchableOpacity>
+              {isSelectedVehicle && currentLookup ? <View style={s.contextHeader}>
+                <Text style={[s.source, { color: theme.textMuted }]}>{currentLookup.error ? L.lookupError : formatSourceTime(currentLookup.checkedAt)}</Text>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={L.refresh} onPress={() => lookupPlateValue(itemPlate)} style={s.iconButton}><Feather name="refresh-cw" size={16} color={activeColor} /></TouchableOpacity>
+              </View> : null}
+              {currentLookup?.found && catalog.some((item) => sameCheckpoint(item.name_ru || item.name, currentLookup.checkpoint)) ? <TouchableOpacity accessibilityRole="button" onPress={() => openVehicleOnBoard(currentLookup)} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Text style={{ color: activeColor }}>{L.openBoard}</Text></TouchableOpacity> : null}
+              </View>;
             }) : <View style={s.emptyVehicleState} testID="border-driver-empty-vehicle"><Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text></View>}
             {!contextLoading && privateContext.vehicles.length === 0 && !selectedDeal?.plate ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehiclePrimary, { backgroundColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color="#fff" /><Text style={s.emptyVehiclePrimaryText}>{R.addVehicle}</Text></TouchableOpacity> : null}
             {privateContext.vehicles.length > 0 ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehicleSecondary, { borderColor: theme.border }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.addVehicle}</Text></TouchableOpacity> : null}
-            {privateContext.vehicles.length > 1 ? <TouchableOpacity onPress={cycleVehicle} style={s.secondaryCycle} accessibilityRole="button"><Text style={[s.smallActionText, { color: activeColor }]}>{R.change}</Text></TouchableOpacity> : null}
           </View>
         ) : (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
@@ -761,7 +871,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           </View>
         )}
 
-        {activePlate ? <View style={[s.personalStatusCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-personal-cgr-status">
+        {!isDriver && activePlate ? <View style={[s.personalStatusCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-personal-cgr-status">
           <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="activity" size={19} color={activeColor} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.liveStatus}</Text></View>{lookup?.found && lookup?.status ? <View style={[s.statusPill, { backgroundColor: lookup.status === 'called' ? '#E8F1FF' : lookup.status === 'revoked' ? '#FDECEC' : '#E9F8EE' }]}><Text style={[s.statusPillText, { color: lookup.status === 'revoked' ? '#B42318' : lookup.status === 'called' ? '#1769E0' : '#168759' }]}>{lookupStatusLabel(lookup.status, lang)}</Text></View> : null}</View>
           {lookupLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 12 }} /> : lookup?.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : lookup?.found ? <>
             <Text style={[s.personalCheckpoint, { color: theme.text }]}>{localizeCheckpointName(lookup.checkpoint, lang)}</Text>
@@ -784,31 +894,12 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         {isDriver && (selectedVehicle || selectedDeal) ? <View style={s.driverActions} testID="border-driver-actions">
           {watchEnabled ? <View style={[s.primaryDealAction, { backgroundColor: activeColor }]}><Feather name="radio" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.trackingOn}</Text></View> : null}
           {selectedDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: selectedDeal.chat_room_id, dealId: selectedDeal.deal_id, role })} style={[s.secondaryDealAction, { borderColor: theme.border, backgroundColor: theme.card }]} testID="border-driver-open-deal"><Feather name="list" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.openDeal}</Text></TouchableOpacity> : null}
-          <TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.secondaryDealAction, { borderColor: theme.border, backgroundColor: theme.card }]} accessibilityRole="button" testID="border-driver-manual-toggle"><Feather name="search" size={17} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity>
         </View> : null}
 
-        {isDriver && activePlate ? <View style={[s.timelineCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-queue-timeline"><Text style={[s.contextTitle, { color: theme.text }]}>{R.queueTimeline}</Text><View style={s.timelineRow}>{queueStages.map((stage, index) => { const complete = lookup?.found && currentQueueStage >= 0 && index < currentQueueStage; const current = lookup?.found && index === currentQueueStage; return <View key={stage.code} style={s.timelineItem}><View style={[s.timelineDot, { borderColor: current || complete ? activeColor : theme.border, backgroundColor: complete ? activeColor : current ? theme.card : v1.surfaceMuted }]}>{complete ? <Feather name="check" size={11} color="#fff" /> : null}</View><Text style={[s.timelineLabel, { color: current ? activeColor : theme.textMuted }]} numberOfLines={2}>{stage.label}</Text></View>; })}</View></View> : null}
 
-        {showManualLookup ? <View style={[s.searchCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-plate-search">
-          <Text style={[s.sectionTitle, { color: theme.text }]}>{R.checkOther}</Text>
-          <View style={s.searchRow}>
-            <View style={[s.inputWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="truck" size={17} color={theme.textMuted} /><TextInput value={plate} onChangeText={(value) => { setPlate(value.toUpperCase()); setManualLookup(null); setManualWatchEnabled(false); }} onSubmitEditing={() => searchPlate()} placeholder={L.platePlaceholder} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.input, { color: theme.text }]} testID="border-plate-input" /></View>
-            <TouchableOpacity onPress={() => searchPlate()} disabled={normalizePlate(plate).length < 3 || manualLookupLoading} style={[s.checkButton, (normalizePlate(plate).length < 3 || manualLookupLoading) && s.disabled]} testID="border-plate-check">{manualLookupLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.checkText}>{L.check}</Text>}</TouchableOpacity>
-          </View>
-          {manualLookup ? <View style={[s.lookup, { borderTopColor: theme.border }]}>
-            {manualLookup.error ? <Text style={[s.lookupText, { color: '#B42318' }]}>{L.lookupError}</Text> : manualLookup.found ? <>
-              <Text style={[s.lookupPlate, { color: theme.text }]}>{manualLookup.plate || normalizePlate(plate)}</Text>
-              {manualLookup.status ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.status}: {lookupStatusLabel(manualLookup.status, lang)}</Text> : null}
-              {manualLookup.checkpoint ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.checkpoint}: {localizeCheckpointName(manualLookup.checkpoint, lang)}</Text> : null}
-              {manualLookup.queue_datetime ? <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.queueTime}: {manualLookup.queue_datetime}</Text> : null}
-              <View style={s.dealActions}>
-                {manualOwnDeal ? <TouchableOpacity onPress={() => navigation.navigate('Chat', { roomId: manualOwnDeal.chat_room_id, dealId: manualOwnDeal.deal_id, role })} style={[s.primaryDealAction, { backgroundColor: activeColor }]} testID="border-manual-open-own-deal"><Feather name="file-text" size={17} color="#fff" /><Text style={s.primaryDealActionText}>{R.openShipment}</Text></TouchableOpacity> : null}
-                {contextToken ? <TouchableOpacity onPress={enableManualWatch} disabled={manualWatchEnabled} style={[s.secondaryDealAction, { borderColor: theme.border }]} testID="border-manual-watch"><Feather name={manualWatchEnabled ? 'check-circle' : 'bell'} size={17} color={manualWatchEnabled ? '#168759' : theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: manualWatchEnabled ? '#168759' : theme.text }]}>{manualWatchEnabled ? R.following : R.followStatus}</Text></TouchableOpacity> : null}
-              </View>
-            </> : <Text style={[s.lookupText, { color: theme.textMuted }]}>{L.notFound}</Text>}
-          </View> : null}
-          {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
-        </View> : null}
+
+
+
 
         </>) : null}
 
@@ -819,8 +910,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           {countryCodes.map((code) => {
             const active = selectedCountry === code;
             return (
-              <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? activeColor : theme.border, backgroundColor: active ? activeColor : theme.card }]} testID={`border-country-${code}`}>
-                <CountryFlag code={code} width={22} />
+              <TouchableOpacity key={code} onPress={() => selectCountry(code)} style={[s.countryChip, { borderColor: active ? activeColor : theme.border, backgroundColor: active ? '#65758A' : theme.card }]} testID={`border-country-${code}`}>
+                <CountryFlag code={code} width={24} />
                 <Text style={[s.countryText, { color: active ? '#FFFFFF' : theme.text }]}>{countryName(code)}</Text>
               </TouchableOpacity>
             );
@@ -872,37 +963,46 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
             </View>
 
-            <View style={[s.heroBooking, { backgroundColor: v1.surfaceMuted }]}>
+            <View style={s.bookingTiers}>
+            <View style={[s.heroBooking, s.bookingTier, { backgroundColor: v1.surfaceMuted }]}>
               <Text style={[s.heroLabel, { color: theme.textMuted }]}>{L.nearest}</Text>
               <Text style={[s.heroDate, { color: theme.text }]}>{nearestText}</Text>
               {live.nearest_booking_free != null ? <View style={s.freeBadge}><Text style={s.freeBadgeText}>{live.nearest_booking_free} {L.places} · {L.standard}</Text></View> : <Text style={[s.noBooking, { color: theme.textMuted }]}>{L.noStandard}</Text>}
             </View>
 
-            {premiumText ? <View style={[s.premiumRow, { borderColor: theme.border }]}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.premiumNearest}</Text><Text style={[s.premiumValue, { color: theme.text }]}>{premiumText} · {live.nearest_premium_free ?? '—'} {L.places}</Text></View> : null}
+            <View style={[s.heroBooking, s.bookingTier, { backgroundColor: v1.surfaceMuted }]}>
+              <Text style={[s.heroLabel, { color: theme.textMuted }]}>{L.premiumNearest}</Text>
+              <Text style={[s.heroDate, { color: theme.text }]}>{premiumText || '—'}</Text>
+              <Text style={[s.noBooking, { color: theme.textMuted }]}>{live.nearest_premium_free == null ? L.noData : live.nearest_premium_free + ' · ' + L.premium}</Text>
+            </View>
+            </View>
 
             <View style={[s.metrics, { borderColor: theme.border }]}>
-              <View style={s.metric}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.board}</Text><Text style={[s.metricValue, { color: theme.text }]}>{live.current_board_count ?? '—'}</Text></View>
+              <TouchableOpacity accessibilityRole="button" onPress={() => openBoard(selected)} style={s.metric}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.board}</Text><Text style={[s.metricValue, { color: theme.text }]}>{live.current_board_count ?? '—'}</Text></TouchableOpacity>
               <View style={[s.metricDivider, { backgroundColor: theme.border }]} />
               <View style={s.metric}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{L.limit}</Text><Text style={[s.metricValue, { color: theme.text }]}>{live.daily_capacity != null ? `${live.daily_capacity}${L.perDay}` : '—'}</Text></View>
             </View>
 
-            {live.cgr_checkpoint_id ? <TouchableOpacity onPress={() => Linking.openURL(`https://cgr.qoldau.kz/ru/registry/scoreboard?flCheckpoint=${encodeURIComponent(live.cgr_checkpoint_id)}&flStatus=Pending`).catch(() => {})} style={[s.secondaryDealAction, { borderColor: activeColor, marginTop: 12 }]} accessibilityRole="button" testID="border-open-official-board"><Feather name="external-link" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: activeColor }]}>{L.openBoard}</Text></TouchableOpacity> : null}
+            <TouchableOpacity onPress={() => openBoard(selected)} style={[s.secondaryDealAction, { borderColor: activeColor, marginTop: 12 }]} accessibilityRole="button" testID="border-open-board"><Feather name="list" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: activeColor }]}>{L.openBoard}</Text></TouchableOpacity>
 
             <View style={s.calendarHead}><Text style={[s.sectionTitleSmall, { color: theme.text }]}>{L.calendar}</Text><Text style={[s.swipeHint, { color: theme.textDim, fontSize: sp(10.5) }]}>{L.swipeCalendar}</Text></View>
+            <View style={s.chips}>
+              {[['standard', L.standard], ['premium', L.premium]].map(([value, label]) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: bookingTariff === value }} onPress={() => setBookingTariff(value)} style={[s.countryChip, { borderColor: bookingTariff === value ? activeColor : theme.border }]}><Text style={{ color: theme.text }}>{label}</Text></TouchableOpacity>)}
+            </View>
             <FlatList
               horizontal
               data={calendarRows}
               keyExtractor={(item) => item.date}
               renderItem={({ item }) => {
-                const standardFree = Number(item.standard_free || 0);
-                const premiumFree = Number(item.premium_free || 0);
-                const hasStandard = standardFree > 0;
-                const hasPremium = !hasStandard && premiumFree > 0;
-                const hasMissingAvailability = item.standard_free == null || item.premium_free == null;
+                const free = bookingTariff === 'standard' ? item.standard_free : item.premium_free;
+                const available = free != null && Number(free) > 0;
+                const unavailable = free != null && Number(free) === 0;
                 return (
-                  <View style={[s.dateCard, { borderColor: item.is_day_off ? theme.border : hasStandard ? ceramic.active : hasPremium ? '#B58A52' : '#C98B8B', backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
+                  <View style={[s.dateCard, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
                     <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
-                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim, fontSize: sp(9.5) }]}>{L.dayOff}</Text> : hasStandard ? <><Text style={s.dateFree}>{standardFree}</Text><Text style={[s.dateState, { color: activeColor, fontSize: sp(9.5) }]}>{L.standard}</Text></> : hasPremium ? <><Text style={s.datePremium}>{premiumFree}</Text><Text style={[s.dateState, { color: '#B7791F', fontSize: sp(9.5) }]}>{L.premium}</Text></> : <Text style={[s.dateState, { color: '#B42318', fontSize: sp(9.5) }]}>{hasMissingAvailability ? L.noData : L.noPlaces}</Text>}
+                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text>
+                      : available ? <Text style={s.dateFree}>{free}</Text>
+                        : <Text style={[s.dateState, { color: unavailable ? '#B42318' : theme.textDim }]}>{unavailable ? L.noPlaces : L.noData}</Text>}
                   </View>
                 );
               }}
@@ -919,7 +1019,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             />
 
             <View style={s.sourceRow}><Text style={[s.source, { color: theme.textDim }]}>{L.updated}: {formatSourceTime(live.source_updated_at || live.fetched_at)}</Text><TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="refresh-cw" size={16} color={activeColor} />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity></View>
-            <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={s.cgrButton}><Feather name="external-link" size={17} color="#FFFFFF" /><Text style={s.cgrButtonText}>{L.details}</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="external-link" size={16} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.textMuted }]}>{L.details}</Text></TouchableOpacity>
           </View>
         ) : null}
         </>) : null}
@@ -1036,6 +1136,8 @@ const s = StyleSheet.create({
   metricDivider: { width: 1 },
   metricLabel: { fontSize: 11.5, fontWeight: '700' },
   metricValue: { fontSize: 22, fontWeight: '900', marginTop: 3 },
+  bookingTiers: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  bookingTier: { flexGrow: 1, flexBasis: 132, minWidth: 0, padding: 12 },
   calendarHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 17, marginBottom: 9 },
   swipeHint: { fontSize: 10.5, fontWeight: '650' },
   calendarList: { width: '100%', overflow: 'visible' },

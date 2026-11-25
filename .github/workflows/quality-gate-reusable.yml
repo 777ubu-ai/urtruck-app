@@ -232,6 +232,7 @@ jobs:
             tests/e2e/auth-language-switcher.spec.js \
             tests/e2e/urtruck-deal-mvp.spec.js \
             tests/e2e/urtruck-full-e2e-web.spec.js \
+            tests/e2e/border-board-local.spec.js \
             tests/e2e/profile-save-recovery.spec.js \
             tests/e2e/session-expiry-recovery.spec.js \
             tests/e2e/route-country-clarification.spec.js \
