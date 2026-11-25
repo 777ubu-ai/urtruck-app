@@ -176,7 +176,7 @@ export default function OtpV2Screen({ navigation, route }) {
         setCode('');
         return;
       }
-      await signIn(identifier, r.verification_level || 1);
+      await signIn(identifier, r.verification_level || 1, null, r.user_id);
       push.autoRegister?.().catch(() => {});
 
       // RC2: если backend знает роль — в Main. Иначе на RoleV2.
