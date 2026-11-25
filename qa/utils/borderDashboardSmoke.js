@@ -31,7 +31,7 @@ assert.ok(screen.includes('border-live-loading'), 'Selected checkpoint must show
 assert.ok(screen.includes('border-selected-card'), 'Selected checkpoint live card required');
 assert.ok(screen.includes('border-screen-tabs') && screen.includes('border-tab-vehicles') && screen.includes('border-tab-checkpoints'), 'Border screen must expose the two approved design sections');
 assert.ok(screen.includes('L.myCarsTab') && screen.includes('L.checkpointsTab'), 'Border screen tabs must be localized');
-assert.ok(screen.includes('border-vehicle-row') && screen.includes('border-vehicle-filter'), 'My vehicles list must support selecting and filtering plates');
+assert.ok(screen.includes('border-vehicle-row') && screen.includes('border-plate-input'), 'My vehicles must support selection and use the shared plate lookup');
 assert.ok(screen.includes('L.sideKz') && screen.includes('L.sideCn'), 'Selected international checkpoint must label Kazakhstan and China sides explicitly');
 assert.ok(screen.includes('border-booking-calendar'), 'Booking availability calendar required');
 assert.ok(screen.includes('nearest_booking_free'), 'Nearest free slot count required');

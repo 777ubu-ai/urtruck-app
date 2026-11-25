@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from services.border_service import get_border, search_borders, get_borders_grouped
@@ -416,6 +416,30 @@ def list_queue_watches(user_id: str = Depends(_current_user_id)):
 
 _BOARD_CACHE: dict = {}
 _BOARD_TTL = 60
+
+
+@borders_router.get("/online-board")
+async def get_online_board(
+    checkpoint: str = Query(min_length=1, max_length=100),
+    plate: str = Query(default="", max_length=32),
+    statuses: list[str] = Query(default=[]),
+    page: int = Query(default=1, ge=1, le=10000),
+):
+    """Forward one bounded request to the public scoreboard."""
+    if not _cgr_enabled():
+        raise HTTPException(status_code=503, detail="Online scoreboard is unavailable")
+    if len(statuses) > 20 or any(not item.isascii() or not item.isalpha() or len(item) > 32 for item in statuses):
+        raise HTTPException(status_code=422, detail="Invalid scoreboard statuses")
+    normalized_plate = "".join(char for char in plate.upper() if char.isalnum())
+    from cgr.scoreboard_service import fetch_online_board
+
+    try:
+        return await fetch_online_board(checkpoint, list(dict.fromkeys(statuses)), normalized_plate, page)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Unknown checkpoint") from None
+    except Exception as exc:
+        logger.warning("CGR online scoreboard unavailable: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Online scoreboard is unavailable") from None
 
 
 @borders_router.get("/board")

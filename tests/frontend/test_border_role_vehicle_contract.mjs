@@ -34,16 +34,16 @@ test('Border shows CGR online only after a successful live response', () => {
 });
 
 
-test('driver without a vehicle can add one or run a secondary public lookup', () => {
+test('driver without a vehicle can add one or use the shared lookup', () => {
   assert.match(border, /testID="border-driver-empty-vehicle"/);
   assert.match(border, /testID="border-add-vehicle"/);
   assert.match(border, /storage\.remove\('ur_vehicle_setup_draft'\)/);
   assert.match(border, /navigate\('VehicleSetupCountry', \{ role: 'driver', origin: 'Border' \}\)/);
-  assert.match(border, /testID="border-driver-manual-toggle"/);
+  assert.equal([...border.matchAll(/testID="border-plate-input"/g)].length, 1);
 });
 
-test('driver detail keeps canonical visual order CGR then GPS then actions then timeline', () => {
-  assert.match(border, /testID="border-personal-cgr-status"[\s\S]*testID="border-gps-card"[\s\S]*testID="border-driver-actions"[\s\S]*testID="border-queue-timeline"/);
+test('driver detail shows vehicles before GPS and retains deal actions', () => {
+  assert.match(border, /testID="border-driver-vehicle-card"[\s\S]*testID="border-gps-card"[\s\S]*testID="border-driver-actions"/);
   assert.match(border, /isDriver && \(selectedVehicle \|\| selectedDeal\)/);
 });
 
@@ -72,8 +72,8 @@ test('driver enables CGR watch only on the canonical backend and an active selec
   assert.match(border, /response\.ok\) setWatchEnabled\(true\)/);
 });
 
-test('driver and shipper keep manual CGR lookup secondary and privacy scoped', () => {
-  assert.match(border, /showManualLookup \? <View[\s\S]*testID="border-plate-search"/);
+test('driver and shipper share a privacy scoped CGR lookup', () => {
+  assert.match(border, /\(isDriver \|\| showManualLookup\) \? <View[\s\S]*testID="border-plate-search"/);
   assert.match(border, /testID="border-shipper-manual-toggle"/);
   assert.match(border, /testID="border-manual-open-own-deal"/);
   assert.match(border, /testID="border-manual-watch"/);
@@ -87,7 +87,7 @@ test('driver and shipper keep manual CGR lookup secondary and privacy scoped', (
 test('Border calculates road GPS/ETA only from deal GPS and verified checkpoint coordinates', () => {
   assert.match(border, /testID="border-personal-cgr-status"/);
   assert.match(border, /testID="border-gps-card"/);
-  assert.match(border, /testID="border-queue-timeline"/);
+  assert.doesNotMatch(border, /testID="border-queue-timeline"/);
   assert.match(border, /routingAPI\.roadRoute/);
   assert.match(border, /\[\[originLat, originLng\], \[checkpointLat, checkpointLng\]\]/);
   assert.match(border, /roadRoute\?\.ok \? formatDistance/);

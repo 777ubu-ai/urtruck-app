@@ -125,7 +125,7 @@ xcrun simctl terminate booted host.exp.Exponent && maestro test ../createcargo-a
 ### QueueScreenLazyV2 (`src/screens/QueueScreenLazyV2.js`)
 - `border-screen-v2` — канонический экран Border/CGR
 - `border-driver-vehicle-card` — контекст машины водителя
-- `border-driver-manual-toggle` — явное раскрытие ручного поиска
+- `border-plate-input` — единый поиск по госномеру
 
 ### DealsScreen (`src/screens/DealsScreen.js`)
 - `deal-room-list` / `deals-list` — контейнер канонических «Сделок»
