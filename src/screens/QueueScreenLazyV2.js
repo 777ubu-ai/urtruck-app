@@ -725,6 +725,20 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
 
+  const renderCalendarDate = (item) => {
+    const free = bookingTariff === 'standard' ? item.standard_free : item.premium_free;
+    const available = free != null && Number(free) > 0;
+    const unavailable = free != null && Number(free) === 0;
+    return (
+      <View key={item.date} style={[s.dateCard, expandedCalendar && s.dateCardExpanded, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
+        <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
+        {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text>
+          : available ? <Text style={s.dateFree}>{free}</Text>
+            : <Text style={[s.dateState, { color: unavailable ? '#B42318' : theme.textDim }]}>{unavailable ? L.noPlaces : L.noData}</Text>}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       {isDriver ? <DriverRouteBackdrop /> : null}
@@ -991,37 +1005,20 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             <View style={s.chips}>
               {[['standard', L.standard], ['premium', L.premium]].map(([value, label]) => <TouchableOpacity key={value} accessibilityRole="button" accessibilityState={{ selected: bookingTariff === value }} onPress={() => setBookingTariff(value)} style={[s.countryChip, { borderColor: bookingTariff === value ? activeColor : theme.border }]}><Text style={{ color: theme.text }}>{label}</Text></TouchableOpacity>)}
             </View>
-            <FlatList
-              key={expandedCalendar ? 'all-dates' : 'date-strip'}
-              horizontal={!expandedCalendar}
-              numColumns={expandedCalendar ? 4 : 1}
-              scrollEnabled={!expandedCalendar}
+            {expandedCalendar ? <View style={s.calendarGrid} testID="border-booking-calendar">
+              {calendarRows.map(renderCalendarDate)}
+            </View> : <FlatList
+              horizontal
               data={calendarRows}
               keyExtractor={(item) => item.date}
-              renderItem={({ item }) => {
-                const free = bookingTariff === 'standard' ? item.standard_free : item.premium_free;
-                const available = free != null && Number(free) > 0;
-                const unavailable = free != null && Number(free) === 0;
-                return (
-                  <View style={[s.dateCard, expandedCalendar && s.dateCardExpanded, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
-                    <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
-                    {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text>
-                      : available ? <Text style={s.dateFree}>{free}</Text>
-                        : <Text style={[s.dateState, { color: unavailable ? '#B42318' : theme.textDim }]}>{unavailable ? L.noPlaces : L.noData}</Text>}
-                  </View>
-                );
-              }}
+              renderItem={({ item }) => renderCalendarDate(item)}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={s.dateStrip}
-              ListFooterComponent={<View style={{ width: 30 }} />}
               nestedScrollEnabled
               directionalLockEnabled
-              removeClippedSubviews={false}
-              initialNumToRender={12}
-              windowSize={15}
               style={s.calendarList}
               testID="border-booking-calendar"
-            />
+            />}
 
             <View style={s.sourceRow}><Text style={[s.source, { color: theme.textDim }]}>{L.updated}: {formatSourceTime(live.source_updated_at || live.fetched_at)}</Text><TouchableOpacity onPress={() => loadLive(selected, true)} disabled={liveLoading} style={s.refreshButton}>{liveLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="refresh-cw" size={16} color={activeColor} />}<Text style={s.refreshText}>{L.refresh}</Text></TouchableOpacity></View>
             <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={[s.secondaryDealAction, { borderColor: theme.border }]}><Feather name="external-link" size={16} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.textMuted }]}>{L.details}</Text></TouchableOpacity>
@@ -1148,7 +1145,8 @@ const s = StyleSheet.create({
   calendarList: { width: '100%', overflow: 'visible' },
   dateStrip: { gap: 8, paddingRight: 4, paddingBottom: 4 },
   calendarToggle: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
-  dateCardExpanded: { flex: 1, margin: 3 },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  dateCardExpanded: { width: '23%' },
   dateCard: { width: 68, minHeight: 66, borderWidth: 1, borderRadius: 13, padding: 9, alignItems: 'center', justifyContent: 'center' },
   dateText: { fontSize: 12, fontWeight: '850' },
   dateFree: { color: '#738396', fontSize: 20, fontWeight: '950', marginTop: 5 },
