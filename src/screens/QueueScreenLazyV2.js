@@ -46,6 +46,7 @@ const COUNTRY = {
 const COPY = {
   RU: {
     title: 'Граница', subtitle: 'Реальная загрузка и доступная бронь CGR', where: 'Куда едете?', all: 'Все',
+    myCarsTab: 'Мои машины', checkpointsTab: 'Пункты пропуска', searchCars: 'Поиск по госномеру', statusNotChecked: 'Нажмите, чтобы проверить очередь', sideKz: 'Казахстан', sideCn: 'Китай',
     choose: 'Выберите КПП', hint: 'Листайте и нажмите нужный пункт — данные загрузятся только для него',
     tap: 'Нажмите на КПП, чтобы увидеть реальную обстановку', loading: 'Получаем данные CGR…',
     nearest: 'Ближайшая свободная бронь', places: 'свободных мест', standard: '1 МРП', premium: '100 МРП',
@@ -59,6 +60,7 @@ const COPY = {
   },
   KK: {
     title: 'Шекара', subtitle: 'CGR нақты жүктемесі және қолжетімді бронь', where: 'Қайда барасыз?', all: 'Барлығы',
+    myCarsTab: 'Менің көліктерім', checkpointsTab: 'Өткізу бекеттері', searchCars: 'Мемлекеттік нөмір бойынша іздеу', statusNotChecked: 'Кезекті тексеру үшін басыңыз', sideKz: 'Қазақстан', sideCn: 'Қытай',
     choose: 'Өткізу бекетін таңдаңыз', hint: 'Жылжытып, қажет бекетті басыңыз — деректер тек сол бекетке жүктеледі',
     tap: 'Нақты жағдайды көру үшін бекетті басыңыз', loading: 'CGR деректері жүктелуде…', nearest: 'Ең жақын бос бронь',
     places: 'бос орын', standard: '1 АЕК', premium: '100 АЕК', premiumNearest: '100 АЕК бойынша жақын бронь',
@@ -71,6 +73,7 @@ const COPY = {
   },
   EN: {
     title: 'Border', subtitle: 'Real CGR load and booking availability', where: 'Where are you going?', all: 'All',
+    myCarsTab: 'My vehicles', checkpointsTab: 'Checkpoints', searchCars: 'Search by plate', statusNotChecked: 'Tap to check queue', sideKz: 'Kazakhstan', sideCn: 'China',
     choose: 'Choose checkpoint', hint: 'Swipe and tap a checkpoint — data loads only for that checkpoint',
     tap: 'Tap a checkpoint to see the real situation', loading: 'Loading CGR data…', nearest: 'Nearest free booking',
     places: 'free slots', standard: '1 MCI', premium: '100 MCI', premiumNearest: 'Nearest 100 MCI booking',
@@ -85,6 +88,7 @@ const COPY = {
     title: '边境', subtitle: 'CGR 实时负载与预约空位', where: '您要去哪里？', all: '全部', choose: '选择口岸',
     hint: '左右滑动并点击口岸 — 只加载所选口岸的数据', tap: '点击口岸查看实时情况', loading: '正在获取 CGR 数据…',
     nearest: '最近可预约日期', places: '个空位', standard: '1 MCI', premium: '100 MCI', premiumNearest: '最近 100 MCI 预约',
+    myCarsTab: '我的车辆', checkpointsTab: '口岸', searchCars: '按车牌搜索', statusNotChecked: '点击查询排队状态', sideKz: '哈萨克斯坦', sideCn: '中国',
     noStandard: '公开日历内暂无 1 MCI 空位', board: '当前电子屏', limit: '每日限额', perDay: '/天', calendar: '负载日历',
     noPlaces: '无空位', dayOff: '休息日', updated: 'CGR 更新时间', refresh: '刷新', details: '打开 CGR', favorite: '收藏',
     favorited: '已收藏', sourceError: '无法获取 CGR 数据，请重试。', checkQueue: '查询我的排队', platePlaceholder: '车牌号，例如 123ABC02',
@@ -307,6 +311,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [selectedDealId, setSelectedDealId] = useState(null);
   const [showManualLookup, setShowManualLookup] = useState(false);
+  const [screenMode, setScreenMode] = useState('vehicles');
+  const [vehicleFilter, setVehicleFilter] = useState('');
   const [recentLookups, setRecentLookups] = useState([]);
   const [manualWatchEnabled, setManualWatchEnabled] = useState(false);
   const [roadRoute, setRoadRoute] = useState(null);
@@ -624,40 +630,62 @@ export default function QueueScreenLazyV2({ navigation, route }) {
   }, [navigation]);
 
   const nearestText = live?.nearest_booking ? formatDate(live.nearest_booking, lang) : '—';
+  const selectedPairParts = selected?.country === 'CN'
+    ? localizeCheckpointName({ ...selected, name: live?.name || selected.name }, lang).split(/\s+[—–-]\s+/).map((part) => part.trim()).filter(Boolean)
+    : [];
+  const vehicleRows = isDriver
+    ? (() => {
+      const rows = [...privateContext.vehicles];
+      const activeDealPlate = normalizePlate(selectedDeal?.plate);
+      if (activeDealPlate && !rows.some((item) => normalizePlate(item?.license_plate || item?.plate) === activeDealPlate)) {
+        rows.unshift({ id: selectedDeal.vehicle_id || selectedDeal.deal_id, license_plate: selectedDeal.plate, make: selectedDeal.make, model: selectedDeal.model });
+      }
+      return rows;
+    })()
+    : privateContext.deals;
+  const visibleVehicleRows = vehicleRows.filter((item) => normalizePlate(item?.license_plate || item?.plate).includes(normalizePlate(vehicleFilter)));
   const premiumText = live?.nearest_premium_booking ? formatDate(live.nearest_premium_booking, lang) : null;
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: v1.bg }]} edges={['top']} testID="border-screen-v2">
       {isDriver ? <DriverRouteBackdrop /> : null}
       <RootHeader compact ceramic={isDriver} navigation={navigation} role={role} testID="queue-root-header" menuTestID="queue-root-header-menu" />
+      <View style={[s.screenTabs, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-screen-tabs">
+        <TouchableOpacity onPress={() => setScreenMode('vehicles')} style={[s.screenTab, screenMode === 'vehicles' && { borderColor: activeColor, backgroundColor: activeColor + '0D' }]} accessibilityRole="tab" accessibilityState={{ selected: screenMode === 'vehicles' }} testID="border-tab-vehicles">
+          <Feather name="truck" size={18} color={screenMode === 'vehicles' ? activeColor : theme.textMuted} /><Text style={[s.screenTabText, { color: screenMode === 'vehicles' ? activeColor : theme.text }]}>{L.myCarsTab}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setScreenMode('checkpoints')} style={[s.screenTab, screenMode === 'checkpoints' && { borderColor: activeColor, backgroundColor: activeColor + '0D' }]} accessibilityRole="tab" accessibilityState={{ selected: screenMode === 'checkpoints' }} testID="border-tab-checkpoints">
+          <Feather name="map-pin" size={18} color={screenMode === 'checkpoints' ? activeColor : theme.textMuted} /><Text style={[s.screenTabText, { color: screenMode === 'checkpoints' ? activeColor : theme.text }]}>{L.checkpointsTab}</Text>
+        </TouchableOpacity>
+      </View>
 
       <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+        {screenMode === 'vehicles' ? (<>
         {isDriver ? (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-driver-vehicle-card">
-            <View style={s.contextHeader}>
-              <View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{R.myVehicle}</Text></View>
-              {privateContext.vehicles.length > 1 ? <TouchableOpacity onPress={cycleVehicle} style={[s.smallAction, { backgroundColor: v1.surfaceMuted }]}><Text style={[s.smallActionText, { color: theme.text }]}>{R.change}</Text><Feather name="chevron-down" size={16} color={theme.textMuted} /></TouchableOpacity> : null}
-            </View>
-            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : selectedVehicle || normalizePlate(selectedDeal?.plate) ? (
-              <View style={s.vehicleBody}>
-                <View style={[s.vehicleIconWrap, { backgroundColor: v1.surfaceMuted }]}><Feather name="truck" size={34} color={activeColor} /></View>
+            <View style={s.contextHeader}><View style={s.contextTitleRow}><Feather name="truck" size={20} color={theme.textMuted} /><Text style={[s.contextTitle, { color: theme.text }]}>{L.myCarsTab}</Text></View><Text style={[s.source, { color: theme.textDim }]}>{vehicleRows.length}</Text></View>
+            <View style={[s.vehicleSearchWrap, { backgroundColor: v1.bg, borderColor: theme.border }]}><Feather name="search" size={17} color={theme.textMuted} /><TextInput value={vehicleFilter} onChangeText={setVehicleFilter} placeholder={L.searchCars} placeholderTextColor={theme.textDim} autoCapitalize="characters" autoCorrect={false} style={[s.vehicleSearchInput, { color: theme.text }]} testID="border-vehicle-filter" /></View>
+            {contextLoading ? <ActivityIndicator color={activeColor} style={{ marginVertical: 14 }} /> : visibleVehicleRows.length ? visibleVehicleRows.map((item) => {
+              const itemPlate = normalizePlate(item?.license_plate || item?.plate);
+              const isSelectedVehicle = itemPlate && itemPlate === normalizePlate(activePlate);
+              const itemDeal = privateContext.deals.find((deal) => normalizePlate(deal?.plate) === itemPlate);
+              const currentLookup = isSelectedVehicle && normalizePlate(lookup?.plate) === itemPlate ? lookup : null;
+              return <TouchableOpacity key={String(item?.id || item?.deal_id || itemPlate)} onPress={() => {
+                if (item?.deal_id) { setSelectedDealId(item.deal_id); setSelectedVehicleId(item.vehicle_id || null); }
+                else { setSelectedVehicleId(item.id || null); setSelectedDealId(itemDeal?.deal_id || null); }
+              }} style={[s.vehicleListRow, { borderColor: isSelectedVehicle ? activeColor : theme.border, backgroundColor: isSelectedVehicle ? activeColor + '0D' : v1.surfaceMuted }]} accessibilityRole="button" testID="border-vehicle-row">
+                <View style={[s.shipmentTruck, { backgroundColor: theme.card }]}><Feather name="truck" size={25} color={activeColor} /></View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.vehicleName, { color: theme.text }]}>{[selectedDeal?.make || selectedVehicle?.make, selectedDeal?.model || selectedVehicle?.model].filter(Boolean).join(' ') || selectedVehicle?.vehicle_type || '—'}</Text>
-                  <View style={s.plateRow}><Text style={[s.plateBadge, { color: theme.text, borderColor: theme.border }]}>{normalizePlate(activePlate) || '—'}</Text>{(selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code) ? <Text style={[s.countryBadge, { color: theme.textMuted }]}>{selectedDeal?.vehicle_country || selectedVehicle?.vehicle_registration_country_code}</Text> : null}</View>
-                  {selectedDeal ? <Text style={[s.routeLine, { color: theme.textMuted }]}>{selectedDeal.from_city} → {selectedDeal.to_city}</Text> : null}
+                  <Text style={[s.vehicleName, { color: theme.text }]}>{itemPlate || '—'}</Text>
+                  <View style={s.vehicleStatusLine}><View style={[s.onlineDot, { backgroundColor: currentLookup?.found ? (currentLookup.status === 'revoked' ? '#D64545' : currentLookup.status === 'called' ? '#3478D4' : '#168759') : '#9AA7A0' }]} /><Text style={[s.shipmentMeta, { color: currentLookup?.found ? theme.text : theme.textMuted }]}>{currentLookup?.found ? lookupStatusLabel(currentLookup.status, lang) : isSelectedVehicle && lookupLoading ? L.loading : L.statusNotChecked}</Text></View>
+                  {currentLookup?.found && currentLookup.checkpoint ? <Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{localizeCheckpointName(currentLookup.checkpoint, lang)}{currentLookup.queue_datetime ? ` · ${currentLookup.queue_datetime}` : ''}</Text> : itemDeal ? <Text style={[s.shipmentMeta, { color: theme.textMuted }]}>{itemDeal.from_city} → {itemDeal.to_city}</Text> : null}
                 </View>
-              </View>
-            ) : (
-              <View style={s.emptyVehicleState} testID="border-driver-empty-vehicle">
-                <View style={[s.emptyVehicleIcon, { backgroundColor: v1.surfaceMuted }]}>
-                  <Feather name="truck" size={38} color={activeColor} />
-                  <View style={[s.emptyVehiclePlus, { backgroundColor: activeColor, borderColor: theme.card }]}><Feather name="plus" size={15} color="#fff" /></View>
-                </View>
-                <Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text>
-                <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehiclePrimary, { backgroundColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color="#fff" /><Text style={s.emptyVehiclePrimaryText}>{R.addVehicle}</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowManualLookup((value) => !value)} style={[s.emptyVehicleSecondary, { borderColor: theme.border }]} accessibilityRole="button" testID="border-driver-manual-toggle"><Feather name="search" size={18} color={theme.textMuted} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.checkOther}</Text></TouchableOpacity>
-              </View>
-            )}
+                {isSelectedVehicle && lookupLoading ? <ActivityIndicator size="small" color={activeColor} /> : <Feather name="chevron-right" size={20} color={theme.textDim} />}
+              </TouchableOpacity>;
+            }) : <View style={s.emptyVehicleState} testID="border-driver-empty-vehicle"><Text style={[s.emptyContext, { color: theme.textMuted }]}>{R.noVehicle}</Text></View>}
+            {!contextLoading && privateContext.vehicles.length === 0 && !selectedDeal?.plate ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehiclePrimary, { backgroundColor: activeColor }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={18} color="#fff" /><Text style={s.emptyVehiclePrimaryText}>{R.addVehicle}</Text></TouchableOpacity> : null}
+            {privateContext.vehicles.length > 0 ? <TouchableOpacity onPress={beginVehicleSetup} style={[s.emptyVehicleSecondary, { borderColor: theme.border }]} accessibilityRole="button" testID="border-add-vehicle"><Feather name="plus" size={17} color={activeColor} /><Text style={[s.secondaryDealActionText, { color: theme.text }]}>{R.addVehicle}</Text></TouchableOpacity> : null}
+            {privateContext.vehicles.length > 1 ? <TouchableOpacity onPress={cycleVehicle} style={s.secondaryCycle} accessibilityRole="button"><Text style={[s.smallActionText, { color: activeColor }]}>{R.change}</Text></TouchableOpacity> : null}
           </View>
         ) : (
           <View style={[s.contextCard, { backgroundColor: theme.card, borderColor: theme.border }]} testID="border-shipper-deals-card">
@@ -726,6 +754,9 @@ export default function QueueScreenLazyV2({ navigation, route }) {
           {recentLookups.length ? <View style={s.recentWrap}><Text style={[s.metricLabel, { color: theme.textMuted }]}>{R.recent}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.recentRow}>{recentLookups.map((item) => <TouchableOpacity key={item.plate} onPress={() => searchPlate(item.plate)} style={[s.recentChip, { borderColor: theme.border, backgroundColor: v1.surfaceMuted }]}><Text style={[s.recentPlate, { color: theme.text }]}>{item.plate}</Text><Text style={[s.recentStatus, { color: theme.textMuted }]}>{item.status ? lookupStatusLabel(item.status, lang) : L.notFound}</Text></TouchableOpacity>)}</ScrollView></View> : null}
         </View> : null}
 
+        </>) : null}
+
+        {screenMode === 'checkpoints' ? (<>
         <View style={s.sectionHeadingRow}><Text style={[s.sectionTitle, { color: theme.text }]}>{R.borderSituation}</Text><Text style={[s.source, { color: theme.textDim }]}>CGR</Text></View>
         <Text style={[s.label, { color: theme.text }]}>{L.where}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} testID="border-country-filter">
@@ -781,7 +812,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
         {selected && live ? (
           <View style={[s.liveCard, { backgroundColor: theme.card, borderColor: ceramic.border }]} testID="border-selected-card">
             <View style={s.liveHeader}>
-              <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><View style={s.liveCountryRow}>{selected.country ? <CountryFlag code={selected.country} width={20} /> : null}<Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View></View>
+              <View style={{ flex: 1, paddingRight: 8 }}><Text style={[s.liveTitle, { color: theme.text }]}>{localizeCheckpointName({ ...selected, name: live.name || selected.name }, lang)}</Text><View style={s.liveCountryRow}>{selected.country ? <CountryFlag code={selected.country} width={20} /> : null}<Text style={[s.liveCountry, { color: theme.textMuted }]}>{selected.country ? countryName(selected.country) : ''}</Text></View>{selectedPairParts.length >= 2 ? <Text style={[s.pairSides, { color: theme.textMuted }]}>{L.sideKz}: {selectedPairParts[0]}  ·  {L.sideCn}: {selectedPairParts[1]}</Text> : null}</View>
               <TouchableOpacity onPress={toggleFavorite} style={[s.iconButton, { borderColor: theme.border }]} accessibilityRole="button" accessibilityLabel={t('a11y_toggle_favorite')} accessibilityState={{ selected: favorites.includes(String(selectedId)) }}><Feather name="star" size={19} color={activeColor} fill={favorites.includes(String(selectedId)) ? activeColor : 'transparent'} /></TouchableOpacity>
             </View>
 
@@ -832,7 +863,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
             <TouchableOpacity onPress={() => Linking.openURL(live.official_url || 'https://cgr.qoldau.kz/ru/start').catch(() => {})} style={s.cgrButton}><Feather name="external-link" size={17} color="#FFFFFF" /><Text style={s.cgrButtonText}>{L.details}</Text></TouchableOpacity>
           </View>
         ) : null}
-
+        </>) : null}
 
         <View style={{ height: 34 }} />
       </ScrollView>
@@ -843,6 +874,15 @@ export default function QueueScreenLazyV2({ navigation, route }) {
 const s = StyleSheet.create({
   safe: { flex: 1 },
   content: { paddingHorizontal: 14, paddingTop: 0, paddingBottom: 18 },
+  screenTabs: { flexDirection: 'row', marginHorizontal: 14, marginTop: 7, marginBottom: 10, padding: 4, borderWidth: 1, borderRadius: 15, gap: 4 },
+  screenTab: { flex: 1, minHeight: 44, borderWidth: 1.5, borderColor: 'transparent', borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
+  screenTabText: { fontSize: 13, fontWeight: '800' },
+  vehicleSearchWrap: { minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 11 },
+  vehicleSearchInput: { flex: 1, fontSize: 14, minHeight: 42 },
+  vehicleListRow: { minHeight: 69, borderWidth: 1, borderRadius: 14, padding: 8, marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  vehicleStatusLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  pairSides: { fontSize: 11.5, lineHeight: 16, fontWeight: '650', marginTop: 3 },
+  secondaryCycle: { alignItems: 'center', paddingTop: 8 },
   contextCard: { borderWidth: 1, borderRadius: 18, padding: 13, marginBottom: 10 },
   contextHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   contextTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
