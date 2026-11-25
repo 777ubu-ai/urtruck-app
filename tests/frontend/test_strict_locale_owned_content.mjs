@@ -113,11 +113,11 @@ test('border catalog and notifications localize server-owned legacy text', () =>
 
 test('border active-deal routes localize canonical cities instead of leaking stored Russian', () => {
   assert.match(queue, /import \{ localizePlace \} from '\.\.\/utils\/places'/);
-  assert.match(queue, /localizePlace\(selectedDeal\.from_city, lang\)/);
-  assert.match(queue, /localizePlace\(selectedDeal\.to_city, lang\)/);
+  assert.match(queue, /localizePlace\(itemDeal\.from_city, lang\)/);
+  assert.match(queue, /localizePlace\(itemDeal\.to_city, lang\)/);
   assert.match(queue, /localizePlace\(item\.from_city, lang\)/);
   assert.match(queue, /localizePlace\(item\.to_city, lang\)/);
-  assert.doesNotMatch(queue, /\{selectedDeal\.from_city\} → \{selectedDeal\.to_city\}/);
+  assert.doesNotMatch(queue, /\{itemDeal\.from_city\} → \{itemDeal\.to_city\}/);
   assert.doesNotMatch(queue, /\{item\.from_city\} → \{item\.to_city\}/);
 });
 
