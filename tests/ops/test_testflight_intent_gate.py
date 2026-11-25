@@ -48,10 +48,10 @@ def test_guard_precedes_all_candidate_execution():
     ({'GITHUB_REF_NAME': 'other'}, False), ({'QA_SOURCE_SHA': 'not-a-sha'}, False),
     ({'SYNTHETIC_PR_HEAD': 'b' * 40}, False), ({'SYNTHETIC_CHECK': 'failure'}, False),
     ({'QA_CANDIDATE_PR': '727'}, False),
-    ({'QA_CANDIDATE_PR': '726', 'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, False),
-    ({'QA_CANDIDATE_PR': '726', 'QA_SOURCE_SHA': '23389e71d28a21a0fe1bb850a41f6d78e76938ee',
+    ({'QA_CANDIDATE_PR': '728', 'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, False),
+    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': 'fa1dcb1d76c55db72e0ec0b7cf93b68e25b524ef',
       'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '0'}, False),
-    ({'QA_CANDIDATE_PR': '726', 'QA_SOURCE_SHA': '23389e71d28a21a0fe1bb850a41f6d78e76938ee',
+    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': 'fa1dcb1d76c55db72e0ec0b7cf93b68e25b524ef',
       'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, True)])
 def test_actual_guard_stops_install_for_wrong_intent_source_or_ci(tmp_path, change, valid):
     binary = tmp_path / 'bin'
@@ -84,7 +84,7 @@ else: print(json.dumps({'check_runs':[{'name':name,'conclusion':os.environ.get('
                 break
     assert (result.returncode == 0) == valid
     assert (tmp_path / 'npm-invoked').exists() == valid
-    if valid and change.get('QA_CANDIDATE_PR') == '726':
+    if valid and change.get('QA_CANDIDATE_PR') == '728':
         assert (tmp_path / 'github-env').read_text().splitlines() == [
             'URTRUCK_VERSION_NAME=1.0.16', 'URTRUCK_LOCAL_IOS_BUILD=6',
         ]
