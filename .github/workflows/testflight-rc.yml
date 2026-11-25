@@ -8,9 +8,22 @@ on:
         required: true
         type: string
       source_sha:
-        description: Exact 40-character head SHA of PR 561 with all required checks green
+        description: Exact 40-character head SHA of the selected QA2 candidate
         required: true
         type: string
+      candidate_pr:
+        description: Reviewed QA2 pull request
+        type: choice
+        default: '561'
+        options: ['561', '726']
+      qa2_version:
+        description: App Store Connect version for PR 726
+        type: string
+        required: false
+      qa2_build_number:
+        description: Unused build number confirmed in App Store Connect for PR 726
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -54,16 +67,35 @@ jobs:
         shell: bash
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
+          QA_CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          QA_RELEASE_VERSION: ${{ inputs.qa2_version }}
+          QA_RELEASE_BUILD: ${{ inputs.qa2_build_number }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          export LC_ALL=C
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
           test "$GITHUB_REF_NAME" = main
           test "$CONFIRMATION" = BUILD_QA2_TESTFLIGHT
           [[ "$QA_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Некорректный SHA кандидата'; exit 1; }
           test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/561" --jq '.state')" = open
-          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/561" --jq '.head.sha')" = "$QA_SOURCE_SHA"
+          candidate_pr="${QA_CANDIDATE_PR:-561}"
+          case "$candidate_pr" in
+            561) ;;
+            726)
+              test "$QA_SOURCE_SHA" = 1ff6577fe95ba982a063c327f162206892cb96c0
+              [[ "$QA_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+              [[ "$QA_RELEASE_BUILD" =~ ^[123456789][0123456789]{0,8}$ ]] || {
+                echo '::error::Build number must be a positive integer'
+                exit 1
+              }
+              printf 'URTRUCK_VERSION_NAME=%s\nURTRUCK_LOCAL_IOS_BUILD=%s\n' \
+                "$QA_RELEASE_VERSION" "$QA_RELEASE_BUILD" >> "$GITHUB_ENV"
+              ;;
+            *) exit 1 ;;
+          esac
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$candidate_pr" --jq '.state')" = open
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$candidate_pr" --jq '.head.sha')" = "$QA_SOURCE_SHA"
           CHECKS_JSON="$(gh api "repos/$GITHUB_REPOSITORY/commits/$QA_SOURCE_SHA/check-runs?per_page=100")"
           for CHECK_NAME in \
             'quality-gate / Backend tests' \
@@ -112,6 +144,33 @@ jobs:
           test -n "${EXPO_PUBLIC_YANDEX_MAPKIT_API_KEY:-}"
           npx eas-cli@latest whoami
 
+      - name: Prepare approved version in the runner checkout
+        if: inputs.candidate_pr == '726'
+        shell: bash
+        run: |
+          python3 - <<'PYVERSION'
+          import json, os, plistlib, re
+          from pathlib import Path
+          version = os.environ['URTRUCK_VERSION_NAME']
+          build = os.environ['URTRUCK_LOCAL_IOS_BUILD']
+          app = Path('app.json')
+          config = json.loads(app.read_text())
+          config['expo']['ios']['buildNumber'] = build
+          config['expo'].setdefault('extra', {})['urtruckSourceSha'] = os.environ['QA_SOURCE_SHA']
+          app.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
+          plist = Path('ios/UrTruck/Info.plist')
+          info = plistlib.loads(plist.read_bytes())
+          info.update(CFBundleShortVersionString=version, CFBundleVersion=build)
+          plist.write_bytes(plistlib.dumps(info, sort_keys=False))
+          project = Path('ios/UrTruck.xcodeproj/project.pbxproj')
+          source = project.read_text()
+          for key, value in [('MARKETING_VERSION', version), ('CURRENT_PROJECT_VERSION', build)]:
+              source, count = re.subn(rf'\b{key} = [0-9.]+;', f'{key} = {value};', source)
+              if count != 2:
+                  raise SystemExit(f'Unexpected {key} occurrences: {count}')
+          project.write_text(source)
+          PYVERSION
+
       - name: Verify resolved Expo QA2 configuration
         env:
           EXPO_PUBLIC_YANDEX_MAPS_JS_API_KEY: ${{ secrets.YANDEX_MAPS_JS_API_KEY }}
@@ -127,7 +186,8 @@ jobs:
           if (config.ios?.bundleIdentifier !== 'com.urtruck.app') {
             throw new Error(`Unexpected iOS bundle: ${config.ios?.bundleIdentifier}`);
           }
-          if (config.version !== '1.0.9') {
+          if (config.version !== process.env.URTRUCK_VERSION_NAME ||
+              (process.env.URTRUCK_LOCAL_IOS_BUILD && config.ios?.buildNumber !== process.env.URTRUCK_LOCAL_IOS_BUILD)) {
             throw new Error(`Unexpected version: ${config.version}`);
           }
           if (config.extra?.urtruckBuildFlavor !== 'qa2') {
@@ -135,6 +195,9 @@ jobs:
           }
           if ((config.extra?.urtruckApiUrl || '').replace(/\/+$/, '') !== expectedApi.replace(/\/+$/, '')) {
             throw new Error('Resolved Expo config does not contain the exact QA2 API URL');
+          }
+          if (process.env.URTRUCK_LOCAL_IOS_BUILD && config.extra?.urtruckSourceSha !== process.env.QA_SOURCE_SHA) {
+            throw new Error('Missing source SHA in the QA2 app configuration');
           }
           console.log('QA2_EXPO_CONFIG=pass');
           NODE
@@ -150,6 +213,11 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+          if (process.env.URTRUCK_LOCAL_IOS_BUILD) {
+            eas.cli.appVersionSource = 'local';
+            eas.build.production.ios.autoIncrement = false;
+            eas.build.production.env = { ...(eas.build.production.env || {}), EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED: 'true' };
+          }
           eas.build.production.env = {
             ...(eas.build.production.env || {}),
             URTRUCK_BUILD_FLAVOR: process.env.URTRUCK_BUILD_FLAVOR,
@@ -203,9 +271,14 @@ jobs:
           VERSION_NAME="$(plutil -extract CFBundleShortVersionString raw -o - "$INFO")"
           BUILD_NUMBER="$(plutil -extract CFBundleVersion raw -o - "$INFO")"
           test "$BUNDLE_ID" = com.urtruck.app
-          test "$VERSION_NAME" = 1.0.9
+          test "$VERSION_NAME" = "$URTRUCK_VERSION_NAME"
           case "$BUILD_NUMBER" in (*[!0-9]*|'') echo "::error::Non-numeric iOS build number"; exit 1;; esac
-          test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
+          if [[ -n "${URTRUCK_LOCAL_IOS_BUILD:-}" ]]; then
+            test "$BUILD_NUMBER" = "$URTRUCK_LOCAL_IOS_BUILD"
+            grep -a -F -q "$QA_SOURCE_SHA" "$APP_DIR/EXConstants.bundle/app.config"
+          else
+            test "$BUILD_NUMBER" -gt "$URTRUCK_MIN_IOS_BUILD"
+          fi
           grep -R -a -F -q "${QA2_API_URL%/}" "$APP_DIR"
           {
             echo "sourceSHA=$QA_SOURCE_SHA"

@@ -46,7 +46,13 @@ def test_guard_precedes_all_candidate_execution():
 
 @pytest.mark.parametrize('change,valid', [({}, True), ({'CONFIRMATION': 'wrong'}, False),
     ({'GITHUB_REF_NAME': 'other'}, False), ({'QA_SOURCE_SHA': 'not-a-sha'}, False),
-    ({'SYNTHETIC_PR_HEAD': 'b' * 40}, False), ({'SYNTHETIC_CHECK': 'failure'}, False)])
+    ({'SYNTHETIC_PR_HEAD': 'b' * 40}, False), ({'SYNTHETIC_CHECK': 'failure'}, False),
+    ({'QA_CANDIDATE_PR': '727'}, False),
+    ({'QA_CANDIDATE_PR': '726', 'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, False),
+    ({'QA_CANDIDATE_PR': '726', 'QA_SOURCE_SHA': '1ff6577fe95ba982a063c327f162206892cb96c0',
+      'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '0'}, False),
+    ({'QA_CANDIDATE_PR': '726', 'QA_SOURCE_SHA': '1ff6577fe95ba982a063c327f162206892cb96c0',
+      'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, True)])
 def test_actual_guard_stops_install_for_wrong_intent_source_or_ci(tmp_path, change, valid):
     binary = tmp_path / 'bin'
     binary.mkdir()
@@ -66,7 +72,8 @@ else: print(json.dumps({'check_runs':[{'name':name,'conclusion':os.environ.get('
     env = {**os.environ, 'PATH': str(binary) + ':' + os.environ['PATH'],
            'CONFIRMATION': 'BUILD_QA2_TESTFLIGHT', 'GITHUB_EVENT_NAME': 'workflow_dispatch',
            'GITHUB_REF_NAME': 'main', 'GITHUB_REPOSITORY': 'synthetic/repo',
-           'QA_SOURCE_SHA': 'a' * 40, 'QA2_API_URL': 'https://qa2.urtruck.kz', **change}
+           'QA_SOURCE_SHA': 'a' * 40, 'QA2_API_URL': 'https://qa2.urtruck.kz',
+           'GITHUB_ENV': str(tmp_path / 'github-env'), **change}
     selected = {'Verify protected QA2 TestFlight intent', 'Install dependencies'}
     result = None
     for step in job()['steps']:
@@ -77,6 +84,10 @@ else: print(json.dumps({'check_runs':[{'name':name,'conclusion':os.environ.get('
                 break
     assert (result.returncode == 0) == valid
     assert (tmp_path / 'npm-invoked').exists() == valid
+    if valid and change.get('QA_CANDIDATE_PR') == '726':
+        assert (tmp_path / 'github-env').read_text().splitlines() == [
+            'URTRUCK_VERSION_NAME=1.0.16', 'URTRUCK_LOCAL_IOS_BUILD=6',
+        ]
 
 
 def test_actual_install_disables_untrusted_lifecycle_hook(tmp_path):
