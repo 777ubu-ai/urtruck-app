@@ -49,9 +49,9 @@ def test_guard_precedes_all_candidate_execution():
     ({'SYNTHETIC_PR_HEAD': 'b' * 40}, False), ({'SYNTHETIC_CHECK': 'failure'}, False),
     ({'QA_CANDIDATE_PR': '727'}, False),
     ({'QA_CANDIDATE_PR': '728', 'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, False),
-    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': 'fa1dcb1d76c55db72e0ec0b7cf93b68e25b524ef',
+    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': '1852ab46fe5f3d4c2324b95e06354108fc8dc7a5',
       'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '0'}, False),
-    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': 'fa1dcb1d76c55db72e0ec0b7cf93b68e25b524ef',
+    ({'QA_CANDIDATE_PR': '728', 'QA_SOURCE_SHA': '1852ab46fe5f3d4c2324b95e06354108fc8dc7a5',
       'QA_RELEASE_VERSION': '1.0.16', 'QA_RELEASE_BUILD': '6'}, True)])
 def test_actual_guard_stops_install_for_wrong_intent_source_or_ci(tmp_path, change, valid):
     binary = tmp_path / 'bin'
