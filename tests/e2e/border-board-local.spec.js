@@ -101,6 +101,9 @@ test('saves and removes a checked plate across reloads without adding a vehicle'
   await H.emailLogin(page, 'board-save-' + Date.now() + '@urtruck.kz', 'driver');
   const openBorder = () => page.locator(H.tid('bottom-nav-queue')).click();
   await openBorder();
+  const lookup = page.getByTestId('border-plate-search');
+  await expect(lookup.getByText('Поиск по госномеру', { exact: true })).toHaveCount(1);
+  await expect(lookup.getByTestId('border-plate-check')).toHaveText('Найти');
   const input = page.getByTestId('border-plate-input');
   await input.fill(plate);
   await page.getByTestId('border-plate-check').click();
