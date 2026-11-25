@@ -134,6 +134,7 @@ test.describe.serial('C. Водитель — регрессия', () => {
     await shot(page, 'C3_01_feed');
     await page.locator(tid('bottom-nav-queue')).click();
     await expect(page.locator(tid('border-screen-v2'))).toBeVisible({ timeout: 10000 });
+    await page.locator(tid('border-tab-checkpoints')).click();
     await expect(page.locator(tid('border-country-filter'))).toBeVisible();
     await shot(page, 'C5_01_queue');
   });
