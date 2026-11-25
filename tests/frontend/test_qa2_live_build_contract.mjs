@@ -47,13 +47,15 @@ test('explicit QA release stays in the isolated QA2 package', () => {
   assert.ok(androidAppBuild.includes("URTRUCK_ALLOW_DEBUG_SIGNED_RELEASE"));
 });
 
-test('TestFlight workflow builds only the exact open PR 561 candidate against QA2 behind Environment approval', () => {
+test('TestFlight workflow builds allowed open candidates against QA2 behind Environment approval', () => {
   assert.ok(testflightWorkflow.includes('source_sha:'));
   assert.ok(testflightWorkflow.includes('BUILD_QA2_TESTFLIGHT'));
   assert.ok(testflightWorkflow.includes('environment: production'));
   assert.ok(testflightWorkflow.includes('test "$GITHUB_REF_NAME" = main'));
   assert.ok(testflightWorkflow.includes('test "$(git rev-parse HEAD)" = "$QA_SOURCE_SHA"'));
-  assert.ok(testflightWorkflow.includes('pulls/561'));
+  assert.ok(testflightWorkflow.includes('pulls/$candidate_pr'));
+  assert.ok(testflightWorkflow.includes("options: ['561', '728']"));
+  assert.ok(testflightWorkflow.includes('1852ab46fe5f3d4c2324b95e06354108fc8dc7a5'));
   assert.ok(testflightWorkflow.includes("test \"$QA_HOST\" = qa2.urtruck.kz"));
   assert.ok(!testflightWorkflow.includes('EXPO_PUBLIC_API_URL: https://urtruck.kz'));
 });
