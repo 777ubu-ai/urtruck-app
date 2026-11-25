@@ -730,7 +730,7 @@ export default function QueueScreenLazyV2({ navigation, route }) {
     const available = free != null && Number(free) > 0;
     const unavailable = free != null && Number(free) === 0;
     return (
-      <View key={item.date} style={[s.dateCard, expandedCalendar && s.dateCardExpanded, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: theme.card }]} testID="border-booking-date-card">
+      <View key={item.date} style={[s.dateCard, expandedCalendar && s.dateCardExpanded, { borderColor: available ? activeColor : unavailable ? '#C98B8B' : theme.border, backgroundColor: item.is_day_off ? v1.bg : theme.card }]} testID="border-booking-date-card">
         <Text style={[s.dateText, { color: theme.text }]}>{formatShortDate(item.date, lang)}</Text>
         {item.is_day_off ? <Text style={[s.dateState, { color: theme.textDim }]}>{L.dayOff}</Text>
           : available ? <Text style={s.dateFree}>{free}</Text>
@@ -1014,6 +1014,8 @@ export default function QueueScreenLazyV2({ navigation, route }) {
               renderItem={({ item }) => renderCalendarDate(item)}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={s.dateStrip}
+              ListFooterComponent={<View style={{ width: 30 }} />}
+              removeClippedSubviews={false}
               nestedScrollEnabled
               directionalLockEnabled
               style={s.calendarList}
@@ -1151,7 +1153,7 @@ const s = StyleSheet.create({
   dateText: { fontSize: 12, fontWeight: '850' },
   dateFree: { color: '#738396', fontSize: 20, fontWeight: '950', marginTop: 5 },
   datePremium: { color: '#B7791F', fontSize: 20, fontWeight: '950', marginTop: 5 },
-  dateState: { fontSize: 9.5, fontWeight: '700', textAlign: 'center', marginTop: 3 },
+  dateState: { fontSize: 12, fontWeight: '700', textAlign: 'center', marginTop: 3 },
   sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 15 },
   source: { fontSize: 11 },
   refreshButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8 },

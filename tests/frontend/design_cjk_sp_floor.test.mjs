@@ -46,8 +46,8 @@ test('VoiceMessageBubble duration/rate/transcript rows go through sp()', () => {
 
 test('Queue micro labels (≤10.5) go through sp()', () => {
   assert.match(queue, /s\.cpRoute, \{ color: theme\.textDim, fontSize: sp\(10\.5\) \}/);
-  assert.match(queue, /s\.swipeHint, \{ color: theme\.textDim, fontSize: sp\(10\.5\) \}/);
-  assert.ok((queue.match(/fontSize: sp\(9\.5\)/g) || []).length >= 3, 'dateState rows use sp(9.5)');
+  assert.match(queue, /style=\{s\.calendarToggle\}/);
+  assert.doesNotMatch(queue, /fontSize: 9\.5/, 'calendar does not use unscaled micro text');
   assert.doesNotMatch(queue, /s\.dateAmount/, 'calendar does not render fixed MRP amounts');
 });
 
