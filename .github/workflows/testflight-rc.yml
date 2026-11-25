@@ -83,7 +83,7 @@ jobs:
           case "$candidate_pr" in
             561) ;;
             726)
-              test "$QA_SOURCE_SHA" = 1ff6577fe95ba982a063c327f162206892cb96c0
+              test "$QA_SOURCE_SHA" = b24636a172125ebc88aed3402714ba756ebb0acb
               [[ "$QA_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
               [[ "$QA_RELEASE_BUILD" =~ ^[123456789][0123456789]{0,8}$ ]] || {
                 echo '::error::Build number must be a positive integer'
