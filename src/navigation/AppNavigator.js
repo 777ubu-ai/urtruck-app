@@ -156,6 +156,7 @@ function MainTabs({ route }) {
   return (
     <Tab.Navigator
       key={`${session?.user?.id || 'guest'}:${role}`}
+      initialRouteName="Feed"
       screenOptions={{ headerShown: false }}
       // Без sceneContainerStyle React Navigation красит фон сцены белым
       // (DefaultTheme), и в тёмной теме он просвечивал снизу через

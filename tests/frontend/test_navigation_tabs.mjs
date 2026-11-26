@@ -12,6 +12,7 @@ const tabs = navigator.slice(start, end);
 const countTab = (name) => tabs.split(`<Tab.Screen name="${name}"`).length - 1;
 
 test('approved four-tab role navigation restores Border and removes Profile', () => {
+  assert.match(tabs, /<Tab\.Navigator[\s\S]*?initialRouteName="Feed"/);
   assert.equal(countTab('Queue'), 2);
   assert.equal(countTab('Publish'), 0);
   assert.equal(countTab('Chats'), 0);
