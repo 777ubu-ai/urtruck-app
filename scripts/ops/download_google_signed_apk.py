@@ -26,6 +26,10 @@ def main():
     for attempt in range(12):
         response = session.get(BASE + args.version, timeout=30, allow_redirects=False)
         if response.status_code == 200:
+            metadata = response.json()
+            groups = metadata.get("generatedApks", [])
+            print("Generated APK metadata:", json.dumps([{ "certificate": g.get("certificateSha256Hash"), "universal": bool(g.get("generatedUniversalApk")), "splits": [{"id": x.get("splitId"), "module": x.get("moduleName")} for x in g.get("generatedSplitApks", [])], "standalone_count": len(g.get("generatedStandaloneApks", [])) } for g in groups]), flush=True)
+            raise SystemExit("Read-only metadata inspection complete")
             group = next((g for g in response.json().get("generatedApks", [])
                           if str(g.get("certificateSha256Hash", "")).replace(":", "").lower() == CERT
                           and g.get("generatedUniversalApk", {}).get("downloadId")), None)
