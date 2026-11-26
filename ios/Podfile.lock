@@ -1691,6 +1691,28 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-blob-util (0.25.1):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-maps (1.27.2):
     - react-native-maps/Maps (= 1.27.2)
   - react-native-maps/Generated (1.27.2):
@@ -1728,6 +1750,28 @@ PODS:
     - React-ImageManager
     - React-jsi
     - react-native-maps/Generated
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-pdf (7.0.5):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -1797,6 +1841,28 @@ PODS:
     - React-ImageManager
     - React-jsi
     - react-native-safe-area-context/common
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
+  - react-native-webview (13.16.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
     - React-NativeModulesApple
     - React-RCTFabric
     - React-renderercss
@@ -2355,122 +2421,125 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
-  - EXApplication (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-application/ios`)
-  - EXConstants (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-constants/ios`)
-  - EXJSONUtils (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-json-utils/ios`)
-  - EXManifests (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-manifests/ios`)
-  - Expo (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo`)
-  - expo-dev-client (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-client/ios`)
-  - expo-dev-launcher (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-launcher`)
-  - expo-dev-menu (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-menu`)
-  - expo-dev-menu-interface (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-menu-interface/ios`)
-  - ExpoAsset (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-asset/ios`)
-  - ExpoAudio (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-audio/ios`)
-  - ExpoClipboard (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-clipboard/ios`)
-  - ExpoDevice (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-device/ios`)
-  - ExpoDocumentPicker (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-document-picker/ios`)
-  - "ExpoDomWebView (from `../../urtruck-release-ios-1.0.9-73/node_modules/@expo/dom-webview/ios`)"
-  - ExpoFileSystem (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-file-system/ios`)
-  - ExpoFont (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-font/ios`)
-  - ExpoImageManipulator (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-image-manipulator/ios`)
-  - ExpoImagePicker (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-image-picker/ios`)
-  - ExpoKeepAwake (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-keep-awake/ios`)
-  - ExpoLocalization (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-localization/ios`)
-  - ExpoLocation (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-location/ios`)
-  - "ExpoLogBox (from `../../urtruck-release-ios-1.0.9-73/node_modules/@expo/log-box`)"
-  - ExpoModulesCore (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-core`)
-  - ExpoModulesJSI (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-jsi/apple`)
-  - ExpoModulesWorklets (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-core`)
-  - ExpoNotifications (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-notifications/ios`)
-  - ExpoSecureStore (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-secure-store/ios`)
-  - ExpoSplashScreen (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-splash-screen/ios`)
-  - ExpoTaskManager (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-task-manager/ios`)
-  - ExpoWebBrowser (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-web-browser/ios`)
-  - EXUpdatesInterface (from `../../urtruck-release-ios-1.0.9-73/node_modules/expo-updates-interface/ios`)
-  - FBLazyVector (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/FBLazyVector`)
-  - hermes-engine (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
-  - RCTDeprecation (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
-  - RCTRequired (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Required`)
-  - RCTSwiftUI (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/RCTSwiftUI`)
-  - RCTSwiftUIWrapper (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/RCTSwiftUIWrapper`)
-  - RCTTypeSafety (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/TypeSafety`)
-  - React (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/`)
-  - React-callinvoker (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/callinvoker`)
-  - React-Core (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/`)
-  - React-Core-prebuilt (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React-Core-prebuilt.podspec`)
-  - React-Core/RCTWebSocket (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/`)
-  - React-CoreModules (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React/CoreModules`)
-  - React-cxxreact (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/cxxreact`)
-  - React-debug (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/debug`)
-  - React-defaultsnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/defaults`)
-  - React-domnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/dom`)
-  - React-Fabric (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon`)
-  - React-FabricComponents (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon`)
-  - React-FabricImage (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon`)
-  - React-featureflags (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/featureflags`)
-  - React-featureflagsnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/featureflags`)
-  - React-graphics (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/graphics`)
-  - React-hermes (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/hermes`)
-  - React-idlecallbacksnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/idlecallbacks`)
-  - React-ImageManager (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/imagemanager/platform/ios`)
-  - React-intersectionobservernativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/intersectionobserver`)
-  - React-jserrorhandler (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jserrorhandler`)
-  - React-jsi (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsi`)
-  - React-jsiexecutor (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsiexecutor`)
-  - React-jsinspector (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern`)
-  - React-jsinspectorcdp (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/cdp`)
-  - React-jsinspectornetwork (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/network`)
-  - React-jsinspectortracing (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/tracing`)
-  - React-jsitooling (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsitooling`)
-  - React-jsitracing (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/hermes/executor/`)
-  - React-logger (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/logger`)
-  - React-Mapbuffer (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon`)
-  - React-microtasksnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
-  - React-mutationobservernativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
-  - react-native-maps (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native-maps`)
-  - react-native-safe-area-context (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native-safe-area-context`)
-  - React-NativeModulesApple (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
-  - React-networking (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/networking`)
-  - React-oscompat (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/oscompat`)
-  - React-perflogger (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/reactperflogger`)
-  - React-performancecdpmetrics (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/performance/cdpmetrics`)
-  - React-performancetimeline (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/performance/timeline`)
-  - React-RCTActionSheet (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/ActionSheetIOS`)
-  - React-RCTAnimation (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/NativeAnimation`)
-  - React-RCTAppDelegate (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/AppDelegate`)
-  - React-RCTBlob (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Blob`)
-  - React-RCTFabric (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React`)
-  - React-RCTFBReactNativeSpec (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React`)
-  - React-RCTImage (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Image`)
-  - React-RCTLinking (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/LinkingIOS`)
-  - React-RCTNetwork (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Network`)
-  - React-RCTRuntime (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React/Runtime`)
-  - React-RCTSettings (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Settings`)
-  - React-RCTText (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Text`)
-  - React-RCTVibration (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Vibration`)
-  - React-rendererconsistency (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/consistency`)
-  - React-renderercss (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/css`)
-  - React-rendererdebug (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/debug`)
-  - React-RuntimeApple (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime/platform/ios`)
-  - React-RuntimeCore (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime`)
-  - React-runtimeexecutor (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/runtimeexecutor`)
-  - React-RuntimeHermes (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime`)
-  - React-runtimescheduler (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/runtimescheduler`)
-  - React-timing (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/timing`)
-  - React-utils (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/utils`)
-  - React-viewtransitionnativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/viewtransition`)
-  - React-webperformancenativemodule (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/webperformance`)
+  - EXApplication (from `../node_modules/expo-application/ios`)
+  - EXConstants (from `../node_modules/expo-constants/ios`)
+  - EXJSONUtils (from `../node_modules/expo-json-utils/ios`)
+  - EXManifests (from `../node_modules/expo-manifests/ios`)
+  - Expo (from `../node_modules/expo`)
+  - expo-dev-client (from `../node_modules/expo-dev-client/ios`)
+  - expo-dev-launcher (from `../node_modules/expo-dev-launcher`)
+  - expo-dev-menu (from `../node_modules/expo-dev-menu`)
+  - expo-dev-menu-interface (from `../node_modules/expo-dev-menu-interface/ios`)
+  - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoAudio (from `../node_modules/expo-audio/ios`)
+  - ExpoClipboard (from `../node_modules/expo-clipboard/ios`)
+  - ExpoDevice (from `../node_modules/expo-device/ios`)
+  - ExpoDocumentPicker (from `../node_modules/expo-document-picker/ios`)
+  - "ExpoDomWebView (from `../node_modules/@expo/dom-webview/ios`)"
+  - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
+  - ExpoFont (from `../node_modules/expo-font/ios`)
+  - ExpoImageManipulator (from `../node_modules/expo-image-manipulator/ios`)
+  - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
+  - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
+  - ExpoLocalization (from `../node_modules/expo-localization/ios`)
+  - ExpoLocation (from `../node_modules/expo-location/ios`)
+  - "ExpoLogBox (from `../node_modules/@expo/log-box`)"
+  - ExpoModulesCore (from `../node_modules/expo-modules-core`)
+  - ExpoModulesJSI (from `../node_modules/expo-modules-jsi/apple`)
+  - ExpoModulesWorklets (from `../node_modules/expo-modules-core`)
+  - ExpoNotifications (from `../node_modules/expo-notifications/ios`)
+  - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
+  - ExpoTaskManager (from `../node_modules/expo-task-manager/ios`)
+  - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
+  - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
+  - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
+  - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
+  - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
+  - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
+  - RCTSwiftUIWrapper (from `../node_modules/react-native/ReactApple/RCTSwiftUIWrapper`)
+  - RCTTypeSafety (from `../node_modules/react-native/Libraries/TypeSafety`)
+  - React (from `../node_modules/react-native/`)
+  - React-callinvoker (from `../node_modules/react-native/ReactCommon/callinvoker`)
+  - React-Core (from `../node_modules/react-native/`)
+  - React-Core-prebuilt (from `../node_modules/react-native/React-Core-prebuilt.podspec`)
+  - React-Core/RCTWebSocket (from `../node_modules/react-native/`)
+  - React-CoreModules (from `../node_modules/react-native/React/CoreModules`)
+  - React-cxxreact (from `../node_modules/react-native/ReactCommon/cxxreact`)
+  - React-debug (from `../node_modules/react-native/ReactCommon/react/debug`)
+  - React-defaultsnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/defaults`)
+  - React-domnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/dom`)
+  - React-Fabric (from `../node_modules/react-native/ReactCommon`)
+  - React-FabricComponents (from `../node_modules/react-native/ReactCommon`)
+  - React-FabricImage (from `../node_modules/react-native/ReactCommon`)
+  - React-featureflags (from `../node_modules/react-native/ReactCommon/react/featureflags`)
+  - React-featureflagsnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/featureflags`)
+  - React-graphics (from `../node_modules/react-native/ReactCommon/react/renderer/graphics`)
+  - React-hermes (from `../node_modules/react-native/ReactCommon/hermes`)
+  - React-idlecallbacksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/idlecallbacks`)
+  - React-ImageManager (from `../node_modules/react-native/ReactCommon/react/renderer/imagemanager/platform/ios`)
+  - React-intersectionobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/intersectionobserver`)
+  - React-jserrorhandler (from `../node_modules/react-native/ReactCommon/jserrorhandler`)
+  - React-jsi (from `../node_modules/react-native/ReactCommon/jsi`)
+  - React-jsiexecutor (from `../node_modules/react-native/ReactCommon/jsiexecutor`)
+  - React-jsinspector (from `../node_modules/react-native/ReactCommon/jsinspector-modern`)
+  - React-jsinspectorcdp (from `../node_modules/react-native/ReactCommon/jsinspector-modern/cdp`)
+  - React-jsinspectornetwork (from `../node_modules/react-native/ReactCommon/jsinspector-modern/network`)
+  - React-jsinspectortracing (from `../node_modules/react-native/ReactCommon/jsinspector-modern/tracing`)
+  - React-jsitooling (from `../node_modules/react-native/ReactCommon/jsitooling`)
+  - React-jsitracing (from `../node_modules/react-native/ReactCommon/hermes/executor/`)
+  - React-logger (from `../node_modules/react-native/ReactCommon/logger`)
+  - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
+  - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
+  - React-mutationobservernativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver`)
+  - react-native-blob-util (from `../node_modules/react-native-blob-util`)
+  - react-native-maps (from `../node_modules/react-native-maps`)
+  - react-native-pdf (from `../node_modules/react-native-pdf`)
+  - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - react-native-webview (from `../node_modules/react-native-webview`)
+  - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
+  - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
+  - React-oscompat (from `../node_modules/react-native/ReactCommon/oscompat`)
+  - React-perflogger (from `../node_modules/react-native/ReactCommon/reactperflogger`)
+  - React-performancecdpmetrics (from `../node_modules/react-native/ReactCommon/react/performance/cdpmetrics`)
+  - React-performancetimeline (from `../node_modules/react-native/ReactCommon/react/performance/timeline`)
+  - React-RCTActionSheet (from `../node_modules/react-native/Libraries/ActionSheetIOS`)
+  - React-RCTAnimation (from `../node_modules/react-native/Libraries/NativeAnimation`)
+  - React-RCTAppDelegate (from `../node_modules/react-native/Libraries/AppDelegate`)
+  - React-RCTBlob (from `../node_modules/react-native/Libraries/Blob`)
+  - React-RCTFabric (from `../node_modules/react-native/React`)
+  - React-RCTFBReactNativeSpec (from `../node_modules/react-native/React`)
+  - React-RCTImage (from `../node_modules/react-native/Libraries/Image`)
+  - React-RCTLinking (from `../node_modules/react-native/Libraries/LinkingIOS`)
+  - React-RCTNetwork (from `../node_modules/react-native/Libraries/Network`)
+  - React-RCTRuntime (from `../node_modules/react-native/React/Runtime`)
+  - React-RCTSettings (from `../node_modules/react-native/Libraries/Settings`)
+  - React-RCTText (from `../node_modules/react-native/Libraries/Text`)
+  - React-RCTVibration (from `../node_modules/react-native/Libraries/Vibration`)
+  - React-rendererconsistency (from `../node_modules/react-native/ReactCommon/react/renderer/consistency`)
+  - React-renderercss (from `../node_modules/react-native/ReactCommon/react/renderer/css`)
+  - React-rendererdebug (from `../node_modules/react-native/ReactCommon/react/renderer/debug`)
+  - React-RuntimeApple (from `../node_modules/react-native/ReactCommon/react/runtime/platform/ios`)
+  - React-RuntimeCore (from `../node_modules/react-native/ReactCommon/react/runtime`)
+  - React-runtimeexecutor (from `../node_modules/react-native/ReactCommon/runtimeexecutor`)
+  - React-RuntimeHermes (from `../node_modules/react-native/ReactCommon/react/runtime`)
+  - React-runtimescheduler (from `../node_modules/react-native/ReactCommon/react/renderer/runtimescheduler`)
+  - React-timing (from `../node_modules/react-native/ReactCommon/react/timing`)
+  - React-utils (from `../node_modules/react-native/ReactCommon/react/utils`)
+  - React-viewtransitionnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/viewtransition`)
+  - React-webperformancenativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/webperformance`)
   - ReactAppDependencyProvider (from `build/generated/ios/ReactAppDependencyProvider`)
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
-  - ReactCommon/turbomodule/core (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon`)
-  - ReactNativeDependencies (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
-  - "RNCAsyncStorage (from `../../urtruck-release-ios-1.0.9-73/node_modules/@react-native-async-storage/async-storage`)"
-  - RNScreens (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native-screens`)
-  - "RNSentry (from `../../urtruck-release-ios-1.0.9-73/node_modules/@sentry/react-native`)"
-  - RNSVG (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native-svg`)
-  - RNYamap (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native-yamap`)
-  - UMAppLoader (from `../../urtruck-release-ios-1.0.9-73/node_modules/unimodules-app-loader/ios`)
-  - Yoga (from `../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/yoga`)
+  - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
+  - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
+  - RNScreens (from `../node_modules/react-native-screens`)
+  - "RNSentry (from `../node_modules/@sentry/react-native`)"
+  - RNSVG (from `../node_modules/react-native-svg`)
+  - RNYamap (from `../node_modules/react-native-yamap`)
+  - UMAppLoader (from `../node_modules/unimodules-app-loader/ios`)
+  - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
   trunk:
@@ -2482,236 +2551,242 @@ SPEC REPOS:
 
 EXTERNAL SOURCES:
   EXApplication:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-application/ios"
+    :path: "../node_modules/expo-application/ios"
   EXConstants:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-constants/ios"
+    :path: "../node_modules/expo-constants/ios"
   EXJSONUtils:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-json-utils/ios"
+    :path: "../node_modules/expo-json-utils/ios"
   EXManifests:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-manifests/ios"
+    :path: "../node_modules/expo-manifests/ios"
   Expo:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo"
+    :path: "../node_modules/expo"
   expo-dev-client:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-client/ios"
+    :path: "../node_modules/expo-dev-client/ios"
   expo-dev-launcher:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-launcher"
+    :path: "../node_modules/expo-dev-launcher"
   expo-dev-menu:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-menu"
+    :path: "../node_modules/expo-dev-menu"
   expo-dev-menu-interface:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-dev-menu-interface/ios"
+    :path: "../node_modules/expo-dev-menu-interface/ios"
   ExpoAsset:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-asset/ios"
+    :path: "../node_modules/expo-asset/ios"
   ExpoAudio:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-audio/ios"
+    :path: "../node_modules/expo-audio/ios"
   ExpoClipboard:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-clipboard/ios"
+    :path: "../node_modules/expo-clipboard/ios"
   ExpoDevice:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-device/ios"
+    :path: "../node_modules/expo-device/ios"
   ExpoDocumentPicker:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-document-picker/ios"
+    :path: "../node_modules/expo-document-picker/ios"
   ExpoDomWebView:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/@expo/dom-webview/ios"
+    :path: "../node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-file-system/ios"
+    :path: "../node_modules/expo-file-system/ios"
   ExpoFont:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-font/ios"
+    :path: "../node_modules/expo-font/ios"
   ExpoImageManipulator:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-image-manipulator/ios"
+    :path: "../node_modules/expo-image-manipulator/ios"
   ExpoImagePicker:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-image-picker/ios"
+    :path: "../node_modules/expo-image-picker/ios"
   ExpoKeepAwake:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-keep-awake/ios"
+    :path: "../node_modules/expo-keep-awake/ios"
   ExpoLocalization:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-localization/ios"
+    :path: "../node_modules/expo-localization/ios"
   ExpoLocation:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-location/ios"
+    :path: "../node_modules/expo-location/ios"
   ExpoLogBox:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/@expo/log-box"
+    :path: "../node_modules/@expo/log-box"
   ExpoModulesCore:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-core"
+    :path: "../node_modules/expo-modules-core"
   ExpoModulesJSI:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-jsi/apple"
+    :path: "../node_modules/expo-modules-jsi/apple"
   ExpoModulesWorklets:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-modules-core"
+    :path: "../node_modules/expo-modules-core"
   ExpoNotifications:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-notifications/ios"
+    :path: "../node_modules/expo-notifications/ios"
   ExpoSecureStore:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-secure-store/ios"
+    :path: "../node_modules/expo-secure-store/ios"
   ExpoSplashScreen:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-splash-screen/ios"
+    :path: "../node_modules/expo-splash-screen/ios"
   ExpoTaskManager:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-task-manager/ios"
+    :path: "../node_modules/expo-task-manager/ios"
   ExpoWebBrowser:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-web-browser/ios"
+    :path: "../node_modules/expo-web-browser/ios"
   EXUpdatesInterface:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/expo-updates-interface/ios"
+    :path: "../node_modules/expo-updates-interface/ios"
   FBLazyVector:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/FBLazyVector"
+    :path: "../node_modules/react-native/Libraries/FBLazyVector"
   hermes-engine:
-    :podspec: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
+    :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.17
   RCTDeprecation:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
+    :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Required"
+    :path: "../node_modules/react-native/Libraries/Required"
   RCTSwiftUI:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/RCTSwiftUI"
+    :path: "../node_modules/react-native/ReactApple/RCTSwiftUI"
   RCTSwiftUIWrapper:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactApple/RCTSwiftUIWrapper"
+    :path: "../node_modules/react-native/ReactApple/RCTSwiftUIWrapper"
   RCTTypeSafety:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/TypeSafety"
+    :path: "../node_modules/react-native/Libraries/TypeSafety"
   React:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/"
+    :path: "../node_modules/react-native/"
   React-callinvoker:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/callinvoker"
+    :path: "../node_modules/react-native/ReactCommon/callinvoker"
   React-Core:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/"
+    :path: "../node_modules/react-native/"
   React-Core-prebuilt:
-    :podspec: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React-Core-prebuilt.podspec"
+    :podspec: "../node_modules/react-native/React-Core-prebuilt.podspec"
   React-CoreModules:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React/CoreModules"
+    :path: "../node_modules/react-native/React/CoreModules"
   React-cxxreact:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/cxxreact"
+    :path: "../node_modules/react-native/ReactCommon/cxxreact"
   React-debug:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/debug"
+    :path: "../node_modules/react-native/ReactCommon/react/debug"
   React-defaultsnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/defaults"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/defaults"
   React-domnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/dom"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/dom"
   React-Fabric:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon"
+    :path: "../node_modules/react-native/ReactCommon"
   React-FabricComponents:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon"
+    :path: "../node_modules/react-native/ReactCommon"
   React-FabricImage:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon"
+    :path: "../node_modules/react-native/ReactCommon"
   React-featureflags:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/featureflags"
+    :path: "../node_modules/react-native/ReactCommon/react/featureflags"
   React-featureflagsnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/featureflags"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/featureflags"
   React-graphics:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/graphics"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/graphics"
   React-hermes:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/hermes"
+    :path: "../node_modules/react-native/ReactCommon/hermes"
   React-idlecallbacksnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/idlecallbacks"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/idlecallbacks"
   React-ImageManager:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/imagemanager/platform/ios"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/imagemanager/platform/ios"
   React-intersectionobservernativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/intersectionobserver"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/intersectionobserver"
   React-jserrorhandler:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jserrorhandler"
+    :path: "../node_modules/react-native/ReactCommon/jserrorhandler"
   React-jsi:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsi"
+    :path: "../node_modules/react-native/ReactCommon/jsi"
   React-jsiexecutor:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsiexecutor"
+    :path: "../node_modules/react-native/ReactCommon/jsiexecutor"
   React-jsinspector:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern"
+    :path: "../node_modules/react-native/ReactCommon/jsinspector-modern"
   React-jsinspectorcdp:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/cdp"
+    :path: "../node_modules/react-native/ReactCommon/jsinspector-modern/cdp"
   React-jsinspectornetwork:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/network"
+    :path: "../node_modules/react-native/ReactCommon/jsinspector-modern/network"
   React-jsinspectortracing:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsinspector-modern/tracing"
+    :path: "../node_modules/react-native/ReactCommon/jsinspector-modern/tracing"
   React-jsitooling:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/jsitooling"
+    :path: "../node_modules/react-native/ReactCommon/jsitooling"
   React-jsitracing:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/hermes/executor/"
+    :path: "../node_modules/react-native/ReactCommon/hermes/executor/"
   React-logger:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/logger"
+    :path: "../node_modules/react-native/ReactCommon/logger"
   React-Mapbuffer:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon"
+    :path: "../node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   React-mutationobservernativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/mutationobserver"
+  react-native-blob-util:
+    :path: "../node_modules/react-native-blob-util"
   react-native-maps:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native-maps"
+    :path: "../node_modules/react-native-maps"
+  react-native-pdf:
+    :path: "../node_modules/react-native-pdf"
   react-native-safe-area-context:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native-safe-area-context"
+    :path: "../node_modules/react-native-safe-area-context"
+  react-native-webview:
+    :path: "../node_modules/react-native-webview"
   React-NativeModulesApple:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-networking:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/networking"
+    :path: "../node_modules/react-native/ReactCommon/react/networking"
   React-oscompat:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/oscompat"
+    :path: "../node_modules/react-native/ReactCommon/oscompat"
   React-perflogger:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/reactperflogger"
+    :path: "../node_modules/react-native/ReactCommon/reactperflogger"
   React-performancecdpmetrics:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/performance/cdpmetrics"
+    :path: "../node_modules/react-native/ReactCommon/react/performance/cdpmetrics"
   React-performancetimeline:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/performance/timeline"
+    :path: "../node_modules/react-native/ReactCommon/react/performance/timeline"
   React-RCTActionSheet:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/ActionSheetIOS"
+    :path: "../node_modules/react-native/Libraries/ActionSheetIOS"
   React-RCTAnimation:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/NativeAnimation"
+    :path: "../node_modules/react-native/Libraries/NativeAnimation"
   React-RCTAppDelegate:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/AppDelegate"
+    :path: "../node_modules/react-native/Libraries/AppDelegate"
   React-RCTBlob:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Blob"
+    :path: "../node_modules/react-native/Libraries/Blob"
   React-RCTFabric:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React"
+    :path: "../node_modules/react-native/React"
   React-RCTFBReactNativeSpec:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React"
+    :path: "../node_modules/react-native/React"
   React-RCTImage:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Image"
+    :path: "../node_modules/react-native/Libraries/Image"
   React-RCTLinking:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/LinkingIOS"
+    :path: "../node_modules/react-native/Libraries/LinkingIOS"
   React-RCTNetwork:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Network"
+    :path: "../node_modules/react-native/Libraries/Network"
   React-RCTRuntime:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/React/Runtime"
+    :path: "../node_modules/react-native/React/Runtime"
   React-RCTSettings:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Settings"
+    :path: "../node_modules/react-native/Libraries/Settings"
   React-RCTText:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Text"
+    :path: "../node_modules/react-native/Libraries/Text"
   React-RCTVibration:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/Libraries/Vibration"
+    :path: "../node_modules/react-native/Libraries/Vibration"
   React-rendererconsistency:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/consistency"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/consistency"
   React-renderercss:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/css"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/css"
   React-rendererdebug:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/debug"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/debug"
   React-RuntimeApple:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime/platform/ios"
+    :path: "../node_modules/react-native/ReactCommon/react/runtime/platform/ios"
   React-RuntimeCore:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime"
+    :path: "../node_modules/react-native/ReactCommon/react/runtime"
   React-runtimeexecutor:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/runtimeexecutor"
+    :path: "../node_modules/react-native/ReactCommon/runtimeexecutor"
   React-RuntimeHermes:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/runtime"
+    :path: "../node_modules/react-native/ReactCommon/react/runtime"
   React-runtimescheduler:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/renderer/runtimescheduler"
+    :path: "../node_modules/react-native/ReactCommon/react/renderer/runtimescheduler"
   React-timing:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/timing"
+    :path: "../node_modules/react-native/ReactCommon/react/timing"
   React-utils:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/utils"
+    :path: "../node_modules/react-native/ReactCommon/react/utils"
   React-viewtransitionnativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/viewtransition"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/viewtransition"
   React-webperformancenativemodule:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/react/nativemodule/webperformance"
+    :path: "../node_modules/react-native/ReactCommon/react/nativemodule/webperformance"
   ReactAppDependencyProvider:
     :path: build/generated/ios/ReactAppDependencyProvider
   ReactCodegen:
     :path: build/generated/ios/ReactCodegen
   ReactCommon:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon"
+    :path: "../node_modules/react-native/ReactCommon"
   ReactNativeDependencies:
-    :podspec: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
+    :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
   RNCAsyncStorage:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/@react-native-async-storage/async-storage"
+    :path: "../node_modules/@react-native-async-storage/async-storage"
   RNScreens:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native-screens"
+    :path: "../node_modules/react-native-screens"
   RNSentry:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/@sentry/react-native"
+    :path: "../node_modules/@sentry/react-native"
   RNSVG:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native-svg"
+    :path: "../node_modules/react-native-svg"
   RNYamap:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native-yamap"
+    :path: "../node_modules/react-native-yamap"
   UMAppLoader:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/unimodules-app-loader/ios"
+    :path: "../node_modules/unimodules-app-loader/ios"
   Yoga:
-    :path: "../../urtruck-release-ios-1.0.9-73/node_modules/react-native/ReactCommon/yoga"
+    :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
   EXApplication: a727f05eb8592f0bc764f6ab8d51eacc158652ec
@@ -2747,7 +2822,7 @@ SPEC CHECKSUMS:
   ExpoWebBrowser: a4d7c382116fbe33c1ec7f60293f02b7e97042e4
   EXUpdatesInterface: 4c96533f11c8cefe879bd506564cc2d537f56804
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
-  hermes-engine: 39996c6f2feb5eb859b7da87f77da6c2a25784f0
+  hermes-engine: 63c5db7d529c36335fada6582fd293ae2a105d77
   libwebp: af5937a13536ef73f3784d69cc342b98961acf33
   RCTDeprecation: 96f68ebf33f8762466b01d57d6e873c4f30efb07
   RCTRequired: 166eed8ad6d8440e73e56d09a9090366609823d2
@@ -2786,8 +2861,11 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 3c805ea54675b00ef1755f23b3c1fccf34962b93
   React-microtasksnativemodule: 97a771dbbb4315c71579995b53e4e3e351a99d89
   React-mutationobservernativemodule: 530bff1bba9511a5133e3cf8170e3b2c0df49e89
+  react-native-blob-util: 0d987827d0b220777e135e00ca21f5cc7c61e0b7
   react-native-maps: cb32168a32e30f83beb08198325ff96b70dd5c9f
+  react-native-pdf: c9fa724df597c1c4c456590953fc7224aee6e202
   react-native-safe-area-context: 6b4966397ada0f7dd481e4486a2ef936834861a1
+  react-native-webview: 96c45c7e019eeaae562589b78b67924d5816d2c1
   React-NativeModulesApple: 2b658272ca69df0694cf5d54f9510aa7c33977bc
   React-networking: 6be0b80e18e710dd30e77b04838ec46666a7bb78
   React-oscompat: cea7c66df8076bd97e95885d7f584b86afffde41
@@ -2820,7 +2898,7 @@ SPEC CHECKSUMS:
   React-viewtransitionnativemodule: 3977270cf367fd1562221047e2358a26da174f2d
   React-webperformancenativemodule: fb203d77856165582e519855fc13773a2855f9a6
   ReactAppDependencyProvider: bb350d1333fd459c1aabe782088419a9b8894d3a
-  ReactCodegen: d239cd5f3f4e0291b3fea594953c748cf5287e70
+  ReactCodegen: 828f54f35f2bc4ee3f39345144ff0ec22c9535c2
   ReactCommon: 02f6a489d5eb4ab79d7deba5cd4434e0ba351a07
   ReactNativeDependencies: 6738e602b46fd24aa453cd58267ec3bb8bf29d27
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
@@ -2835,6 +2913,6 @@ SPEC CHECKSUMS:
   YandexMapsMobile: 576340ead47bb112b6387eac1e605cfe7565c162
   Yoga: 18b74b3ade30bebc1904004dfaceae1dd02a330a
 
-PODFILE CHECKSUM: df36fc844a56e6aa7396b573ed1742adc5d796fb
+PODFILE CHECKSUM: 467a07da0b0cb2813485d7f8162a4942d6b7a37e
 
 COCOAPODS: 1.16.2

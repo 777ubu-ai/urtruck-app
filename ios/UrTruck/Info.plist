@@ -33,7 +33,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.12</string>
+	<string>1.0.17</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -47,7 +47,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>114</string>
+	<string>133</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSMinimumSystemVersion</key>
@@ -65,10 +65,10 @@
 	<string>UrTruck использует камеру для селфи и фото документов</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>UrTruck определяет местоположение по вашему запросу или при открытии карты активного рейса</string>
-	<key>NSMotionUsageDescription</key>
-	<string>Встроенная библиотека местоположения поддерживает определение движения. UrTruck не запрашивает и не собирает данные физической активности в этой версии.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>UrTruck использует микрофон для записи голосовых сообщений</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Встроенная библиотека местоположения поддерживает определение движения. UrTruck не запрашивает и не собирает данные физической активности в этой версии.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>UrTruck использует фото для аватара, груза и документов</string>
 	<key>RCTNewArchEnabled</key>

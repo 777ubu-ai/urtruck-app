@@ -155,3 +155,18 @@ def test_total_counts_all_visible_filtered_rows_across_pages(kind, endpoint):
         "from_city": city, "show_demo": "true", "limit": 1,
     }).json()
     assert demo["total"] == 4
+
+
+@pytest.mark.parametrize("kind,endpoint,key", [("cargo", "cargos", "cargos"), ("trip", "trips", "trips")])
+def test_first_page_can_skip_expensive_full_count(kind, endpoint, key):
+    city = "FastPage" + uuid.uuid4().hex[:10]
+    expected = _seed(kind, city=city, country="KZ", amount=100, currency="KZT", day="2099-10-20")
+    response = client.get(f"/api/v1/market/{endpoint}", params={
+        "from_city": city, "limit": 1, "include_count": "false",
+    })
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] is None
+    assert payload["page_count"] == 1
+    assert payload["has_more"] is False
+    assert [row["id"] for row in payload[key]] == [expected]

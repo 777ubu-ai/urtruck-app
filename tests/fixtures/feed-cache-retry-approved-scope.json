@@ -1,0 +1,13 @@
+{
+  "base_sha": "7e370c05cf6ef2d685e2a91de3a4a24f96cfa6e8",
+  "reason": "Владелец 27.11.2026 прямо разрешил исправить первую загрузку и повтор лент обеих ролей: добавлено сохранение первой страницы по аккаунту/фильтрам, single-flight с отменой старых запросов, автоматический retry после восстановления сети и параметр include_count=false для страниц. Начальная навигация Feed уже была отдельно добавлена в cbe367a. Другие модули и данные не менялись. Регрессии обеих лент, пагинации, пропусков/дублей и backend count bypass обязательны.",
+  "regression": "tests/frontend/test_public_feed_pagination.mjs, tests/frontend/test_public_feed_return_freshness.mjs, tests/frontend/test_feed_server_error_ux_contract.mjs, backend/tests/test_public_feed_search_filters.py",
+  "sha256": {
+    "src/screens/CargoFeedScreen.js": "e8baad66687ab491358195421d269c02ffb08f2e139d0517e507c9c275441730",
+    "src/screens/FeedScreen.js": "c828c7822db12fdb1d9786e1cd49873a6e4f2c4e839d2a9ca899bba5fdc899dd",
+    "src/navigation/AppNavigator.js": "2b48c09bf4810670bf1372fa6d85546c00bdc3d7c90c6fe11b504a443708cc55",
+    "src/utils/marketAPI.js": "5bd67bfd085d488a4137bff030e1ded75a4e25590e0387709569c3014ad52f9f",
+    "src/utils/marketFeedCache.js": "dd43f896bb588f79baf21645a59e24746163735d939b7d769ca7755d4b74aff7",
+    "backend/api/marketplace.py": "435f9192c4fdfce6d4dfc4f009229b3a34ec234907cd5fc9e95a00a953a22bc1"
+  }
+}

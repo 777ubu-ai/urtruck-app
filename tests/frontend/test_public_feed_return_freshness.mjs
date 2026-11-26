@@ -13,11 +13,12 @@ for (const [file, key, method] of [['CargoFeedScreen.js', 'cargos', 'listCargos'
     const AppState = { currentState: 'active', addEventListener(event, callback) {
       assert.equal(event, 'change'); appListeners.push(callback); return { remove() { appListeners.splice(appListeners.indexOf(callback), 1); } };
     } };
-    const start = source.indexOf('  useEffect(() => { load(); }');
+    const start = source.indexOf('  useEffect(() => { setFeedErrorType(null); load(); }');
     const end = source.indexOf('  const visibleItems = items;', start);
-    new Function('useEffect', 'useFocusEffect', 'useCallback', 'load', 'loadSaved', 'navigation', 'AppState', 'requestAnimationFrame', 'cancelAnimationFrame', 'scrollOffsetRef', 'listRef', 'loadSeqRef', 'pageRef', source.slice(start, end))(
+    new Function('useEffect', 'useFocusEffect', 'useCallback', 'load', 'loadSaved', 'navigation', 'AppState', 'requestAnimationFrame', 'cancelAnimationFrame', 'scrollOffsetRef', 'listRef', 'loadSeqRef', 'pageRef', 'Network', 'error', 'errorAppend', 'setFeedErrorType', 'requestControllerRef', 'activeRequestKeyRef', source.slice(start, end))(
       fn => cleanups.push(fn()), fn => cleanups.push(fn()), fn => fn,
       options => calls.push(options), () => {}, navigation, AppState, fn => { fn(); return 1; }, () => {}, { current: 800 }, { current: { scrollToOffset() {} } }, { current: 0 }, { current: {} },
+      { addNetworkStateListener: () => ({ remove() {} }) }, false, false, () => {}, { current: { abort() {} } }, { current: null },
     );
     assert.equal(calls.length, 1, 'Начальная загрузка не дублируется');
     focused = false; listeners.get('blur')?.();
@@ -38,7 +39,7 @@ for (const [file, key, method] of [['CargoFeedScreen.js', 'cargos', 'listCargos'
   function loader() {
     const state = { items: [], price: 1, total: 100 }, calls = [];
     const env = {
-      useCallback: fn => fn, pageRef: { current: { busy: false, nextOffset: null } }, loadSeqRef: { current: 0 },
+      useCallback: fn => fn, pageRef: { current: { busy: false, nextOffset: null } }, loadSeqRef: { current: 0 }, requestControllerRef: { current: null }, activeRequestKeyRef: { current: null },
       listRef: { current: { scrollToOffset: x => { state.offset = x.offset; } } }, scrollOffsetRef: { current: 800 },
       setError: x => { state.error = x; }, setErrorAppend() {}, setLoadingMore() {}, setLoading() {}, setRefreshing() {},
       setItems: x => { state.items = typeof x === 'function' ? x(state.items) : x; },
@@ -50,8 +51,10 @@ for (const [file, key, method] of [['CargoFeedScreen.js', 'cargos', 'listCargos'
         if (state.failSecond && args.offset === 50) return { serverError: true };
         return { [key]: Array.from({ length: Math.min(50, state.total - args.offset) }, (_, n) => ({ id: String(args.offset + n), owner_id: 'other', driver_id: 'other', price: state.price })), has_more: args.offset + 50 < state.total, next_offset: args.offset + 50 < state.total ? args.offset + 50 : null };
       } },
+      feedCacheKey: 'test-feed', readMarketFeedCache: async () => null, writeMarketFeedCache: async () => {},
+      setFeedErrorType() {}, AbortController,
     };
-    const start = source.indexOf('  const load = useCallback('), end = source.indexOf('\n  useEffect(() => { load(); }', start);
+    const start = source.indexOf('  const load = useCallback('), end = source.indexOf('\n  const loadNextPage = useCallback', start);
     const load = new Function(...Object.keys(env), source.slice(start, end) + '\nreturn load;')(...Object.values(env));
     return { state, calls, env, load };
   }
@@ -60,9 +63,9 @@ for (const [file, key, method] of [['CargoFeedScreen.js', 'cargos', 'listCargos'
     h.env.marketAPI[method] = args => new Promise(resolve => pending.push({ args, resolve }));
     const begin = source.indexOf('  useEffect(() => {\n    const removeFocus');
     const end = source.indexOf('  useEffect(() => { loadSaved(); }', begin);
-    new Function('useEffect', 'navigation', 'load', 'AppState', 'loadSeqRef', 'pageRef', source.slice(begin, end))(
+    new Function('useEffect', 'navigation', 'load', 'AppState', 'loadSeqRef', 'pageRef', 'requestControllerRef', 'activeRequestKeyRef', source.slice(begin, end))(
       fn => fn(), { isFocused: () => true, addListener(event, fn) { listeners.set(event, fn); return () => {}; } }, h.load,
-      { currentState: 'active', addEventListener() { return { remove() {} }; } }, h.env.loadSeqRef, h.env.pageRef,
+      { currentState: 'active', addEventListener() { return { remove() {} }; } }, h.env.loadSeqRef, h.env.pageRef, h.env.requestControllerRef, h.env.activeRequestKeyRef,
     );
     const old = h.load({ preservePosition: true });
     listeners.get('blur')?.(); listeners.get('focus')?.();

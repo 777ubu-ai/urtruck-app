@@ -846,6 +846,7 @@ def list_cargos(
     currency: str = "",
     sort_by: str = "newest",
     saved_only: bool = False,
+    include_count: bool = True,
     authorization: Optional[str] = Header(None),
 ):
     """Публичный список грузов. Demo-контент скрыт по умолчанию."""
@@ -903,8 +904,10 @@ def list_cargos(
             where_sql += periods.public_listing_deadline_clause('cargo')
         now = datetime.utcnow()
         c.create_function("public_listing_visible", 8, _public_count_visible("cargo", show_demo, now))
-        total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql} AND "
-                          "public_listing_visible(cargo_desc,from_city,to_city,cargo_type,published_at,created_at,owner_id,status)", params).fetchone()[0]
+        total = None
+        if include_count:
+            total = c.execute(f"SELECT COUNT(*) FROM cargos WHERE {where_sql} AND "
+                              "public_listing_visible(cargo_desc,from_city,to_city,cargo_type,published_at,created_at,owner_id,status)", params).fetchone()[0]
         rows = c.execute(f"""
             SELECT id, owner_id, from_city, to_city, cargo_desc, cargo_type,
                    weight_tons, volume_m3, price, currency, payment_type, pickup_date, photos,
@@ -1801,6 +1804,7 @@ def list_trips(
     currency: str = "",
     sort_by: str = "newest",
     saved_only: bool = False,
+    include_count: bool = True,
     authorization: Optional[str] = Header(None),
 ):
     _require_public_listing_status(status)
@@ -1855,8 +1859,10 @@ def list_trips(
             where_sql += periods.public_listing_deadline_clause('trip')
         now = datetime.utcnow()
         c.create_function("public_listing_visible", 8, _public_count_visible("trip", show_demo, now))
-        total = c.execute(f"SELECT COUNT(*) FROM trips WHERE {where_sql} AND "
-                          "public_listing_visible(driver_name,from_city,to_city,truck_type,published_at,created_at,driver_id,status)", params).fetchone()[0]
+        total = None
+        if include_count:
+            total = c.execute(f"SELECT COUNT(*) FROM trips WHERE {where_sql} AND "
+                              "public_listing_visible(driver_name,from_city,to_city,truck_type,published_at,created_at,driver_id,status)", params).fetchone()[0]
         rows = c.execute(f"""
             SELECT id, driver_id, driver_name, from_city, to_city, transit,
                    truck_type, capacity_tons, available_m3, price, currency,
