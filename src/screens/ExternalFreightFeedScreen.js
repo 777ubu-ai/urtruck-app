@@ -4,6 +4,7 @@ import {
   ActivityIndicator, Alert, AppState, BackHandler, FlatList, Keyboard, Linking, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Network from 'expo-network';
 import Feather from '@expo/vector-icons/Feather';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { useV1Colors } from '../theme/designV1';
@@ -27,7 +28,7 @@ import { useAuth } from '../utils/AuthContext';
 import { sessionRole } from '../utils/externalFreightSession';
 import { BODY_TYPES } from '../utils/truckConstants';
 import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
-import { externalFreightAPI } from '../utils/externalFreightFeed';
+import { externalFreightAPI, externalFreightFeedCacheKey, readExternalFreightFeedCache, writeExternalFreightFeedCache } from '../utils/externalFreightFeed';
 import { externalTelegramPost, mergeLiveFeed, isVisibleExternalItem, appendUnique, buildExternalFeedQuery, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
 const COPY = {
@@ -141,11 +142,14 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const visibleAnchorRef = useRef(null);
   const viewabilityRef = useRef(({ viewableItems }) => { visibleAnchorRef.current = viewableItems[0]?.key || null; });
   const sequenceRef = useRef(0);
+  const cacheHydrationRef = useRef(0);
+  const lastSuccessfulCacheKeyRef = useRef(null);
   const blurredRef = useRef(false);
   const loadRef = useRef(null);
   const styles = useMemo(() => makeStyles(theme, sp), [theme, lang]);
   const title = isDriver ? l.cargoTitle : l.vehicleTitle;
   const errorMessage = error === 'network_error' ? l.network : error === 'auth_required' ? t('session_expired') : error === 'access_denied' ? (ACCESS_COPY[lang] || ACCESS_COPY.EN) : l.server;
+  const persistentCacheKey = useMemo(() => externalFreightFeedCacheKey(ownerKey, filters, savedOnly), [ownerKey, filters, savedOnly]);
 
   const load = useCallback(async ({ reset = false, background = false, signal: suppliedSignal } = {}) => {
     if (busyRef.current && !reset) return;
@@ -224,6 +228,12 @@ export default function ExternalFreightFeedScreen({ navigation }) {
 
       const incoming = Array.isArray(result.items) ? result.items : [];
       if (reset && session?.user?.id && !savedOnly) rememberFirstPage(firstPageCacheKey(owner, filters, savedOnly), incoming);
+      if (reset && session?.user?.id) {
+        lastSuccessfulCacheKeyRef.current = externalFreightFeedCacheKey(owner, filters, savedOnly);
+        void writeExternalFreightFeedCache(lastSuccessfulCacheKeyRef.current, {
+          items: incoming.slice(0, 30), nextCursor: result.next_cursor || null, savedAt: Date.now(),
+        });
+      }
       if (result.sort_error && filters.sort !== 'newest') {
         setFilters(current => ({ ...current, sort: 'newest' }));
         setDraft(current => ({ ...current, sort: 'newest' }));
@@ -273,10 +283,28 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     paginationPendingRef.current = false; setFeedCounts(null); setCountError(false); setErrorPage(false); setUnseenIds([]);
     followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0;
     const cached = session?.user?.id && !savedOnly ? readFirstPageCache(firstPageCacheKey(ownerKey, filters, savedOnly)) : null;
+    const hydration = ++cacheHydrationRef.current;
+    lastSuccessfulCacheKeyRef.current = null;
     setRowsOwner(ownerKey); setRows(cached || []); setCursor(null);
+    if (!cached && session?.user?.id) {
+      readExternalFreightFeedCache(persistentCacheKey).then(snapshot => {
+        if (!snapshot || cacheHydrationRef.current !== hydration || lastSuccessfulCacheKeyRef.current === persistentCacheKey || ownerKey !== ownerRef.current) return;
+        const validRows = snapshot.items.filter(item => isVisibleExternalItem(item));
+        if (!validRows.length) return;
+        rememberFirstPage(firstPageCacheKey(ownerKey, filters, savedOnly), validRows);
+        setRowsOwner(ownerKey); setRows(validRows); setCursor(snapshot.nextCursor || null);
+      }).catch(() => {});
+    }
     load({ reset: true, background: !!cached });
     return () => requestRef.current?.abort?.();
-  }, [filters, savedOnly, ownerKey]);
+  }, [filters, savedOnly, ownerKey, persistentCacheKey]);
+  useEffect(() => {
+    if (!error) return undefined;
+    const subscription = Network.addNetworkStateListener(state => {
+      if (state.isConnected && state.isInternetReachable !== false) load({ reset: true, background: rows.length > 0 });
+    });
+    return () => subscription?.remove?.();
+  }, [error, load, rows.length]);
   useEffect(() => {
     if (!busy && !busyRef.current && paginationPendingRef.current) {
       paginationPendingRef.current = false;
@@ -639,7 +667,7 @@ async function listWithTimeout(filters, parentSignal, timeoutMs = 20000) {
       externalFreightAPI.list(filters, controller.signal),
       new Promise(resolve => { timer = setTimeout(() => {
         controller.abort();
-        resolve({ ok: false, error: 'network_error' });
+        resolve({ ok: false, error: 'request_timeout' });
       }, timeoutMs); }),
     ]);
   } finally {

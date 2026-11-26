@@ -8,6 +8,37 @@ const envFeedFlag = process.env.EXPO_PUBLIC_EXTERNAL_FREIGHT_FEED_ENABLED;
 export const EXTERNAL_FREIGHT_ENABLED = [configuredFeedFlag, envFeedFlag]
   .some(value => String(value || '').toLowerCase() === 'true');
 
+function cacheHash(value) {
+  let result = 2166136261;
+  const text = String(value);
+  for (let index = 0; index < text.length; index += 1) {
+    result ^= text.charCodeAt(index);
+    result = Math.imul(result, 16777619);
+  }
+  return (result >>> 0).toString(36);
+}
+
+export function externalFreightFeedCacheKey(owner, filters, savedOnly) {
+  return `ur_external_feed_v1_${cacheHash(owner)}_${cacheHash(JSON.stringify([filters || {}, Boolean(savedOnly)]))}`;
+}
+
+export async function readExternalFreightFeedCache(key) {
+  const raw = await storage.get(key);
+  if (!raw) return null;
+  try {
+    const cached = JSON.parse(raw);
+    if (!Array.isArray(cached?.items) || (cached.nextCursor != null && typeof cached.nextCursor !== 'string')) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeExternalFreightFeedCache(key, value) {
+  if (!key || !Array.isArray(value?.items)) return;
+  await storage.set(key, JSON.stringify(value));
+}
+
 function queryString(values = {}) {
   const params = new URLSearchParams();
   Object.entries(values).forEach(([key, value]) => {
