@@ -27,6 +27,9 @@ import { ALL_COUNTRIES, getCountryName } from '../utils/countries';
 import { externalFreightAPI } from '../utils/externalFreightFeed';
 import { externalTelegramPost, mergeLiveFeed, appendUnique, buildExternalFeedQuery, externalLocationTextSelection, feedKindForRole, isValidPublicationRange } from '../utils/externalFreightModel';
 
+const FIRST_PAGE_MAX_AGE_MS = 30_000;
+let firstPage = null;
+
 const COPY = {
   RU: { newListings: 'Новые объявления', mixedCurrency: 'Сортировка по цене доступна, когда в выдаче одна валюта. Сейчас показаны новые объявления.', priceUnavailable: 'В отфильтрованных объявлениях нет цен для сортировки. Сейчас показаны новые объявления.', telegram: 'Объявление в Telegram', direction: 'Направление в тексте объявления', cargoTitle: 'Лента грузов', vehicleTitle: 'Лента машин', from: 'Откуда', to: 'Куда', body: 'Кузов', date: 'Дата', price: 'Цена', empty: 'Объявлений пока нет', none: 'По фильтрам ничего не найдено', network: 'Нет соединения. Уже загруженные объявления сохранены.', server: 'Сервис ленты временно недоступен.', retry: 'Повторить', more: 'Показать полностью', less: 'Свернуть', copied: 'Контакт скопирован', today: 'Сегодня', yesterday: 'Вчера', apply: 'Найти', choose: 'Выбрать из списка', reset: 'Сброс', cancel: 'Отмена', negotiable: 'Договорная', unknown: 'Цена не указана', loading: 'Загрузка…', published: 'Опубликовано', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'С', dateTo: 'По', newest: 'Новые', asc: '↓ Дешевле', desc: '↑ Дороже', retryPage: 'Не удалось загрузить следующую страницу', invalidDate: 'Начало периода не может быть позже окончания.' },
   KK: { newListings: 'Жаңа хабарландырулар', mixedCurrency: 'Баға бойынша сұрыптау тек тізімде бір валюта болғанда қолжетімді. Қазір жаңалары көрсетілді.', priceUnavailable: 'Сүзілген хабарландыруларда сұрыптауға арналған баға жоқ. Қазір жаңалары көрсетілді.', telegram: 'Telegram хабарландыруы', direction: 'Бағыт хабарландыру мәтінінде', cargoTitle: 'Жүк лентасы', vehicleTitle: 'Көлік лентасы', from: 'Қайдан', to: 'Қайда', body: 'Шанақ', date: 'Күні', price: 'Бағасы', empty: 'Әзірге хабарландыру жоқ', none: 'Сүзгі бойынша нәтиже жоқ', network: 'Желі жоқ. Жүктелген хабарландырулар сақталды.', server: 'Лента қызметі уақытша қолжетімсіз.', retry: 'Қайталау', more: 'Тағы', less: 'Жию', copied: 'Байланыс көшірілді', today: 'Бүгін', yesterday: 'Кеше', apply: 'Қолдану', choose: 'Тізімнен таңдау', reset: 'Тазарту', cancel: 'Бас тарту', negotiable: 'Келісімді', unknown: 'Бағасы көрсетілмеген', loading: 'Жүктелуде…', published: 'Жарияланған', weightUnit: 'т', volumeUnit: 'м³', dateFrom: 'Бастап', dateTo: 'Дейін', newest: 'Жаңалары', asc: '↓ Арзанырақ', desc: '↑ Қымбатырақ', retryPage: 'Келесі бетті жүктеу мүмкін болмады', invalidDate: 'Жарияланым күндерінің аралығын тексеріңіз.' },
@@ -67,6 +70,8 @@ export default function ExternalFreightFeedScreen({ navigation }) {
   const [filters, setFilters] = useState(emptyFilters);
   const [draft, setDraft] = useState(filters);
   const timeline = filters.sort === 'newest';
+  const cacheable = Boolean(session?.user?.id && kind && !savedOnly && timeline
+    && !Object.entries(filters).some(([key, value]) => key !== 'sort' && value));
   const webTimeline = Platform.OS === 'web' && timeline;
   const [unseenIds, setUnseenIds] = useState([]);
   const followingRef = useRef(true);
@@ -134,6 +139,9 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     }
     setError(null);
     const incoming = Array.isArray(result.items) ? result.items : [];
+    if (cacheable && reset) {
+      firstPage = { owner, items: incoming, nextCursor: result.next_cursor || null, savedAt: Date.now() };
+    }
     if (result.sort_error && filters.sort !== 'newest') {
       setFilters(current => ({ ...current, sort: 'newest' }));
       setDraft(current => ({ ...current, sort: 'newest' }));
@@ -170,10 +178,23 @@ export default function ExternalFreightFeedScreen({ navigation }) {
     setRows(current => background ? mergeLiveFeed(current, incoming, { sort: filters.sort, hasMore: !!result.next_cursor, savedOnly }) : reset ? incoming : appendUnique(current, incoming));
     if (!background || savedOnly || rows.length <= 30 || filters.sort !== 'newest') setCursor(result.next_cursor || null);
     busyRef.current = false; setBusy(false); setRefreshing(false);
-  }, [filters, cursor, savedOnly, ownerKey, rows, timeline]);
+  }, [filters, cursor, savedOnly, ownerKey, rows, timeline, cacheable]);
   loadRef.current = load;
 
-  useEffect(() => { setUnseenIds([]); followingRef.current = true; followUpdateRef.current = false; viewportRef.current.offset = 0; setRows([]); setCursor(null); load({ reset: true }); return () => requestRef.current?.abort?.(); }, [filters, savedOnly, ownerKey]);
+  useEffect(() => {
+    setUnseenIds([]);
+    followingRef.current = true;
+    followUpdateRef.current = false;
+    viewportRef.current.offset = 0;
+    if (firstPage && (firstPage.owner !== ownerKey || Date.now() - firstPage.savedAt >= FIRST_PAGE_MAX_AGE_MS)) firstPage = null;
+    const cached = cacheable ? firstPage : null;
+    const now = Date.now();
+    setRowsOwner(ownerKey);
+    setRows(cached?.items.filter(item => !item.expires_at || Date.parse(item.expires_at) > now) || []);
+    setCursor(cached?.nextCursor || null);
+    load({ reset: true });
+    return () => requestRef.current?.abort?.();
+  }, [filters, savedOnly, ownerKey]);
   useEffect(() => {
     setSaving({});
     setShareTarget(null);
@@ -254,6 +275,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       const result = await externalFreightAPI.bookmark(item.id, desired, controller.signal, () => owner === ownerRef.current);
       if (controller.signal.aborted || owner !== ownerRef.current) return;
       if (!result.ok || result.saved !== desired) { toast(l.retry, 'error'); return; }
+      firstPage = null;
       setRows(current => savedOnly && !desired ? current.filter(row => row.id !== item.id) : current.map(row => row.id === item.id ? { ...row, saved: desired } : row));
     } catch (error) {
       if (error?.name !== 'AbortError' && owner === ownerRef.current) toast(l.retry, 'error');
@@ -325,7 +347,7 @@ export default function ExternalFreightFeedScreen({ navigation }) {
       {filterButton('origin', l.from, locationLabel('origin'))}{filterButton('destination', l.to, locationLabel('destination'))}{filterButton('body', l.body, filters.body_type ? bodyLabels[lang]?.[filters.body_type] || filters.body_type : '')}{filterButton('date', l.date, filters.published_from ? `${formatDate(filters.published_from, lang)}${filters.published_to ? ` – ${formatDate(filters.published_to, lang)}` : ''}` : '')}{filterButton('price', l.price, filters.sort === 'newest' ? '' : (filters.sort === 'price_asc' ? l.asc : l.desc))}
     </ScrollView>
     {error && rows.length ? <TouchableOpacity style={styles.warning} onPress={() => load({ reset: true })}><Text style={styles.warningText}>{error === 'network_error' ? l.network : l.server} {l.retry}</Text></TouchableOpacity> : null}
-    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{error === 'network_error' ? l.network : l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
+    {error && !rows.length ? <View style={styles.center}><Text style={styles.message}>{l.server}</Text><PrimaryButton label={l.retry} onPress={() => load({ reset: true })} style={styles.retryButton} /></View> : null}
     {!error || rows.length ? <FlatList key={`${ownerKey}:${savedOnly}:${JSON.stringify(filters)}`} ref={listRef} inverted={timeline && Platform.OS !== 'web'} onViewableItemsChanged={viewabilityRef.current} maintainVisibleContentPosition={Platform.OS === 'web' ? undefined : { minIndexForVisible: 0 }}
       onScroll={event => {
         const offset = Math.max(0, event.nativeEvent.contentOffset.y);

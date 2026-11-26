@@ -16,6 +16,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function harness() {
   const slots = [], pending = [], listeners = new Map(), intervals = new Set(), queries = [];
   let cursor = 0, dirty = true, tree, appCallback, calls = 0, fail = false, suspended = false, resolvePending, filterOffset = 0;
+  let userId = 'test-driver';
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
   const React = {
     createElement: (type, props, ...children) => {
@@ -42,7 +43,7 @@ function harness() {
     '../components/externalFreight/CarrierDirectory': 'CarrierContactCard', '../components/externalFreight/ExternalFeedDescription': 'Description', '../components/ShareModal': 'ShareModal',
     '../config/env': { PUBLIC_WEB_ORIGIN: 'https://qa2.urtruck.kz' }, '../utils/externalFreightShare': { buildExternalFreightShare: () => null },
     '../components/Toast': { useToast: () => ({ toast() {} }) }, '../utils/useI18n': { useI18n: () => ({ lang: 'RU', sp: n => n, t: x => x }) },
-    '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-driver', role: 'driver' } } }) },
+    '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: userId, role: 'driver' } } }) },
     '../utils/externalFreightSession': { sessionRole: () => 'driver' }, '../utils/truckConstants': { BODY_TYPES: [] },
     '../utils/countries': { ALL_COUNTRIES: [], getCountryName: x => x }, '../utils/externalFreightModel': model,
     '../utils/externalFreightFeed': { externalFreightAPI: { event() {}, async list(query) {
@@ -64,6 +65,12 @@ function harness() {
     focus: () => listeners.get('focus')?.(), blur: () => listeners.get('blur')?.(), app: state => { native.AppState.currentState = state; appCallback(state); },
     poll: () => intervals.forEach(fn => fn()), fail: value => { fail = value; }, suspend: () => { suspended = true; }, release: () => { suspended = false; resolvePending?.(); }, calls: () => calls,
     node: id => nodes().find(n => n.props.testID === id), filterOffset: value => value === undefined ? filterOffset : (filterOffset = value), pressLabel: label => nodes().find(n => n.props.label === label).props.onPress(),
+    remount(id = userId) {
+      slots.forEach(slot => slot.cleanup?.());
+      slots.length = 0;
+      userId = id;
+      dirty = true;
+    },
     queries, saved: () => nodes().find(n => n.props.testID === 'external-feed-saved-only').props.onPress(),
   };
 }
@@ -105,6 +112,24 @@ test('offline polling: warning остаётся во время повторно
   h.suspend(); h.poll(); await h.flush(); assert.ok(h.warning(), 'warning не должен исчезать до ответа');
   h.release(); await h.flush(); assert.ok(h.warning());
   h.fail(false); h.poll(); await h.flush(); assert.equal(h.warning(), undefined); assert.equal(h.list().props.data.length, 30);
+});
+
+test('повторное открытие показывает первую страницу сразу и изолирует кэш при смене аккаунта', async () => {
+  const h = harness();
+  await h.flush();
+  h.suspend();
+  h.remount();
+  await h.flush();
+  assert.equal(h.list().props.data.length, 30);
+  h.release();
+  await h.flush();
+  h.suspend();
+  h.remount('another-driver');
+  await h.flush();
+  assert.equal(h.list().props.data.length, 0);
+  h.release();
+  await h.flush();
+  assert.equal(h.list().props.data.length, 30);
 });
 
 test('Сброс возвращает полосу к началу после длинных фильтров и горизонтальной прокрутки', async () => {

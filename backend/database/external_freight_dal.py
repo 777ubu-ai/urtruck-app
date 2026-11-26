@@ -379,7 +379,7 @@ def _serialize(row):
 
 def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
-               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
+               sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False, include_price_metadata=True):
     now = _utc().isoformat()
     snapshot_at = now
     last_date = last_id = None
@@ -453,14 +453,15 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         params.append(max_price)
     sort_error = None
     price_currencies = []
-    with get_conn() as c:
-        currency_rows = c.execute(
-            f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
-            "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
-            tuple(params),
-        ).fetchall()
+    effective_sort = sort
+    if include_price_metadata or sort.startswith("price_"):
+        with get_conn() as c:
+            currency_rows = c.execute(
+                f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
+                "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
+                tuple(params),
+            ).fetchall()
         price_currencies = [str(row[0]).upper() for row in currency_rows]
-        effective_sort = sort
         if sort.startswith("price_") and not currency and len(price_currencies) != 1:
             effective_sort = "newest"
             sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
@@ -520,9 +521,11 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
             if item["status"] == "active" and item["expires_at"] and item["expires_at"] <= now:
                 item["status"] = "expired"
         items.append(item)
-    return {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
-            "sort_applied": effective_sort, "price_sort_available": len(price_currencies) == 1,
-            "price_currencies": price_currencies, "sort_error": sort_error}
+    result = {"items": items, "next_cursor": next_cursor, "has_more": has_more, "snapshot_at": snapshot_at,
+              "sort_applied": effective_sort, "sort_error": sort_error}
+    if include_price_metadata or sort.startswith("price_"):
+        result.update(price_sort_available=len(price_currencies) == 1, price_currencies=price_currencies)
+    return result
 
 
 def set_bookmark(owner_id, item_id, kind, saved):

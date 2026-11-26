@@ -5,10 +5,10 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../../src/utils/externalFreightFeed.js', import.meta.url), 'utf8')
   .replace(/^import .*;\n/gm, '').replaceAll('export const ', 'const ');
-function harness({ storage, send } = {}) {
+function harness({ storage, send, schedule = setTimeout } = {}) {
   const calls = [];
   const context = vm.createContext({
-    process: { env: {} }, URLSearchParams, API_BASE: 'https://qa.example/api/v1',
+    process: { env: {} }, URLSearchParams, AbortController, setTimeout: schedule, clearTimeout, API_BASE: 'https://qa.example/api/v1',
     storage: storage || { get: async () => 'private-test-token' },
     authedFetch: async (url, options) => {
       calls.push({ url, options });
@@ -66,11 +66,32 @@ test('external entry is isolated from the shared header', () => {
 test('count uses isolated read endpoint and rejects a changed owner before request', async () => {
   const valid = harness({ send: async () => ({ ok: true, json: async () => ({ kind: 'cargo', count: 100001 }) }) });
   assert.equal((await valid.api.count()).count, 100001);
-  assert.ok(valid.calls[0].url.endsWith('/external-freight/count?include_carriers=true'));
+  const url = new URL(valid.calls[0].url);
+  assert.equal(url.pathname, '/api/v1/external-freight/count');
+  assert.equal(url.searchParams.get('include_carriers'), 'true');
+  assert.equal(url.searchParams.get('cached'), 'true');
   assert.equal(valid.calls[0].options.method, 'GET');
   const changed = harness();
   assert.equal((await changed.api.count(undefined, () => false)).error, 'session_changed');
   assert.equal(changed.calls.length, 0);
+});
+
+test('list deadline includes response body and releases the screen even if the transport does not settle', async () => {
+  let expire;
+  let reading;
+  const bodyStarted = new Promise(resolve => { reading = resolve; });
+  const { api, calls } = harness({
+    schedule(fn, ms) { assert.equal(ms, 10_000); expire = fn; },
+    send: async () => ({ ok: true, json() { reading(); return new Promise(() => {}); } }),
+  });
+  const pending = api.list({ limit: 30 });
+  await bodyStarted;
+  const url = new URL(calls[0].url);
+  assert.equal(url.searchParams.get('limit'), '30');
+  assert.equal(url.searchParams.get('include_price_metadata'), 'false');
+  expire();
+  assert.equal((await pending).error, 'request_timeout');
+  assert.equal(calls[0].options.signal.aborted, true);
 });
 
 test('unavailable count is an error, never a synthetic zero', async () => {
