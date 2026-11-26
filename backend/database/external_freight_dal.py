@@ -8,12 +8,13 @@ import time
 from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
-from database.external_freight_connection import get_conn, new_id
+from database.external_freight_connection import database_path, get_conn, new_id
 
 MAX_TEXT = 20000
 MAX_BATCH = 50
 ACTIVE_DAYS = 30
 PURGE_BATCH_SIZE = 500
+NEWEST_CURRENCY_CACHE_SECONDS = 15
 KNOWN_BODY_TYPES = {"tent", "ref", "izoterm", "board", "tipper", "lowboy"}
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,20 @@ def _serialize(row):
     return item
 
 
+@lru_cache(maxsize=8)
+def _newest_currency_snapshot(kind, _database, bucket):
+    as_of = datetime.fromtimestamp(bucket * NEWEST_CURRENCY_CACHE_SECONDS, timezone.utc).isoformat()
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT currency FROM external_freight_items
+               WHERE kind=? AND ingested_at<=? AND status='active' AND expires_at>?
+                 AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL
+               ORDER BY currency""",
+            (kind, as_of, as_of),
+        ).fetchall()
+    return tuple(str(row[0]).upper() for row in rows)
+
+
 def list_items(*, kind, origin=None, destination=None, body_type=None, body_query=None, published_from=None, published_to=None,
                origin_country=None, destination_country=None, currency=None, min_price=None, max_price=None,
                sort="newest", limit=30, cursor=None, owner_id=None, saved_only=False):
@@ -452,15 +467,22 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         clauses.append("amount<=?")
         params.append(max_price)
     sort_error = None
-    price_currencies = []
-    with get_conn() as c:
-        currency_rows = c.execute(
-            f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
-            "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
-            tuple(params),
-        ).fetchall()
+    effective_sort = sort
+    unfiltered = not any((
+        origin, destination, origin_country, destination_country, body_type, body_query,
+        published_from, published_to, currency, min_price is not None, max_price is not None,
+    ))
+    if sort == "newest" and unfiltered and not saved_only and not cursor:
+        bucket = int(_utc(now).timestamp()) // NEWEST_CURRENCY_CACHE_SECONDS
+        price_currencies = list(_newest_currency_snapshot(kind, database_path(), bucket))
+    else:
+        with get_conn() as c:
+            currency_rows = c.execute(
+                f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
+                "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
+                tuple(params),
+            ).fetchall()
         price_currencies = [str(row[0]).upper() for row in currency_rows]
-        effective_sort = sort
         if sort.startswith("price_") and not currency and len(price_currencies) != 1:
             effective_sort = "newest"
             sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
