@@ -52,6 +52,7 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android', lang
   const mocks = {
     '../utils/additionalLocales.js': localeHelpers, '../../utils/additionalLocales.js': localeHelpers,
     react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    'expo-network': { addNetworkStateListener: () => ({ remove() {} }) },
     '@expo/vector-icons/Feather': 'Feather', '@expo/vector-icons/FontAwesome5': 'FontAwesome5',
     '../theme/designV1': { useV1Colors: () => ({}) }, 'expo-clipboard': { setStringAsync: async value => { copied.push(value); } },
     '../components/externalFreight/ExternalFeedDatePicker': 'DatePicker', '../components/ui/v1/BookmarkButton': 'BookmarkButton',
@@ -62,7 +63,11 @@ function harness({ role = 'driver', fixtures = cards, platform = 'android', lang
     '../utils/ThemeContext': { useTheme: () => ({ theme: {} }) }, '../utils/AuthContext': { useAuth: () => ({ session: { user: { id: 'test-' + role, role } } }) },
     '../utils/externalFreightSession': { sessionRole: () => role }, '../utils/truckConstants': { BODY_TYPES: [] },
     '../utils/countries': { ALL_COUNTRIES: [], getCountryName: x => x }, '../utils/externalFreightModel': model,
-    '../utils/externalFreightFeed': { externalFreightAPI: { event() {}, async list(query) {
+    '../utils/externalFreightFeed': {
+      externalFreightFeedCacheKey: (owner, filters, savedOnly) => JSON.stringify([owner, filters, savedOnly]),
+      readExternalFreightFeedCache: async () => null,
+      writeExternalFreightFeedCache: async () => {},
+      externalFreightAPI: { event() {}, async list(query) {
       calls++;
       queries.push(query);
       if (query.include_counts && countPagePending) await countPagePending;
