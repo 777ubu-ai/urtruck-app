@@ -43,3 +43,16 @@ test('CVE-2026-85393: nested DigestAlgorithm garbage is rejected', () => {
     /^Error: ASN\.1 object does not contain a valid RSASSA-PKCS1-v1_5 DigestInfo value\.$/
   );
 });
+
+
+test('Ed25519 rejects an attacker-selected identity public key and accepts a genuine signature', () => {
+  const identityKey = Buffer.alloc(32);
+  identityKey[0] = 1;
+  const forged = Buffer.alloc(64);
+  forged[0] = 1;
+  const message = Buffer.from('UrTruck signature regression', 'utf8');
+  assert.equal(forge.pki.ed25519.verify({message, signature: forged, publicKey: identityKey}), false);
+  const pair = forge.pki.ed25519.generateKeyPair();
+  const signature = forge.pki.ed25519.sign({message, privateKey: pair.privateKey});
+  assert.equal(forge.pki.ed25519.verify({message, signature, publicKey: pair.publicKey}), true);
+});

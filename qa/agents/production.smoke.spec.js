@@ -82,19 +82,25 @@ test('production auth, deals, chat, documents and favorites routes are live and 
   }
 });
 
-test('production onboarding renders its current auth entry without crashing', async ({ page }) => {
+test('production landing exposes store downloads without an auth form', async ({ page }) => {
   fs.mkdirSync('qa-artifacts/production-smoke', { recursive: true });
-  await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  const start = page.getByTestId('onb-v2-cta-phone');
-  await expect(start).toBeVisible({ timeout: 30000 });
-  await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: 'qa-artifacts/production-smoke/01-live-onboarding.png', fullPage: true });
-
-  await start.click();
-  // Email exists in both the current deployed auth screen and the new
-  // Google+Apple+Email candidate, so this remains a valid production health
-  // signal before and after social auth is eventually deployed.
-  await expect(page.getByTestId('email-v2-input')).toBeVisible({ timeout: 15000 });
-  await page.screenshot({ path: 'qa-artifacts/production-smoke/02-live-auth-entry.png', fullPage: true });
+  const response = await page.goto(PROD, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  expect(response.status()).toBe(200);
+  await expect(page.locator('#hero-title')).toBeVisible();
+  const apple = page.locator('a[href*="apps.apple.com/"]');
+  const google = page.locator('a[href*="play.google.com/store/apps/details"]');
+  await expect(apple.first()).toBeVisible();
+  await expect(google.first()).toBeVisible();
+  for (const link of await apple.all()) {
+    await expect(link).toHaveAttribute('href', /id6764504167(?:[/?#]|$)/);
+  }
+  for (const link of await google.all()) {
+    const href = await link.getAttribute('href');
+    expect(new URL(href).searchParams.get('id')).toBe('com.urtruck.app');
+  }
+  // The public root is the owner-approved download landing, not app login.
+  await expect(page.getByTestId('onb-v2-cta-phone')).toHaveCount(0);
+  await expect(page.getByTestId('email-v2-input')).toHaveCount(0);
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await page.screenshot({ path: 'qa-artifacts/production-smoke/01-live-download-landing.png', fullPage: true });
 });

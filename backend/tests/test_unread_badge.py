@@ -243,3 +243,74 @@ def test_mine_flag_regression():
             assert m["mine"] is True
         if m["text"] == "from-driver":
             assert m["mine"] is False
+
+
+def test_attention_snapshot_exposes_old_events_without_50_row_cutoff():
+    from api.notifications import unread_badge_snapshot, list_notifications, create_notification, unread_badge_count
+    owner, other = _ids()
+    create_notification(owner, "bid_rejected", "older unread", url="/cargos/example?bid=closed")
+    with get_conn() as c:
+        c.execute("UPDATE notifications SET created_at='2000-01-01' WHERE user_id=?", (owner,))
+    for i in range(50):
+        create_notification(owner, "deal_status", f"read {i}")
+    with get_conn() as c:
+        c.execute("UPDATE notifications SET is_read=1 WHERE user_id=? AND title LIKE 'read %'", (owner,))
+    create_notification(other, "bid_rejected", "other owner")
+    assert all(n["is_read"] for n in list_notifications(50, user=_u(owner))["notifications"])
+    snapshot = unread_badge_snapshot(owner)
+    assert snapshot["badge"] == unread_badge_count(owner) == 1
+    assert [n["title"] for n in snapshot["notifications"]] == ["older unread"]
+    assert snapshot["rooms"] == []
+
+
+def test_attention_snapshot_matches_chat_badge_without_notification_mirror():
+    from api.notifications import unread_badge_snapshot
+    owner, driver = _ids()
+    cargo = "cg_" + uuid.uuid4().hex[:6]
+    room = get_or_create_deal_room(cargo, owner, driver)
+    _mk_accepted_deal(cargo, owner, driver, room)
+    send_message(SendMessageIn(room_id=room, text="unread"), user=_u(driver))
+    snapshot = unread_badge_snapshot(owner)
+    assert snapshot["badge"] == 1
+    assert sum(r["unread_count"] for r in snapshot["rooms"]) == 1
+    assert snapshot["rooms"][0]["room_id"] == room
+    assert snapshot["notifications"] == []
+    get_messages(room, user=_u(owner))
+    assert unread_badge_snapshot(owner)["badge"] == 0
+
+
+
+
+def test_attention_http_requires_authentication():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.notifications import notif_router
+    app = FastAPI()
+    app.include_router(notif_router, prefix="/notifications")
+    response = TestClient(app).get("/notifications/attention")
+    assert response.status_code == 401
+
+
+def test_attention_http_archive_read_is_scoped_and_matches_legacy_count():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.notifications import notif_router, create_notification, unread_badge_count, mark_notifications_read_by_urls
+    owner, other = _ids()
+    url = "/cargos/archived?bid=expired"
+    create_notification(owner, "bid_rejected", "archived unread", url=url)
+    create_notification(other, "bid_rejected", "other account", url=url)
+    app = FastAPI()
+    app.include_router(notif_router, prefix="/notifications")
+    route = next(r for r in notif_router.routes if r.path == "/attention")
+    app.dependency_overrides[route.dependant.dependencies[0].call] = lambda: _u(owner)
+    client = TestClient(app)
+    before = client.get("/notifications/attention")
+    assert before.status_code == 200
+    data = before.json()
+    assert data["badge"] == unread_badge_count(owner) == 1
+    assert [n["title"] for n in data["notifications"]] == ["archived unread"]
+    # GET is read-only; visiting the tab must not consume the event.
+    assert client.get("/notifications/attention").json() == data
+    mark_notifications_read_by_urls(owner, [url])
+    assert client.get("/notifications/attention").json()["badge"] == 0
+    assert unread_badge_count(other) == 1

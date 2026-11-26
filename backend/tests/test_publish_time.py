@@ -110,6 +110,26 @@ def test_create_sets_published_at():
     expect(cargo["published_at"] == cargo["created_at"], "published_at == created_at right after creation")
 
 
+def all_active_feed_ids(collection):
+    # Other tests populate the shared DB; a republished row need not be on page one.
+    ids = set()
+    offset = 0
+    while True:
+        response = client.get(f"/api/v1/market/{collection}", params={"status": "active", "limit": 50, "offset": offset})
+        assert response.status_code == 200
+        data = response.json()
+        page = data[collection]
+        page_ids = [row["id"] for row in page]
+        assert len(set(page_ids)) == len(page_ids)
+        assert not ids.intersection(page_ids), "pagination repeated an active listing"
+        ids.update(page_ids)
+        if not data.get("has_more"):
+            return ids
+        next_offset = data.get("next_offset")
+        assert isinstance(next_offset, int) and next_offset > offset
+        offset = next_offset
+
+
 def test_unpublish_republish_cycle():
     print("\n=== test_unpublish_republish_cycle ===")
     from database.db import get_conn, new_id
@@ -154,8 +174,7 @@ def test_unpublish_republish_cycle():
     expect(bid_status_after == "cancelled", f"old bid stays cancelled after republish (got {bid_status_after})")
 
     # Объект снова виден в публичной ленте.
-    r = client.get("/api/v1/market/cargos", params={"status": "active"})
-    ids = [c["id"] for c in r.json()["cargos"]]
+    ids = all_active_feed_ids("cargos")
     expect(cargo_id in ids, "republished cargo visible again in public feed")
 
 
@@ -182,8 +201,7 @@ def test_trip_republish_sets_published_at():
     trip = get_trip(trip_id)
     expect(trip["published_at"] > "2020-01-01 00:00:00", "trip published_at grew after republish")
 
-    r = client.get("/api/v1/market/trips", params={"status": "active"})
-    ids = [t["id"] for t in r.json()["trips"]]
+    ids = all_active_feed_ids("trips")
     expect(trip_id in ids, "republished trip visible again in public feed")
 
 

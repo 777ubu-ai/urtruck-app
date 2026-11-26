@@ -101,7 +101,9 @@ def test_media_push_localizes_only_system_text(monkeypatch, text, is_voice, even
     _mk_accepted_deal(cargo, o, d, room)
     sent = []
     monkeypatch.setattr(chat, "send_to_user", lambda *a, **kw: sent.append((a, kw)))
-    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/qa.jpg"
+    ref = chat.storage.LOCAL_PUBLIC_BASE + "/chat_photos/qa-" + uuid.uuid4().hex + ".jpg"
+    with get_conn() as c:
+        c.execute("INSERT INTO chat_upload_receipts(storage_ref,uploader_id,purpose) VALUES (?,?,?)", (ref, o, 'chat_photos'))
     send_message(SendMessageIn(room_id=room, photo_url=ref, text=text, is_voice=is_voice), user=_u(o))
     assert len(sent) == 1
     assert sent[0][1]["data"].get("i18n_event") == event
