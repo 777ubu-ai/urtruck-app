@@ -16,6 +16,7 @@ never becomes a zero.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import time
@@ -231,6 +232,88 @@ async def _aggregate_queue() -> dict[str, int]:
         except Exception as exc:
             logger.warning("cgr.scoreboard: queue fetch failed for %s: %s", cp["name_ru"], exc)
     return totals
+
+
+async def fetch_online_board(checkpoint_code: str, statuses: list[str], plate: str, page: int) -> dict:
+    """Read the official scoreboard's filtered page, including its own total."""
+    from .checkpoint_catalog_service import resolve_external_id
+
+    checkpoint = cgr_dal.get_checkpoint(checkpoint_code)
+    if not checkpoint:
+        raise LookupError("unknown checkpoint")
+    external_id = await resolve_external_id(checkpoint)
+    if not external_id:
+        raise CGRParseError("checkpoint has no official identifier")
+
+    params = [("flCheckpoint", external_id), ("p", str(page))]
+    params.extend(("flStatus", status) for status in statuses)
+    if plate:
+        params.append(("flTruckNumber", plate))
+    response = await asyncio.wait_for(
+        cgr_client.get("/ru/registry/scoreboard", params=params),
+        timeout=12,
+    )
+    soup = BeautifulSoup(response.text, "lxml")
+    checkpoint_field = soup.select_one('[name="flCheckpoint"][data-value]')
+    if checkpoint_field is None:
+        raise CGRParseError("scoreboard checkpoint filter not confirmed")
+    applied_checkpoint = json.loads(checkpoint_field["data-value"])["Item"]["Value"]
+    if str(applied_checkpoint) != str(external_id):
+        raise CGRParseError("scoreboard returned a different checkpoint")
+    options = [
+        {"code": option["value"], "label": option.get_text(" ", strip=True)}
+        for option in soup.select('select[name="flStatus"] option[value]')
+        if option["value"]
+    ]
+    applied = {
+        option["value"] for option in soup.select('select[name="flStatus"] option[selected][value]')
+    }
+    pagination = soup.select_one('ul[data-pagination-name="p"]')
+    active_page = pagination.select_one("li.active") if pagination else None
+    if not options or (statuses and applied != set(statuses)) or active_page is None:
+        raise CGRParseError("scoreboard filters or pagination not confirmed")
+    if active_page.get_text(strip=True) != str(page):
+        raise CGRParseError("scoreboard returned a different page")
+    if plate:
+        official_plate = soup.select_one('input[name="flTruckNumber"]')
+        if official_plate is None or official_plate.get("value") != plate:
+            raise CGRParseError("scoreboard plate filter not confirmed")
+
+    total = _parse_total_records(response.text)
+    rows = []
+    for entry in soup.select("div.row.border-bottom.py-2"):
+        number = entry.select_one(".number-plate .font-weight-bold")
+        name = entry.select_one(".font-weight-bold.font-16")
+        date = entry.select_one(".text-md-right .font-weight-bold")
+        slot = entry.select_one(".col-8 .text-left:not(.text-md-right) span")
+        badge = entry.select_one(".badge")
+        if any(item is None for item in (number, name, date, slot, badge)):
+            raise CGRParseError("scoreboard row is incomplete")
+        rows.append({
+            "plate": number.get_text(strip=True),
+            "checkpoint": name.get_text(" ", strip=True),
+            "date": date.get_text(strip=True),
+            "slot": slot.get_text(strip=True),
+            "status": badge.get_text(" ", strip=True),
+        })
+    if len(rows) > total or (page == 1 and total > 0 and not rows):
+        raise CGRParseError("scoreboard total does not match page")
+    next_page = pagination.select_one('li:not(.disabled) a[aria-label="Следующая страница"]')
+    # The upstream result has full pages followed by a possibly shorter final page.
+    has_next = next_page is not None
+    offset = (page - 1) * len(rows) if has_next else total - len(rows)
+    if rows and (offset < page - 1 or (page == 1 and offset) or (has_next and offset + len(rows) >= total)):
+        raise CGRParseError("scoreboard page range does not match the total")
+    return {
+        "rows": rows,
+        "statuses": options,
+        "total": total,
+        "page": page,
+        "has_next": has_next,
+        "range_start": offset + 1 if rows else 0,
+        "range_end": offset + len(rows) if rows else 0,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 async def fetch_board_rows(
