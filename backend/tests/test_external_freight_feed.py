@@ -1722,7 +1722,7 @@ def test_count_uses_persisted_snapshots_without_querying_feed_on_request(monkeyp
 
     assert _import(_record()).status_code == 200
     monkeypatch.setattr(snapshots, "list_contacts", lambda **_: {"total": 1297})
-    snapshots.refresh()
+    assert snapshots.refresh() == {"cargo": 1, "vehicle": 0, "carriers": 1297}
 
     def unavailable(*args, **kwargs):
         raise RuntimeError("simulated database read failure")

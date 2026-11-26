@@ -43,6 +43,7 @@ set -euo pipefail
 run_id="$1"; run_attempt="$2"; source_sha="$3"; bundle_sha="$4"; archive="$5"
 qa=/home/ubuntu/urtruck-qa2
 source_db=/home/ubuntu/urtruck-telegram-feed/state/feed.sqlite3
+qa_env="$qa/.env"
 deploy_id="$run_id-$run_attempt"
 stage="$qa/.feed-candidate-$deploy_id"
 backup="$qa/backups/feed-candidate-$deploy_id"
@@ -57,7 +58,9 @@ bridge_units=(urtruck-qa2-feed-bridge.service urtruck-qa2-owned-feed-bridge.serv
 bridge_timers=(urtruck-qa2-feed-bridge.timer urtruck-qa2-owned-feed-bridge.timer)
 [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[0-9]+$ && "$source_sha" =~ ^[0-9a-f]{40}$ && "$bundle_sha" =~ ^[0-9a-f]{64}$ ]]
 test "$archive" = "/tmp/urtruck-feed-candidate-$deploy_id.tar.gz"
-test -d "$qa/backend" && test -f "$source_db"
+test -d "$qa/backend" && test -f "$source_db" && test -f "$qa_env" && test ! -L "$qa_env"
+test "$(readlink -f "$qa/backend/.env")" = "$qa_env"
+systemctl show urtruck-qa2.service -p EnvironmentFiles --value | grep -Fq "$qa_env"
 test -r /home/ubuntu/urtruck-telegram-feed/.env
 test -f "$qa/external-feed-bridge.env" && test -f "$qa/external-feed-owned.env"
 test -f "$qa/external-feed/adapter.sqlite3" && test -f "$qa/external-feed-owned/adapter.sqlite3"
@@ -118,6 +121,9 @@ for unit in "${health_units[@]}"; do
     install -D -m 0600 "/etc/systemd/system/$unit" "$backup/$unit"
   fi
 done
+cp -- "$qa_env" "$backup/qa2-env"
+chmod 0600 "$backup/qa2-env"
+stat -c '%u %g %a' "$qa_env" > "$backup/qa2-env.stat"
 systemctl is-enabled --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-enabled" || true
 systemctl is-active --quiet urtruck-qa2-feed-health.timer && touch "$backup/health-timer-was-active" || true
 for unit in "${bridge_timers[@]}"; do
@@ -185,6 +191,12 @@ rollback() {
       sudo -n rm -f -- "/etc/systemd/system/$unit"
     fi
   done
+  if test -f "$backup/qa2-env-was-changed"; then
+    read -r env_uid env_gid env_mode < "$backup/qa2-env.stat"
+    sudo -n cp -- "$backup/qa2-env" "$qa_env"
+    sudo -n chown "$env_uid:$env_gid" "$qa_env"
+    sudo -n chmod "$env_mode" "$qa_env"
+  fi
   sudo -n systemctl daemon-reload
   local api_ready=1
   if test -f "$backup/api-restart-required"; then
@@ -217,9 +229,70 @@ for unit in "${health_units[@]}"; do
   sudo -n install -m 0644 "$stage/ops/telegram-feed/$unit" "/etc/systemd/system/$unit"
 done
 sudo -n systemctl daemon-reload
+# Warm and verify the three persisted counts against the live QA2 DAL while
+# the feature flag is still off. Never derive these values from production.
+cd "$qa/backend"
+PYTHONPATH="$qa/backend" timeout 120 "$qa/backend/venv/bin/python" - <<'PY'
+import time
+import main  # Loads only the QA2 backend/.env before importing data modules.
+from database.external_freight_connection import database_path
+from services.carrier_directory import database_path as carrier_database_path
+from services import external_freight_count_snapshots as snapshots
+
+path = database_path()
+if "/urtruck-qa2/" not in str(path) or not path.is_file():
+    raise SystemExit("qa2_external_freight_database_precondition_failed")
+if "/urtruck-qa2/" not in str(carrier_database_path()):
+    raise SystemExit("qa2_carrier_database_precondition_failed")
+started = time.time()
+published = snapshots.refresh()
+actual = {key: snapshots._read(key) for key in ("cargo", "vehicle", "carriers")}
+for key in ("cargo", "vehicle", "carriers"):
+    value = actual[key]
+    if value is None or published.get(key) != value[0] or value[1] < started:
+        raise SystemExit(f"qa2_count_snapshot_warmup_mismatch:{key}")
+print("QA2_COUNT_SNAPSHOT_WARMUP=" + ",".join(f"{k}:{v[0]}" for k, v in actual.items()))
+PY
+# Enable snapshots only after every fresh value has been validated.
+touch "$backup/qa2-env-was-changed"
+sudo -n python3 - "$qa_env" "$backup/qa2-env.stat" <<'PY'
+import os, sys, tempfile
+from pathlib import Path
+path, metadata = map(Path, sys.argv[1:])
+if path.is_symlink() or not path.is_file():
+    raise SystemExit("qa2_environment_file_must_be_regular")
+uid, gid, raw_mode = metadata.read_text().split()
+uid, gid, mode = int(uid), int(gid), int(raw_mode, 8)
+lines = path.read_text(encoding="utf-8").splitlines()
+lines = [line for line in lines if not line.startswith("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=")]
+lines.append("EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=true")
+fd, temporary = tempfile.mkstemp(prefix=".qa2-env-count-", dir=path.parent, text=True)
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as output:
+        output.write("\n".join(lines) + "\n")
+        output.flush()
+        os.fsync(output.fileno())
+    os.chown(temporary, uid, gid)
+    os.chmod(temporary, mode)
+    os.replace(temporary, path)
+finally:
+    if os.path.exists(temporary):
+        os.unlink(temporary)
+PY
 touch "$backup/api-restart-required"
 sudo -n systemctl restart urtruck-qa2.service
 wait_for_qa2_api
+PYTHONPATH="$qa/backend" "$qa/backend/venv/bin/python" - <<'PY'
+import main
+from services import external_freight_count_snapshots as snapshots
+if not snapshots.enabled():
+    raise SystemExit("qa2_count_snapshot_flag_not_active")
+for kind, include_carriers in (("cargo", False), ("vehicle", True)):
+    value = snapshots.get(kind, include_carriers)
+    if value is None or value["stale"]:
+        raise SystemExit(f"qa2_count_snapshot_not_fresh:{kind}")
+print("QA2_COUNT_SNAPSHOT_RUNTIME=enabled,fresh")
+PY
 sudo -n systemctl start urtruck-qa2-feed-bridge.service
 sudo -n systemctl start urtruck-qa2-owned-feed-bridge.service
 systemctl is-active --quiet urtruck-qa2.service

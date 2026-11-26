@@ -58,12 +58,25 @@ def test_real_deploy_installs_health_and_rolls_back_without_overwriting_new_rows
         filename=qa/('external-feed-bridge.env' if mode=='incoming' else 'external-feed-owned.env')
         values={'EXTERNAL_FREIGHT_API_URL':'https://qa2.urtruck.kz','EXTERNAL_FREIGHT_DEPLOYMENT_TARGET':'qa2','EXTERNAL_FREIGHT_ADAPTER_DB':str(qa/directory/'adapter.sqlite3'),'EXTERNAL_FREIGHT_SOURCE_DB':str(collector/'state/feed.sqlite3'),'EXTERNAL_FREIGHT_SOURCE_MODE':mode,'EXTERNAL_FREIGHT_IMPORT_ENABLED':'true'}
         filename.write_text('\n'.join(k+'='+v for k,v in values.items()))
+    qa_env=qa/'.env';qa_env.write_text('DB_PATH='+str(qa/'backend/database/security.db')+'\n')
+    qa_env_initial=qa_env.read_text()
+    qa_env_mode=qa_env.stat().st_mode & 0o777
+    (qa/'backend/.env').symlink_to(qa_env)
+    python_shim=qa/'backend/venv/bin/python';python_shim.parent.mkdir(parents=True)
+    executable(python_shim,"""import sys
+code=sys.stdin.read()
+if 'QA2_COUNT_SNAPSHOT_WARMUP=' in code: print('QA2_COUNT_SNAPSHOT_WARMUP=cargo:0,vehicle:0,carriers:0')
+elif 'QA2_COUNT_SNAPSHOT_RUNTIME=' in code: print('QA2_COUNT_SNAPSHOT_RUNTIME=enabled,fresh')
+else: sys.exit(1)
+""")
     shims=tmp_path/'bin';shims.mkdir();log=tmp_path/'service.log'
     executable(shims/'sudo',"import os,sys\na=sys.argv[1:]\nif a and a[0]=='-n':a=a[1:]\nif a:os.execvp(a[0],a)\n")
     executable(shims/'systemctl',"""import os,sys,pathlib
 args=sys.argv[1:]
 with open(os.environ['FEED05_SERVICE_LOG'],'a') as f:f.write(' '.join(args)+'\\n')
 marker=pathlib.Path(os.environ['FEED05_TIMER_STATE'])
+if args[:2]==['show','urtruck-qa2.service'] and 'EnvironmentFiles' in args:
+    print('- '+os.environ['FEED05_QA_ENV']+' (ignore_errors=no)')
 if args[0] in ['is-active','is-enabled'] and args[-1]=='urtruck-qa2-feed-health.timer':sys.exit(0 if marker.exists() else 1)
 if args[0]=='enable' and '--now' in args:marker.touch()
 if args[0]=='start' and args[-1]=='urtruck-qa2-feed-health.timer':marker.touch()
@@ -82,7 +95,7 @@ else:
 """)
     real_sha=shutil.which('sha256sum')
     executable(shims/'sha256sum',"import os,sys\nif sys.argv[1:]==[os.environ.get('FEED05_FAIL_PATH')]:print('0'*64+'  '+sys.argv[1])\nelse:os.execv("+repr(real_sha)+",["+repr(real_sha)+"]+sys.argv[1:])\n")
-    env={**os.environ,'PATH':str(shims)+os.pathsep+os.environ['PATH'],'FEED05_SERVICE_LOG':str(log),'FEED05_TIMER_STATE':str(tmp_path/'timer-active'),'FEED05_ADAPTER':str(qa/'external-feed/adapter.sqlite3'),'FEED05_FAIL_PATH':str(qa/'ops/telegram-feed/health.py') if fail_hash else ''}
+    env={**os.environ,'PATH':str(shims)+os.pathsep+os.environ['PATH'],'FEED05_SERVICE_LOG':str(log),'FEED05_TIMER_STATE':str(tmp_path/'timer-active'),'FEED05_ADAPTER':str(qa/'external-feed/adapter.sqlite3'),'FEED05_QA_ENV':str(qa_env),'FEED05_FAIL_PATH':str(qa/'ops/telegram-feed/health.py') if fail_hash else ''}
     result=subprocess.run(['bash','-s','--','123','1',source_sha,hashlib.sha256(archive.read_bytes()).hexdigest(),str(archive)],input=remote,text=True,capture_output=True,env=env,timeout=30)
     assert (result.returncode!=0)==fail_hash, result.stdout+result.stderr
     for name,contents in shared.items():assert Path(name).read_bytes()==contents
@@ -90,6 +103,7 @@ else:
     calls=log.read_text()
     assert 'urtruck-telegram-feed.service' not in calls
     if fail_hash:
+        assert qa_env.read_text()==qa_env_initial
         assert (qa/'backend/services/external_freight_parser.py').read_text()=='# previous code\n'
         assert not (qa/'external-feed-component-manifest').exists()
         if existing == 'absent':
@@ -100,6 +114,8 @@ else:
             assert (qa/'ops/telegram-feed/health.py').read_text()=='# previous QA2 health\n'
         assert (tmp_path/'timer-active').exists() == (existing == 'enabled')
     else:
+        assert 'EXTERNAL_FREIGHT_COUNT_SNAPSHOTS_ENABLED=true' in qa_env.read_text()
+        assert qa_env.stat().st_mode & 0o777 == qa_env_mode
         assert 'QA2_FEED_DEPLOY=verified' in result.stdout
         assert (qa/'ops/telegram-feed/health.py').read_bytes()==(ROOT/'ops/telegram-feed/health.py').read_bytes()
         assert (unit_root/'urtruck-qa2-feed-health.timer').is_file()
