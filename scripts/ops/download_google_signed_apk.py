@@ -25,6 +25,8 @@ def main():
     group = None
     for attempt in range(12):
         response = session.get(BASE + args.version, timeout=30, allow_redirects=False)
+        print("Generated APK metadata HTTP", response.status_code, flush=True)
+        if response.status_code != 200: raise SystemExit("Metadata unavailable")
         if response.status_code == 200:
             metadata = response.json()
             groups = metadata.get("generatedApks", [])
