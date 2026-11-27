@@ -82,8 +82,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stage=$(bash scripts/deploy-ssh.sh ssh "mktemp -d -m 700 '/tmp/urtruck-cgr-${GITHUB_RUN_ID}.XXXXXX'")
+          stage=$(bash scripts/deploy-ssh.sh ssh "mktemp -d '/tmp/urtruck-cgr-${GITHUB_RUN_ID}.XXXXXX'")
           [[ "$stage" =~ ^/tmp/urtruck-cgr-[0-9]+\.[A-Za-z0-9]+$ ]]
+          bash scripts/deploy-ssh.sh ssh "chmod 700 '$stage'"
           bash scripts/deploy-ssh.sh ssh "mkdir -m 700 '$stage/api' '$stage/cgr'"
           echo "path=$stage" >> "$GITHUB_OUTPUT"
 
