@@ -164,11 +164,15 @@ def read_json(url: str, timeout: float = 6) -> tuple[int, dict | None, str]:
 
 def wait_health(seconds: int = 40) -> bool:
     deadline = time.monotonic() + seconds
+    last_code, last_body, last_preview = 0, None, "no_probe"
     while time.monotonic() < deadline:
-        code, body, _ = read_json(HEALTH, timeout=3)
-        if code == 200 and isinstance(body, dict) and body.get("status") in ("ok", "healthy"):
+        last_code, last_body, last_preview = read_json(HEALTH, timeout=3)
+        if last_code == 200 and isinstance(last_body, dict) and last_body.get("status") in ("ok", "healthy"):
             return True
         time.sleep(2)
+    status = last_body.get("status") if isinstance(last_body, dict) else "unavailable"
+    db = last_body.get("db") if isinstance(last_body, dict) else "unavailable"
+    print(f"HEALTH_PROBE=FAIL code={last_code} status={status} db={db} detail={last_preview}")
     return False
 
 
@@ -397,6 +401,12 @@ def board_acceptance() -> list[str]:
 
 def production_feed_diagnostics(root: Path, pid: int) -> None:
     """Aggregate-only live diagnostics; SQLite is opened read-only."""
+    health_started = time.perf_counter()
+    health_code, health_body, health_preview = read_json(HEALTH, timeout=5)
+    health_status = health_body.get("status") if isinstance(health_body, dict) else "unavailable"
+    health_db = health_body.get("db") if isinstance(health_body, dict) else "unavailable"
+    print(f"HEALTH_CURRENT code={health_code} status={health_status} db={health_db} "
+          f"elapsed_ms={(time.perf_counter()-health_started)*1000:.1f} detail={health_preview}")
     proc_env: dict[str, str] = {}
     try:
         for item in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0"):
@@ -406,7 +416,40 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
                     proc_env[key.decode(errors="ignore")] = value.decode(errors="ignore")
     except (OSError, PermissionError):
         print("FEED_DIAG=BLOCKED_PROCESS_ENV_UNREADABLE")
-        return
+
+    # The API loads dotenv values inside Python; they need not be present in
+    # /proc/<pid>/environ. Read only the two database path keys and never emit
+    # their values or any other environment content.
+    dotenv_paths = (root / ".env", root.parent / ".env", root.parent / "backend" / ".env")
+    dotenv_values: dict[str, str] = {}
+    for dotenv_path in dotenv_paths:
+        try:
+            for raw in dotenv_path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                if key in {"DB_PATH", "URTRUCK_DB_PATH", "EXTERNAL_FREIGHT_DB_PATH"}:
+                    dotenv_values[key] = value.strip().strip("'\"")
+        except (OSError, UnicodeError):
+            continue
+    try:
+        entries = json.loads(subprocess.run(pm2_command() + ["jlist"], check=True, text=True,
+                                           capture_output=True, timeout=15).stdout)
+        for entry in entries:
+            if entry.get("name") == SERVICE and str(entry.get("pid")) == str(pid):
+                pm2_env = entry.get("pm2_env", {})
+                nested = pm2_env.get("env", {}) if isinstance(pm2_env, dict) else {}
+                for key in ("DB_PATH", "URTRUCK_DB_PATH", "EXTERNAL_FREIGHT_DB_PATH"):
+                    value = nested.get(key) or pm2_env.get(key)
+                    if isinstance(value, str) and value.strip():
+                        proc_env[key] = value.strip()
+                break
+    except (subprocess.SubprocessError, OSError, ValueError, TypeError):
+        pass
+    for key, value in dotenv_values.items():
+        proc_env.setdefault(key, value)
 
     def db_path_from(raw: str) -> Path:
         raw = raw.strip()
@@ -422,6 +465,10 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
     candidates = [db_path_from(ext)] if ext else []
     if primary:
         candidates.append(db_path_from(primary).with_name("external-freight.sqlite3"))
+    if not primary:
+        # Same application default as backend/main.py; never infer a database
+        # from the Telegram feed source, which is a distinct data store.
+        candidates.append(Path("/home/ubuntu/urtruck/backend/database/external-freight.sqlite3"))
     candidates.extend((
         Path("/home/ubuntu/urtruck/backend/database/external-freight.sqlite3"),
         root / "database" / "external-freight.sqlite3",
@@ -430,64 +477,64 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
     db = next((p.resolve() for p in candidates if p.is_file()), None)
     if db is None:
         print("FEED_DIAG=BLOCKED_DATABASE_NOT_FOUND")
-        return
-    try:
-        conn = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, timeout=1)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA query_only=ON")
-        journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
-        pages = conn.execute("PRAGMA page_count").fetchone()[0]
-        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
-        names = {row[0] for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='external_freight_items'")}
-        expected_index = "ix_external_freight_publication"
-        if expected_index not in names:
-            print("FEED_INDEX=FAIL publication_index_missing")
-        else:
-            print("FEED_INDEX=PASS ix_external_freight_publication")
-
-        now = datetime.now(timezone.utc).isoformat()
-        page_sql = ("SELECT * FROM external_freight_items WHERE kind=? AND ingested_at<=? "
-                    "AND status='active' AND expires_at>? "
-                    "ORDER BY source_published_at DESC,id DESC LIMIT 31")
-        count_sql = ("SELECT COUNT(*) FROM external_freight_items "
-                     "INDEXED BY ix_external_freight_publication "
-                     "WHERE kind=? AND status='active' AND expires_at>?")
+    else:
         try:
-            plan = [str(row[3]) for row in conn.execute(
-                "EXPLAIN QUERY PLAN " + page_sql, ("cargo", now, now))]
-            print("FEED_PAGE_PLAN=" + " | ".join(plan)[:600])
-            count_plan = [str(row[3]) for row in conn.execute(
-                "EXPLAIN QUERY PLAN " + count_sql, ("cargo", now))]
-            print("FEED_COUNT_PLAN=" + " | ".join(count_plan)[:600])
-            vehicle_cutoff = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-            for kind in ("cargo", "vehicle"):
-                if kind == "vehicle":
-                    total = conn.execute(count_sql + " AND source_published_at>?", (kind, now, vehicle_cutoff)).fetchone()[0]
-                else:
-                    total = conn.execute(count_sql, (kind, now)).fetchone()[0]
-                print(f"FEED_DB_COUNT {kind}={total}")
-            page_ms = []
-            count_ms = []
-            for _ in range(3):
-                started = time.perf_counter()
-                conn.execute(page_sql, ("cargo", now, now)).fetchall()
-                page_ms.append((time.perf_counter() - started) * 1000)
-                started = time.perf_counter()
-                conn.execute(count_sql, ("cargo", now)).fetchone()
-                count_ms.append((time.perf_counter() - started) * 1000)
-            print(f"FEED_SQL_PAGE_MS median={statistics.median(page_ms):.1f} max={max(page_ms):.1f} n=3")
-            print(f"FEED_SQL_COUNT_MS median={statistics.median(count_ms):.1f} max={max(count_ms):.1f} n=3")
-            print(f"FEED_SQLITE journal={journal} page_count={pages} page_size={page_size} "
-                  f"wal_bytes={Path(str(db)+'-wal').stat().st_size if Path(str(db)+'-wal').exists() else 0}")
-        except sqlite3.OperationalError as exc:
-            message = str(exc).lower()
-            error_class = "locked" if "locked" in message else "busy" if "busy" in message else type(exc).__name__
-            print(f"FEED_SQL=FAIL error_class={error_class}")
-        finally:
-            conn.close()
-    except sqlite3.Error as exc:
-        print(f"FEED_DB=FAIL error={type(exc).__name__}")
+            conn = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, timeout=1)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only=ON")
+            journal = conn.execute("PRAGMA journal_mode").fetchone()[0]
+            pages = conn.execute("PRAGMA page_count").fetchone()[0]
+            page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+            names = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='external_freight_items'")}
+            expected_index = "ix_external_freight_publication"
+            if expected_index not in names:
+                print("FEED_INDEX=FAIL publication_index_missing")
+            else:
+                print("FEED_INDEX=PASS ix_external_freight_publication")
+
+            now = datetime.now(timezone.utc).isoformat()
+            page_sql = ("SELECT * FROM external_freight_items WHERE kind=? AND ingested_at<=? "
+                        "AND status='active' AND expires_at>? "
+                        "ORDER BY source_published_at DESC,id DESC LIMIT 31")
+            count_sql = ("SELECT COUNT(*) FROM external_freight_items "
+                         "INDEXED BY ix_external_freight_publication "
+                         "WHERE kind=? AND status='active' AND expires_at>?")
+            try:
+                plan = [str(row[3]) for row in conn.execute(
+                    "EXPLAIN QUERY PLAN " + page_sql, ("cargo", now, now))]
+                print("FEED_PAGE_PLAN=" + " | ".join(plan)[:600])
+                count_plan = [str(row[3]) for row in conn.execute(
+                    "EXPLAIN QUERY PLAN " + count_sql, ("cargo", now))]
+                print("FEED_COUNT_PLAN=" + " | ".join(count_plan)[:600])
+                vehicle_cutoff = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+                for kind in ("cargo", "vehicle"):
+                    if kind == "vehicle":
+                        total = conn.execute(count_sql + " AND source_published_at>?", (kind, now, vehicle_cutoff)).fetchone()[0]
+                    else:
+                        total = conn.execute(count_sql, (kind, now)).fetchone()[0]
+                    print(f"FEED_DB_COUNT {kind}={total}")
+                page_ms = []
+                count_ms = []
+                for _ in range(3):
+                    started = time.perf_counter()
+                    conn.execute(page_sql, ("cargo", now, now)).fetchall()
+                    page_ms.append((time.perf_counter() - started) * 1000)
+                    started = time.perf_counter()
+                    conn.execute(count_sql, ("cargo", now)).fetchone()
+                    count_ms.append((time.perf_counter() - started) * 1000)
+                print(f"FEED_SQL_PAGE_MS median={statistics.median(page_ms):.1f} max={max(page_ms):.1f} n=3")
+                print(f"FEED_SQL_COUNT_MS median={statistics.median(count_ms):.1f} max={max(count_ms):.1f} n=3")
+                print(f"FEED_SQLITE journal={journal} page_count={pages} page_size={page_size} "
+                      f"wal_bytes={Path(str(db)+'-wal').stat().st_size if Path(str(db)+'-wal').exists() else 0}")
+            except sqlite3.OperationalError as exc:
+                message = str(exc).lower()
+                error_class = "locked" if "locked" in message else "busy" if "busy" in message else type(exc).__name__
+                print(f"FEED_SQL=FAIL error_class={error_class}")
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            print(f"FEED_DB=FAIL error={type(exc).__name__}")
 
     ps = subprocess.run(["ps", "-p", str(pid), "-o", "%cpu=,%mem=,rss=,etime="],
                         text=True, capture_output=True, timeout=5)
