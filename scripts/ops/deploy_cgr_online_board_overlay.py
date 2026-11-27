@@ -497,6 +497,13 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
             page_sql = ("SELECT * FROM external_freight_items WHERE kind=? AND ingested_at<=? "
                         "AND status='active' AND expires_at>? "
                         "ORDER BY source_published_at DESC,id DESC LIMIT 31")
+            page_index_sql = ("SELECT * FROM external_freight_items INDEXED BY ix_external_freight_publication "
+                              "WHERE kind=? AND ingested_at<=? AND status='active' AND expires_at>? "
+                              "ORDER BY source_published_at DESC,id DESC LIMIT 31")
+            currencies_sql = ("SELECT DISTINCT currency FROM external_freight_items "
+                              "WHERE kind=? AND ingested_at<=? AND status='active' AND expires_at>? "
+                              "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL "
+                              "ORDER BY currency")
             count_sql = ("SELECT COUNT(*) FROM external_freight_items "
                          "INDEXED BY ix_external_freight_publication "
                          "WHERE kind=? AND status='active' AND expires_at>?")
@@ -504,6 +511,12 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
                 plan = [str(row[3]) for row in conn.execute(
                     "EXPLAIN QUERY PLAN " + page_sql, ("cargo", now, now))]
                 print("FEED_PAGE_PLAN=" + " | ".join(plan)[:600])
+                index_plan = [str(row[3]) for row in conn.execute(
+                    "EXPLAIN QUERY PLAN " + page_index_sql, ("cargo", now, now))]
+                print("FEED_PAGE_INDEX_PLAN=" + " | ".join(index_plan)[:600])
+                currencies_plan = [str(row[3]) for row in conn.execute(
+                    "EXPLAIN QUERY PLAN " + currencies_sql, ("cargo", now, now))]
+                print("FEED_CURRENCIES_PLAN=" + " | ".join(currencies_plan)[:600])
                 count_plan = [str(row[3]) for row in conn.execute(
                     "EXPLAIN QUERY PLAN " + count_sql, ("cargo", now))]
                 print("FEED_COUNT_PLAN=" + " | ".join(count_plan)[:600])
@@ -515,15 +528,25 @@ def production_feed_diagnostics(root: Path, pid: int) -> None:
                         total = conn.execute(count_sql, (kind, now)).fetchone()[0]
                     print(f"FEED_DB_COUNT {kind}={total}")
                 page_ms = []
+                index_page_ms = []
+                currencies_ms = []
                 count_ms = []
                 for _ in range(3):
                     started = time.perf_counter()
                     conn.execute(page_sql, ("cargo", now, now)).fetchall()
                     page_ms.append((time.perf_counter() - started) * 1000)
                     started = time.perf_counter()
+                    conn.execute(page_index_sql, ("cargo", now, now)).fetchall()
+                    index_page_ms.append((time.perf_counter() - started) * 1000)
+                    started = time.perf_counter()
+                    conn.execute(currencies_sql, ("cargo", now, now)).fetchall()
+                    currencies_ms.append((time.perf_counter() - started) * 1000)
+                    started = time.perf_counter()
                     conn.execute(count_sql, ("cargo", now)).fetchone()
                     count_ms.append((time.perf_counter() - started) * 1000)
                 print(f"FEED_SQL_PAGE_MS median={statistics.median(page_ms):.1f} max={max(page_ms):.1f} n=3")
+                print(f"FEED_SQL_PAGE_INDEX_MS median={statistics.median(index_page_ms):.1f} max={max(index_page_ms):.1f} n=3")
+                print(f"FEED_SQL_CURRENCIES_MS median={statistics.median(currencies_ms):.1f} max={max(currencies_ms):.1f} n=3")
                 print(f"FEED_SQL_COUNT_MS median={statistics.median(count_ms):.1f} max={max(count_ms):.1f} n=3")
                 print(f"FEED_SQLITE journal={journal} page_count={pages} page_size={page_size} "
                       f"wal_bytes={Path(str(db)+'-wal').stat().st_size if Path(str(db)+'-wal').exists() else 0}")
