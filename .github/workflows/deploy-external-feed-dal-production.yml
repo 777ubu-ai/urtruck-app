@@ -1,0 +1,129 @@
+name: Deploy external-feed DAL production overlay
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read-only file check, deploy the reviewed DAL module, or restore its protected backup
+        type: choice
+        required: true
+        default: preflight
+        options:
+          - preflight
+          - deploy
+          - rollback
+      source_sha:
+        description: Merged commit containing the reviewed DAL file; required for preflight and deploy
+        type: string
+        required: false
+      backup_id:
+        description: Required only for rollback; use BACKUP_ID from a successful deployment
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-release
+  cancel-in-progress: false
+
+jobs:
+  overlay:
+    name: Apply or verify the one-file external-feed overlay
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+      OPERATION: ${{ inputs.operation }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      BACKUP_ID: ${{ inputs.backup_id }}
+      URTRUCK_REQUIRE_KEY: "1"
+    steps:
+      - name: Checkout reviewed overlay helper
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify merged candidate and prepare the exact one-file payload
+        if: ${{ inputs.operation != 'rollback' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git rev-parse "$SOURCE_SHA^{commit}" >/dev/null
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          mkdir -p "$RUNNER_TEMP/feed-overlay/database"
+          git show "$SOURCE_SHA:backend/database/external_freight_dal.py" > "$RUNNER_TEMP/feed-overlay/database/external_freight_dal.py"
+          echo '60e23800626256f4329a33d591c2c00eda588d2b746e55c398a7ed5612395c5a  '"$RUNNER_TEMP/feed-overlay/database/external_freight_dal.py" | sha256sum --check
+          python3 -m py_compile scripts/ops/deploy_external_feed_dal_overlay.py "$RUNNER_TEMP/feed-overlay/database/external_freight_dal.py"
+          echo "SOURCE_SHA=$SOURCE_SHA"
+          echo 'PAYLOAD=database/external_freight_dal.py'
+
+      - name: Require pinned-key SSH and validate dispatch inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          [[ "$BACKEND_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]]
+          [[ "$BACKEND_DIR" != *".."* ]]
+          case "$OPERATION" in
+            preflight|deploy) [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; test -z "$BACKUP_ID" ;;
+            rollback) [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{7}$ ]]; test -z "$SOURCE_SHA" ;;
+            *) echo '::error::Invalid operation'; exit 2 ;;
+          esac
+          bash scripts/deploy-ssh.sh ssh "test -d '$BACKEND_DIR' && echo SSH_TRANSPORT=key+pinned-known-hosts BACKEND_ROOT=reachable"
+
+      - name: Create private remote staging directory
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage=$(bash scripts/deploy-ssh.sh ssh "mktemp -d '/tmp/urtruck-feed-${GITHUB_RUN_ID}.XXXXXX'")
+          [[ "$stage" =~ ^/tmp/urtruck-feed-[0-9]+\.[A-Za-z0-9]+$ ]]
+          bash scripts/deploy-ssh.sh ssh "chmod 700 '$stage'"
+          bash scripts/deploy-ssh.sh ssh "mkdir -m 700 '$stage/database'"
+          echo "path=$stage" >> "$GITHUB_OUTPUT"
+
+      - name: Transfer the fixed overlay helper
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/ops/deploy_external_feed_dal_overlay.py "$SERVER_USER@$SERVER_HOST:$REMOTE_STAGE/deploy_feed_overlay.py"
+
+      - name: Transfer the reviewed DAL module
+        if: ${{ inputs.operation == 'deploy' }}
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/feed-overlay/database/external_freight_dal.py" "$SERVER_USER@$SERVER_HOST:$REMOTE_STAGE/database/external_freight_dal.py"
+
+      - name: Run the narrow operation against the verified production listener
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            deploy) args="--candidate '$REMOTE_STAGE/database/external_freight_dal.py'" ;;
+            rollback) args="--backup-id '$BACKUP_ID'" ;;
+            preflight) args="" ;;
+          esac
+          set +e
+          bash scripts/deploy-ssh.sh ssh "python3 '$REMOTE_STAGE/deploy_feed_overlay.py' $OPERATION --root '$BACKEND_DIR' $args"
+          rc=$?
+          set -e
+          bash scripts/deploy-ssh.sh ssh "rm -rf -- '$REMOTE_STAGE'"
+          exit "$rc"

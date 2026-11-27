@@ -453,15 +453,16 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         params.append(max_price)
     sort_error = None
     price_currencies = []
-    with get_conn() as c:
-        currency_rows = c.execute(
-            f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
-            "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
-            tuple(params),
-        ).fetchall()
-        price_currencies = [str(row[0]).upper() for row in currency_rows]
-        effective_sort = sort
-        if sort.startswith("price_") and not currency and len(price_currencies) != 1:
+    effective_sort = sort
+    if sort.startswith("price_"):
+        with get_conn() as c:
+            currency_rows = c.execute(
+                f"SELECT DISTINCT currency FROM external_freight_items WHERE {' AND '.join(clauses)} "
+                "AND price_state='known' AND amount IS NOT NULL AND currency IS NOT NULL ORDER BY currency",
+                tuple(params),
+            ).fetchall()
+            price_currencies = [str(row[0]).upper() for row in currency_rows]
+        if not currency and len(price_currencies) != 1:
             effective_sort = "newest"
             sort_error = "mixed_currency" if len(price_currencies) > 1 else "price_unavailable"
     # Порядок фиксируется на весь курсор: новая валюта между страницами
@@ -490,8 +491,24 @@ def list_items(*, kind, origin=None, destination=None, body_type=None, body_quer
         order = (f"CASE WHEN {known} THEN 0 ELSE 1 END ASC, "
                  f"CASE WHEN {known} THEN amount END {direction}, "
                  f"CASE WHEN {known} THEN id END {direction}, source_published_at DESC,id DESC")
+    # The expiry index makes the planner sort every matching row before it can
+    # return the first page. For the unfiltered newest feed, use the existing
+    # publication index, which already provides the requested ordering.
+    has_feed_filters = any((
+        origin, destination, body_type, body_query, published_from,
+        published_to, origin_country, destination_country, currency,
+        min_price is not None, max_price is not None,
+    ))
+    page_index_hint = (
+        " INDEXED BY ix_external_freight_publication"
+        if effective_sort == "newest" and not saved_only and not has_feed_filters
+        else ""
+    )
     with get_conn() as c:
-        rows = c.execute(f"SELECT * FROM external_freight_items WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?", (*params, min(max(int(limit), 1), 100) + 1)).fetchall()
+        rows = c.execute(
+            f"SELECT * FROM external_freight_items{page_index_hint} WHERE {' AND '.join(clauses)} ORDER BY {order} LIMIT ?",
+            (*params, min(max(int(limit), 1), 100) + 1),
+        ).fetchall()
     has_more = len(rows) > min(max(int(limit), 1), 100)
     rows = rows[:min(max(int(limit), 1), 100)]
     next_cursor = None
