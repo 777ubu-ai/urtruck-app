@@ -1,0 +1,131 @@
+name: Deploy CGR online-board production overlay
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Run a read-only preflight, deploy the reviewed PR #732 fix, restore a verified backup, or recheck
+        type: choice
+        required: true
+        default: deploy
+        options:
+          - preflight
+          - deploy
+          - rollback
+          - diagnose
+      backup_id:
+        description: Required only for rollback; use the BACKUP_ID printed by a prior run
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: urtruck-production-release
+  cancel-in-progress: false
+
+jobs:
+  overlay:
+    name: Apply or verify the two-file CGR overlay
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      SERVER_SSH_KNOWN_HOSTS: ${{ secrets.SERVER_SSH_KNOWN_HOSTS }}
+      BACKEND_DIR: ${{ secrets.BACKEND_DIR || '/home/ubuntu/urtruck-security' }}
+      OPERATION: ${{ inputs.operation }}
+      BACKUP_ID: ${{ inputs.backup_id }}
+      URTRUCK_REQUIRE_KEY: "1"
+    steps:
+      - name: Checkout reviewed overlay implementation
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify PR #732 source and compile the exact payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 65c7370810593fbaadff5cf39a0eb9a9878ed9a8^{commit})" = "65c7370810593fbaadff5cf39a0eb9a9878ed9a8"
+          mkdir -p "$RUNNER_TEMP/cgr-overlay/api" "$RUNNER_TEMP/cgr-overlay/cgr"
+          git show 65c7370810593fbaadff5cf39a0eb9a9878ed9a8:backend/api/borders.py > "$RUNNER_TEMP/cgr-overlay/api/borders.py"
+          git show 65c7370810593fbaadff5cf39a0eb9a9878ed9a8:backend/cgr/scoreboard_service.py > "$RUNNER_TEMP/cgr-overlay/cgr/scoreboard_service.py"
+          echo '174b5af783ad6411268d67f10917598df3f166e89f21c3ef79194d72dcf8270c  '"$RUNNER_TEMP/cgr-overlay/api/borders.py" | sha256sum --check
+          echo '4cc7e94388858e10449eede9e02526145d10f93f79b106582620bb01db9d46af  '"$RUNNER_TEMP/cgr-overlay/cgr/scoreboard_service.py" | sha256sum --check
+          python3 -m py_compile scripts/ops/deploy_cgr_online_board_overlay.py "$RUNNER_TEMP/cgr-overlay/api/borders.py" "$RUNNER_TEMP/cgr-overlay/cgr/scoreboard_service.py"
+          echo 'SOURCE_SHA=65c7370810593fbaadff5cf39a0eb9a9878ed9a8'
+          echo 'PAYLOAD=two-allowlisted-files'
+
+      - name: Require pinned-key SSH and validate dispatch inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST"
+          test -n "$SERVER_USER"
+          test -n "$SERVER_SSH_KEY"
+          test -n "$SERVER_SSH_KNOWN_HOSTS"
+          [[ "$BACKEND_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]]
+          [[ "$BACKEND_DIR" != *".."* ]]
+          case "$OPERATION" in
+            preflight|deploy|diagnose) test -z "$BACKUP_ID" ;;
+            rollback) [[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{7}$ ]] ;;
+            *) echo '::error::Invalid operation'; exit 2 ;;
+          esac
+          bash scripts/deploy-ssh.sh ssh "test -d '$BACKEND_DIR' && echo SSH_TRANSPORT=key+pinned-known-hosts BACKEND_ROOT=reachable"
+
+      - name: Create private remote staging directory
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage=$(bash scripts/deploy-ssh.sh ssh "mktemp -d -m 700 '/tmp/urtruck-cgr-${GITHUB_RUN_ID}.XXXXXX'")
+          [[ "$stage" =~ ^/tmp/urtruck-cgr-[0-9]+\.[A-Za-z0-9]+$ ]]
+          bash scripts/deploy-ssh.sh ssh "mkdir -m 700 '$stage/api' '$stage/cgr'"
+          echo "path=$stage" >> "$GITHUB_OUTPUT"
+
+      - name: Transfer the fixed overlay helper
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp scripts/ops/deploy_cgr_online_board_overlay.py "$SERVER_USER@$SERVER_HOST:$REMOTE_STAGE/deploy_cgr_overlay.py"
+
+      - name: Transfer the two allowlisted PR #732 modules
+        if: ${{ inputs.operation == 'deploy' }}
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/cgr-overlay/api/borders.py" "$SERVER_USER@$SERVER_HOST:$REMOTE_STAGE/api/borders.py"
+          bash scripts/deploy-ssh.sh scp "$RUNNER_TEMP/cgr-overlay/cgr/scoreboard_service.py" "$SERVER_USER@$SERVER_HOST:$REMOTE_STAGE/cgr/scoreboard_service.py"
+
+      - name: Run narrow operation on the verified production listener
+        shell: bash
+        env:
+          REMOTE_STAGE: ${{ steps.stage.outputs.path }}
+        run: |
+          set -euo pipefail
+          case "$OPERATION" in
+            deploy)
+              operation_args="--candidate-dir '$REMOTE_STAGE'"
+              ;;
+            rollback)
+              operation_args="--backup-id '$BACKUP_ID'"
+              ;;
+            preflight|diagnose)
+              operation_args=""
+              ;;
+          esac
+          set +e
+          bash scripts/deploy-ssh.sh ssh \
+            "python3 '$REMOTE_STAGE/deploy_cgr_overlay.py' $OPERATION --root '$BACKEND_DIR' $operation_args"
+          rc=$?
+          set -e
+          bash scripts/deploy-ssh.sh ssh "rm -rf -- '$REMOTE_STAGE'"
+          exit "$rc"
