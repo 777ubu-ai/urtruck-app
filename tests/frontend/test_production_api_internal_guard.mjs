@@ -47,6 +47,6 @@ test('Internal workflows preserve exact source, version cap and embedded configu
   assert.match(ios, /assert extra\['urtruckApiUrl'\].*os.environ\['QA2_API_URL'\]/);
   assert.match(ios, /test "\$GITHUB_SHA" = "\$QA_SOURCE_SHA"/);
   assert.match(ios, /codesign --verify --deep --strict/);
-  assert.match(android, /CANDIDATE_VERSION=1\.0\.16/);
+  assert.match(android, /CANDIDATE_VERSION=1\.0\.17/);
   assert.match(android, /node scripts\/verify-production-apk-config.mjs/);
 });
