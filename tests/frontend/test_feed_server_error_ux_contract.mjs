@@ -21,11 +21,10 @@ const marketAPI = read('../../src/utils/marketAPI.js');
 const cargoFeed = read('../../src/screens/CargoFeedScreen.js');
 const tripFeed = read('../../src/screens/FeedScreen.js');
 
-test('marketAPI list endpoints signal failure via serverError instead of throwing', () => {
-  // Если это когда-нибудь начнёт бросать — проверки ниже станут излишними,
-  // но тогда и падение здесь заставит пересмотреть контракт осознанно.
-  assert.match(marketAPI, /cargos:\s*\[\],\s*total:\s*0,\s*serverError:\s*true/);
-  assert.match(marketAPI, /trips:\s*\[\],\s*total:\s*0,\s*serverError:\s*true/);
+test('marketAPI list endpoints distinguish offline from HTTP/service errors', () => {
+  assert.match(marketAPI, /errorType:\s*'server'/);
+  assert.match(marketAPI, /errorType:\s*e\?\.name === 'AbortError' \? 'aborted' : 'network'/);
+  assert.match(marketAPI, /include_count:\s*'false'/);
 });
 
 test('CargoFeedScreen turns serverError into the error state (regression)', () => {
@@ -35,22 +34,22 @@ test('CargoFeedScreen turns serverError into the error state (regression)', () =
     'CargoFeedScreen.load() must inspect result.serverError — иначе 500/offline выглядит как «грузов нет»');
   // Флаг обязан попасть именно в catch → setError(true), а не быть просто
   // прочитанным: проверяем, что он бросает внутри try.
-  assert.match(load[0], /if \(result\?\.serverError\) throw new Error\(/);
+  assert.match(load[0], /if \(result\?\.serverError\) \{/);
   assert.match(load[0], /catch[\s\S]*setError\(true\)/);
 });
 
 test('FeedScreen keeps the same serverError guard', () => {
   const load = tripFeed.match(/const load = useCallback\(async \([^)]*\) => \{[\s\S]*?\n  \}, \[/);
   assert.ok(load, 'load() must be present in FeedScreen');
-  assert.match(load[0], /if \(result\?\.serverError\) throw new Error\(/);
+  assert.match(load[0], /if \(result\?\.serverError\) \{/);
   assert.match(load[0], /catch[\s\S]*setError\(true\)/);
 });
 
 test('both feeds render a localized load error plus a retry affordance', () => {
   for (const [name, src] of [['CargoFeedScreen', cargoFeed], ['FeedScreen', tripFeed]]) {
-    assert.match(src, /error \? copy\.loadError : copy\.empty/, `${name}: error branch must swap in loadError`);
+    assert.match(src, /error \? \(feedErrorType === 'network' \? copy\.networkError : copy\.serverError\) : copy\.empty/, `${name}: error branch must distinguish offline from service failures`);
     assert.match(src, /error \? \(\s*<TouchableOpacity/, `${name}: error branch must offer retry`);
-    assert.match(src, /onPress=\{load\}/, `${name}: retry must re-run load()`);
+    assert.match(src, /onPress=\{\(\) => load\(\{ retry: true \}\)\}/, `${name}: retry must re-run load()`);
     // Локализация ошибки во всех четырёх языках приложения.
     assert.equal((src.match(/loadError:/g) || []).length, 4,
       `${name}: loadError must exist for all 4 locales (ru/en/zh/kk)`);

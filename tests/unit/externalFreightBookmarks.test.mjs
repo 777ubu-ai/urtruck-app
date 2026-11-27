@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../../src/utils/externalFreightFeed.js', import.meta.url), 'utf8')
-  .replace(/^import .*;\n/gm, '').replaceAll('export const ', 'const ');
+  .replace(/^import .*;\n/gm, '').replaceAll('export const ', 'const ').replaceAll('export async function ', 'async function ').replaceAll('export function ', 'function ');
 function harness({ storage, send } = {}) {
   const calls = [];
   const context = vm.createContext({
@@ -15,8 +15,8 @@ function harness({ storage, send } = {}) {
       return send ? send(url, options) : { ok: true, json: async () => ({ id: 'one', saved: options.method === 'PUT' }) };
     },
   });
-  vm.runInContext(source + '\nthis.api = externalFreightAPI;', context);
-  return { api: context.api, calls };
+  vm.runInContext(source + '\nthis.api = externalFreightAPI; this.cacheKey = externalFreightFeedCacheKey; this.readCache = readExternalFreightFeedCache; this.writeCache = writeExternalFreightFeedCache;', context);
+  return { api: context.api, calls, cacheKey: context.cacheKey, readCache: context.readCache, writeCache: context.writeCache };
 }
 
 test('bookmark uses explicit idempotent PUT/DELETE and encoded identity', async () => {
@@ -80,4 +80,16 @@ test('unavailable count is an error, never a synthetic zero', async () => {
   const result = await unavailable.api.count();
   assert.equal(result.ok, false);
   assert.equal(result.count, undefined);
+});
+
+test('external first-page cache is scoped to owner, role, filters, and saved-only mode', async () => {
+  const values = new Map();
+  const h = harness({ storage: { get: async key => values.get(key) || null, set: async (key, value) => values.set(key, value) } });
+  const key = h.cacheKey('user-1:driver', { origin: 'Алматы', sort: 'newest' }, false);
+  assert.notEqual(key, h.cacheKey('user-2:driver', { origin: 'Алматы', sort: 'newest' }, false));
+  assert.notEqual(key, h.cacheKey('user-1:client', { origin: 'Алматы', sort: 'newest' }, false));
+  assert.notEqual(key, h.cacheKey('user-1:driver', { origin: 'Астана', sort: 'newest' }, false));
+  assert.notEqual(key, h.cacheKey('user-1:driver', { origin: 'Алматы', sort: 'newest' }, true));
+  await h.writeCache(key, { items: [{ id: 'first' }], nextCursor: 'page-2', savedAt: 123 });
+  assert.deepEqual(JSON.parse(JSON.stringify(await h.readCache(key))), { items: [{ id: 'first' }], nextCursor: 'page-2', savedAt: 123 });
 });

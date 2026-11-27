@@ -6,7 +6,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['CargoFeedScreen.js', 'cargos', 'listCargos']]) {
   const source = readFileSync('src/screens/' + file, 'utf8');
   const start = source.indexOf('  const load = useCallback(');
-  const end = source.indexOf('\n  useEffect(() => { load(); }', start);
+  const end = source.indexOf('\n  const loadNextPage = useCallback', start);
   function harness() {
     const calls = [], state = { items: [] };
     const env = {
@@ -23,6 +23,8 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
       normalizeTrip: x => ({ ...x, from: 'Almaty', to: 'Astana' }),
       normalizeCargo: x => ({ ...x, from: 'Almaty', to: 'Astana' }),
       marketAPI: { [method]: args => new Promise(resolve => calls.push({ args, resolve })) },
+      feedCacheKey: 'test-feed', readMarketFeedCache: async () => null, writeMarketFeedCache: async () => {},
+      setFeedErrorType() {}, requestControllerRef: { current: null }, activeRequestKeyRef: { current: null }, AbortController,
     };
     const load = new Function(...Object.keys(env), source.slice(start, end) + '\nreturn load;')(...Object.values(env));
     return { state, calls, env, load };
@@ -47,6 +49,16 @@ for (const [file, key, method] of [['FeedScreen.js', 'trips', 'listTrips'], ['Ca
     assert.equal(h.state.items.length, 5000);
     assert.equal(new Set(h.state.items.map(x => x.id)).size, 5000);
     await h.load({ append: true }); assert.equal(h.calls.length, 100);
+  });
+  test(file + ': одинаковые параллельные запросы первой страницы объединяются', async () => {
+    const h = harness();
+    const first = h.load();
+    const duplicate = h.load();
+    await tick();
+    assert.equal(h.calls.length, 1);
+    h.calls[0].resolve(result(0, null, [1]));
+    await Promise.all([first, duplicate]);
+    assert.deepEqual(h.state.items.map(item => item.id), ['1']);
   });
   test(file + ': пустая отфильтрованная страница не скрывает следующую, дубли/двойной тап безопасны', async () => {
     const h = harness(); const first = h.load(); await tick();

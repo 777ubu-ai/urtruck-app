@@ -52,6 +52,18 @@ target 'UrTruck' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
+    # React Fabric headers used by ReactCodegen and native modules include
+    # <folly/...>; expose the vendored Folly headers to CocoaPods targets.
+    folly_headers = '$(PODS_ROOT)/ReactNativeDependencies/react-native/third-party/ReactNativeDependencies.xcframework/Headers'
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        paths = build_config.build_settings['HEADER_SEARCH_PATHS'] || ['$(inherited)']
+        paths = [paths] unless paths.is_a?(Array)
+        paths << folly_headers unless paths.include?(folly_headers)
+        build_config.build_settings['HEADER_SEARCH_PATHS'] = paths
+      end
+    end
+
     installer.pods_project.targets.each do |target|
       next unless target.name == 'fmt'
 

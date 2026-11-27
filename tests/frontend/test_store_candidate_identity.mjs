@@ -12,7 +12,7 @@ function fixture() {
   for (const path of paths) { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), readFileSync(path)); }
   return root;
 }
-function run(root, platform, version = '1.0.12', sha = source, buildNumber) {
+function run(root, platform, version = (platform === 'ios' ? '1.0.17' : '1.0.12'), sha = source, buildNumber) {
   return spawnSync('python3', ['scripts/prepare_store_candidate_version.py', '--root', root, '--platform', platform, '--version', version, '--source-sha', sha,
     ...(buildNumber === undefined ? [] : ['--build-number', buildNumber])], { encoding: 'utf8' });
 }
@@ -22,7 +22,7 @@ for (const platform of ['ios', 'android']) test(`${platform}: настоящий
     const result = run(root, platform); assert.equal(result.status, 0, result.stderr);
     const before = JSON.parse(readFileSync('app.json'));
     const after = JSON.parse(readFileSync(join(root, 'app.json')));
-    assert.equal(after.expo.version, '1.0.12');
+    assert.equal(after.expo.version, platform === 'ios' ? '1.0.17' : '1.0.12');
     assert.equal(after.expo.extra.urtruckSourceSha, source);
     assert.equal(after.expo.extra.urtruckExternalFreightFeedEnabled, true);
     after.expo.version = before.expo.version;

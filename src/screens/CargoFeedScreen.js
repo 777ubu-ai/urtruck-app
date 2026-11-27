@@ -1,5 +1,6 @@
 import { withAdditionalLanguageTree, localizeUiText } from '../utils/additionalLocales.js';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Network from 'expo-network';
 import {
   ActivityIndicator,
   AppState,
@@ -19,6 +20,7 @@ import { useI18n } from '../utils/useI18n';
 import { formatTruckType } from '../utils/i18n';
 import { useAuth, LEVELS } from '../utils/AuthContext';
 import { marketAPI } from '../utils/marketAPI';
+import { marketFeedCacheKey, readMarketFeedCache, writeMarketFeedCache } from '../utils/marketFeedCache';
 import { sanitizeForDisplay } from '../utils/normalizers';
 import { localizeCargoName, localizePlace } from '../utils/places';
 import { flagCode } from '../utils/countryFlags';
@@ -72,19 +74,19 @@ const cargoPalette = (ceramic) => ({
 const COPY = {
   RU: {
     loading: 'Погрузка', negotiated: 'По договорённости', loadError: 'Не удалось загрузить грузы',
-    empty: 'Подходящих грузов пока нет', retry: 'Повторить', favorites: 'Избранное', minPrice: 'Цена от', maxPrice: 'Цена до', priceScope: 'Сортировка и диапазон только в выбранной валюте', scrollToTop: 'Наверх', priceRangeError: 'Проверьте цены и даты: начало диапазона должно быть не позже конца',
+    empty: 'Подходящих грузов пока нет', retry: 'Повторить', favorites: 'Избранное', networkError: 'Нет интернета. Проверьте подключение.', serverError: 'Сервис грузов временно недоступен.', minPrice: 'Цена от', maxPrice: 'Цена до', priceScope: 'Сортировка и диапазон только в выбранной валюте', scrollToTop: 'Наверх', priceRangeError: 'Проверьте цены и даты: начало диапазона должно быть не позже конца',
   },
   EN: {
     loading: 'Loading', negotiated: 'By agreement', loadError: 'Could not load cargoes',
-    empty: 'No matching cargoes yet', retry: 'Retry', favorites: 'Favorites', minPrice: 'Price from', maxPrice: 'Price to', priceScope: 'Sort and range use the selected currency only', scrollToTop: 'Back to top', priceRangeError: 'Check prices and dates: the range start must not be after its end',
+    empty: 'No matching cargoes yet', retry: 'Retry', favorites: 'Favorites', networkError: 'No internet connection. Check your network.', serverError: 'The cargo service is temporarily unavailable.', minPrice: 'Price from', maxPrice: 'Price to', priceScope: 'Sort and range use the selected currency only', scrollToTop: 'Back to top', priceRangeError: 'Check prices and dates: the range start must not be after its end',
   },
   ZH: {
     loading: '装货', negotiated: '面议', loadError: '无法加载货物',
-    empty: '暂时没有合适的货物', retry: '重试', favorites: '收藏', minPrice: '最低价', maxPrice: '最高价', priceScope: '排序和价格范围仅使用所选货币', scrollToTop: '回到顶部', priceRangeError: '请检查价格和日期：范围起始值不能晚于结束值',
+    empty: '暂时没有合适的货物', retry: '重试', favorites: '收藏', networkError: '没有网络连接，请检查网络。', serverError: '货源服务暂时不可用。', minPrice: '最低价', maxPrice: '最高价', priceScope: '排序和价格范围仅使用所选货币', scrollToTop: '回到顶部', priceRangeError: '请检查价格和日期：范围起始值不能晚于结束值',
   },
   KK: {
     loading: 'Тиеу', negotiated: 'Келісім бойынша', loadError: 'Жүктерді жүктеу мүмкін болмады',
-    empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
+    empty: 'Сәйкес жүк әзірге жоқ', retry: 'Қайталау', favorites: 'Таңдаулы', networkError: 'Интернет жоқ. Желіні тексеріңіз.', serverError: 'Жүк қызметі уақытша қолжетімсіз.', minPrice: 'Бағасы төмен', maxPrice: 'Бағасы жоғары', priceScope: 'Сұрыптау мен аралық таңдалған валютада ғана', scrollToTop: 'Жоғарыға', priceRangeError: 'Баға мен күндерді тексеріңіз: аралықтың басы соңынан кеш болмауы керек',
   },
 };
 Object.assign(COPY, withAdditionalLanguageTree(COPY));
@@ -240,10 +242,13 @@ export default function CargoFeedScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [feedErrorType, setFeedErrorType] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const pageRef = React.useRef({ busy: false, nextOffset: null, failed: false });
   const loadSeqRef = React.useRef(0);
-  useEffect(() => () => { loadSeqRef.current++; }, []);
+  const requestControllerRef = React.useRef(null);
+  const activeRequestKeyRef = React.useRef(null);
+  useEffect(() => () => { loadSeqRef.current++; requestControllerRef.current?.abort?.(); }, []);
   const [errorAppend, setErrorAppend] = useState(false);
   const [dirFrom, setDirFrom] = useState('');
   const [dirTo, setDirTo] = useState('');
@@ -266,6 +271,11 @@ export default function CargoFeedScreen({ navigation }) {
   const listRef = React.useRef(null);
   const scrollOffsetRef = React.useRef(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const feedCacheKey = useMemo(() => marketFeedCacheKey('driver', myUserId, {
+    fromCity: dirFrom.trim(), toCity: dirTo.trim(), fromCountry: dirFromCountry, toCountry: dirToCountry,
+    cargoType: filterType || '', dateFrom: toIso(dateFrom), dateTo: toIso(dateTo),
+    minPrice: minPrice.trim(), maxPrice: maxPrice.trim(), priceCurrency, sortBy, savedOnly,
+  }), [myUserId, dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly]);
 
   const loadSaved = useCallback(async () => {
     if (!myUserId) {
@@ -280,9 +290,17 @@ export default function CargoFeedScreen({ navigation }) {
 
   const load = useCallback(async ({ append = false, retry = false, preservePosition = false } = {}) => {
     const previous = pageRef.current;
+    const requestKey = `${feedCacheKey}:${append ? previous.nextOffset : 'first'}`;
     if (preservePosition && (previous.preserving || (previous.busy && previous.nextOffset == null))) return;
+    if (!append && previous.busy && activeRequestKeyRef.current === requestKey) return;
     if (append && (previous.busy || (previous.failed && !retry) || previous.nextOffset == null)) return;
     const requestId = ++loadSeqRef.current;
+    activeRequestKeyRef.current = requestKey;
+    if (!append) {
+      requestControllerRef.current?.abort?.();
+      requestControllerRef.current = new AbortController();
+    }
+    const signal = requestControllerRef.current?.signal;
     let offset = append ? previous.nextOffset : 0;
     pageRef.current = { ...previous, busy: true, nextOffset: append || preservePosition ? previous.nextOffset : null, failed: false, preserving: preservePosition };
     if (append) setLoadingMore(true);
@@ -293,6 +311,15 @@ export default function CargoFeedScreen({ navigation }) {
     setError(false);
     setErrorAppend(false);
     try {
+      if (!append && !preservePosition) {
+        const cached = await readMarketFeedCache(feedCacheKey);
+        if (requestId !== loadSeqRef.current || signal?.aborted) return;
+        if (cached) {
+          setItems(cached.items);
+          pageRef.current = { ...pageRef.current, nextOffset: cached.nextOffset, loadedOffset: cached.loadedOffset || 0 };
+          setLoading(false);
+        }
+      }
       let refreshed = [];
       let next = null;
       // При возврате обновляем весь загруженный префикс атомарно.
@@ -312,6 +339,7 @@ export default function CargoFeedScreen({ navigation }) {
           savedOnly,
           limit: 50,
           offset,
+          signal,
         });
         // Финальный аудит (§34 ERROR UX, 2026-09-14): marketAPI.listCargos НЕ
         // бросает при сетевой ошибке / 5xx — он возвращает
@@ -327,7 +355,11 @@ export default function CargoFeedScreen({ navigation }) {
         // ленту грузов к той же симметрии.
         if (requestId !== loadSeqRef.current) return;
         if (result?.unsupportedSearchContract) throw new Error('search_contract_unavailable');
-        if (result?.serverError) throw new Error('cargo_feed_failed');
+        if (result?.serverError) {
+          const failure = new Error('cargo_feed_failed');
+          failure.feedErrorType = result.errorType || 'server';
+          throw failure;
+        }
         const mapped = (result?.cargos || [])
           .filter((cargo) => !myUserId || cargo.owner_id !== myUserId)
           .map((cargo) => normalizeCargo(cargo, myUserId))
@@ -342,34 +374,52 @@ export default function CargoFeedScreen({ navigation }) {
       setItems(current => append
         ? [...new Map([...current, ...refreshed].map(item => [item.id, item])).values()]
         : refreshed);
+      setFeedErrorType(null);
+      if (!append && !preservePosition) await writeMarketFeedCache(feedCacheKey, {
+        items: refreshed, nextOffset: next, loadedOffset: offset, savedAt: Date.now(),
+      });
       pageRef.current = { busy: false, nextOffset: next, failed: false, loadedOffset: offset };
     } catch (e) {
       if (requestId !== loadSeqRef.current) return;
       console.warn('[CargoFeed] load failed:', e);
       pageRef.current = { ...(preservePosition ? previous : pageRef.current), busy: false, preserving: false, failed: true };
       setErrorAppend(append);
+      setFeedErrorType(e?.feedErrorType || 'server');
       setError(true);
     } finally {
       if (requestId === loadSeqRef.current) {
+        activeRequestKeyRef.current = null;
         pageRef.current.busy = false;
         setLoadingMore(false);
         setLoading(false);
       }
     }
-  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly]);
+  }, [dirFrom, dirTo, dirFromCountry, dirToCountry, filterType, myUserId, dateFrom, dateTo, minPrice, maxPrice, priceCurrency, sortBy, savedOnly, feedCacheKey]);
 
   const loadNextPage = useCallback(() => {
     const page = pageRef.current;
     if (!page.busy && !page.failed && page.nextOffset != null) load({ append: true });
   }, [load]);
+  useEffect(() => {
+    if (!error) return undefined;
+    const subscription = Network.addNetworkStateListener((state) => {
+      if (state.isConnected && state.isInternetReachable !== false) {
+        if (errorAppend) load({ append: true, retry: true });
+        else load();
+      }
+    });
+    return () => subscription?.remove?.();
+  }, [error, errorAppend, load]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setFeedErrorType(null); load(); }, [load]);
   // Повторный выбор вкладки начинает новый поиск с первой страницы.
   useEffect(() => navigation.addListener('tabPress', () => { load(); }), [navigation, load]);
   useEffect(() => {
     const removeFocus = navigation.addListener('focus', () => { load({ preservePosition: true }); });
     const invalidate = () => {
       loadSeqRef.current += 1;
+      requestControllerRef.current?.abort?.();
+      activeRequestKeyRef.current = null;
       pageRef.current = { ...pageRef.current, busy: false, preserving: false };
     };
     const removeBlur = navigation.addListener('blur', invalidate);
@@ -609,11 +659,11 @@ export default function CargoFeedScreen({ navigation }) {
           </View>
         ) : error && items.length > 0 ? (
           <View style={styles.pageFooter}>
-            <Text style={styles.emptyTitle}>{copy.loadError}</Text>
+              <Text style={styles.emptyTitle}>{feedErrorType === 'network' ? copy.networkError : copy.serverError}</Text>
             <TouchableOpacity
               testID="cargo-feed-retry-more"
               style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]}
-              onPress={() => errorAppend ? load({ append: true, retry: true }) : load()}
+              onPress={() => errorAppend ? load({ append: true, retry: true }) : load({ retry: true })}
             >
               <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
             </TouchableOpacity>
@@ -627,9 +677,9 @@ export default function CargoFeedScreen({ navigation }) {
           ) : (
             <View style={styles.emptyWrap}>
               <Feather name={error ? 'alert-circle' : savedOnly ? 'bookmark' : 'package'} size={32} color={palette.textMuted} />
-              <Text style={[styles.emptyTitle, { color: palette.textMuted }]}>{error ? copy.loadError : copy.empty}</Text>
+              <Text style={[styles.emptyTitle, { color: palette.textMuted }]}>{error ? (feedErrorType === 'network' ? copy.networkError : copy.serverError) : copy.empty}</Text>
               {error ? (
-                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={load} testID="cargo-retry">
+                <TouchableOpacity style={[styles.retryBtn, { backgroundColor: palette.accentSoft }]} onPress={() => load({ retry: true })} testID="cargo-retry">
                   <Text style={[styles.retryText, { color: palette.accent }]}>{copy.retry}</Text>
                 </TouchableOpacity>
               ) : null}

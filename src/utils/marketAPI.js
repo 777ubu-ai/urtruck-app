@@ -172,7 +172,7 @@ export const marketAPI = {
     return r.json();
   },
 
-  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
+  async listCargos({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', cargoType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0, signal } = {}) {
     // Never inject demo data on failure — empty list + serverError flag so
     // FeedScreen renders the proper empty state instead of stale fallback.
     try {
@@ -188,6 +188,7 @@ export const marketAPI = {
         currency,
         sort_by: sortBy.replace('-', '_'),
         saved_only: savedOnly ? 'true' : 'false',
+        include_count: 'false',
         limit,
         offset,
       });
@@ -197,15 +198,15 @@ export const marketAPI = {
       // Public listings stay anonymous; only this owner-specific filter needs
       // the current session so the API can enforce ownership itself.
       const init = savedOnly ? { headers: await headers() } : undefined;
-      const r = await authedFetch(`${BASE}/cargos?${params}`, init);
-      if (!r.ok) return { cargos: [], total: 0, serverError: true, status: r.status };
+      const r = await authedFetch(`${BASE}/cargos?${params}`, { ...init, signal });
+      if (!r.ok) return { cargos: [], total: null, serverError: true, errorType: 'server', status: r.status };
       const data = await r.json();
       if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
-        return { cargos: [], total: 0, serverError: true, unsupportedSearchContract: true };
+        return { cargos: [], total: null, serverError: true, unsupportedSearchContract: true };
       }
       return data;
     } catch (e) {
-      return { cargos: [], total: 0, serverError: true };
+      return { cargos: [], total: null, serverError: true, errorType: e?.name === 'AbortError' ? 'aborted' : 'network' };
     }
   },
 
@@ -358,7 +359,7 @@ export const marketAPI = {
     return d;
   },
 
-  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0 } = {}) {
+  async listTrips({ status = 'active', fromCity = '', toCity = '', fromCountry = '', toCountry = '', truckType = '', dateFrom = '', dateTo = '', minPrice = null, maxPrice = null, currency = '', sortBy = 'newest', savedOnly = false, limit = 50, offset = 0, signal } = {}) {
     try {
       const params = new URLSearchParams({
         status,
@@ -372,21 +373,22 @@ export const marketAPI = {
         currency,
         sort_by: sortBy.replace('-', '_'),
         saved_only: savedOnly ? 'true' : 'false',
+        include_count: 'false',
         limit,
         offset,
       });
       if (minPrice != null) params.set('min_price', String(minPrice));
       if (maxPrice != null) params.set('max_price', String(maxPrice));
       const init = savedOnly ? { headers: await headers() } : undefined;
-      const r = await authedFetch(`${BASE}/trips?${params}`, init);
-      if (!r.ok) return { trips: [], total: 0, serverError: true, status: r.status };
+      const r = await authedFetch(`${BASE}/trips?${params}`, { ...init, signal });
+      if (!r.ok) return { trips: [], total: null, serverError: true, errorType: 'server', status: r.status };
       const data = await r.json();
       if ((dateFrom || dateTo || minPrice != null || maxPrice != null || currency || sortBy !== 'newest' || savedOnly) && data?.search_contract !== 1) {
-        return { trips: [], total: 0, serverError: true, unsupportedSearchContract: true };
+        return { trips: [], total: null, serverError: true, unsupportedSearchContract: true };
       }
       return data;
     } catch (e) {
-      return { trips: [], total: 0, serverError: true };
+      return { trips: [], total: null, serverError: true, errorType: e?.name === 'AbortError' ? 'aborted' : 'network' };
     }
   },
 

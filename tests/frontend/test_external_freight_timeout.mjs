@@ -15,8 +15,22 @@ test('зависший запрос страницы завершается ош
   });
   const result = await listWithTimeout({}, null, 10);
   assert.equal(result.ok, false);
-  assert.equal(result.error, 'network_error');
+  assert.equal(result.error, 'request_timeout');
   assert.equal(signal.aborted, true);
+});
+
+test('внешняя лента читает кэш по владельцу/фильтрам и записывает первую страницу после ответа', () => {
+  assert.match(source, /externalFreightFeedCacheKey\(ownerKey, filters, savedOnly\)/);
+  assert.match(source, /readExternalFreightFeedCache\(persistentCacheKey\)/);
+  assert.match(source, /writeExternalFreightFeedCache\(lastSuccessfulCacheKeyRef\.current/);
+  assert.match(source, /lastSuccessfulCacheKeyRef\.current === persistentCacheKey/);
+});
+
+test('восстановление сети запускает повтор внешней ленты, не смешивая timeout с offline', () => {
+  assert.match(source, /Network\.addNetworkStateListener/);
+  assert.match(source, /state\.isConnected && state\.isInternetReachable !== false/);
+  assert.match(source, /errorMessage = error === 'network_error'[^\n]+: l\.server/);
+  assert.match(source, /error: 'request_timeout'/);
 });
 
 test('кэш страницы разделяет владельцев, роли и фильтры и не возвращает закрытые записи', () => {

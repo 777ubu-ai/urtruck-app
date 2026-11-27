@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const baseline = JSON.parse(readFileSync('tests/fixtures/external-freight-protected-baseline.json', 'utf8'));
+const feedCacheRetry = JSON.parse(readFileSync('tests/fixtures/feed-cache-retry-approved-scope.json', 'utf8'));
 
 // Исключения — явная кнопка, маршрут, отдельный API и одобренный первый показ Main.
 function withoutFeedHooks(path, source) {
@@ -38,9 +39,9 @@ const routeClarification = JSON.parse(readFileSync('tests/fixtures/route-country
 const documentSecurity = JSON.parse(readFileSync('tests/fixtures/document-security-scope.json', 'utf8'));
 const privateFileCapability = JSON.parse(readFileSync('tests/fixtures/private-file-capability-approved-scope.json', 'utf8'));
 const feedCount = JSON.parse(readFileSync('tests/fixtures/feed-count-approved-scope.json', 'utf8'));
-for (const [path, expected] of Object.entries(baseline.sha256)) {
+for (const [path, expected] of Object.entries({ ...baseline.sha256, ...feedCacheRetry.sha256 })) {
   test('сохранена согласованная реализация: ' + path, () => {
     const source = withoutFeedHooks(path, readFileSync(path, 'utf8'));
-    assert.equal(createHash('sha256').update(source).digest('hex'), feedCount.sha256[path] || privateFileCapability.sha256[path] || documentSecurity.sha256[path] || expenseDiagnostics.sha256[path] || publicationExpiry.sha256[path] || routeClarification.sha256[path] || feedFreshness.sha256[path] || sessionRecovery.sha256[path] || ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, feedCount.sha256[path] ? feedCount.reason : privateFileCapability.sha256[path] ? privateFileCapability.reason : documentSecurity.sha256[path] ? documentSecurity.reason : expenseDiagnostics.sha256[path] ? expenseDiagnostics.reason : publicationExpiry.sha256[path] ? publicationExpiry.reason : routeClarification.sha256[path] ? routeClarification.reason : feedFreshness.sha256[path] ? feedFreshness.reason : sessionRecovery.sha256[path] ? sessionRecovery.reason : ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
+    assert.equal(createHash('sha256').update(source).digest('hex'), feedCacheRetry.sha256[path] || feedCount.sha256[path] || privateFileCapability.sha256[path] || documentSecurity.sha256[path] || expenseDiagnostics.sha256[path] || publicationExpiry.sha256[path] || routeClarification.sha256[path] || feedFreshness.sha256[path] || sessionRecovery.sha256[path] || ownedHistory.sha256[path] || listing30d.sha256[path] || gpsPause.sha256[path] || expected, feedCacheRetry.sha256[path] ? feedCacheRetry.reason : feedCount.sha256[path] ? feedCount.reason : privateFileCapability.sha256[path] ? privateFileCapability.reason : documentSecurity.sha256[path] ? documentSecurity.reason : expenseDiagnostics.sha256[path] ? expenseDiagnostics.reason : publicationExpiry.sha256[path] ? publicationExpiry.reason : routeClarification.sha256[path] ? routeClarification.reason : feedFreshness.sha256[path] ? feedFreshness.reason : sessionRecovery.sha256[path] ? sessionRecovery.reason : ownedHistory.sha256[path] ? ownedHistory.reason : listing30d.sha256[path] ? listing30d.reason : gpsPause.sha256[path] ? gpsPause.reason : baseline.base_sha);
   });
 }
