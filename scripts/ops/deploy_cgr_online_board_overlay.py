@@ -401,6 +401,12 @@ def board_acceptance() -> list[str]:
 
 def production_feed_diagnostics(root: Path, pid: int) -> None:
     """Aggregate-only live diagnostics; SQLite is opened read-only."""
+    health_started = time.perf_counter()
+    health_code, health_body, health_preview = read_json(HEALTH, timeout=5)
+    health_status = health_body.get("status") if isinstance(health_body, dict) else "unavailable"
+    health_db = health_body.get("db") if isinstance(health_body, dict) else "unavailable"
+    print(f"HEALTH_CURRENT code={health_code} status={health_status} db={health_db} "
+          f"elapsed_ms={(time.perf_counter()-health_started)*1000:.1f} detail={health_preview}")
     proc_env: dict[str, str] = {}
     try:
         for item in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0"):
